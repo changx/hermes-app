@@ -1,0 +1,5 @@
+name: p0-e2e-platform
+label: P0 Runner E2E Fixture
+kind: platform
+version: 0.0.1
+description: Loopback-only synthetic runner ingress fixture; never production

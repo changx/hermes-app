@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "tests/hermes_cli/test_plugin_prompt_sections.py",
+    "tests/agent/test_plugin_prompt_sections.py",
+    "tests/agent/test_compaction_prompt_rebuild.py"
+  ],
+  "exit_code": 0,
+  "passed": 14,
+  "core_before": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "core_after": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "temporary_home_removed": true,
+  "test_boundary": "Upstream unit tests include test doubles; not full summarizer E2E"
+}

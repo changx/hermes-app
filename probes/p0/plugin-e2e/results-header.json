@@ -1,0 +1,104 @@
+{
+  "mode": "header",
+  "busy_submit_observation": {
+    "stage": "after_first_persist",
+    "active_tasks": 0
+  },
+  "runner": "GatewayRunner",
+  "adapter": "ProbeAdapter",
+  "handler_owner": "GatewayRunner.start -> _wire_adapter_handlers (not probe handler)",
+  "client_closed_before_model_release": true,
+  "model_request_count": 3,
+  "request_checks": {
+    "first_description": true,
+    "second_description": true,
+    "other_description": true
+  },
+  "inbound_prompt_snapshots": [
+    [
+      "synthetic-first-unique-p0",
+      null
+    ],
+    [
+      "synthetic-second-unique-p0",
+      null
+    ],
+    [
+      "synthetic-other-unique-p0",
+      null
+    ]
+  ],
+  "sessions": {
+    "one": "20260925_011143_cd56ef1e",
+    "two": "20260925_011144_5a1b8f56"
+  },
+  "live_history": {
+    "one": [
+      {
+        "role": "user",
+        "content": "synthetic-first-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      },
+      {
+        "role": "session_meta",
+        "content": null
+      },
+      {
+        "role": "user",
+        "content": "synthetic-second-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      }
+    ],
+    "two": [
+      {
+        "role": "user",
+        "content": "synthetic-other-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      },
+      {
+        "role": "session_meta",
+        "content": null
+      }
+    ]
+  },
+  "reconnect_history_matched": true,
+  "delivered_count": 5,
+  "header_checks": {
+    "callback_once_per_session": true,
+    "no_ephemeral_prompt": true,
+    "normal_turn_identical_header": true,
+    "description_once_in_header_only": true,
+    "callback_count": 2
+  },
+  "cold_reload": {
+    "one_user": [
+      "synthetic-first-unique-p0",
+      "synthetic-second-unique-p0"
+    ],
+    "two_user": [
+      "synthetic-other-unique-p0"
+    ],
+    "one_final_count": 2,
+    "two_final_count": 1
+  },
+  "header_resume": {
+    "cold_restore_full_prompt_identical": true,
+    "cold_restore_callback_added": 0,
+    "controlled_rebuild_callback_added": 1,
+    "rebuild_original_description_once": true,
+    "description_absent_from_message_rows": true,
+    "actual_summarizer_compaction_tested": false
+  },
+  "temporary_home_removed": true,
+  "local_model_server_stopped": true,
+  "scope": "Real GatewayRunner/AIAgent, synthetic loopback model; raw DB read, no UI/compaction/crash recovery proof"
+}
