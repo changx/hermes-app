@@ -51,7 +51,7 @@ export class HermesClient {
   private socket: Socket | null = null;
   private controller: AbortController | null = null;
   private generation = 0;
-  private replay: Promise<void> | null = null;
+  private replay: { job: Promise<void>; signal?: AbortSignal } | null = null;
   private versions = new Map<string, number>();
   private fetchSequence = 0;
   private entitySequence = new Map<string, number>();
@@ -65,9 +65,11 @@ export class HermesClient {
     }
   }
   private async call(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    if (signal?.aborted) throw new Error('aborted');
     const token = this.options.token();
     if (!token) throw new ProtocolError('missing token');
     const response = await this.options.http.request(method, path, token, body, signal);
+    if (signal?.aborted) throw new Error('aborted');
     if (response.status === 400 && (path.startsWith('/v1/sync') || path.startsWith('/v1/snapshot'))) throw new ResyncRequired('invalid sync or snapshot cursor');
     if (response.status < 200 || response.status >= 300) throw new ProtocolError('HTTP ' + response.status + ' ' + path.split('?')[0]);
     return obj(response.body);
@@ -134,9 +136,10 @@ export class HermesClient {
   async snapshot(signal?: AbortSignal): Promise<void> {
     let after: string|null=null; let earliest: string|null=null; const pages: ThreadSummary[]=[];
     do { const x=await this.call('GET','/v1/snapshot'+query({after,limit:100}),undefined,signal); if (earliest===null) earliest=str(x.waterline); pages.push(...arr(x.threads).map(validSummary)); after=optionalCursor(x.next_after) } while(after);
+    await this.listChannels(signal);
+    if (signal?.aborted) throw new Error('aborted');
     for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) this.threads.set(t.id,t) }
     this.cursor=earliest; this.lastEventId=0; this.changed();
-    await this.listChannels(signal);
   }
   private async applyEvent(event: Event, signal?: AbortSignal) {
     if (event.event_id<=this.lastEventId) return;
@@ -148,12 +151,15 @@ export class HermesClient {
       else if (event.kind==='message') { await this.historyAll(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal) }
       else if (event.kind==='receipt') await this.getReceipt(event.ref,signal);
       else if (event.kind==='read') await this.refreshSummaries(event.event_id,signal);
+      if (signal?.aborted) throw new Error('aborted');
       this.versions.set(key,event.version);
     }
+    if (signal?.aborted) throw new Error('aborted');
     this.lastEventId=event.event_id; this.cursor=event.cursor;
   }
   async catchUp(signal?: AbortSignal): Promise<void> {
-    if (this.replay) { await this.replay; return this.catchUp(signal) }
+    if (signal?.aborted) throw new Error('aborted');
+    if (this.replay && this.replay.signal===signal) { await this.replay.job; return this.catchUp(signal) }
     const job=(async()=>{ if (this.cursor===null) await this.snapshot(signal); let more=true; while(more) {
       const x=await this.call('GET','/v1/sync'+query({cursor:this.cursor,limit:200}),undefined,signal);
       const events=arr(x.events).map(validEvent); str(x.waterline); const next=str(x.next_cursor); more=x.has_more===true;
@@ -161,20 +167,30 @@ export class HermesClient {
       if (!events.length && next!==this.cursor) throw new ResyncRequired('empty page advanced cursor');
       if (events.length && next!==this.cursor) throw new ResyncRequired('page cursor mismatch');
       if (more && !events.length) throw new ResyncRequired('empty continuation page');
-    } })(); this.replay=job; try { await job } finally { this.replay=null }
+    } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
   async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); await this.snapshot(signal); await this.catchUp(signal) }
-  async connect(): Promise<void> { if (this.controller) return; const controller=new AbortController(); this.controller=controller; const gen=++this.generation; void this.run(gen,controller.signal) }
-  private async run(gen: number, signal: AbortSignal) { let attempt=0; const delays=this.options.backoffMs||[200,500,1000,2000,5000];
-    while(!signal.aborted && gen===this.generation) { try {
-      await this.catchUp(signal); const cursor=this.cursor; if (!cursor) throw new ProtocolError('missing cursor');
-      const socket=await this.options.socket.connect('/v1/events'+query({cursor}),this.options.token(),signal); this.socket=socket; attempt=0;
-      await new Promise<void>((resolve,reject)=>{ socket.onMessage(data=>{ try { const x=obj(JSON.parse(data)); if (x.type==='hello') { if (x.protocol!==1 || x.durable_sync!==true) throw new ProtocolError('invalid hello'); return } if (x.type!=='event') throw new ProtocolError('invalid socket frame'); validEvent(x); void this.catchUp(signal).catch(reject) } catch(e) { reject(e) } }); socket.onClose(resolve); if (signal.aborted) resolve() });
-    } catch(e) { if (!signal.aborted) this.options.onError?.(e instanceof Error?e:new Error(String(e))); if (e instanceof ResyncRequired) break }
-      finally { this.socket?.close(); this.socket=null }
-      if (!signal.aborted) { try { await wait(delays[Math.min(attempt++,delays.length-1)],signal) } catch { break } }
-    }
+  async connect(): Promise<void> { if (this.controller) return; const controller=new AbortController(); this.controller=controller; const gen=++this.generation; void this.run(gen,controller) }
+  private async run(gen: number, controller: AbortController) { const signal=controller.signal; let attempt=0; const delays=this.options.backoffMs||[200,500,1000,2000,5000];
+    try { while(!signal.aborted && gen===this.generation) { let socket: Socket | null=null; try {
+      await this.catchUp(signal); if (signal.aborted || gen!==this.generation) break;
+      const cursor=this.cursor; if (!cursor) throw new ProtocolError('missing cursor');
+      const opened=await this.options.socket.connect('/v1/events'+query({cursor}),this.options.token(),signal);
+      if (signal.aborted || gen!==this.generation) { opened.close(); break }
+      socket=opened; this.socket=socket; attempt=0;
+      await new Promise<void>((resolve,reject)=>{
+        let settled=false;
+        const finish=(error?: unknown)=>{ if (settled) return; settled=true; signal.removeEventListener('abort',abort); if (error) reject(error); else resolve() };
+        const abort=()=>finish();
+        signal.addEventListener('abort',abort,{once:true});
+        socket!.onMessage(data=>{ if (signal.aborted || gen!==this.generation || settled) return; try { const x=obj(JSON.parse(data)); if (x.type==='hello') { if (x.protocol!==1 || x.durable_sync!==true) throw new ProtocolError('invalid hello'); return } if (x.type!=='event') throw new ProtocolError('invalid socket frame'); validEvent(x); void this.catchUp(signal).catch(finish) } catch(e) { finish(e) } });
+        socket!.onClose(()=>finish()); if (signal.aborted) finish();
+      });
+    } catch(e) { if (!signal.aborted && gen===this.generation) this.options.onError?.(e instanceof Error?e:new Error(String(e))); if (e instanceof ResyncRequired) break }
+      finally { socket?.close(); if (this.socket===socket) this.socket=null }
+      if (!signal.aborted && gen===this.generation) { try { await wait(delays[Math.min(attempt++,delays.length-1)],signal) } catch { break } }
+    } } finally { if (this.controller===controller) this.controller=null }
   }
   close() { ++this.generation; this.controller?.abort(); this.controller=null; this.socket?.close(); this.socket=null; this.drafts.clear() }
 }

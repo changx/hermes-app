@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HermesClient, ProtocolError, ResyncRequired } from '../../packages/client/dist/index.js';
+import {desktopTransport} from './desktop/transport.mjs';
+import {mobileTransport} from './mobile/transport.js';
 const base = {http:{async request(){throw new Error('unplanned request')}},socket:{async connect(){throw new Error('unplanned socket')}},token:()=> 'synthetic-token'};
 const receipt=(id='rc_1',state='queued')=>({id,client_message_id:'device-1',thread_id:'th_1',state,durable:true});
 const event=(n,kind='receipt',ref='rc_1')=>({event_id:n,cursor:'c'+n,kind,thread_id:'th_1',ref,version:1});
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}};
+const emptySync={status:200,body:{events:[],waterline:'c0',next_cursor:'c0',has_more:false}};
 test('same send ID/payload is retried; separate same-text IDs remain separate',async()=>{
   const calls=[]; const c=new HermesClient({...base,http:{async request(method,path,token,body){calls.push({method,path,token,body});return {status:202,body:{receipt:{...receipt('rc_'+body.client_message_id),client_message_id:body.client_message_id}}}}}});
   const a=await c.send('th_1','device-1','hello'); const b=await c.send('th_1','device-1','hello'); const d=await c.send('th_1','device-2','hello');
@@ -71,4 +76,46 @@ test('late queued receipt response cannot replace completed state',async()=>{
   const c=new HermesClient({...base,http:{request(){calls++;return calls===1?new Promise(r=>resolveFirst=r):Promise.resolve({status:200,body:{receipt:receipt('rc_1','completed')}})}}});
   const first=c.getReceipt('rc_1');await c.getReceipt('rc_1');resolveFirst({status:200,body:{receipt:receipt('rc_1','queued')}});await first;
   assert.equal(c.receipts.get('rc_1').state,'completed');
+});
+test('explicit resync after invalid cursor releases run ownership and reconnects',async()=>{
+  let invalid=true,connects=0;const errors=[];
+  const c=new HermesClient({...base,onError:e=>errors.push(e.name),http:{async request(_method,path){
+    if(path.startsWith('/v1/sync'))return invalid?{status:400,body:{}}:emptySync;
+    if(path.startsWith('/v1/snapshot'))return {status:200,body:{threads:[],waterline:'c0',next_after:null}};
+    if(path==='/v1/channels')return {status:200,body:{channels:[]}};
+    throw Error(path);
+  }},socket:{async connect(){connects++;return {onMessage(){},onClose(){},close(){}}}}});
+  c.cursor='foreign';await c.connect();await tick();assert.deepEqual(errors,['ResyncRequired']);
+  invalid=false;await c.resync();await c.connect();await tick();assert.equal(connects,1);c.close();
+});
+test('delayed old close cannot close the next connection',async()=>{
+  let oldClose,connects=0,newClosed=0;
+  const c=new HermesClient({...base,http:{async request(){return emptySync}},socket:{async connect(){
+    const current=++connects;return {onMessage(){},onClose(fn){if(current===1)oldClose=fn},close(){if(current===2)newClosed++}};
+  }}});c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
+  assert.equal(connects,2);oldClose();await tick();assert.equal(newClosed,0);c.close();
+});
+test('close during pending handshake disposes late socket without touching successor',async()=>{
+  const pending=deferred();let connects=0,lateClosed=0,newClosed=0;
+  const c=new HermesClient({...base,http:{async request(){return emptySync}},socket:{connect(){
+    return ++connects===1?pending.promise:Promise.resolve({onMessage(){},onClose(){},close(){newClosed++}});
+  }}});c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
+  pending.resolve({onMessage(){},onClose(){},close(){lateClosed++}});await tick();
+  assert.equal(connects,2);assert.equal(lateClosed,1);assert.equal(newClosed,0);c.close();assert.equal(newClosed,1);
+});
+test('close during pending replay cannot publish old cursor or block next connect',async()=>{
+  const pending=deferred();let syncs=0,connects=0;
+  const c=new HermesClient({...base,http:{request(){
+    return ++syncs===1?pending.promise:Promise.resolve(emptySync);
+  }},socket:{async connect(){connects++;return {onMessage(){},onClose(){},close(){}}}}});
+  c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
+  assert.equal(connects,1);pending.resolve({status:200,body:{events:[event(1)],waterline:'c1',next_cursor:'c1',has_more:false}});await tick();
+  assert.equal(c.cursor,'c0');assert.equal(c.lastEventId,0);c.close();
+});
+test('already aborted adapter handshakes create no socket',async()=>{
+  const controller=new AbortController();controller.abort();let constructed=0;
+  class NativeWebSocket {constructor(){constructed++}}
+  await assert.rejects(desktopTransport('http://127.0.0.1:1').socket.connect('/v1/events','synthetic',controller.signal),/aborted/);
+  await assert.rejects(mobileTransport('http://127.0.0.1:1',NativeWebSocket,fetch).socket.connect('/v1/events','synthetic',controller.signal),/aborted/);
+  assert.equal(constructed,0);
 });

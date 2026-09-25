@@ -57,6 +57,11 @@ try {
   const last=before.at(-1).ref_seq; await mobile.markRead(thread.id,last);
   assert.equal(await desktop.markRead(thread.id,last),last);
   desktop.close();mobile.close();
+  await desktop.connect();await mobile.connect();
+  await until(()=>desktop.socket && mobile.socket);
+  await desktop.catchUp();await mobile.catchUp();
+  assert.equal(desktop.threads.get(thread.id).read_ref,last);
+  desktop.close();mobile.close();
   await stop();
   await rm(path.join(home,'h','ready.json'));
   const url2=await start('two');
@@ -78,7 +83,7 @@ try {
   await desktop.catchUp();await mobile.catchUp();await desktop.history(other.id);await mobile.history(other.id);
   assert.deepEqual(desktop.messages.get(other.id),mobile.messages.get(other.id));
   assert.equal(desktop.threads.get(thread.id).read_ref,last);
-  result={baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',channel:channel.id,threads:[thread.id,other.id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,restart_replay:true,offline_execution:true,device_runtime:false};
+  result={baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',channel:channel.id,threads:[thread.id,other.id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,same_instance_reconnect:true,restart_replay:true,offline_execution:true,device_runtime:false};
   await writeFile(path.join(evidence,'real-gateway.json'),JSON.stringify(result,null,2)+'\n');
-  console.log(JSON.stringify({ok:true,threads:2,receipts:2,restart_replay:true,offline_execution:true,evidence:path.join(evidence,'real-gateway.json')}));
+  console.log(JSON.stringify({ok:true,threads:2,receipts:2,same_instance_reconnect:true,restart_replay:true,offline_execution:true,evidence:path.join(evidence,'real-gateway.json')}));
 } finally {desktop?.close();mobile?.close();await stop();if(!process.env.P105_KEEP_CHILD)await rm(home,{recursive:true,force:true})}
