@@ -1,0 +1,30 @@
+{
+  "classification": "synthetic data; synthetic compression output; no paid model; real Hermes SessionDB, projections, idle predicate, gateway resolver/context combiner",
+  "checks": {
+    "original_visible_turns": 4,
+    "cold_reopen_count": 4,
+    "after_rotation_visible_count": 5,
+    "display_page_count": 7,
+    "in_place_model_rows": 3,
+    "in_place_display_rows": 7,
+    "lineage_segments": 2,
+    "rest_tip_only_rows": 2,
+    "hidden_scaffolding_filtered": true,
+    "idle_predicate_fires_and_growth_guard_blocks": true,
+    "branch_excluded": true,
+    "continuation_without_new_user_kept": true,
+    "rest_ancestor_not_paged": true,
+    "original_head_ids_preserved": true,
+    "carried_tail_ids_changed": true,
+    "channel_config_parent_inheritance": true,
+    "channel_override_precedence": true,
+    "ephemeral_context_reaches_agent_constructor": true,
+    "project_description_auto_inheritance": false
+  },
+  "gaps": [
+    "Compaction carry-forward tail gets new messages.id; a raw row_id is not a stable product message identity.",
+    "REST /api/sessions/{id}/messages resolves to the tip then pages that segment; a compression ancestor's history is not in its page (unlike session.resume display).",
+    "Project description persists in projects.db but is not an input to resolve_channel_prompt; no automatic Project Description -> model-context inheritance was demonstrated.",
+    "No paid-model summarization, native Responses compaction, autonomous idle scheduler, live stream or multi-device sync tested."
+  ]
+}
