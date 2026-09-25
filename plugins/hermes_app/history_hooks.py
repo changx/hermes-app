@@ -2,6 +2,7 @@
 import logging
 import sqlite3
 import json
+from contextlib import closing
 
 from .storage import Store
 from hermes_constants import get_hermes_home
@@ -15,7 +16,7 @@ def _store():
 
 def _compression_parent(session_id, source_db=None):
     """Only a core compression child inherits the Thread; a branch owns its history."""
-    with sqlite3.connect(f'file:{source_db or get_hermes_home() / "state.db"}?mode=ro', uri=True) as db:
+    with closing(sqlite3.connect(f'file:{source_db or get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
         row = db.execute('SELECT child.parent_session_id,child.model_config,parent.end_reason '
                          'FROM sessions child LEFT JOIN sessions parent ON parent.id=child.parent_session_id '
                          'WHERE child.id=?', (session_id,)).fetchone()
@@ -51,31 +52,59 @@ def post_llm_call(**kwargs):
         log.error('unmapped Hermes App post_llm_call session=%s turn=%s', session_id, turn_id)
         return None
     history = kwargs.get('conversation_history') or []
-    # The current turn is the suffix beginning at its last user row. Never match
-    # text: identical messages are independent rows, even across compression.
+    # The core's post hook carries the final turn history. The last durable user
+    # anchor bounds this turn; row IDs, never text, identify its visible rows.
     users = [i for i, m in enumerate(history) if isinstance(m, dict) and m.get('role') == 'user']
     if not users:
         log.error('Hermes App turn %s has no user row', turn_id)
         return None
-    user = history[users[-1]]
-    assistants = [m for m in history[users[-1]+1:] if isinstance(m, dict) and
-                  m.get('role') == 'assistant' and isinstance(m.get('content'), str) and m['content'].strip()]
-    if not assistants:
-        log.error('Hermes App turn %s has no visible assistant row', turn_id)
+    from .projection import visible_text
+    candidates = [m for m in history[users[-1]:] if isinstance(m, dict) and
+                  m.get('role') in ('user', 'assistant')]
+    visible = [m for m in candidates if visible_text(m) is not None]
+    if not visible or visible[0].get('role') != 'user':
+        log.error('Hermes App turn %s has no visible user anchor', turn_id)
         return None
-    assistant = assistants[-1]
-    if not isinstance(user.get('_row_id'), int) or not isinstance(assistant.get('_row_id'), int):
-        log.error('Hermes App turn %s lacks original row IDs: user=%s assistant=%s',
-                  turn_id, user.get('_row_id'), assistant.get('_row_id'))
+    ids = [m.get('_row_id') for m in visible]
+    if any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
+        log.error('Hermes App turn %s has missing or duplicate original row IDs', turn_id)
         return None
-    ids = (user['_row_id'], assistant['_row_id'])
-    with sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True) as db:
+    with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
         rows = {r[0]: (r[1], r[2]) for r in db.execute(
-            'SELECT id,session_id,role FROM messages WHERE id IN (?,?)', ids)}
-    if any(row_id not in rows or rows[row_id][1] != role for row_id, role in zip(ids, ('user','assistant'))):
+            f"SELECT id,session_id,role FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
+    if any(i not in rows or rows[i][1] != m['role'] for i, m in zip(ids, visible)):
         log.error('Hermes App turn %s references unavailable rows %s', turn_id, ids)
         return None
-    store.record_turn(thread_id, turn_id, [
-        (rows[user['_row_id']][0], user['_row_id'], 'user'),
-        (rows[assistant['_row_id']][0], assistant['_row_id'], 'assistant')])
+    store.record_turn(thread_id, turn_id, [(rows[i][0], i, m['role']) for i, m in zip(ids, visible)])
+    return None
+
+
+def on_session_end(**kwargs):
+    """Surface failed/interrupted turns; recover a durable user row when post hook did not run."""
+    if kwargs.get('platform') != 'hermes_app' or kwargs.get('completed') is True:
+        return None
+    turn_id, session_id = kwargs.get('turn_id'), kwargs.get('session_id')
+    if not turn_id or not session_id:
+        return None
+    store = _store()
+    thread_id = store.bind_turn(turn_id, session_id)
+    if thread_id is None:
+        thread_id = store.bind_turn(turn_id, session_id, _compression_parent(session_id))
+    if thread_id is None:
+        return None
+    if store.turn_state(turn_id) == 'pending':
+        from .projection import visible_text
+        last_id = store.latest_ref_row_id(thread_id, session_id)
+        with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            rows = [dict(r) for r in db.execute(
+                "SELECT * FROM messages WHERE session_id=? AND id>? ORDER BY id LIMIT 200", (session_id, last_id))]
+        users = [i for i, row in enumerate(rows) if row['role'] == 'user' and visible_text(row) is not None]
+        if users:
+            visible = [r for r in rows[users[-1]:] if visible_text(r) is not None]
+            store.record_turn(thread_id, turn_id,
+                [(session_id, r['id'], r['role']) for r in visible])
+    state = ('interrupted' if kwargs.get('interrupted') else
+             'failed' if kwargs.get('failed') else 'unknown')
+    store.finish_turn(thread_id, turn_id, state)
     return None

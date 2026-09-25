@@ -34,6 +34,7 @@
   "history_status": 200,
   "history_validation": {
     "after_next": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "3",
@@ -136,9 +137,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": null
+      "next_cursor": null,
+      "turn_outcomes": []
     },
     "before": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "3",
@@ -231,9 +234,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": null
+      "next_cursor": null,
+      "turn_outcomes": []
     },
     "branch": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "1",
@@ -246,9 +251,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": null
+      "next_cursor": null,
+      "turn_outcomes": []
     },
     "cold": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "3",
@@ -351,9 +358,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": null
+      "next_cursor": null,
+      "turn_outcomes": []
     },
     "compressed": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "3",
@@ -446,9 +455,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": null
+      "next_cursor": null,
+      "turn_outcomes": []
     },
     "page1": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "3",
@@ -461,9 +472,11 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "4"
+      "next_cursor": "WyJ0aF85NjE5NzViNzQxYjI0ZmM1OTIxMTUwMjciLDRd",
+      "turn_outcomes": []
     },
     "page2": {
+      "incomplete_turns": [],
       "messages": [
         {
           "id": "7",
@@ -476,7 +489,8 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "6"
+      "next_cursor": "WyJ0aF85NjE5NzViNzQxYjI0ZmM1OTIxMTUwMjciLDZd",
+      "turn_outcomes": []
     }
   },
   "initial_description": true,

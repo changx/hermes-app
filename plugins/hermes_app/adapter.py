@@ -17,7 +17,7 @@ from hermes_constants import get_hermes_home
 from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
-from .history_hooks import pre_llm_call, post_llm_call
+from .history_hooks import pre_llm_call, post_llm_call, on_session_end
 
 
 def _store():
@@ -161,7 +161,7 @@ class HermesAppAdapter(BasePlatformAdapter):
                 if existing is None or existing.id != cid:
                     return None
                 if request.method == 'DELETE':
-                    if self._store.list_threads(cid):
+                    if self._store.has_threads(cid):
                         return 'has_threads'
                     projects_db.delete_project(conn, cid)
                     return {'deleted': True}
@@ -191,7 +191,13 @@ class HermesAppAdapter(BasePlatformAdapter):
         if p is None or p.id != cid:
             raise web.HTTPNotFound()
         if request.method == 'GET':
-            return web.json_response({'threads': await asyncio.to_thread(self._store.list_threads, cid)})
+            try:
+                limit = int(request.query.get('limit', '50'))
+                result = await asyncio.to_thread(self._store.list_threads, cid, limit=limit,
+                                                 after=request.query.get('after'))
+            except (ValueError, TypeError) as exc:
+                raise web.HTTPBadRequest(text=str(exc)) from exc
+            return web.json_response(result)
         body = await _body(request)
         title = body.get('title', 'New Thread')
         if not isinstance(title, str) or not title.strip() or len(title) > 200:
@@ -285,6 +291,7 @@ def register(ctx):
     ctx.register_system_prompt_section('hermes_app.channel', _initial_description, max_chars=4000)
     ctx.register_hook('pre_llm_call', pre_llm_call)
     ctx.register_hook('post_llm_call', post_llm_call)
+    ctx.register_hook('on_session_end', on_session_end)
     ctx.register_platform(name='hermes_app', label='Hermes App local foundation',
         adapter_factory=HermesAppAdapter, check_fn=lambda: True,
         validate_config=lambda cfg: bool(cfg.enabled),

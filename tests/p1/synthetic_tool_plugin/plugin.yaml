@@ -1,0 +1,6 @@
+name: p1-synthetic-tool
+version: 0.1.0
+kind: backend
+description: Local synthetic output for P1 midturn compression test
+provides_tools:
+  - p1_synthetic_expand

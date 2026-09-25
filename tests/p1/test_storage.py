@@ -2,6 +2,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+import pytest
 
 PLUGIN = Path(__file__).resolve().parents[2] / 'plugins' / 'hermes_app'
 sys.path.insert(0, str(PLUGIN.parent))
@@ -22,4 +23,10 @@ def test_new_session_description_once_and_thread_isolation(tmp_path):
     reopened = Store(tmp_path / 'app.sqlite')
     assert reopened.take_initial_description('root-a') == ''
     assert reopened.get_thread(a)['description'] == 'Description v1'
+    first = reopened.list_threads('project', limit=1)
+    second = reopened.list_threads('project', limit=1, after=first['next_cursor'])
+    assert {x['id'] for x in first['threads'] + second['threads']} == {a, b}
+    assert second['next_cursor'] is None
+    with pytest.raises(ValueError, match='invalid cursor'):
+        reopened.list_threads('other', after=first['next_cursor'])
     reopened.close()

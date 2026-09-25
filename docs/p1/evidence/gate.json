@@ -1,12 +1,16 @@
 {
-  "gate": "P1-02 plugin history lifecycle subset",
-  "passed": true,
-  "failures": [],
+  "gate": "P1-02 complete history lifecycle",
+  "passed": false,
+  "failures": [
+    "automatic preflight second-send rerun left two pending turns and omitted the accepted user row",
+    "automatic midturn compression through a real tool loop not proven",
+    "failed GatewayRunner turn user row and outcome not visible"
+  ],
   "raw_core_projector_negatives": {
     "inplace": true,
     "rotate": true,
     "idle": true,
     "inplace_idle": true
   },
-  "scope": "actual gateway turns, in-place and idle compaction, rotation with AIAgent child continuation; automatic preflight and midturn compaction remain open"
+  "scope": "real GatewayRunner in-place, idle and rotation; one passing preflight run plus a later regression; midturn and early failure remain hard gates"
 }

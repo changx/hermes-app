@@ -1,0 +1,11 @@
+{
+  "source": "controller broad rerun: pytest -q tests/p1 -k 'not midturn and not failed'",
+  "mode": "preflight",
+  "stage": "second GatewayRunner send after 202 dispatched_volatile",
+  "expected_visible_count": 4,
+  "actual_visible_count_after_poll": 2,
+  "pending_turn_count_after_poll": 2,
+  "observed_rows": ["P1_FIRST", "SYNTHETIC_P1_FINAL"],
+  "result": "failed",
+  "resolved": false
+}

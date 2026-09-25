@@ -13,6 +13,10 @@ variants = {mode: json.loads((EVIDENCE / f'runner-{mode}.json').read_text())
             for mode in ('idle', 'rotate')}
 raw = {mode: json.loads((EVIDENCE / f'compression-{mode}.json').read_text())
        for mode in ('inplace', 'rotate', 'idle', 'inplace_idle')}
+preflight = json.loads((EVIDENCE / 'runner-preflight.json').read_text()) if (EVIDENCE / 'runner-preflight.json').exists() else {}
+preflight_regression = json.loads((EVIDENCE / 'runner-preflight-regression.json').read_text()) if (EVIDENCE / 'runner-preflight-regression.json').exists() else {}
+midturn = json.loads((EVIDENCE / 'runner-midturn.json').read_text()) if (EVIDENCE / 'runner-midturn.json').exists() else {}
+failed = json.loads((EVIDENCE / 'runner-failed.json').read_text()) if (EVIDENCE / 'runner-failed.json').exists() else {}
 v = runner.get('history_validation', {})
 failures = []
 
@@ -64,9 +68,24 @@ for mode, item in variants.items():
             f'{mode}: bounded cursor differs')
     require(not {m.get('id') for m in variant.get('branch', {}).get('messages', [])} &
             {m.get('id') for m in later}, f'{mode}: branch leaked')
-record = {'gate':'P1-02 plugin history lifecycle subset','passed':not failures,'failures':failures,
+require(preflight.get('effective_threshold') == 2400 and preflight.get('summary_http_count_min',0) > 0
+        and preflight.get('inactive_core_rows',0) > 0 and preflight.get('cold_exact') is True,
+        'automatic preflight compression and cold history not proven')
+require(preflight.get('after_next',{}).get('messages',[])[:len(preflight.get('before',{}).get('messages',[]))]
+        == preflight.get('before',{}).get('messages',[]) and bool(preflight.get('before',{}).get('messages')),
+        'preflight original refs changed')
+require(preflight_regression.get('resolved') is True,
+        'automatic preflight second-send rerun left two pending turns and omitted the accepted user row')
+require(midturn.get('tool_called') is True and midturn.get('summary_http_count',0) > 0
+        and midturn.get('history_exact') is True,
+        'automatic midturn compression through a real tool loop not proven')
+require(any(m.get('text') == 'P1_FAIL' and m.get('role') == 'user'
+            for m in failed.get('page',{}).get('messages',[]))
+        and bool(failed.get('page',{}).get('turn_outcomes')),
+        'failed GatewayRunner turn user row and outcome not visible')
+record = {'gate':'P1-02 complete history lifecycle','passed':not failures,'failures':failures,
           'raw_core_projector_negatives':{mode:not x['canonical_visible_equal'] for mode,x in raw.items()},
-          'scope':'actual gateway turns, in-place and idle compaction, rotation with AIAgent child continuation; automatic preflight and midturn compaction remain open'}
+          'scope':'real GatewayRunner in-place, idle and rotation; one passing preflight run plus a later regression; midturn and early failure remain hard gates'}
 (EVIDENCE/'gate.json').write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(record,ensure_ascii=False))
 if failures:

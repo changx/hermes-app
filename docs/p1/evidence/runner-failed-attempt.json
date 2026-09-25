@@ -1,0 +1,56 @@
+{
+  "core_rows": [
+    {
+      "display_kind": null,
+      "id": 1,
+      "is_failed_user": false,
+      "role": "user"
+    },
+    {
+      "display_kind": null,
+      "id": 2,
+      "is_failed_user": false,
+      "role": "assistant"
+    },
+    {
+      "display_kind": null,
+      "id": 4,
+      "is_failed_user": false,
+      "role": "session_meta"
+    },
+    {
+      "display_kind": null,
+      "id": 7,
+      "is_failed_user": true,
+      "role": "user"
+    },
+    {
+      "display_kind": null,
+      "id": 8,
+      "is_failed_user": false,
+      "role": "assistant"
+    }
+  ],
+  "failure_http_requests": 1,
+  "mode": "failed",
+  "plugin_page": {
+    "incomplete_turns": [
+      "ingress:d4603028f79742228a3fa6a306d5e869",
+      "20260925_032530_07216e81:20260925_032530_07216e81:1c61ac9a"
+    ],
+    "messages": [
+      {
+        "id": "1",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "2",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": []
+  }
+}

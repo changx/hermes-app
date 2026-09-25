@@ -17,7 +17,7 @@ BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline'
 PLUGIN = Path(__file__).resolve().parents[2] / 'plugins' / 'hermes_app'
 HOME = Path(os.environ['HERMES_HOME'])
 COMPACT_MODE = os.environ.get('P1_COMPACT_MODE', 'inplace')
-assert COMPACT_MODE in ('inplace', 'idle', 'rotate')
+assert COMPACT_MODE in ('inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed')
 assert str(BASE) in __import__('sys').path
 assert os.environ['HOME'] == str(HOME.parent)
 
@@ -30,17 +30,39 @@ class Model(BaseHTTPRequestHandler):
         assert self.path == '/v1/chat/completions'
         request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         self.server.requests.append(request)
+        if COMPACT_MODE == 'failed' and 'P1_FAIL' in json.dumps(request.get('messages', [])):
+            data = b'{"error":{"message":"synthetic local failure","type":"invalid_request_error"}}'
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         answer = 'SYNTHETIC_P1_FINAL'
-        usage_prompt = 30
+        usage_prompt = (max(30, len(json.dumps(request.get('messages', []))) // 4)
+                        if COMPACT_MODE in ('preflight', 'midturn') else 30)
+        call_tool = (COMPACT_MODE == 'midturn' and not self.server.tool_called
+                     and any('p1_synthetic_expand' in json.dumps(t) for t in request.get('tools', []))
+                     and 'P1_MIDTURN' in json.dumps(request.get('messages', [])))
+        if call_tool:
+            self.server.tool_called = True
+            answer = 'P1_INTERIM'
+        tool_call = {'index':0,'id':'p1_call_1','type':'function',
+                     'function':{'name':'p1_synthetic_expand','arguments':'{}'}}
         if request.get('stream'):
             chunks = [
                 {'id':'s','object':'chat.completion.chunk','model':'p1-local','choices':[{'index':0,'delta':{'role':'assistant','content':answer},'finish_reason':None}]},
-                {'id':'s','object':'chat.completion.chunk','model':'p1-local','choices':[{'index':0,'delta':{},'finish_reason':'stop'}], 'usage':{'prompt_tokens':usage_prompt,'completion_tokens':5,'total_tokens':usage_prompt+5}},
+                *([{'id':'s','object':'chat.completion.chunk','model':'p1-local','choices':[{'index':0,'delta':{'tool_calls':[tool_call]},'finish_reason':None}]}] if call_tool else []),
+                {'id':'s','object':'chat.completion.chunk','model':'p1-local','choices':[{'index':0,'delta':{},'finish_reason':'tool_calls' if call_tool else 'stop'}], 'usage':{'prompt_tokens':usage_prompt,'completion_tokens':5,'total_tokens':usage_prompt+5}},
             ]
             data = b''.join(b'data: ' + json.dumps(c).encode() + b'\n\n' for c in chunks) + b'data: [DONE]\n\n'
             mime = 'text/event-stream'
         else:
-            data = json.dumps({'id':'s','object':'chat.completion','model':'p1-local','choices':[{'index':0,'message':{'role':'assistant','content':answer},'finish_reason':'stop'}], 'usage':{'prompt_tokens':usage_prompt,'completion_tokens':5,'total_tokens':usage_prompt+5}}).encode()
+            data = json.dumps({'id':'s','object':'chat.completion','model':'p1-local',
+                'choices':[{'index':0,'message':{'role':'assistant','content':answer,
+                    **({'tool_calls':[{k:v for k,v in tool_call.items() if k != 'index'}]} if call_tool else {})},
+                    'finish_reason':'tool_calls' if call_tool else 'stop'}],
+                'usage':{'prompt_tokens':usage_prompt,'completion_tokens':5,'total_tokens':usage_prompt+5}}).encode()
             mime = 'application/json'
         self.send_response(200)
         self.send_header('Content-Type', mime)
@@ -63,21 +85,25 @@ async def main():
     from hermes_state import SessionDB
 
     shutil.copytree(PLUGIN, HOME / 'plugins' / 'hermes-app')
+    if COMPACT_MODE == 'midturn':
+        shutil.copytree(Path(__file__).with_name('synthetic_tool_plugin'), HOME/'plugins'/'p1-synthetic-tool')
     model = ThreadingHTTPServer(('127.0.0.1', 0), Model)
     model.requests = []
+    model.tool_called = False
     worker = threading.Thread(target=model.serve_forever, daemon=True)
     worker.start()
     (HOME / 'config.yaml').write_text(
         'model:\n  provider: custom\n  default: p1-local\n  context_length: 65536\n'
         f'  base_url: http://127.0.0.1:{model.server_port}/v1\n'
         f'compression:\n  enabled: true\n  in_place: {str(COMPACT_MODE != "rotate").lower()}\n'
-        '  threshold_tokens_cap: 20000\n'
+        f'  threshold_tokens: {1500 if COMPACT_MODE == "midturn" else 2400 if COMPACT_MODE == "preflight" else 20000}\n'
         '  protect_first_n: 1\n  protect_last_n: 2\n  tail_mode: legacy\n'
         f'  idle_compact_after_seconds: {1 if COMPACT_MODE == "idle" else 0}\n'
         'auxiliary:\n  title_generation:\n    enabled: false\n'
         'security:\n  tirith_enabled: false\n'
-        'tools:\n  enabled_toolsets: []\n  disabled_toolsets: [terminal, execute_code, browser, web, files, automation]\n'
-        'plugins:\n  enabled: [hermes-app]\n'
+        f'tools:\n  enabled_toolsets: {"[p1_synthetic]" if COMPACT_MODE == "midturn" else "[]"}\n'
+        '  disabled_toolsets: [terminal, execute_code, browser, web, files, automation]\n'
+        f'plugins:\n  enabled: {"[hermes-app, p1-synthetic-tool]" if COMPACT_MODE == "midturn" else "[hermes-app]"}\n'
         'gateway:\n  multiplex_profiles: false\n  loop_watchdog: false\n'
         '  platforms:\n    hermes_app:\n'
         f"      enabled: {str(os.environ.get('P1_DISABLED') != '1').lower()}\n"
@@ -151,17 +177,77 @@ async def main():
                     history_status = resp.status
                     if history_status == 200:
                         first_history = await resp.json()
-                        break
+                        if len(first_history['messages']) == 2 and not first_history['incomplete_turns']:
+                            break
                 await asyncio.sleep(.2)
             assert history_status == 200, history_status
             assert [(m['role'], m['text']) for m in first_history['messages']] == [
                 ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL')], first_history
+            if COMPACT_MODE == 'failed':
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FAIL'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        failed_page = await resp.json()
+                        if resp.status == 200 and not failed_page['incomplete_turns'] and failed_page['turn_outcomes']:
+                            break
+                    await asyncio.sleep(.2)
+                with sqlite3.connect(HOME/'state.db') as raw:
+                    rows = raw.execute('SELECT id,role,content,display_kind FROM messages WHERE session_id=? ORDER BY id',
+                                       (one['session_id'],)).fetchall()
+                diagnostic = {'mode':'failed','core_rows':[
+                    {'id':r[0], 'role':r[1], 'is_failed_user':r[2]=='P1_FAIL', 'display_kind':r[3]}
+                    for r in rows], 'plugin_page':failed_page,
+                    'failure_http_requests':sum('P1_FAIL' in json.dumps(r.get('messages',[])) for r in model.requests)}
+                (HOME.parent/'runner-failed-attempt.json').write_text(json.dumps(diagnostic,sort_keys=True))
+                assert failed_page['turn_outcomes'] and not failed_page['incomplete_turns'], failed_page
+                assert any(m['role']=='user' and m['text']=='P1_FAIL' for m in failed_page['messages']), failed_page
+                result = {'mode':'failed','page':failed_page,
+                          'synthetic_failure_requests':sum('P1_FAIL' in json.dumps(r.get('messages',[])) for r in model.requests)}
+                (HOME.parent/'runner-failed-result.json').write_text(json.dumps(result,sort_keys=True))
+                return
+            if COMPACT_MODE == 'midturn':
+                requests_before = len(model.requests)
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_MIDTURN'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        mid_page = await resp.json()
+                        if resp.status == 200 and not mid_page['incomplete_turns'] and len(mid_page['messages']) >= 4:
+                            break
+                    await asyncio.sleep(.2)
+                attempt = {'mode':'midturn','tool_called':model.tool_called,
+                           'request_count':len(model.requests)-requests_before,
+                           'tool_result_wire_chars':[
+                               len(str(m.get('content'))) for r in model.requests[requests_before:]
+                               for m in r.get('messages', []) if m.get('role') == 'tool'],
+                           'visible_roles':[m['role'] for m in mid_page['messages']],
+                           'visible_row_ids':[m['id'] for m in mid_page['messages']]}
+                (HOME.parent/'runner-midturn-attempt.json').write_text(json.dumps(attempt,sort_keys=True))
+                assert model.tool_called
+                assert len(model.requests)-requests_before >= 3, {
+                    'requests':len(model.requests)-requests_before,
+                    'wire_roles_and_chars':[[(m.get('role'), len(str(m.get('content')))) for m in r.get('messages', [])]
+                                            for r in model.requests[requests_before:]],
+                    'page':mid_page}
+                assert [(m['role'],m['text']) for m in mid_page['messages']] == [
+                    ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL'),
+                    ('user','P1_MIDTURN'),('assistant','P1_INTERIM'),
+                    ('assistant','SYNTHETIC_P1_FINAL')], mid_page
+                result = {'mode':'midturn','tool_called':model.tool_called,
+                          'model_requests_during_turn':len(model.requests)-requests_before,
+                          'messages':mid_page}
+                (HOME.parent/'runner-midturn-result.json').write_text(json.dumps(result,sort_keys=True))
+                return
             async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_SECOND'}) as resp:
                 assert resp.status == 202, await resp.text()
             for _ in range(100):
-                if any('P1_SECOND' in json.dumps(x) for x in model.requests):
-                    break
+                async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                    second_page = await resp.json()
+                    if resp.status == 200 and len(second_page['messages']) == 4 and not second_page['incomplete_turns']:
+                        break
                 await asyncio.sleep(.2)
+            assert len(second_page['messages']) == 4 and not second_page['incomplete_turns'], second_page
             second = next(x for x in model.requests if 'P1_SECOND' in json.dumps(x))
             assert json.dumps(second).count('P1_DESC_A') == 1
             for _ in range(100):
@@ -198,6 +284,49 @@ async def main():
                 await asyncio.sleep(.2)
             assert [(m['role'],m['text']) for m in before_page['messages']] == expected, before_page
             preflight_model_calls = len(model.requests)-10
+            if COMPACT_MODE == 'preflight':
+                from run_agent import AIAgent
+                verifier = AIAgent(api_key='synthetic-local-no-credential',
+                    base_url=f'http://127.0.0.1:{model.server_port}/v1', model='p1-local',
+                    provider='custom', platform='hermes_app', quiet_mode=True,
+                    skip_context_files=True, skip_memory=True, session_id=one['session_id'])
+                effective_threshold = verifier.context_compressor.threshold_tokens
+                assert effective_threshold == 2400, effective_threshold
+                assert preflight_model_calls > 0, ('no automatic summary HTTP request', len(model.requests))
+                assert not before_page['incomplete_turns']
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_AFTER_AUTO'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        after_auto = await resp.json()
+                        if (resp.status == 200 and len(after_auto['messages']) == len(expected)+2
+                                and not after_auto['incomplete_turns']):
+                            break
+                    await asyncio.sleep(.2)
+                assert [(m['role'],m['text']) for m in after_auto['messages']] == expected + [
+                    ('user','P1_AFTER_AUTO'),('assistant','SYNTHETIC_P1_FINAL')]
+                assert len({m['id'] for m in after_auto['messages']}) == len(after_auto['messages'])
+                with sqlite3.connect(HOME/'state.db') as raw:
+                    inactive_rows = raw.execute('SELECT COUNT(*) FROM messages WHERE session_id=? AND active=0',
+                                                (one['session_id'],)).fetchone()[0]
+                assert inactive_rows > 0, 'automatic compression did not retire active core rows'
+                cold_path = HOME.parent/'cold-preflight.json'
+                cold = subprocess.run([sys.executable, '-c',
+                    'import json,sys,pathlib;sys.path.insert(0,sys.argv[1]);from hermes_app.storage import Store;'
+                    'pathlib.Path(sys.argv[5]).write_text(json.dumps(Store(sys.argv[2]).history_page(sys.argv[3],sys.argv[4],limit=100)))',
+                    str(PLUGIN.parent), str(HOME/'hermes-app'/'metadata.sqlite'), one['id'],
+                    str(HOME/'state.db'), str(cold_path)], capture_output=True, text=True, timeout=20)
+                assert cold.returncode == 0 and cold_path.exists(), cold.stderr
+                assert json.loads(cold_path.read_text()) == after_auto
+                next_request = next(x for x in model.requests if 'P1_AFTER_AUTO' in json.dumps(x))
+                assert json.dumps(next_request).count('P1_DESC_A') <= 1
+                result = {'mode':'preflight', 'effective_threshold':effective_threshold,
+                          'summary_http_count_min':preflight_model_calls, 'before':before_page,
+                          'after_next':after_auto, 'inactive_core_rows':inactive_rows,
+                          'cold_exact':True,
+                          'description_count_next_request':json.dumps(next_request).count('P1_DESC_A')}
+                (HOME.parent / 'runner-preflight-result.json').write_text(json.dumps(result, sort_keys=True))
+                return
             original_ids = [m['id'] for m in before_page['messages']]
             async with a.get(root+f"/v1/threads/{one['id']}/messages?limit=2") as resp:
                 assert resp.status == 200
@@ -269,13 +398,15 @@ async def main():
             assert [m['id'] for m in after_page['messages'][:len(original_ids)]] == original_ids
             assert [(m['role'],m['text']) for m in after_page['messages']] == expected + [
                 ('user','P1_AFTER_COMPACT'),('assistant','SYNTHETIC_P1_FINAL')]
+            cold_path = HOME.parent / 'cold-page.json'
             cold = subprocess.run([sys.executable, '-c',
-                'import json,sys;sys.path.insert(0,sys.argv[1]);from hermes_app.storage import Store;'
-                'print(json.dumps(Store(sys.argv[2]).history_page(sys.argv[3],sys.argv[4],limit=100)))',
+                'import json,sys,pathlib;sys.path.insert(0,sys.argv[1]);from hermes_app.storage import Store;'
+                'pathlib.Path(sys.argv[5]).write_text(json.dumps(Store(sys.argv[2]).history_page(sys.argv[3],sys.argv[4],limit=100)))',
                 str(PLUGIN.parent), str(HOME/'hermes-app'/'metadata.sqlite'),
-                one['id'], str(HOME/'state.db')], capture_output=True, text=True, timeout=20)
+                one['id'], str(HOME/'state.db'), str(cold_path)], capture_output=True, text=True, timeout=20)
             assert cold.returncode == 0, cold.stderr
-            cold_page = json.loads(cold.stdout)
+            assert cold_path.exists(), cold.stderr
+            cold_page = json.loads(cold_path.read_text())
             assert cold_page == after_page
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{two['id']}/messages?limit=100") as resp:

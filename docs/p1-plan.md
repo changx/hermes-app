@@ -2,7 +2,7 @@
 
 > 状态：Jamie 已授权 P1 本地实现，按 01/02 → 03 → 04/05 验收推进；未授权安装到活动 profile 或部署。最新纠正：Description 仅全新会话注入一次，时间/长度压缩后不补入。P0 证据中的旧“压缩后补回初始快照”要求已被此规则替代。
 
-2026-09-25 执行授权：Jamie 明确批准在隔离 worktree/profile 内实施 P1-01/02 实际代码和测试；不包括活动 profile 安装、gateway 重启、推送、付费模型或部署。本次 gate 结果记录于 `p1/first-gate.md`；插件历史已通过实际运行的原地、idle 与物理续接子集，自动 preflight/midturn 压缩边界仍待收口；P1-03 尚未实施。
+2026-09-25 执行授权：Jamie 明确批准在隔离 worktree/profile 内实施 P1-01/02 实际代码和测试；不包括活动 profile 安装、gateway 重启、推送、付费模型或部署。本次 gate 结果记录于 `p1/first-gate.md`；插件历史已通过实际运行的原地、idle 与物理续接子集。自动 preflight 单次通过但重跑失败，midturn 自动压缩及 GatewayRunner 早期失败后的晚写映射亦未通过；P1-02 gate 未完成，P1-03 尚未实施。
 
 ## 1. P1 交付目标
 
