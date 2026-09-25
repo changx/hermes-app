@@ -14,9 +14,11 @@
 
 ### R03 Channel Description 公共上下文
 
-Channel 的 Topic / Description 可保存背景、目标、约束及必要参考提示。每个新 Thread 对应的 Session 自动获得这些内容，减少反复交代背景。说明不只是展示文字，应在模型执行时实际生效。
+Channel 的 Topic / Description 可保存背景、目标、约束及必要参考提示。创建新 Thread/Session 时，将这些内容设置为该 Session 头部的公共上下文；后续对话沿用已有 Session 上下文，不要求每条用户消息重新携带或重复追加 Description，也不要求逐轮重新读取 Channel 说明。说明不只是展示文字，应在该 Session 执行时实际生效。
 
 公共提示独立于聊天正文及底层 session 存续。压缩、idle compaction 或上下文续接不应导致丢失。共享 Channel 提示不等于共享其他 Thread 的全部历史。
+
+验证重点是头部上下文的初始化、保留与恢复，而非逐请求搜索同一段原文。无状态模型 API 按协议重传完整 Session 上下文，是底层传输行为，不等于业务层为每条用户消息新增一份 Description。
 
 ### R04 连续的用户历史
 
@@ -86,7 +88,7 @@ Hermes 实现项目结构、存储、历史维护、公共提示与运行管理�
 
 ### 已提出但仍需确认的默认建议
 
-- Description 修改后，新 Thread 立即使用；旧 Thread 从下一轮使用，不改变正在执行的那一轮。
+- Description 修改对已有 Session 头部是否生效、何时生效另行决定；不默认逐轮热更新或自动重写已有 Session。
 - Channel 说明属于项目级指令，不能覆盖 Hermes 全局安全和授权约束；编辑权限由服务端控制。
 - 优先用现有 Electron/React 基础衍生桌面客户端；共享前端用于移动原生容器的方案须验证后定。
 - 首版先解决个人多设备体验；多人协作权限不自动纳入范围。

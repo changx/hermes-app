@@ -27,6 +27,8 @@ sh probes/p0/history/run.sh
 
 1. **统一用户可见 Thread 历史读取**：现有 REST `GET /api/sessions/{id}/messages` 重定向至压缩 tip，然后分页读取该段；`session.resume` 的展示路径会跨压缩 lineage。必须统一冷分页与在线/恢复投影并携带稳定 Thread 身份，跨段分页和去重/隐藏语义一致；不能把整个 descendant tree（如 branch / worker）直接拼接。此处只验证了一条压缩链，不覆盖 gateway reset 产生的新 root。
 2. **稳定业务消息身份**：`messages.id` 是物理行 ID；压缩携带尾部会重新插入、改 ID。稳定逻辑 ID / 顺序 / 重绑定规则需要由权威服务端定义，跨页、反应、引用、双设备合并均不能直接假设当前 `row_id` 永不变。这里没有证明所有消息 ID 都改变；老头部在此场景保持原 ID。
+
+主控复核补充：本探针直接执行的 REST handler 属于 **Dashboard 的 `hermes_cli/web_routers/sessions.py`**。独立 API Server 也有同名路径，不能混为一次实测；主控只读检查其 `gateway/platforms/api_server.py::_handle_session_messages`，同样发现 resolve tip 后按该段 `get_messages` 的实现，但未在本探针执行该 handler。
 3. **Project Description → Channel 公共提示**：Hermes Project 的 `description` 持久化在 `projects.db`，配置 `channel_prompts` 的 gateway resolver 继承可用，但自动桥接尚无证据；此 probe 用显式 config map 证明下游链路，不等于 Project UI Description 已自动进入新 Thread 的模型上下文。旧 Thread 动态更新是*建议、未批准*；不能为了热更新破坏现有 conversation 缓存前缀/系统提示字节稳定性。必须先定生效边界、权限与 prompt-cache 策略。
 4. **未验证项**：未执行真实 paid model、自动压缩摘要/idle checkpoint、native Responses compaction、真实客户端流式事件与断线多端同步、附件或 gateway 服务全链路；本探针不能证明这些保证。父任务的异步通信 lane 另行覆盖同步。任何超出本次确定性 DB/投影路径的结论保持未测。
 
