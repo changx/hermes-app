@@ -83,4 +83,4 @@ P1 计划见 [p1-plan.md](../p1-plan.md)。建议先批准并完成 P1-01/02，�
 - 复核时核心 tracked source 干净，临时 HOME/数据库已清理，模型 server 与 probe 进程已退出。
 - 保留原始子代理提交和失败证据；主控追加诊断未改核心。主控初次运行遇到 `/usr/bin/npm` 不存在及直接导入未绑定显示 helper 的 NameError，改为已安装 Node 实路径与正常 server 绑定入口后重跑；这些属于探针接线问题。
 - Expo 依赖保留在 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/p0/close-mobile`，用于复现；主仓库只保留源码/锁文件/证据，不提交 node_modules 或 JS dist。
-- 既有只读 Hermes 基线和诊断安装包保留供复现。工作树与打包 staging 在收尾时按任务所有权清理，不删除未知或其他任务资源。
+- 既有只读 Hermes 基线和诊断安装包保留供复现。已完成的 App 工作树与打包 staging 已清理，保留产物/依赖的精确路径及哈希见 [resources.md](resources.md)；没有删除其他任务资源。
