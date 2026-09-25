@@ -15,7 +15,8 @@
 - 已确认需求与建议/待决项分开记录。架构、接口、平台范围变更同时更新相关文档。
 - 开始实质开发前创建有 scope 和 acceptance 的 Kanban 卡；有并行工作时单独跟踪，不重复启动 worker。
 - 项目仓库在 /opt/projects/jamie/hermes-app；隔离 worktree 在 /opt/projects/jamie/_worktrees/hermes-app/<task>。
-- 修改 Hermes 运行时源码应在 Hermes 仓库的独立 worktree 进行，记录基线和提交，不直接修改正在运行的安装副本。
+- 不为客户端修改 Hermes 核心源码；新增服务端能力必须通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch、复制修改核心模块或维护客户端专用 fork 绕过此约束。
+- Hermes 源码 worktree 仅用于只读检查和隔离验证；插件代码独立维护。扩展点不足时先报告限制和替代方案，不擅自修改核心。
 - 检查其他会话/任务正在进行的修改；不得覆盖、回退或干扰它们。
 
 ## 授权与安全
