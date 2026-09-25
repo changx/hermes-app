@@ -2,12 +2,15 @@
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true }
 export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number }
+export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
-export interface Message { id: string; ref_seq: number; role: string; text: string }
+export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; state: 'available' | 'missing' | 'deleted' }
+export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
+export interface Message { id: string; ref_seq: number; role: string; text: string; attachments?: Attachment[] }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown }
-export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply> }
+export interface BinaryReply { status: number; body: Uint8Array }
+export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply> }
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; backoffMs?: number[] }
@@ -29,10 +32,12 @@ const validReceipt = (v: unknown): Receipt => {
   return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true };
 };
 const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x.project_id); str(x.title); if (typeof x.archived !== 'boolean' && x.archived !== 0 && x.archived !== 1) throw new ProtocolError('invalid thread'); return x as unknown as Thread };
-const validSummary = (v: unknown): ThreadSummary => { const x = validThread(v) as unknown as ThreadSummary; num(x.last_ref); num(x.read_ref); num(x.unread_count); return x };
+const validSummary = (v: unknown): ThreadSummary => { const x = validThread(v) as unknown as ThreadSummary; num(x.last_ref); num(x.read_ref); num(x.unread_count); if(x.active_receipts!==undefined)x.active_receipts=arr(x.active_receipts).map(validReceipt);if(x.pending_interactions!==undefined)x.pending_interactions=arr(x.pending_interactions).map(validInteraction);return x };
 const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str(x.name); return x as unknown as Channel };
-const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = num(x.event_id); const kind=str(x.kind); if (!event_id || !['channel','thread','message','receipt','read'].includes(kind)) throw new ProtocolError('invalid event'); return { event_id, cursor: str(x.cursor), kind, thread_id: str(x.thread_id), ref: str(x.ref), version: num(x.version) } };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text) } };
+const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = num(x.event_id); const kind=str(x.kind); if (!event_id || !['channel','thread','message','receipt','read','interaction','attachment'].includes(kind)) throw new ProtocolError('invalid event'); return { event_id, cursor: str(x.cursor), kind, thread_id: str(x.thread_id), ref: str(x.ref), version: num(x.version) } };
+const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} return a };
+const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
+const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);
@@ -44,6 +49,8 @@ export class HermesClient {
   readonly channels = new Map<string, Channel>();
   readonly threads = new Map<string, ThreadSummary>();
   readonly receipts = new Map<string, Receipt>();
+  readonly interactions = new Map<string, Interaction>();
+  readonly attachments = new Map<string, Attachment>();
   readonly messages = new Map<string, Message[]>();
   readonly drafts = new Map<string, string>(); // ephemeral stream text; never merged into durable history
   cursor: string | null = null;
@@ -97,19 +104,30 @@ export class HermesClient {
   }
   async updateThread(id: string, patch: {title?: string; archived?: boolean}): Promise<Thread> { const x = await this.call('PATCH','/v1/threads/'+idPath(id),patch); const t = validThread(x.thread); await this.getThread(id); return t }
   async archiveThread(id: string): Promise<Thread> { const x = await this.call('DELETE','/v1/threads/'+idPath(id)); const t=validThread(x.thread); await this.getThread(id); return t }
-  async send(threadId: string, clientMessageId: string, text: string): Promise<Receipt> {
+  async send(threadId: string, clientMessageId: string, text: string, attachments: string[] = []): Promise<Receipt> {
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || !text.trim()) throw new ProtocolError('invalid send');
-    const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/messages',{client_message_id:clientMessageId,text});
+    if(attachments.length>8 || new Set(attachments).size!==attachments.length || attachments.some(a=>!a.startsWith('att_'))) throw new ProtocolError('invalid attachments');
+    const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/messages',{client_message_id:clientMessageId,text,...(attachments.length?{attachments:[...attachments]}:{})});
     const r = validReceipt(x.receipt);
     if (r.thread_id !== threadId || r.client_message_id !== clientMessageId) throw new ProtocolError('receipt identity mismatch');
     this.storeReceipt(r); return this.receipts.get(r.id)!;
   }
   async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); this.storeReceipt(r); return this.receipts.get(id)! }
-  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal) {
-    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,limit}),undefined,signal);
+  async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
+  async answerInteraction(item:Interaction,choice:string):Promise<void> {const x=await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/interactions/'+idPath(item.id)+'/answer',{choice,receipt_id:item.receipt_id,generation:item.generation});if(x.state!=='settled'||x.request_id!==item.id)throw new ProtocolError('answer not settled');this.interactions.delete(item.id);this.changed()}
+  async stop(threadId:string):Promise<boolean> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/stop',{});return x.stopped===true}
+  async cancelQueued(threadId:string,receiptId:string):Promise<Receipt> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/receipts/'+idPath(receiptId)+'/cancel',{});const r=validReceipt(x.receipt);this.storeReceipt(r);return r}
+  async upload(threadId:string,name:string,bytes:Uint8Array,signal?:AbortSignal):Promise<Attachment> {if(!this.options.http.upload)throw new ProtocolError('binary upload unavailable');const reply=await this.options.http.upload('/v1/threads/'+idPath(threadId)+'/attachments',this.options.token(),name,bytes,signal);if(reply.status!==201)throw new ProtocolError('HTTP '+reply.status+' upload');const x=obj(reply.body),raw=obj(x.attachment);const a=validAttachment({...raw,state:'available',receipt_id:null});if(a.thread_id!==threadId)throw new ProtocolError('attachment thread mismatch');this.attachments.set(a.id,a);this.changed();return a}
+  async getAttachment(threadId:string,id:string,signal?:AbortSignal):Promise<Attachment> {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id)+'/metadata',undefined,signal);const a=validAttachment(x.attachment);if(a.id!==id||a.thread_id!==threadId)throw new ProtocolError('attachment identity mismatch');this.attachments.set(id,a);this.changed();return a}
+  async download(threadId:string,id:string,signal?:AbortSignal):Promise<Uint8Array> {if(!this.options.http.download)throw new ProtocolError('binary download unavailable');const reply=await this.options.http.download('/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id),this.options.token(),signal);if(reply.status<200||reply.status>=300)throw new ProtocolError('HTTP '+reply.status+' download');return reply.body}
+  async deleteUnattached(threadId:string,id:string):Promise<void> {const x=await this.call('DELETE','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id));if(x.deleted!==true)throw new ProtocolError('delete not confirmed');this.attachments.set(id,{id,thread_id:threadId,state:'deleted'});this.changed()}
+  async search(threadId:string,text:string,after?:string,limit=20,signal?:AbortSignal) {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/search'+query({q:text,after,limit}),undefined,signal);return {messages:arr(x.messages).map(validMessage),next_cursor:optionalCursor(x.next_cursor)}}
+  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number) {
+    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,limit}),undefined,signal);
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
     const byRef=new Map(existing.map(m=>[m.ref_seq,m])); page.forEach(m=>byRef.set(m.ref_seq,m));
     this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq)); this.changed();
+    for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
     return {messages:page,next_cursor:optionalCursor(x.next_cursor),incomplete_turns:arr(x.incomplete_turns),turn_outcomes:arr(x.turn_outcomes)};
   }
   async historyAll(threadId: string, signal?: AbortSignal) {
@@ -117,6 +135,7 @@ export class HermesClient {
     do { const page=await this.history(threadId,after || undefined,100,signal); after=page.next_cursor } while(after);
     return this.messages.get(threadId) || [];
   }
+  async historyTail(threadId:string,signal?:AbortSignal) {const last=this.messages.get(threadId)?.at(-1)?.ref_seq;let page=await this.history(threadId,undefined,100,signal,last);while(page.next_cursor)page=await this.history(threadId,page.next_cursor,100,signal);return this.messages.get(threadId)||[]}
   private async refreshSummaries(rank: number, signal?: AbortSignal) {
     let after: string | null = null;
     do {
@@ -138,7 +157,7 @@ export class HermesClient {
     do { const x=await this.call('GET','/v1/snapshot'+query({after,limit:100}),undefined,signal); if (earliest===null) earliest=str(x.waterline); pages.push(...arr(x.threads).map(validSummary)); after=optionalCursor(x.next_after) } while(after);
     await this.listChannels(signal);
     if (signal?.aborted) throw new Error('aborted');
-    for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) this.threads.set(t.id,t) }
+    for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) this.threads.set(t.id,t); for(const r of t.active_receipts||[])this.storeReceipt(r);for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
     this.cursor=earliest; this.lastEventId=0; this.changed();
   }
   private async applyEvent(event: Event, signal?: AbortSignal) {
@@ -148,8 +167,10 @@ export class HermesClient {
     if (event.version>(this.versions.get(key)||0)) {
       if (event.kind==='channel') await this.listChannels(signal);
       else if (event.kind==='thread') await this.getThread(event.thread_id,event.event_id,signal);
-      else if (event.kind==='message') { await this.historyAll(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal) }
+      else if (event.kind==='message') { await this.historyTail(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal) }
       else if (event.kind==='receipt') await this.getReceipt(event.ref,signal);
+      else if (event.kind==='interaction') await this.getInteraction(event.thread_id,event.ref,signal);
+      else if (event.kind==='attachment') await this.getAttachment(event.thread_id,event.ref,signal);
       else if (event.kind==='read') await this.refreshSummaries(event.event_id,signal);
       if (signal?.aborted) throw new Error('aborted');
       this.versions.set(key,event.version);
@@ -159,7 +180,8 @@ export class HermesClient {
   }
   async catchUp(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) throw new Error('aborted');
-    if (this.replay && this.replay.signal===signal) { await this.replay.job; return this.catchUp(signal) }
+    if (this.replay?.signal?.aborted) this.replay=null;
+    if (this.replay) { await this.replay.job; return this.catchUp(signal) }
     const job=(async()=>{ if (this.cursor===null) await this.snapshot(signal); let more=true; while(more) {
       const x=await this.call('GET','/v1/sync'+query({cursor:this.cursor,limit:200}),undefined,signal);
       const events=arr(x.events).map(validEvent); str(x.waterline); const next=str(x.next_cursor); more=x.has_more===true;
@@ -170,7 +192,7 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); await this.snapshot(signal); await this.catchUp(signal) }
   async connect(): Promise<void> { if (this.controller) return; const controller=new AbortController(); this.controller=controller; const gen=++this.generation; void this.run(gen,controller) }
   private async run(gen: number, controller: AbortController) { const signal=controller.signal; let attempt=0; const delays=this.options.backoffMs||[200,500,1000,2000,5000];
     try { while(!signal.aborted && gen===this.generation) { let socket: Socket | null=null; try {

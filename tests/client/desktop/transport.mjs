@@ -5,7 +5,9 @@ const WebSocket = require('ws');
 /** Node desktop test transport; a shipped Electron shell must keep the token in its secure process. */
 export function desktopTransport(base) {
   return {
-    http: { async request(method, route, token, body, signal) {
+    http: { async upload(route,token,name,bytes,signal) {const response=await fetch(base+route,{method:'POST',headers:{Authorization:'Bearer '+token,'X-File-Name':name},body:bytes,signal});const raw=await response.text();return {status:response.status,body:raw?JSON.parse(raw):null}},
+    async download(route,token,signal) {const response=await fetch(base+route,{headers:{Authorization:'Bearer '+token},signal});return {status:response.status,body:new Uint8Array(await response.arrayBuffer())}},
+    async request(method, route, token, body, signal) {
       const response = await fetch(base + route, {method, headers:{Authorization:'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body),signal});
       const raw=await response.text(); return {status:response.status,body:raw ? (response.headers.get('content-type')?.includes('json') ? JSON.parse(raw) : raw) : null};
     }},

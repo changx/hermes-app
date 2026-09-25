@@ -1,6 +1,6 @@
 # P1-03 本地接收与同步协议
 
-状态：P1-03 隔离实现，固定单 owner/profile。Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；未安装活动 profile。所有路由使用 `Authorization: Bearer <token>`，WebSocket 升级也必须带该请求头。凭据不进入 URL。服务端从当前 profile 选择数据库，不接受客户端的 profile/owner 参数。浏览器原生 WebSocket 不能设置任意请求头；后续共享客户端必须由支持请求头的桌面/手机原生 socket 工厂提供连接，不能把 token 放进 URL。
+状态：P1 本地集成候选，固定单 owner/profile。Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；未安装活动 profile。每个 HTTP 请求和 WebSocket 升级请求都须带 `Authorization: Bearer <token>` 请求头。凭据不进入 URL。服务端从当前 profile 选择数据库，不接受客户端的 profile/owner 参数。浏览器原生 WebSocket 不能设置任意请求头；共享客户端由支持请求头的桌面/手机 socket 工厂提供连接。
 
 ## 发送与执行
 
@@ -16,7 +16,11 @@
 
 `GET /v1/threads/{id}/messages?after=<cursor>&limit=1..100` 返回核心可见投影，每条含稳定 `ref_seq`、核心原始 `id`、`role`、`text`。`ref_seq` 是已发布逻辑引用，压缩复制行不会改写已发序号。缺失原始行返回 409；不以摘要伪造原文。
 
+已有客户端可用 `after_ref_seq=<已知且属于该 Thread 的引用>` 读取有界增量页；它与 `after` 互斥。不存在或越权引用返回 400。新客户端首次加载仍用普通分页，后续消息失效事件仅取已知末尾之后的页。
+
 `GET /v1/snapshot?after=<opaque>&limit=1..100` 返回有界 Thread 元数据、最后可见引用、已读引用、实际可见未读数、`next_after` 和在同一 SQLite 读事务取得的准确 `waterline`。分页的每个响应各有水位；客户端先保存首页水位，分页结束后从该水位调用增量即可补上分页期间的变化。
+
+集成契约：每个 Thread 摘要另含 `active_receipts`（至多一个运行收据和至多 20 个排队收据）及 `pending_interactions`（至多 20 个当前代际请求，含精确请求、收据、代际、提示和选择）。超界返回明确 409，不能静默截断。这些状态和 `waterline` 在同一元数据读事务读取。新设备先分页快照，再从首页水位追事件；结算或过期事件使旧请求从 UI 收起。已有收据仍可由精确 ID 查询，不从全局零位重放。
 
 Channel 正文仍由 Hermes ProjectDB 管理，`GET /v1/channels` 返回当前权威列表。Channel 创建、改名、Description 编辑、删除各写一条持久 `kind=channel` 失效事件，`thread_id` 为空，`ref` 为 Project ID，`version` 按该 ID 递增；删除后列表不再包含该 ID。Thread 创建和归档沿用 `kind=thread` 事件。初次连接先取 `/v1/snapshot` 保存首页水位，再取 `/v1/channels`，最后从该水位追 `/v1/sync`；增量收到 Channel 事件后重取 `/v1/channels`，收到 Thread 事件后取对应 Thread 或快照。Project 写入与插件事件之间若崩溃，启动时按 ProjectDB 对账补事件；`/v1/sync`、`/v1/snapshot` 和 `/v1/channels` 读取前也会对账。两库不共享事务，短暂断开需从游标补齐。
 
@@ -51,6 +55,8 @@ P1-03 原始交付未含 P1-04 审批/附件/主动任务投递或 P1-05 TS 客�
 `GET /v1/threads/{id}/attachments/{attachment_id}` 严格检查 Thread/元数据、`O_NOFOLLOW`、普通文件与大小；返回 `Content-Disposition: attachment` 和 `nosniff`。`DELETE` 只可删除**尚未附到收据**的上传；已附文件随归档 Thread 保留，不能借此删除原文或其他 Thread 文件。`POST /v1/threads/{id}/messages` 可加 `"attachments":["att_..."]`；接收事务校验同 Thread、未被领取，并绑定收据。重试同一 client ID 必须保持正文及附件 ID 完全相同。派发时将受控本地路径、MIME 和未内联标记放进核心 `MessageEvent.media_urls/media_types/media_text_inlined`，让 Agent 使用现有附件机制。插件仅保存文件元数据和收据引用，不另建聊天正文库。失败未附上传由用户显式 DELETE；启动时仅清理本插件命名且没有元数据的孤立文件和中断上传临时文件（最多检查 10000 项），不自动广泛清理或删除归档历史。
 
 ### 主动投递与搜索
+
+可见原始 USER 行的 `attachments` 字段由收据的权威 `user_row_id` 映射到附件元数据，包含 ID、文件名、MIME、大小及 `state=available|missing`；压缩复制行不重新认领附件。`GET /v1/threads/{id}/attachments/{attachment_id}/metadata` 供附件失效事件查询；未知或已删除 ID 返回明确 `state=deleted`，跨 Thread 不泄漏元数据。二进制 GET 仅下载现存文件；Agent 入站路径必须先以 `O_NOFOLLOW` 打开并校验普通文件及大小，防止上传后 symlink 替换。
 
 真实 cron job 的 `deliver=origin` 目标须含本插件的 Project chat ID 与 Thread ID，并显式 `attach_to_session=false`，避免核心再次镜像到会话。adapter 从核心 cron 执行账本取得当前执行 ID；只接受已认领或运行中的新投递。以执行 ID 在核心 SessionDB 写一条 `assistant` 原始行（`platform_message_id=cron:<execution_id>`），再在插件发布稳定引用和 `message` 事件；崩溃窗口以该核心行补引用，同一执行重投不再生成第二条，两个不同执行即使正文相同也各有引用。普通 Agent final 已由核心写入，不经此路径重复保存。
 

@@ -89,7 +89,8 @@ async def main():
     from gateway.run import GatewayRunner
     from gateway.config import Platform
 
-    shutil.copytree(ROOT/'plugins'/'hermes_app',HOME/'plugins'/'hermes-app',dirs_exist_ok=True)
+    plugin_source=Path(os.environ['P1_PACKAGED_PLUGIN_DIR']) if os.environ.get('P1_PACKAGED_PLUGIN_DIR') else ROOT/'plugins'/'hermes_app'
+    shutil.copytree(plugin_source,HOME/'plugins'/'hermes-app',dirs_exist_ok=True)
     shutil.copytree(Path(__file__).with_name('crash_hook_plugin'),HOME/'plugins'/'a-p1-crash-hook',dirs_exist_ok=True)
     if os.environ.get('P1_04')=='1':
         shutil.copytree(Path(__file__).with_name('interaction_tool_plugin'),
@@ -137,7 +138,7 @@ async def main():
             if os.environ.get('P1_04')=='1' and control.exists():
                 payload=json.loads(control.read_text())
                 control.rename(HOME/'cron-fire.running')
-                from cron.jobs import create_job
+                from cron.jobs import create_job,update_job
                 from cron.scheduler_tick import tick
                 from datetime import datetime,timedelta,timezone
                 due=(datetime.now(timezone.utc)+timedelta(seconds=1)).isoformat()
@@ -146,11 +147,17 @@ async def main():
                 script=scripts/'p1-output.sh'
                 script.write_text("#!/bin/sh\nprintf 'P1_CRON_RESULT\\n'\n")
                 script.chmod(0o700)
-                job=create_job(prompt=None,schedule=due,name='p1-local-cron',
-                    script=script.name,no_agent=True,deliver='origin',
-                    attach_to_session=False,workdir=str(HOME),origin={
-                        'platform':'hermes_app','chat_id':payload['project_id'],
-                        'thread_id':payload['thread_id'],'chat_type':'thread','user_id':'owner'})
+                job_id_file=HOME/'cron-job-id'
+                if job_id_file.exists():
+                    job=update_job(job_id_file.read_text(),{'next_run_at':due})
+                else:
+                    job=create_job(prompt=None,schedule='1m',name='p1-local-cron',
+                        script=script.name,no_agent=True,deliver='origin',
+                        attach_to_session=False,workdir=str(HOME),origin={
+                            'platform':'hermes_app','chat_id':payload['project_id'],
+                            'thread_id':payload['thread_id'],'chat_type':'thread','user_id':'owner'})
+                    job_id_file.write_text(job['id'])
+                    job=update_job(job['id'],{'next_run_at':due})
                 await asyncio.sleep(1.3)
                 count=await asyncio.to_thread(tick,verbose=False,adapters=runner.adapters,
                                                loop=asyncio.get_running_loop(),sync=True)

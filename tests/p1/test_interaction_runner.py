@@ -230,6 +230,21 @@ async def _scenario(root):
             linked_path.symlink_to(home/'config.yaml')
             assert (await _json(a,'GET',url+f'/v1/threads/{tid}/attachments/{linked}'))[0]==409
             assert (await _json(a,'DELETE',url+f'/v1/threads/{tid}/attachments/{linked}'))[0]==200
+            blocked=await _send(a,url,tid,'P1_APPROVAL','symlink-ingress-block')
+            pending=await _interaction(a,url,tid,'approval')
+            async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'ingress',
+                              headers={'X-File-Name':'ingress.txt'}) as response:
+                ingress=(await response.json())['attachment']['id']
+            ingress_path=home/'hermes-app'/'attachments'/ingress
+            ingress_path.unlink()
+            ingress_path.symlink_to(home/'config.yaml')
+            denied=await _send(a,url,tid,'symlink ingress must fail','symlink-ingress',[ingress])
+            assert (await _answer(a,url,tid,pending,'deny'))[0]==200
+            await _receipt(a,url,blocked,('completed','failed'))
+            await _receipt(a,url,denied,('failed',))
+            assert (await _json(a,'GET',url+f'/v1/threads/{tid}/attachments/{ingress}/metadata'))[1]['attachment']['state']=='missing'
+            ingress_path.unlink()
+            evidence['symlink_ingress_rejected']=True
             async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'x'*(10*1024*1024+1),
                               headers={'X-File-Name':'oversize.bin'}) as response:
                 assert response.status==413,await response.text()
@@ -275,12 +290,13 @@ async def _scenario(root):
             (home/'cron-fire.json').write_text(json.dumps({'project_id':channel,'thread_id':cron_thread}))
             await _wait(lambda:(home/'cron-fire.done').exists(),40)
             fired_second=json.loads((home/'cron-fire.done').read_text())
-            assert fired_second['job_id']!=fired['job_id'] and fired_second['tick_count']>=1
+            assert fired_second['job_id']==fired['job_id'] and fired_second['tick_count']>=1
             code,history=await _json(b,'GET',url+f'/v1/threads/{cron_thread}/messages')
             assert code==200 and len(history['messages'])==2,history
             assert history['messages'][0]['text']==history['messages'][1]['text'],history
             assert history['messages'][0]['ref_seq']!=history['messages'][1]['ref_seq']
             evidence['cron_jobs']=[fired['job_id'],fired_second['job_id']]
+            evidence['same_recurring_job_two_fires']=True
             evidence['cron_refs']=[item['ref_seq'] for item in history['messages']]
             assert evidence['cron_refs'][0]==first_ref
             before=await _json(b,'GET',url+'/v1/sync')

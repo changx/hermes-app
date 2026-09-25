@@ -31,6 +31,6 @@ uv run --no-project --offline --python /opt/projects/jamie/_worktrees/hermes-age
 
 ## 边界
 
-- 核心 cron adapter metadata 仅给 `job_id`，不直接给 `execution_id`；插件从同一 profile 的执行账本取得该 job 最近的运行。核心 scheduler 对同一 job 的认领与投递串行，测试覆盖当前运行的重投及不同运行的同文结果。若未来核心允许某个旧执行在新执行之后才向 adapter 重投，现有正式 adapter metadata 无法区分两者，必须先增加正式执行 ID 传递再放宽调度假设。
+- 核心 cron adapter metadata 仅给 `job_id`，不直接给 `execution_id`；插件从同一 profile 的执行账本取得该 job 最近的运行。隔离测试现在对同一 recurring job 两次实际到期、相同正文与同一次重投分别核验不同引用和幂等。当前核心 scheduler 对同一 job 的认领与投递串行；若未来允许旧执行在新执行运行中向 adapter 重投，现有正式 metadata 无法区分两者。此时不能声称 exactly once，需先有正式执行 ID 传递或停用该投递路径。
 - 外部工具副作用不承诺跨进程 exactly once。停止请求经核心硬中断；已开始但最终边界无法证实时沿用 P1-03 `unknown`，不自动重跑。
 - 未附上传按 Thread 配额限制并由用户显式删除；启动仅清理本插件命名的中断临时文件和无元数据孤儿。归档历史和已附附件不会自动删除。本阶段没有新的破坏性历史删除功能。

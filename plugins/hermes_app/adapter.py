@@ -124,6 +124,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         app.router.add_post('/v1/threads/{id}/interactions/{request_id}/answer', self._answer)
         app.router.add_post('/v1/threads/{id}/attachments', self._upload)
         app.router.add_get('/v1/threads/{id}/attachments/{attachment_id}', self._attachment)
+        app.router.add_get('/v1/threads/{id}/attachments/{attachment_id}/metadata', self._attachment_metadata)
         app.router.add_delete('/v1/threads/{id}/attachments/{attachment_id}', self._attachment)
         app.router.add_post('/v1/threads/{id}/read', self._read)
         app.router.add_get('/v1/sync', self._sync)
@@ -433,9 +434,15 @@ class HermesAppAdapter(BasePlatformAdapter):
             self._events_changed.set()
             thread = self._store.get_thread(thread_id)
             attachments=self._store.receipt_attachments(receipt_id)
+            try:
+                paths=[self._validated_ingress_path(a) for a in attachments]
+            except (OSError,ValueError):
+                await asyncio.to_thread(self._store.finish_receipt,receipt_id,'failed')
+                self._events_changed.set()
+                continue
             event = MessageEvent(text=content, source=self._source(thread['project_id'],thread_id),
                                  message_id=receipt_id,
-                                 media_urls=[str(self._attachment_path(a['id'])) for a in attachments],
+                                 media_urls=paths,
                                  media_types=[a['mime'] for a in attachments],
                                  media_text_inlined=[False for _ in attachments])
             session_key=self._event_session_key(event)
@@ -517,11 +524,14 @@ class HermesAppAdapter(BasePlatformAdapter):
 
     async def _snapshot(self,request):
         try:
+            self._reconcile_interactions()
             await self._refresh_channels()
             limit=int(request.query.get('limit','50'))
             page=await asyncio.to_thread(self._store.snapshot,after=request.query.get('after'),limit=limit)
         except (ValueError,TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from exc
+        except OverflowError as exc:
+            raise web.HTTPConflict(text=str(exc)) from exc
         return web.json_response(page)
 
     async def _read(self, request):
@@ -561,8 +571,10 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPNotFound()
         try:
             limit = int(request.query.get('limit', '50'))
+            after_ref=request.query.get('after_ref_seq')
             result = await asyncio.to_thread(self._store.history_page, tid,
-                get_hermes_home() / 'state.db', limit=limit, after=request.query.get('after'))
+                get_hermes_home() / 'state.db', limit=limit, after=request.query.get('after'),
+                after_ref_seq=int(after_ref) if after_ref is not None else None)
         except (ValueError, TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from exc
         except HistoryPending as exc:
@@ -696,6 +708,27 @@ class HermesAppAdapter(BasePlatformAdapter):
         if not isinstance(attachment_id,str) or not re.fullmatch(r'att_[0-9a-f]{32}',attachment_id):
             raise ValueError('invalid attachment id')
         return self._attachment_root()/attachment_id
+
+    def _validated_ingress_path(self, item):
+        path=self._attachment_path(item['id'])
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            info=os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size!=item['size']:
+                raise ValueError('attachment unavailable')
+        finally:
+            os.close(fd)
+        return str(path)
+
+    async def _attachment_metadata(self, request):
+        tid=request.match_info['id']
+        if self._store.get_thread(tid) is None:
+            raise web.HTTPNotFound()
+        item=self._store.attachment(tid,request.match_info['attachment_id'])
+        if item is None:
+            return web.json_response({'attachment':{'id':request.match_info['attachment_id'],
+                                                     'thread_id':tid,'state':'deleted'}})
+        return web.json_response({'attachment':self._store.attachment_view(item)})
 
     def _cleanup_failed_uploads(self):
         """At boot only, remove this plugin's abandoned temp or unindexed files."""

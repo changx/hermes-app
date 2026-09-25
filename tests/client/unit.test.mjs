@@ -119,3 +119,24 @@ test('already aborted adapter handshakes create no socket',async()=>{
   await assert.rejects(mobileTransport('http://127.0.0.1:1',NativeWebSocket,fetch).socket.connect('/v1/events','synthetic',controller.signal),/aborted/);
   assert.equal(constructed,0);
 });
+test('fresh snapshot bootstraps pending interaction and active receipt, then settles by event',async()=>{
+  const item={id:'req-1',kind:'approval',thread_id:'th_1',receipt_id:'rc_1',generation:'g1',prompt:'Approve?',choices:['deny','allow'],state:'pending'};
+  const c=new HermesClient({...base,http:{async request(method,path){
+    if(path.startsWith('/v1/snapshot'))return {status:200,body:{threads:[{id:'th_1',project_id:'p',title:'t',archived:0,last_ref:0,read_ref:0,unread_count:0,active_receipts:[receipt()],pending_interactions:[item]}],waterline:'c1',next_after:null}};
+    if(path==='/v1/channels')return {status:200,body:{channels:[]}};
+    if(path.startsWith('/v1/sync'))return {status:200,body:{events:[event(2,'interaction','req-1')],waterline:'c2',next_cursor:'c2',has_more:false}};
+    if(path.endsWith('/interactions/req-1'))return {status:200,body:{interaction:{...item,state:'settled'}}};
+    throw Error(path);
+  }}});await c.snapshot();assert.equal(c.interactions.get('req-1').prompt,'Approve?');assert.equal(c.receipts.get('rc_1').state,'queued');await c.catchUp();assert.equal(c.interactions.size,0);
+});
+test('binary upload, exact retry payload, download and deleted metadata use injected transport',async()=>{
+  const calls=[];const bytes=new Uint8Array([0,255,17]);const c=new HermesClient({...base,http:{
+    async upload(path,token,name,body){calls.push({path,token,name,body});return {status:201,body:{attachment:{id:'att_1',thread_id:'th_1',name,mime:'application/octet-stream',size:3}}}},
+    async download(){return {status:200,body:bytes}},
+    async request(method,path,token,body){calls.push({method,path,token,body});if(method==='POST')return {status:202,body:{receipt:receipt()}};if(method==='DELETE')return {status:200,body:{deleted:true}};return {status:200,body:{attachment:{id:'att_1',thread_id:'th_1',state:'deleted'}}}}
+  }});const a=await c.upload('th_1','raw.bin',bytes);assert.equal(a.state,'available');await c.send('th_1','device-1','body',[a.id]);await c.send('th_1','device-1','body',[a.id]);assert.deepEqual(calls[1].body,calls[2].body);assert.deepEqual(await c.download('th_1',a.id),bytes);await c.deleteUnattached('th_1',a.id);assert.equal((await c.getAttachment('th_1',a.id)).state,'deleted');
+});
+test('manual and connected catchUp serialize across distinct signals',async()=>{
+  const gate=deferred();let syncs=0;const c=new HermesClient({...base,http:{async request(method,path){if(path.startsWith('/v1/sync')){syncs++;if(syncs===1)return gate.promise;return {status:200,body:{events:[],waterline:'c1',next_cursor:'c1',has_more:false}}}if(path==='/v1/receipts/rc_1')return {status:200,body:{receipt:receipt()}};throw Error(path)}},socket:{async connect(){return {onMessage(){},onClose(){},close(){}}}}});
+  c.cursor='c0';const manual=c.catchUp();await tick();await c.connect();await tick();assert.equal(syncs,1);gate.resolve({status:200,body:{events:[event(1)],waterline:'c1',next_cursor:'c1',has_more:false}});await manual;await tick();assert.equal(c.cursor,'c1');assert.equal(syncs,2);c.close();
+});

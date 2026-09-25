@@ -9,6 +9,7 @@ import sqlite3
 import base64
 import json
 import hashlib
+import stat
 from contextlib import contextmanager, closing
 from pathlib import Path
 
@@ -327,6 +328,16 @@ class Store:
                            (thread_id,attachment_id)).fetchone()
             return dict(row) if row else None
 
+    def attachment_view(self, row):
+        path=self.path.parent/'attachments'/row['id']
+        try:
+            info=path.lstat()
+            available=stat.S_ISREG(info.st_mode) and info.st_size==row['size']
+        except OSError:
+            available=False
+        return {key:row[key] for key in ('id','thread_id','name','mime','size','receipt_id')} | {
+            'state':'available' if available else 'missing'}
+
     def receipt_attachments(self, receipt_id):
         with self._connect() as db:
             return [dict(r) for r in db.execute('SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid',
@@ -543,6 +554,18 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
+                active=db.execute("SELECT id,client_message_id,thread_id,state FROM receipts "
+                                  "WHERE thread_id=? AND state IN ('queued','running') "
+                                  "ORDER BY created_at,id LIMIT 22",(item['id'],)).fetchall()
+                if (sum(r['state']=='queued' for r in active)>20 or
+                        sum(r['state']=='running' for r in active)>1):
+                    raise OverflowError('active receipt snapshot bound exceeded')
+                item['active_receipts']=[dict(r)|{'durable':True} for r in active]
+                interactions=db.execute("SELECT * FROM interactions WHERE thread_id=? AND state='pending' "
+                                        "ORDER BY rowid LIMIT 21",(item['id'],)).fetchall()
+                if len(interactions)>20:
+                    raise OverflowError('pending interaction snapshot bound exceeded')
+                item['pending_interactions']=[dict(r)|{'choices':json.loads(r['choices'])} for r in interactions]
                 threads.append(item)
             next_after=(base64.urlsafe_b64encode(json.dumps([self._owner_key(self.path),page[-1]['id']],
                                                 separators=(',',':')).encode()).decode().rstrip('=')
@@ -847,12 +870,16 @@ class Store:
         except (ValueError, TypeError, UnicodeDecodeError, base64.binascii.Error) as exc:
             raise ValueError('invalid cursor') from exc
 
-    def history_page(self, thread_id, source_db, *, limit=50, after=None):
+    def history_page(self, thread_id, source_db, *, limit=50, after=None, after_ref_seq=None):
         if not isinstance(limit, int) or not 1 <= limit <= 100:
             raise ValueError('limit must be 1..100')
-        cursor = self._parse_cursor(thread_id, after) if after is not None else 0
+        if after is not None and after_ref_seq is not None:
+            raise ValueError('after and after_ref_seq are exclusive')
+        if after_ref_seq is not None and (type(after_ref_seq) is not int or after_ref_seq<=0):
+            raise ValueError('invalid ref seq')
+        cursor = self._parse_cursor(thread_id, after) if after is not None else (after_ref_seq or 0)
         with self._connect() as db:
-            if after is not None and not db.execute(
+            if cursor and not db.execute(
                     'SELECT 1 FROM message_refs WHERE thread_id=? AND seq=?', (thread_id, cursor)).fetchone():
                 raise ValueError('invalid cursor')
             pending = [r['turn_id'] for r in db.execute(
@@ -872,6 +899,12 @@ class Store:
             rows = {r['id']: r for r in source.execute(
                 f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
         from .projection import visible_text
+        with self._connect() as db:
+            linked=db.execute('SELECT id,user_row_id FROM receipts WHERE thread_id=? AND '
+                f'user_row_id IN ({",".join("?" for _ in ids)})',(thread_id,*ids)).fetchall()
+            attached={r['user_row_id']:[self.attachment_view(dict(a)) for a in db.execute(
+                'SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid',(r['id'],))]
+                for r in linked}
         messages = []
         for ref in page:
             row = rows.get(ref['row_id'])
@@ -883,7 +916,8 @@ class Store:
             if text is None:
                 raise MissingOriginal(f"original row {ref['row_id']} is not visible")
             messages.append({'id': str(row['id']), 'ref_seq':ref['seq'],
-                             'role': row['role'], 'text': text})
+                             'role': row['role'], 'text': text,
+                             'attachments':attached.get(row['id'],[]) if row['role']=='user' else []})
         return {'messages': messages, 'next_cursor': self._cursor(thread_id, page[-1]['seq']) if more else None,
                 'incomplete_turns': pending, 'turn_outcomes': outcomes}
 

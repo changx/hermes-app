@@ -14,6 +14,16 @@ export P1_EVIDENCE_DIR
 : "${P105_EVIDENCE_DIR:=/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/p1-05}"
 export P105_EVIDENCE_DIR
 mkdir -p "$P105_EVIDENCE_DIR"
+: "${P105_ARTIFACT_DIR:=$P105_EVIDENCE_DIR/artifacts}"
+export P105_ARTIFACT_DIR
+package_stage=$(mktemp -d "$TMPDIR/hermes-app-p1-package-test-XXXXXX")
+trap 'rm -rf "$package_stage"' EXIT
+package_output=$(bash scripts/pack-plugin.sh "$baseline" | tee "$P105_EVIDENCE_DIR/package.log")
+artifact=$(sed -n 's/^artifact=//p' <<< "$package_output")
+[[ -f "$artifact" ]] || { echo 'Missing plugin artifact' >&2; exit 3; }
+tar -xzf "$artifact" -C "$package_stage"
+export P1_PACKAGED_PLUGIN_DIR="$package_stage/hermes-app"
+[[ -f "$P1_PACKAGED_PLUGIN_DIR/plugin.yaml" ]] || { echo 'Unpacked plugin missing' >&2; exit 3; }
 if [[ ! -x node_modules/.bin/tsc || ! -x node_modules/.bin/esbuild ]]; then
   npm ci --offline --ignore-scripts --no-audit --no-fund
 fi
@@ -22,5 +32,4 @@ uv run --no-project --offline --python "$baseline/.venv/bin/python" tests/p1/his
 bash scripts/client-check.sh "$baseline" | tee "$P105_EVIDENCE_DIR/client-check.log"
 node tests/client/real-gateway.mjs | tee "$P105_EVIDENCE_DIR/client-real.log"
 bash scripts/export-client-metro.sh | tee "$P105_EVIDENCE_DIR/metro-export.log"
-bash scripts/pack-plugin.sh "$baseline" | tee "$P105_EVIDENCE_DIR/package.log"
 printf 'P1_EVIDENCE_DIR=%s\nP105_EVIDENCE_DIR=%s\n' "$P1_EVIDENCE_DIR" "$P105_EVIDENCE_DIR"
