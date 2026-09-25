@@ -16,9 +16,9 @@
 
 Channel 的 Topic / Description 可保存背景、目标、约束及必要参考提示。创建新 Thread/Session 时，将这些内容设置为该 Session 头部的公共上下文；后续对话沿用已有 Session 上下文，不要求每条用户消息重新携带或重复追加 Description，也不要求逐轮重新读取 Channel 说明。说明不只是展示文字，应在该 Session 执行时实际生效。
 
-公共提示独立于聊天正文及底层 session 存续。压缩、idle compaction 或上下文续接不应导致丢失。共享 Channel 提示不等于共享其他 Thread 的全部历史。
+只有全新的用户会话才注入一次 Channel Description。因时间或长度触发压缩后，直接沿用 Hermes 压缩后的上下文，插件不补入、不恢复原文快照，也不因压缩生成新的物理 Session ID 而再次注入。共享 Channel 提示不等于共享其他 Thread 的全部历史。
 
-验证重点是头部上下文的初始化、保留与恢复，而非逐请求搜索同一段原文。无状态模型 API 按协议重传完整 Session 上下文，是底层传输行为，不等于业务层为每条用户消息新增一份 Description。
+验证重点是全新会话初始化一次，以及续聊、冷恢复、时间/长度压缩后没有插件再次注入；不要求压缩后仍逐字包含 Description。Hermes 自身保留或传输已有上下文不需要插件干预，也不应主动删除其中已有的说明。
 
 ### R04 连续的用户历史
 

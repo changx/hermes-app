@@ -1,6 +1,6 @@
 # P1 规划：Hermes App 插件与共享客户端契约
 
-> 状态：已按 P0 主控复核定稿，建议分门槛实施。Jamie 已授权完成 P0 和规划 P1，**未授权启动 P1 实现、安装到活动 profile 或部署**。P0 负例与外部门槛见 [收尾结论](p0/final.md)。
+> 状态：Jamie 已授权 P1 本地实现，按 01/02 → 03 → 04/05 验收推进；未授权安装到活动 profile 或部署。最新纠正：Description 仅全新会话注入一次，时间/长度压缩后不补入。P0 证据中的旧“压缩后补回初始快照”要求已被此规则替代。
 
 ## 1. P1 交付目标
 
@@ -12,7 +12,7 @@
 
 - **Hermes App platform plugin**：使用正式平台注册接入 GatewayRunner。单一插件宿主管理 HTTP/WS listener、认证及后台任务；不同时引入第二个聊天服务、Dashboard 宿主和独立执行服务。
 - **既有 Hermes 数据**：Project 保存 Channel 对应的项目资料；SessionDB 保存聊天原文和系统头部。已有显示历史/lineage 逻辑继续复用。
-- **插件自有元数据**：仅增加稳定 Thread/消息引用、Session 初始 Description 快照、接收与执行状态、同步游标、已读、附件引用。建议采用插件自有小型 SQLite 元数据库，不修改核心 schema；hosted-rooms 的恢复设计/原语可参考，但不直接套用多人 Discussion 策略。已实测 Discussion 不保证逐消息 FIFO；正文仍唯一存于 SessionDB。
+- **插件自有元数据**：仅增加稳定 Thread/消息引用、全新会话初始化标记、接收与执行状态、同步游标、已读、附件引用。建议采用插件自有小型 SQLite 元数据库，不修改核心 schema；hosted-rooms 的恢复设计/原语可参考，但不直接套用多人 Discussion 策略。已实测 Discussion 不保证逐消息 FIFO；正文仍唯一存于 SessionDB。
 - **共享 TypeScript 模块**：协议类型、连接恢复、消息归并、游标和错误状态。不依赖 DOM、Electron preload 或 React Native UI。
 - **桌面/手机**：各自处理界面、系统凭据、通知、文件选择和生命周期。P1 用测试客户端验证同一协议，避免先做漂亮但数据不可靠的 UI。
 
@@ -23,8 +23,8 @@
 ### 3.1 Channel、Thread 与 Description
 
 - Channel 对应 Project；Thread 是稳定的用户对话身份，可指向多个压缩续接的物理 Session。
-- 新 Thread/Session 创建时捕获 Channel Description，正式 system prompt section 返回这份初始快照。正常续聊和恢复复用 Session 头部；内部 prompt rebuild 不向用户消息追加说明。
-- 物理 Session 因压缩更换时，继承同一逻辑 Thread 的初始快照，不能误认成新 Thread，也不能因新 ID 查不到映射而丢失说明。
+- 只有全新的用户会话在初始化时注入一次 Channel Description；使用正式插件扩展点，不逐条注入。
+- 时间/长度压缩、idle compaction、冷恢复和内部 prompt rebuild 均不触发插件补入 Description。压缩产生的物理 successor 仍属原会话，不按新会话处理。沿用 Hermes 自己的上下文，不强制重现 Description 原文，也不主动删除已有内容。
 - 修改 Channel Description 默认只影响之后创建的 Thread，是本规划建议；已有 Thread 更新策略待确认，不默默热更新。
 - 不混入其他 Thread、branch 或子任务的历史。归档是可逆的内容组织操作，不等于删除历史。
 
@@ -74,7 +74,7 @@
 
 依赖 P1-01。工作：Project/Thread 映射、初始 Description、压缩 lineage、稳定消息引用、有界历史分页、统一可见投影。
 
-验收：两个同 Channel Thread 共享初始说明但历史隔离；实际压缩/续接/冷恢复后原文不丢、不重，头部不重复；反复同文消息不被错误合并；分页无祖先截断，branch 不混入；内部摘要和 `session_meta` 不进入普通消息。
+验收：两个同 Channel Thread 共享初始说明但历史隔离；实际压缩/续接/冷恢复后用户聊天原文不丢、不重，插件不再注入 Description；反复同文消息不被错误合并；分页无祖先截断，branch 不混入；内部摘要和 `session_meta` 不进入普通消息。
 
 ### P1-03 可靠接收、执行与持久同步
 
@@ -121,7 +121,7 @@ P0 的完成是：每项关键需求已识别现有保证、缺口或外部验�
 
 第一版只实现任务验收需要的字段，稳定身份/幂等/授权/故障恢复不可省略。接口命名是规划，可在 P1-01 契约评审中收敛，不能据此声称已有路由。
 
-P1-02 特别复验：默认 in-place 与显式 rotation/idle，正常和改变 cwd 的重建，保护首尾消息、重复同文、分页跨段、cold restore。不使用文本哈希“去重”来掩盖重复或顺序问题；同逻辑消息的原始顺序应由稳定元数据与原始记录关系确定。
+P1-02 特别复验：默认 in-place 与显式 rotation/idle，正常和改变 cwd 的重建均不补 Description，保护首尾消息、重复同文、分页跨段、cold restore。不使用文本哈希“去重”来掩盖重复或顺序问题；同逻辑消息的原始顺序应由稳定元数据与原始记录关系确定。
 
 P1-03 特别复验：真实隔离 SIGKILL 的接收/入队/final-通知窗口，以及核心 auto-resume 和插件恢复不重复接管。不能只布置最终 DB 状态后声称所有崩溃窗口已测。
 

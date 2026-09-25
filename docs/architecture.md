@@ -46,7 +46,7 @@
 3. 明确持久接收、可恢复同步游标、稳定消息 ID、多端通知和阅读状态。优先利用现有持久数据，必要时仅增加最小状态/变更日志；P0 后决定 schema。
 4. 界面先消费快照，再衔接增量，处理两者之间竞态；回放有缺口或 epoch 变化时重新同步，不默默跳过。
 5. 对已接收任务采用服务端拥有的生命周期；不依赖打开着的窗口。人工停止、超时、重启和离线分别处理。
-6. 创建 Thread/Session 时将 Channel Description 放入 Session 头部上下文，后续沿用，不逐条追加到用户消息或逐轮重新加载。压缩、恢复和底层 session 续接时保留/恢复该上下文。既有 Session 的说明更新策略另行明确，不默认热更新；不作为普通聊天正文保存。
+6. 仅在全新用户会话初始化时将 Channel Description 放入头部一次。后续续聊、冷恢复、时间/长度压缩以及物理 session 续接均沿用 Hermes 自身上下文，插件不补入或恢复 Description 原文快照。既有 Session 的说明更新策略另行明确，不默认热更新；不作为普通聊天正文保存。
 7. 主动任务结果进入同一权威历史与同步链路，不只临时发送到某个连接。手机推送不承担正文同步。
 
 无需为实现这些语义先引入 Redis、消息队列集群、独立聊天服务或新的通用框架。
@@ -57,7 +57,7 @@ P0 推荐桌面 Electron/React、手机 Expo/React Native；Metro Android JS 导
 
 必须产出独立安装包、真实设备证据和受控更新方案。签名/分发权限在发布阶段获得；P0 不要求购买账户或接入真实推送服务。
 
-P0 已复现压缩后的显示顺序/重复差异及 physical successor 的 Description 映射缺口；既有低层显示 helper 不可直接当 App 完整时间线。hosted service 的持久恢复可用，但 Discussion 不是逐消息 FIFO。P1 使用最小插件元数据桥和权威 SessionDB，先验证稳定历史，再做可靠同步；见 [P0 收尾](p0/final.md) 与 [P1 计划](p1-plan.md)。
+P0 已复现压缩后的显示顺序/重复差异；旧探针的 physical successor Description 快照恢复要求已被用户纠正，不再属于待补功能；既有低层显示 helper 不可直接当 App 完整时间线。hosted service 的持久恢复可用，但 Discussion 不是逐消息 FIFO。P1 使用最小插件元数据桥和权威 SessionDB，先验证稳定历史，再做可靠同步；见 [P0 收尾](p0/final.md) 与 [P1 计划](p1-plan.md)。
 
 ## 5. 重点风险
 
