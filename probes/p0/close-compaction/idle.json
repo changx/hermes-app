@@ -1,0 +1,38 @@
+{
+  "summary_http_calls": 1,
+  "rotated": true,
+  "child_parent_matches": true,
+  "parent_end_reason": "compression",
+  "rebuilt_description_once": true,
+  "callback_reinvoked_once": true,
+  "parent_original_users_intact": true,
+  "parent_original_replies_intact": true,
+  "display_original_users_once": false,
+  "display_original_replies_once": false,
+  "display_description_absent": true,
+  "display_summary_absent": true,
+  "display_counts": {
+    "user": 16,
+    "assistant": 18
+  },
+  "summary_in_child": true,
+  "child_stored_header_once": true,
+  "child_active_count": 4,
+  "result_count": 4,
+  "source_count": 32,
+  "fresh_agent_header_identical": false,
+  "fresh_agent_callback_not_rerun": false,
+  "fresh_agent_description_count": 0,
+  "successor_rebuild_description_once": false,
+  "successor_rebuild_callback_called": false,
+  "mode": "idle",
+  "local_model_calls": [
+    {
+      "path": "/v1/chat/completions",
+      "model": "p0-local",
+      "stream": true,
+      "prompt_chars": 38165
+    }
+  ],
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef"
+}
