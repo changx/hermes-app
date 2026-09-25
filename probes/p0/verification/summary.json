@@ -1,0 +1,66 @@
+{
+  "hermes_baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "parent_reverified": true,
+  "regression_counts": {
+    "room_regressions": 91,
+    "transport_regressions": 88,
+    "shared_sdk_unit_tests": 23
+  },
+  "regression_total": 202,
+  "room_probe_checks": 10,
+  "room_probe_passed": 10,
+  "ws_observation_cases": 10,
+  "history_probe_exit": 0,
+  "history_gap_observations": {
+    "rest_ancestor_not_paged": true,
+    "carried_tail_ids_changed": true,
+    "project_description_auto_inheritance": false
+  },
+  "desktop": {
+    "desktop_exit": 0,
+    "synthetic_ui": true,
+    "sandbox_disabled_for_headless_test": true,
+    "reviewed_main_and_renderer_match_package": true,
+    "android_asset_matches_renderer": true,
+    "package_bytes": 88075022,
+    "sha256": "02e8ae6e1f82e39a6a937bec84f218827cdb8db1e33511cc3b8a78710ccb91e4",
+    "android_exit": 1,
+    "android_blocker": "JAVA_HOME/java absent; no Android SDK or cached Android/JDK image found",
+    "real_devices_tested": false
+  },
+  "effort_estimate_not_commitment": {
+    "phase": "P1",
+    "unit": "effective engineer days",
+    "parts": {
+      "contract_and_mapping": [
+        1,
+        2
+      ],
+      "history_identity_and_paging": [
+        1,
+        2
+      ],
+      "durable_admission_sync_lifecycle": [
+        2,
+        3
+      ],
+      "description_inheritance": [
+        1,
+        1
+      ],
+      "failure_and_regression_validation": [
+        1,
+        2
+      ]
+    },
+    "range": [
+      6,
+      10
+    ]
+  },
+  "limitations": [
+    "No paid model or actual autonomous idle/native compaction end-to-end run",
+    "No APK/iOS build or physical mobile device test",
+    "No deployment, no real account or production authentication verification"
+  ]
+}

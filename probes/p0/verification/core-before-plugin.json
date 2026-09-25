@@ -1,0 +1,6 @@
+{
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "tracked_status": "",
+  "source_diff_exit": 0,
+  "scope": "pre-plugin-probes immutable core baseline; .venv is a preexisting symlink to dev dependencies, no installs permitted"
+}

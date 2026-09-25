@@ -1,0 +1,23 @@
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 3 test files (~72 tests) under ['tests/tui_gateway/test_tui_gateway_ws.py', 'tests/tui_gateway/test_tui_gateway_event_replay.py', 'tests/tui_gateway/test_protocol.py']; running with -j 2
+[ 15.3% |    11/~72 | ✓11 | ✗ 0] ✓ tests/tui_gateway/test_tui_gateway_event_replay.py (11✓, 0.6s)
+[ 26.4% |    19/~72 | ✓19 | ✗ 0] ✓ tests/tui_gateway/test_tui_gateway_ws.py (8✓, 1.6s)
+[100.0% |    72/~72 | ✓88 | ✗ 0] ✓ tests/tui_gateway/test_protocol.py (69✓, 22.0s)
+
+=== Summary: 3 files, 88 tests passed, 0 failed (100% complete) in 22.1s (2 workers) ===
+  Durations cached to test_durations.json (3 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   3
+  Total subprocess CPU-wall: 24.3s  (runner wall: 22.1s, parallelism: 2x)
+  P50: 1.61s  P90: 22.02s  P95: 22.02s  P99: 22.02s  Max: 22.02s
+  <1s: 1 files (33%)  <2s: 2 files (67%)
+  Top 10 slowest:
+     22.02s  tests/tui_gateway/test_protocol.py
+      1.61s  tests/tui_gateway/test_tui_gateway_ws.py
+      0.64s  tests/tui_gateway/test_tui_gateway_event_replay.py
+
+STDERR:

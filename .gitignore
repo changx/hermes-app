@@ -9,6 +9,8 @@
 
 # Dependencies/build outputs
 node_modules/
+# Also ignore task-local symlink to retained dependencies
+node_modules
 .venv/
 __pycache__/
 *.pyc

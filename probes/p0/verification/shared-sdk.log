@@ -1,0 +1,34 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline[39m
+
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mrecords per-session seq watermarks from live events[32m 20[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mfetches replay on reconnect for sessions it has watermarks for[32m 2[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mdispatches replayed events through the normal handler path[32m 51[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mdoes not attempt replay when nothing was ever observed[32m 22[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mreplayed seqs advance watermarks but never regress them[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mrejects envelope-shaped replay elements (the #94219 server-shape bug)[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mholds live frames racing the replay fetch — no double dispatch, no skipped gap[32m 53[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mrestarts replay after its socket is invalidated before rejected cleanup runs[32m 54[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-replay.test.ts[2m > [22mJsonRpcGatewayClient event-seq tracking + replay resume[2m > [22mclears stale watermarks when the backend epoch changes (restart poisoning)[32m 52[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-connect.test.ts[2m > [22mJsonRpcGatewayClient.connect failure classes[2m > [22ma handshake close carries its code and reason, distinct from a timeout[32m 41[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-gateway-connect.test.ts[2m > [22mJsonRpcGatewayClient.connect failure classes[2m > [22mevery failure keeps the base message as its prefix — the overlay headline and includes() matchers bind to it[32m 0[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mroutes responses to the pending call and keeps JSON-RPC code/data on errors[32m 4[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mignores the non-object JSON line null without throwing[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mignores the non-object JSON line 42 without throwing[32m 0[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mignores the non-object JSON line "str" without throwing[32m 0[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mignores the non-object JSON line true without throwing[32m 0[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mdetach fails every in-flight call and a per-call timeout names the method[32m 5[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22m'any-inbound' liveness (desktop/web): pings while frames keep arriving and reports a silent transport[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22m'response' liveness (explicit opt-in): unanswered pings fail the heartbeat even while deltas stream[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22madvertises server-request support once per gateway.ready and shrugs off an older backend[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mroutes a server request to the first accepting handler and answers -32601 when nobody accepts[32m 1[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22mre-delivers open_requests from a response before the caller sees the result, tagged replayed[32m 0[2mms[22m[39m
+ [32m✓[39m apps/shared/src/json-rpc-channel.test.ts[2m > [22mJsonRpcRequestChannel[2m > [22manswers -32603 when a handler throws, keeps later frames working, and still answers -32601 otherwise[32m 1[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m23 passed[39m[22m[90m (23)[39m
+[2m   Start at [22m 23:53:44
+[2m   Duration [22m 788ms[2m (transform 83ms, setup 0ms, import 120ms, tests 317ms, environment 0ms)[22m
+
+
+STDERR:

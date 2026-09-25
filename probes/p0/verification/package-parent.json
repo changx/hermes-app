@@ -1,0 +1,12 @@
+{
+  "desktop_exit": 0,
+  "synthetic_ui": true,
+  "sandbox_disabled_for_headless_test": true,
+  "reviewed_main_and_renderer_match_package": true,
+  "android_asset_matches_renderer": true,
+  "package_bytes": 88075022,
+  "sha256": "02e8ae6e1f82e39a6a937bec84f218827cdb8db1e33511cc3b8a78710ccb91e4",
+  "android_exit": 1,
+  "android_blocker": "JAVA_HOME/java absent; no Android SDK or cached Android/JDK image found",
+  "real_devices_tested": false
+}
