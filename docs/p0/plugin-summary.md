@@ -1,10 +1,10 @@
-# P0 插件限定验证汇总（真实执行链路待复核）
+# P0 插件限定验证汇总（真实执行与 Session 头部已复核）
 
 ## 判断
 
 **已证明无需修改 Hermes 核心就能加载插件、增加通信入口、接入平台 adapter，并从插件调用部分现有数据能力。尚未证明全部产品要求可由当前插件扩展点完整满足。** 本文记录 P0 能力与缺口，不是 App 或 P1 后端交付声明。
 
-固定 Hermes 基线：`2f16a1aa5a35feec496949abdef7ad51aea0e7ef`。主控在独立集成 worktree 审阅三路源码后重新运行探针：通信 22 项断言、历史 19 项检查、执行/提示/审批/cron 边界探针均退出 0；定向上游回归 55 passed。检查数包含对缺口的负例验证，不代表产品能力全部通过。没有真实模型/工具调用、生产部署或核心修改。
+固定 Hermes 基线：`2f16a1aa5a35feec496949abdef7ad51aea0e7ef`。主控在独立集成 worktree 审阅三路源码后重新运行探针：通信 22 项断言、历史 19 项检查、执行/提示/审批/cron 边界探针均退出 0；定向上游回归 55 passed。检查数包含对缺口的负例验证，不代表产品能力全部通过。没有付费模型/真实工具调用、生产部署或核心修改。另见 [真实执行补充](plugin-e2e.md)：真实 GatewayRunner/AIAgent 配合本机合成模型已通过，Session 头部正常续聊/冷恢复/受控重建已验证，补充上游回归 14 passed。
 
 主控命令：
 
@@ -34,9 +34,9 @@ uv run --no-project --offline \
 | H04 接收与入队 | Room 发送幂等与 driver admission 各自幂等 | 两次提交之间存在窗口；本探针并未测试已有 hosted service 是否提供补偿，不能泛称所有 Hermes 路径均不可恢复 |
 | H05 已读与搜索 | 插件元数据游标单调、进程重开；核心搜索原语可调用 | 无完整 Thread 级已读/未读/有权搜索；控制事件序号差不等于未读消息数 |
 | H06 数据生命周期 | 删除核心 session 后插件游标仍存在；disable 路由不删元数据 | 映射清理、保留、导出与权限需明确；不可复制整套权威聊天库规避问题 |
-| E01 执行入站 | 正常平台注册，BasePlatformAdapter 接收并调用 handler | 本路 handler 为合成替身；真实 GatewayRunner 接线补充探针待审 |
-| E02 公共上下文 | Description 在 adapter 与下游 prompt 装配中隔离传递 | Project description 自动桥接、真实 Agent/压缩后的请求上下文尚待补证 |
-| E03 离线任务 | 无客户端时 adapter 内合成 task 继续；暂存和停止可用 | 不是断网证据；内存 pending 不是持久 FIFO，需实际网络断线和 runner 证明 |
+| E01 执行入站 | 正常平台注册；补充探针经过真实 GatewayRunner.start 与 AIAgent、loopback 合成模型及 SessionDB | 未调用真实工具；入站 accepted 标志不等于持久接收回执 |
+| E02 公共上下文 | 正式 system prompt section：每 Session 初始化一次、正常续聊字节一致、冷恢复无 callback、受控重建只保留一份初始说明 | 尚未跑完整 summarizer/idle/native 压缩与物理 successor 映射；重建 callback 应返回 Session 快照，不逐消息附加或默认热更新 |
+| E03 离线任务 | 补充探针真实 TCP 断开时模型仍被门控；放行后真实 Agent 完成并持久化，冷读一致 | 短时断线不是跨重启任务恢复；忙时追加/steer 不等于持久 FIFO，资源上限未验收 |
 | E04 故障与历史 | 合成异常正确通知；子进程崩溃无假恢复承诺 | 接收/执行/最终历史原子边界尚未建立，不能盲重跑结果不明的副作用任务 |
 | E05 审批与澄清 | 核心进程内 first-response-wins、迟到拒绝；插件 observer hooks | 真正多端撤卡、跨重启恢复未证明；显示待审记录不等于能够恢复已消失的执行等待者 |
 | E06 后台投递 | 真实 cron delivery 函数将合成结果送至插件的正确 Thread | 未运行实际 scheduler fire/后台 watcher 全链路、持久历史写入、APNs/FCM 真机 |
@@ -49,11 +49,11 @@ uv run --no-project --offline \
 2. **数据**：现有项目/会话仍是权威来源；插件仅持有所需 Thread 映射、逻辑 ID、接收状态、读取游标及附件引用等最小元数据。采用内部模块前记录版本边界与回归测试，不能把“Python 可导入”当稳定 API 承诺。
 3. **可靠性**：先证明接收、执行入队、历史写入和增量游标间的失败恢复规则。对于结果不明任务显示 interrupted/unknown 并核对，不宣称工具副作用 exactly-once；检查 Hermes 已有 startup auto-resume 行为是否与策略一致。
 4. **审批**：在线审批可复用核心现有决议；进程已重启导致执行等待者消失时，旧卡必须过期或重新发起，不可把旧同意静默应用到新执行。
-5. **验收**：真实 runner + 合成模型响应是下一条本地证据；不等于真实推理质量、真实压缩行为或手机后台/推送通过。
+5. **验收**：真实 runner + 合成模型响应已补齐。下一条应以同一逻辑 Thread 的实际压缩/物理 successor、持久接收与重启恢复为重点，不再重复测握手或普通 prompt 注入；手机后台/推送须设备证据。
 
 ## 当前阻塞与未完成项
 
-- 补充 `plugin-e2e` 正在验证实际 GatewayRunner/AIAgent、真实网络断线、上游提示和 SessionDB 最终历史，尚无主控结论。
+- `plugin-e2e` 已由主控运行并记录结论；完整压缩、物理 successor、执行队列重启窗口、持久双端日志仍未打通。旧 gated 忙时提交探针退出 1，已保留失败证据，不按通过统计。
 - 手机框架未确认；Expo/Flutter 仅完成选型分析，SDK 在 React Native 下和真机键盘/滚动/附件/推送均未验收。
 - Android 原打包探针因 Java/SDK 缺失没有 APK；iOS/签名/商店分发未进行。Linux `.deb` 只是合成诊断壳。
 - 本轮不修补产品缺口、不安装活动插件、不部署；P0 汇总卡保留开放，不能把全部断言通过改写为“底层能力已全部就绪”。
