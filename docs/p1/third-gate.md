@@ -1,6 +1,6 @@
 # P1-04 本地实现与第三 gate 候选
 
-状态：本地实现和隔离验收，等待主控独立复核；**不表示整体 P1 完成**。固定只读 Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，插件未改核心，也未安装活动 profile、调用付费模型、部署或发布。P1-03 原有 Description 只在全新逻辑 Session 注入一次，压缩/续接/冷恢复均不补入。
+状态：已完成主控独立复核与 P1 集成验收，当前结论见 [最终验收](final.md)。以下保留分阶段证据。固定只读 Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，插件未改核心，也未安装活动 profile、调用付费模型、部署或发布。P1-03 原有 Description 只在全新逻辑 Session 注入一次，压缩/续接/冷恢复均不补入。
 
 ## 实现范围
 

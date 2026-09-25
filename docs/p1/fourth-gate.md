@@ -1,6 +1,6 @@
 # P1-05 fourth gate: shared client and package lane
 
-Status: P1-04 backend and P1-05 shared client integration candidate in this worktree. Final controller acceptance is pending. No overall P1 completion claim.
+Status: controller-accepted in the integrated P1 delivery; see [final acceptance](final.md) for the authoritative result. Earlier sections below retain historical stage evidence, not current pending status.
 
 - Shared pure TS module: `packages/client/src/index.ts`; desktop and Expo/RN target transport adapters: `tests/client/desktop/transport.mjs`, `tests/client/mobile/transport.js`.
 - Pinned root `package-lock.json` and copied P0 Expo lock; no new UI framework. Metro Android JS export includes the new module. It is not an APK or device test.

@@ -556,8 +556,9 @@ class Store:
                                                  (item['id'],item['read_ref'])).fetchone()[0]
                 active=db.execute("SELECT id,client_message_id,thread_id,state FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
-                                  "ORDER BY created_at,id LIMIT 22",(item['id'],)).fetchall()
-                if (sum(r['state']=='queued' for r in active)>20 or
+                                  "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()
+                # Admission permits 32 queued/running receipts in total.
+                if (len(active)>32 or
                         sum(r['state']=='running' for r in active)>1):
                     raise OverflowError('active receipt snapshot bound exceeded')
                 item['active_receipts']=[dict(r)|{'durable':True} for r in active]

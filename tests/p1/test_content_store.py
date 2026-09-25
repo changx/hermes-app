@@ -28,3 +28,18 @@ def test_unattached_quota_and_scoped_receipt_claim(tmp_path):
     # Empty-attachment digest stays compatible with receipts persisted by P1-03.
     plain,_=store.accept(first,'plain-send','same body')
     assert store.accept(first,'plain-send','same body',[])[0]==plain
+
+
+def test_snapshot_covers_full_admitted_queue(tmp_path):
+    store=Store(tmp_path/'metadata.sqlite')
+    thread=store.create_thread('project','full queue','session-queue','')
+    expected={store.accept(thread,f'queued-{i}','hello')[0]['id'] for i in range(32)}
+    with pytest.raises(OverflowError,match='queue full'):
+        store.accept(thread,'overflow','hello')
+    snapshot=store.snapshot()
+    assert {r['id'] for r in snapshot['threads'][0]['active_receipts']}==expected
+    store.claim_next(thread)
+    snapshot=store.snapshot()
+    active=snapshot['threads'][0]['active_receipts']
+    assert {r['id'] for r in active}==expected
+    assert sum(r['state']=='running' for r in active)==1

@@ -20,7 +20,7 @@
 
 `GET /v1/snapshot?after=<opaque>&limit=1..100` 返回有界 Thread 元数据、最后可见引用、已读引用、实际可见未读数、`next_after` 和在同一 SQLite 读事务取得的准确 `waterline`。分页的每个响应各有水位；客户端先保存首页水位，分页结束后从该水位调用增量即可补上分页期间的变化。
 
-集成契约：每个 Thread 摘要另含 `active_receipts`（至多一个运行收据和至多 20 个排队收据）及 `pending_interactions`（至多 20 个当前代际请求，含精确请求、收据、代际、提示和选择）。超界返回明确 409，不能静默截断。这些状态和 `waterline` 在同一元数据读事务读取。新设备先分页快照，再从首页水位追事件；结算或过期事件使旧请求从 UI 收起。已有收据仍可由精确 ID 查询，不从全局零位重放。
+集成契约：每个 Thread 摘要另含 `active_receipts`（运行与排队收据合计至多 32 个，其中运行收据至多一个，与发送接收上限一致）及 `pending_interactions`（至多 20 个当前代际请求，含精确请求、收据、代际、提示和选择）。超界返回明确 409，不能静默截断。这些状态和 `waterline` 在同一元数据读事务读取。新设备先分页快照，再从首页水位追事件；结算或过期事件使旧请求从 UI 收起。已有收据仍可由精确 ID 查询，不从全局零位重放。
 
 Channel 正文仍由 Hermes ProjectDB 管理，`GET /v1/channels` 返回当前权威列表。Channel 创建、改名、Description 编辑、删除各写一条持久 `kind=channel` 失效事件，`thread_id` 为空，`ref` 为 Project ID，`version` 按该 ID 递增；删除后列表不再包含该 ID。Thread 创建和归档沿用 `kind=thread` 事件。初次连接先取 `/v1/snapshot` 保存首页水位，再取 `/v1/channels`，最后从该水位追 `/v1/sync`；增量收到 Channel 事件后重取 `/v1/channels`，收到 Thread 事件后取对应 Thread 或快照。Project 写入与插件事件之间若崩溃，启动时按 ProjectDB 对账补事件；`/v1/sync`、`/v1/snapshot` 和 `/v1/channels` 读取前也会对账。两库不共享事务，短暂断开需从游标补齐。
 
