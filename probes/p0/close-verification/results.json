@@ -1,0 +1,218 @@
+{
+  "core_before": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "core_after": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "rerun_lanes": [
+    "compaction"
+  ],
+  "scope": "diagnostic reproduction, NOT all product acceptance passed",
+  "results": [
+    {
+      "name": "compaction",
+      "commands": [
+        {
+          "command": [
+            "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+            "/opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction/run.py",
+            "rotate",
+            "idle",
+            "inplace",
+            "inplace_idle"
+          ],
+          "exit_code": 1,
+          "log": "probes/p0/close-verification/compaction.log"
+        }
+      ],
+      "checks": {
+        "fresh_all": true,
+        "inner_cleanup": true
+      },
+      "detail": [
+        {
+          "mode": "rotate",
+          "canonical_visible_equal": false,
+          "canonical_counts": {
+            "before": 32,
+            "after": 34
+          },
+          "restore_identity": {
+            "matches": false,
+            "stored_model": "p0-local",
+            "stored_provider": "custom",
+            "current_model": "p0-local",
+            "current_provider": "custom",
+            "current_cwd": "/home/hermes/.hermes/profiles/jamie/cache/scratch/p0-final-compaction-oe3su4os/p0-comp-usbfjfxu",
+            "stored_cwd_lines": [
+              "Current working directory: /opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction"
+            ]
+          },
+          "fresh_agent_description_count": 0,
+          "successor_rebuild_description_once": false
+        },
+        {
+          "mode": "idle",
+          "canonical_visible_equal": false,
+          "canonical_counts": {
+            "before": 32,
+            "after": 34
+          },
+          "restore_identity": {
+            "matches": false,
+            "stored_model": "p0-local",
+            "stored_provider": "custom",
+            "current_model": "p0-local",
+            "current_provider": "custom",
+            "current_cwd": "/home/hermes/.hermes/profiles/jamie/cache/scratch/p0-final-compaction-oe3su4os/p0-comp-jw2rez5_",
+            "stored_cwd_lines": [
+              "Current working directory: /opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction"
+            ]
+          },
+          "fresh_agent_description_count": 0,
+          "successor_rebuild_description_once": false
+        },
+        {
+          "mode": "inplace",
+          "canonical_visible_equal": false,
+          "canonical_counts": {
+            "before": 32,
+            "after": 32
+          },
+          "restore_identity": {
+            "matches": false,
+            "stored_model": "p0-local",
+            "stored_provider": "custom",
+            "current_model": "p0-local",
+            "current_provider": "custom",
+            "current_cwd": "/home/hermes/.hermes/profiles/jamie/cache/scratch/p0-final-compaction-oe3su4os/p0-comp-ofaihjey",
+            "stored_cwd_lines": [
+              "Current working directory: /opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction"
+            ]
+          },
+          "fresh_agent_description_count": 1,
+          "successor_rebuild_description_once": true
+        },
+        {
+          "mode": "inplace_idle",
+          "canonical_visible_equal": false,
+          "canonical_counts": {
+            "before": 32,
+            "after": 32
+          },
+          "restore_identity": {
+            "matches": false,
+            "stored_model": "p0-local",
+            "stored_provider": "custom",
+            "current_model": "p0-local",
+            "current_provider": "custom",
+            "current_cwd": "/home/hermes/.hermes/profiles/jamie/cache/scratch/p0-final-compaction-oe3su4os/p0-comp-5uhnoj2e",
+            "stored_cwd_lines": [
+              "Current working directory: /opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction"
+            ]
+          },
+          "fresh_agent_description_count": 1,
+          "successor_rebuild_description_once": true
+        }
+      ],
+      "outer_cleanup": true
+    },
+    {
+      "name": "recovery",
+      "commands": [
+        {
+          "command": [
+            "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+            "/opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-recovery/probe.py"
+          ],
+          "exit_code": 0,
+          "log": "probes/p0/close-verification/recovery.log"
+        },
+        {
+          "command": [
+            "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+            "-m",
+            "pytest",
+            "-q",
+            "-o",
+            "addopts=",
+            "-p",
+            "no:cacheprovider",
+            "tests/tui_gateway/test_groups_methods.py::test_rpc_retry_is_idempotent_and_conflict_is_visible",
+            "tests/tui_gateway/test_hosted_room_service.py::test_restart_republishes_terminal_task_before_admitting_more",
+            "tests/tui_gateway/test_hosted_room_driver_runtime.py::test_expired_local_attempt_defers_without_hydrating_or_resubmitting",
+            "tests/tui_gateway/test_hosted_room_driver_runtime.py::test_pending_local_approval_is_reported_with_safe_choices",
+            "tests/tools/test_approval_gateway_wait_late_choice.py",
+            "tests/cron/test_delivery_queue.py::test_dead_delivery_owner_becomes_unknown_and_is_not_retried",
+            "tests/cron/test_delivery_queue.py::test_wait_timeout_leaves_unclaimed_delivery_queued_for_next_gateway",
+            "tests/cron/test_cron_live_delivery_confirmation.py::TestConfirmAdapterDelivery"
+          ],
+          "exit_code": 0,
+          "log": "probes/p0/close-verification/recovery-tests.log"
+        }
+      ],
+      "checks": {
+        "cold_page_equivalence": true,
+        "independent_readers": true,
+        "at_least_one_executor_admission": true,
+        "gap_recovered_once": true
+      },
+      "detail": true,
+      "outer_cleanup": true
+    },
+    {
+      "name": "mobile",
+      "commands": [
+        {
+          "command": [
+            "/home/hermes/.asdf/installs/nodejs/24.14.1/bin/npm",
+            "run",
+            "export:android-js"
+          ],
+          "exit_code": 0,
+          "log": "probes/p0/close-mobile/export-android-js.log"
+        },
+        {
+          "command": [
+            "/home/hermes/.asdf/installs/nodejs/24.14.1/bin/npm",
+            "run",
+            "test:protocol"
+          ],
+          "exit_code": 0,
+          "log": "probes/p0/close-mobile/protocol-test.log"
+        },
+        {
+          "command": [
+            "/home/hermes/.asdf/installs/nodejs/24.14.1/bin/node",
+            "verify-results.cjs"
+          ],
+          "exit_code": 0,
+          "log": "probes/p0/close-verification/mobile.log"
+        }
+      ],
+      "checks": {
+        "all_commands_zero": true
+      },
+      "detail": {
+        "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+        "target": "android",
+        "artifactType": "diagnostic Metro JS export, not APK, not installed or run on device",
+        "expoVersion": "54.0.37",
+        "reactNativeVersion": "0.81.5",
+        "bundle": "dist/_expo/static/js/android/index-b68b6a087632ab7fdaaa4242efa10072.js",
+        "bundleBytes": 2716302,
+        "bundleSha256": "f1737bdf4c0a3fcdb02814db9630d71e10a6b70af58bccc1c3e785a2a4bad908",
+        "bundledSdkMarkers": [
+          "JsonRpcRequestChannel",
+          "JsonRpcGatewayClient"
+        ],
+        "sdkRuntimeImportCheck": "only relative imports; no Node/Electron/desktop imports in selected upstream SDK modules",
+        "protocol": "5 synthetic in-memory checks PASS; no plugin protocol or device connection tested",
+        "export": "PASS",
+        "limitations": [
+          "JS export only",
+          "no APK/device/keyboard/long-list/push/attachments",
+          "plugin HTTP/WS differs from upstream TUI JSON-RPC"
+        ]
+      },
+      "outer_cleanup": true
+    }
+  ]
+}

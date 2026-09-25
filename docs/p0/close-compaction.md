@@ -1,5 +1,7 @@
 # P0 compaction 收口：真实提交链路与未通过边界
 
+> 主控补充：现已增加默认 `inplace` / `inplace_idle` 两模式及正常 `tui_gateway.server` 绑定后的完整显示转换。四模式显示前后序列均不相等；原地模式 Description 重建后保留，rotation 模式仍缺父快照映射。fresh-agent 重建同时存在可定位的 cwd 漂移，不能推导成同 runtime 的冷恢复必然丢头部。最新细节、计数与判断以 [final.md](final.md) 和 `probes/p0/close-verification/results.json` 为准。下文保留首次两模式证据的边界；原始日志可从子代理提交 `3adff31b17d05bf6023b3a35be63823a415d26d2` 恢复。
+
 ## 范围和执行
 
 固定只读 Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；仅使用隔离 HOME/HERMES_HOME、临时 SQLite 和 127.0.0.1 合成 OpenAI-compatible summarizer。不修改 Hermes 核心、不 monkeypatch、不安装依赖、不接触生产凭据。重用 `probes/p0/plugin-e2e/plugin/` 的正式 `register_system_prompt_section` 插件；直接驱动真实 `AIAgent._compress_context`（legacy rotation）及 `agent.turn_context_compaction._idle_compaction`（真实 idle 判断与提交入口），并调用真实 `SessionDB`。**没有在本探针重新运行 GatewayRunner；此前的 GatewayRunner 正常/断线/冷恢复链路见 [plugin-e2e](plugin-e2e.md)，不能把两次试验拼成一个已通过的完整网关压缩验收。**

@@ -1,4 +1,6 @@
-# P0 插件限定验证汇总（真实执行与 Session 头部已复核）
+# P0 插件限定验证汇总
+
+> 本表保留各分路范围。P0 收尾已完成，最终决策、主控补测与验收承接以 [final.md](final.md) 为准；完成的是调查验证，不代表表中产品缺口已实现。
 
 ## 判断
 
@@ -30,12 +32,12 @@ uv run --no-project --offline \
 | T06 RPC 扩展 | 未注册方法返回 -32601；插件 HTTP/WS 替代入口实测 | 未发现公开的 TUI JSON-RPC method 注册 API；不允许改内部 method 表冒充插件扩展 |
 | H01 项目与 Thread | 插件路由调用现有 Project CRUD/改名/说明/归档 | Project↔稳定 Thread↔session lineage 映射尚未实现 |
 | H02 连续历史 | 跨压缩段显示原文，排除摘要/hidden/branch | 整条历史物化；缺有界跨段分页、稳定逻辑消息 ID 与流式归并 |
-| H03 持久同步 | 内部 Room 日志游标/快照后增量/冷进程重开 | 直接存储调用非 groups 服务验收；未测过期日志重建、删除事件与在线背压 |
-| H04 接收与入队 | Room 发送幂等与 driver admission 各自幂等 | 两次提交之间存在窗口；本探针并未测试已有 hosted service 是否提供补偿，不能泛称所有 Hermes 路径均不可恢复 |
+| H03 持久同步 | 内部 Room 日志游标/快照后增量/冷进程重开 | 补充真实 groups/service 与冷进程分页/reader 已测（close-recovery）；仍非双 WS 完整同步，过期日志/删除/背压待 P1 |
+| H04 接收与入队 | Room 发送幂等与 driver admission 各自幂等 | close-recovery 已证明 service 可补偿布置的已接收未入队状态；不是提交间实际 SIGKILL，也不保证 App FIFO |
 | H05 已读与搜索 | 插件元数据游标单调、进程重开；核心搜索原语可调用 | 无完整 Thread 级已读/未读/有权搜索；控制事件序号差不等于未读消息数 |
 | H06 数据生命周期 | 删除核心 session 后插件游标仍存在；disable 路由不删元数据 | 映射清理、保留、导出与权限需明确；不可复制整套权威聊天库规避问题 |
 | E01 执行入站 | 正常平台注册；补充探针经过真实 GatewayRunner.start 与 AIAgent、loopback 合成模型及 SessionDB | 未调用真实工具；入站 accepted 标志不等于持久接收回执 |
-| E02 公共上下文 | 正式 system prompt section：每 Session 初始化一次、正常续聊字节一致、冷恢复无 callback、受控重建只保留一份初始说明 | 尚未跑完整 summarizer/idle/native 压缩与物理 successor 映射；重建 callback 应返回 Session 快照，不逐消息附加或默认热更新 |
+| E02 公共上下文 | 正式 system prompt section：每 Session 初始化一次、正常续聊字节一致、冷恢复无 callback、受控重建只保留一份初始说明 | close-compaction 已实跑本地合成 summarizer/idle/default in-place 与 rotation；后者快照映射及展示顺序/重复负例仍在，native upstream 未测 |
 | E03 离线任务 | 补充探针真实 TCP 断开时模型仍被门控；放行后真实 Agent 完成并持久化，冷读一致 | 短时断线不是跨重启任务恢复；忙时追加/steer 不等于持久 FIFO，资源上限未验收 |
 | E04 故障与历史 | 合成异常正确通知；子进程崩溃无假恢复承诺 | 接收/执行/最终历史原子边界尚未建立，不能盲重跑结果不明的副作用任务 |
 | E05 审批与澄清 | 核心进程内 first-response-wins、迟到拒绝；插件 observer hooks | 真正多端撤卡、跨重启恢复未证明；显示待审记录不等于能够恢复已消失的执行等待者 |
@@ -51,9 +53,9 @@ uv run --no-project --offline \
 4. **审批**：在线审批可复用核心现有决议；进程已重启导致执行等待者消失时，旧卡必须过期或重新发起，不可把旧同意静默应用到新执行。
 5. **验收**：真实 runner + 合成模型响应已补齐。下一条应以同一逻辑 Thread 的实际压缩/物理 successor、持久接收与重启恢复为重点，不再重复测握手或普通 prompt 注入；手机后台/推送须设备证据。
 
-## 当前阻塞与未完成项
+## P0 已收口；产品缺口转入实施验收
 
-- `plugin-e2e` 已由主控运行并记录结论；完整压缩、物理 successor、执行队列重启窗口、持久双端日志仍未打通。旧 gated 忙时提交探针退出 1，已保留失败证据，不按通过统计。
-- 手机框架未确认；Expo/Flutter 仅完成选型分析，SDK 在 React Native 下和真机键盘/滚动/附件/推送均未验收。
+- `plugin-e2e`、压缩/idle 负例、hosted service 恢复及 Expo 导出均已主控复核；稳定历史/快照映射、执行崩溃窗口和持久双端最终链路归入 P1-02/03。旧 gated 与压缩失败保留，不按通过统计。
+- 推荐 Expo/RN 手机 + Electron 桌面；主控 Metro Android JS 导出和纯协议 5 项测试通过，真机键盘/滚动/附件/推送仍未验收。
 - Android 原打包探针因 Java/SDK 缺失没有 APK；iOS/签名/商店分发未进行。Linux `.deb` 只是合成诊断壳。
-- 本轮不修补产品缺口、不安装活动插件、不部署；P0 汇总卡保留开放，不能把全部断言通过改写为“底层能力已全部就绪”。
+- P0 调查可关闭，P1 规划已定稿、实现未开始；不安装活动插件或部署，不能写成“底层产品能力已全部就绪”。

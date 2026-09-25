@@ -14,7 +14,7 @@ PY = str(BASE / '.venv/bin/python')
 def main():
     output = []
     for mode in sys.argv[1:] or ('rotate', 'idle'):
-        assert mode in ('rotate', 'idle')
+        assert mode in ('rotate', 'idle', 'inplace', 'inplace_idle')
         evidence = ROOT / f'{mode}.json'
         evidence.unlink(missing_ok=True)
         with tempfile.TemporaryDirectory(prefix='p0-comp-', dir=os.environ['TMPDIR']) as temp:

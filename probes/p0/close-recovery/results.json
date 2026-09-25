@@ -32,7 +32,7 @@
   ],
   "observed": {
     "initial": {
-      "pid": 2898639,
+      "pid": 2905264,
       "created": "synthetic-room",
       "send_seq": [
         1,
@@ -62,7 +62,7 @@
             "text": "@ops synthetic hello",
             "thread_id": "thread-1"
           },
-          "created_at": 1790325319.0697777,
+          "created_at": 1790325738.8667045,
           "idempotent": false
         },
         {
@@ -79,7 +79,7 @@
             "text": "@ops synthetic hello",
             "thread_id": "thread-1"
           },
-          "created_at": 1790325319.289487,
+          "created_at": 1790325739.1499116,
           "idempotent": false
         },
         {
@@ -103,7 +103,7 @@
             "thread_id": "thread-1",
             "turn_id": "d1.r0.p0.s1.md6be723229724adf08cf2a2d"
           },
-          "created_at": 1790325319.3079588,
+          "created_at": 1790325739.1707375,
           "idempotent": false
         },
         {
@@ -112,7 +112,7 @@
           "event_id": "dterminal:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
           "kind": "turn.settled",
           "actor": {
-            "id": "install:71d198742864491d886a86849edee620",
+            "id": "install:926e1e378bbd41268734b18ef3a6f7c9",
             "kind": "gateway"
           },
           "authority_epoch": 1,
@@ -128,7 +128,7 @@
             "thread_id": "thread-1",
             "turn_id": "d1.r0.p0.s1.md6be723229724adf08cf2a2d"
           },
-          "created_at": 1790325319.3109982,
+          "created_at": 1790325739.1755552,
           "idempotent": false
         },
         {
@@ -137,7 +137,7 @@
           "event_id": "dactivity:user:9f59783006132b770ce3f79ea0588e2e10d3207e26d802042f708fa0d57892d8:silent_round",
           "kind": "room.activity",
           "actor": {
-            "id": "install:71d198742864491d886a86849edee620",
+            "id": "install:926e1e378bbd41268734b18ef3a6f7c9",
             "kind": "gateway"
           },
           "authority_epoch": 1,
@@ -147,7 +147,7 @@
             "status": "settled",
             "thread_id": "thread-1"
           },
-          "created_at": 1790325319.3415096,
+          "created_at": 1790325739.223154,
           "idempotent": false
         }
       ],
@@ -164,7 +164,7 @@
       }
     },
     "cold": {
-      "pid": 2898659,
+      "pid": 2905355,
       "page1_seq": [
         1,
         2
@@ -186,7 +186,8 @@
       "gap_after_kinds": [
         "message.user",
         "message.member",
-        "turn.settled"
+        "turn.settled",
+        "room.activity"
       ],
       "cold_submits": [
         {
@@ -199,7 +200,7 @@
   },
   "readers": [
     {
-      "pid": 2898683,
+      "pid": 2905398,
       "seq": [
         1,
         2,
@@ -214,7 +215,7 @@
       "cursor": 9
     },
     {
-      "pid": 2898681,
+      "pid": 2905397,
       "seq": [
         1,
         2,

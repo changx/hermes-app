@@ -3,9 +3,10 @@
 > node verify-baseline.cjs && expo export --platform android --output-dir dist --no-bytecode --no-minify --max-workers 2
 
 Hermes shared SDK pinned baseline 2f16a1aa5a35feec496949abdef7ad51aea0e7ef
-Bytecode makes the app startup faster, disabling bytecode is highly discouraged and should only be used for debugging purposes.
 Starting Metro Bundler
-Android Bundled 563ms index.js (562 modules)
+Android ./index.js ▓▓▓▓▓▓░░░░░░░░░░ 38.9% (179/287)
+Android ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.0% (522/543)
+Android Bundled 7251ms index.js (572 modules)
 
 › android bundles (1):
 _expo/static/js/android/index-b68b6a087632ab7fdaaa4242efa10072.js (2.72 MB)
@@ -14,3 +15,6 @@ _expo/static/js/android/index-b68b6a087632ab7fdaaa4242efa10072.js (2.72 MB)
 metadata.json (149 B)
 
 Exported: dist
+
+STDERR:
+Bytecode makes the app startup faster, disabling bytecode is highly discouraged and should only be used for debugging purposes.

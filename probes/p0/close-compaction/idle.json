@@ -1,5 +1,183 @@
 {
   "summary_http_calls": 1,
+  "in_place_requested": false,
+  "canonical_visible_equal": false,
+  "canonical_counts": {
+    "before": 32,
+    "after": 34
+  },
+  "canonical_diff": [
+    {
+      "index": 0,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_00 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_00 response text response text response text response text response text r"
+    },
+    {
+      "index": 1,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_00 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_01 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 2,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_01 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_01 response text response text response text response text response text r"
+    },
+    {
+      "index": 3,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_01 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_02 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 4,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_02 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_02 response text response text response text response text response text r"
+    },
+    {
+      "index": 5,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_02 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_03 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 6,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_03 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_03 response text response text response text response text response text r"
+    },
+    {
+      "index": 7,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_03 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_04 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 8,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_04 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_04 response text response text response text response text response text r"
+    },
+    {
+      "index": 9,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_04 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_05 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 10,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_05 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_05 response text response text response text response text response text r"
+    },
+    {
+      "index": 11,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_05 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_06 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 12,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_06 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_06 response text response text response text response text response text r"
+    },
+    {
+      "index": 13,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_06 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_07 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 14,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_07 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_07 response text response text response text response text response text r"
+    },
+    {
+      "index": 15,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_07 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_08 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 16,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_08 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_08 response text response text response text response text response text r"
+    },
+    {
+      "index": 17,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_08 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_09 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 18,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_09 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_09 response text response text response text response text response text r"
+    },
+    {
+      "index": 19,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_09 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_10 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 20,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_10 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_10 response text response text response text response text response text r"
+    },
+    {
+      "index": 21,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_10 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_11 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 22,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_11 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_11 response text response text response text response text response text r"
+    },
+    {
+      "index": 23,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_11 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_12 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 24,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_12 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_12 response text response text response text response text response text r"
+    },
+    {
+      "index": 25,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_12 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_13 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 26,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_13 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_13 response text response text response text response text response text r"
+    },
+    {
+      "index": 27,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_13 response text response text response text response text response text r",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_14 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 28,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_14 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_14 response text response text response text response text response text r"
+    },
+    {
+      "index": 29,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_14 response text response text response text response text response text r",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_15 response text response text response text response text response text r"
+    },
+    {
+      "index": 30,
+      "before": "{'role': 'user', 'text': 'ORIGINAL_USER_15 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be",
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_00 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 31,
+      "before": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_15 response text response text response text response text response text r",
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_14 response text response text response text response text response text r"
+    },
+    {
+      "index": 32,
+      "before": null,
+      "after": "{'role': 'user', 'text': 'ORIGINAL_USER_15 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha be"
+    },
+    {
+      "index": 33,
+      "before": null,
+      "after": "{'role': 'assistant', 'text': 'ORIGINAL_REPLY_15 response text response text response text response text response text r"
+    }
+  ],
   "rotated": true,
   "child_parent_matches": true,
   "parent_end_reason": "compression",
@@ -20,6 +198,17 @@
   "child_active_count": 4,
   "result_count": 4,
   "source_count": 32,
+  "restore_identity": {
+    "matches": false,
+    "stored_model": "p0-local",
+    "stored_provider": "custom",
+    "current_model": "p0-local",
+    "current_provider": "custom",
+    "current_cwd": "/home/hermes/.hermes/profiles/jamie/cache/scratch/p0-final-compaction-oe3su4os/p0-comp-jw2rez5_",
+    "stored_cwd_lines": [
+      "Current working directory: /opt/projects/jamie/_worktrees/hermes-app/p0-final/probes/p0/close-compaction"
+    ]
+  },
   "fresh_agent_header_identical": false,
   "fresh_agent_callback_not_rerun": false,
   "fresh_agent_description_count": 0,

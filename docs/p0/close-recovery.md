@@ -7,7 +7,7 @@
 固定基线 `.venv`，`env -i` 清空凭据，`HOME/HERMES_HOME` 仅位于 profile scratch 的自动销毁临时目录，`TIRITH_ENABLED=false`；没有修改/monkeypatch 核心，唯一替身是通过 service 的 `rpc/runtime.rpc` 注入无模型、无工具、只返回合成 terminal 的 executor。实际调用 **已安装的 `tui_gateway.server._methods['groups.*']`**、`methods_groups.start_hosted_room_service()` 及真实后台 worker，而非仅直接调用 `hosted_rooms` 存储。`cold`、两个 reader 均是全新 OS Python 进程，重开同一临时 SQLite；两个 reader 独立并发走 `groups.log`，**非真实 TCP/WebSocket、非双 App 客户端**。源码与结果：[probe.py](../../probes/p0/close-recovery/probe.py)、[results.json](../../probes/p0/close-recovery/results.json)、[run.log](../../probes/p0/close-recovery/run.log)。
 
 ```sh
-cd /opt/projects/jamie/_worktrees/hermes-app/p0-close-recovery
+cd /opt/projects/jamie/hermes-app
 env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 \
   TMPDIR=/home/hermes/.hermes/profiles/jamie/cache/scratch \
   PYTHONPATH=/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline \
@@ -27,7 +27,7 @@ env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 \
 定向上游测试（同样隔离 HOME，完整 env/node list 见 [run-tests.sh](../../probes/p0/close-recovery/run-tests.sh)；原始输出 [upstream-tests.log](../../probes/p0/close-recovery/upstream-tests.log)）**19 passed in 4.01s，退出 0**。命令：
 
 ```sh
-cd /opt/projects/jamie/_worktrees/hermes-app/p0-close-recovery
+cd /opt/projects/jamie/hermes-app
 sh probes/p0/close-recovery/run-tests.sh
 ```
 

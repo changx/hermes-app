@@ -3,7 +3,8 @@
 set -eu
 BASE=/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline
 SCRATCH=/home/hermes/.hermes/profiles/jamie/cache/scratch
-OUT=/opt/projects/jamie/_worktrees/hermes-app/p0-close-recovery/probes/p0/close-recovery/upstream-tests.log
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+OUT="$HERE/upstream-tests.log"
 sandbox=$(mktemp -d "$SCRATCH/p0-close-tests-XXXXXX")
 trap 'rm -rf "$sandbox"' EXIT INT TERM
 cd "$BASE"

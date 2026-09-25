@@ -39,9 +39,9 @@
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
 - https://hermes-agent.nousresearch.com/docs/user-guide/desktop
 
-## 3. 推荐路线（待 P0 验证）
+## 3. P0 后推荐路线（P1 尚未实现）
 
-1. 直接复用现有 WS JSON-RPC 和可复用客户端模块，不开发 Discord wire protocol。
+1. 使用正式 Hermes App platform plugin 接入真实 GatewayRunner，插件自有 HTTP/WS 提供 App 契约；可用核心接口及纯 TS 模块按边界复用。没有正式新增 TUI RPC method 扩展点时，不修改内部 method 表。
 2. 通过 Hermes plugin 补 Channel/Thread 的稳定映射、提示继承以及可见历史的统一读取，复用已有能力而不修改核心；模型 compaction 不改用户原文。
 3. 明确持久接收、可恢复同步游标、稳定消息 ID、多端通知和阅读状态。优先利用现有持久数据，必要时仅增加最小状态/变更日志；P0 后决定 schema。
 4. 界面先消费快照，再衔接增量，处理两者之间竞态；回放有缺口或 epoch 变化时重新同步，不默默跳过。
@@ -53,9 +53,11 @@
 
 ## 4. 客户端和发布
 
-桌面优先验证基于现有 Electron/React 代码的独立产品入口。手机优先验证复用 React/TypeScript 的原生容器方案；是候选而非已批准技术选型。共享协议、消息归并、缓存规则；平台专属代码负责凭据存储、通知、文件选择、生命周期和打包。
+P0 推荐桌面 Electron/React、手机 Expo/React Native；Metro Android JS 导出与协议探针已实测，尚无 APK/设备验收，不承诺共享 DOM UI。共享协议、消息归并、缓存规则；平台专属代码负责凭据存储、通知、文件选择、生命周期和打包。依据及 Flutter 取舍见 [移动端结论](p0/close-mobile.md)。
 
 必须产出独立安装包、真实设备证据和受控更新方案。签名/分发权限在发布阶段获得；P0 不要求购买账户或接入真实推送服务。
+
+P0 已复现压缩后的显示顺序/重复差异及 physical successor 的 Description 映射缺口；既有低层显示 helper 不可直接当 App 完整时间线。hosted service 的持久恢复可用，但 Discussion 不是逐消息 FIFO。P1 使用最小插件元数据桥和权威 SessionDB，先验证稳定历史，再做可靠同步；见 [P0 收尾](p0/final.md) 与 [P1 计划](p1-plan.md)。
 
 ## 5. 重点风险
 
