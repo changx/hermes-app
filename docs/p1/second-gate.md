@@ -20,7 +20,7 @@
 | 独立测试插件按已验证 loader 顺序在 App Hook 前的 `post_llm_call` 写 marker 并 `SIGSTOP`；父进程确认核心 final 后 SIGKILL | 重启只发布原 final 引用一次，不调用模型；执行保守 `unknown`。[证据](evidence/delivery-final.json) |
 | 客户端断开时模型等待；释放后第二客户端取到 durable final | 后续重连、两 WS、长离线 525 事件、游标拒绝、已读、凭据撤销均通过。[证据](evidence/delivery-offline-sync.json) |
 
-完整 `uv` 运行：`32 passed in 148.43s`；新增乱序/重复版本收敛单元测试随后单独运行：`5 passed in 1.59s`。P1-02 严格历史 gate 在本次隔离证据上 `passed:true`、`failures:[]`；三工具 midturn 的 `turn_outcomes` 和 `incomplete_turns` 均为空。[汇总](evidence/p1-03-gate.json)。P1-02 原有证据文件及 `runner-last-failure.log` 的工作树状态保持未提交，避免覆盖其他任务的诊断；本任务只提交新 P1-03 证据。
+完整 `uv` 运行：`33 passed in 152.71s`（含乱序/重复版本收敛单元测试）。P1-02 严格历史 gate 在本次隔离证据上 `passed:true`、`failures:[]`；三工具 midturn 的 `turn_outcomes` 和 `incomplete_turns` 均为空。[汇总](evidence/p1-03-gate.json)。P1-02 原有证据文件及 `runner-last-failure.log` 的工作树状态保持未提交，避免覆盖其他任务的诊断；本任务只提交新 P1-03 证据。
 
 ## 重跑
 

@@ -8,7 +8,7 @@
     "final",
     "offline_sync"
   ],
-  "full_suite": "32 passed in 148.43s",
+  "full_suite": "33 passed in 152.71s",
   "gate": "P1-03 local delivery and durable sync",
   "midturn_completed": true,
   "midturn_visible_row_ids": [
