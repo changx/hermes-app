@@ -1,0 +1,5 @@
+name: a-p1-crash-hook
+label: P1 isolated crash lifecycle probe
+kind: standalone
+version: 0.1.0
+description: Synthetic isolated marker and lifecycle hook only

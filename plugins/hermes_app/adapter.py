@@ -65,6 +65,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._sockets = set()
         self._store = _store()
         self._settlement_tasks = set()
+        self._queue_tasks = {}
+        self._events_changed = asyncio.Event()
         self._stopping = False
         self.port = None
 
@@ -82,6 +84,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         host = os.environ.get('HERMES_APP_HOST', '127.0.0.1')
         if host not in ('127.0.0.1', '::1'):
             raise RuntimeError('P1 foundation permits loopback binding only')
+        self._gateway_starting()  # Fail explicitly if pinned startup ownership API changed.
         port = int(os.environ.get('HERMES_APP_PORT', '0'))
         app = web.Application(middlewares=[_authentication], client_max_size=65536)
         app['adapter'] = self
@@ -96,7 +99,11 @@ class HermesAppAdapter(BasePlatformAdapter):
         app.router.add_patch('/v1/threads/{id}', self._thread)
         app.router.add_delete('/v1/threads/{id}', self._thread)
         app.router.add_post('/v1/threads/{id}/messages', self._submit)
+        app.router.add_get('/v1/receipts/{id}', self._receipt)
         app.router.add_get('/v1/threads/{id}/messages', self._history)
+        app.router.add_post('/v1/threads/{id}/read', self._read)
+        app.router.add_get('/v1/sync', self._sync)
+        app.router.add_get('/v1/snapshot', self._snapshot)
         app.router.add_get('/v1/events', self._ws)
         self._runner = web.AppRunner(app, access_log=None)
         try:
@@ -111,10 +118,17 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise
         self._mark_connected()
         self._stopping = False
+        for thread_id in await asyncio.to_thread(self._store.recover_receipts,get_hermes_home()/'state.db'):
+            self._wake_thread(thread_id)
         return True
 
     async def cancel_background_tasks(self):
         self._stopping = True
+        for task in tuple(getattr(self, '_queue_tasks', {}).values()):
+            task.cancel()
+        if getattr(self, '_queue_tasks', None):
+            await asyncio.gather(*tuple(self._queue_tasks.values()), return_exceptions=True)
+            self._queue_tasks.clear()
         await super().cancel_background_tasks()
         # Core cancellation completes owner tasks, which in turn schedules their
         # reconciliation callbacks. Let those callbacks run before draining.
@@ -149,11 +163,29 @@ class HermesAppAdapter(BasePlatformAdapter):
         # P1-03 will provide durable fanout. The core persists the assistant row.
         return SendResult(success=True, message_id=uuid.uuid4().hex)
 
+    async def handle_message(self, event):
+        # GatewayRunner's own startup resume calls this adapter with an empty
+        # internal event. Plugin receipts own recovery for this platform only.
+        if event.internal and not event.text and event.message_id is None:
+            return
+        return await super().handle_message(event)
+
+    def _gateway_starting(self):
+        # Pinned baseline boundary: run_adapters._standalone_scoped wraps a
+        # bound GatewayRunner method. Its startup gate remains closed while
+        # run_startup drains synthetic resume events. Dispatching before that
+        # gate opens creates a short adapter task without a real model owner.
+        for cell in getattr(self._message_handler,'__closure__',()) or ():
+            target=getattr(cell.cell_contents,'__self__',None)
+            if target is not None and hasattr(target,'_startup_restore_in_progress'):
+                return bool(target._startup_restore_in_progress)
+        raise RuntimeError('pinned GatewayRunner startup gate unavailable')
+
     async def _capabilities(self, request):
         return web.json_response({'protocol': 1, 'baseline': '2f16a1aa5a35feec496949abdef7ad51aea0e7ef',
             'owner': 'single', 'channels': True, 'threads': True,
-            'execution_ingress': 'volatile_dispatched', 'durable_accept': False,
-            'history': True, 'durable_sync': False, 'attachments': False, 'approvals': False})
+            'execution_ingress': 'durable_fifo', 'durable_accept': True,
+            'history': True, 'durable_sync': True, 'attachments': False, 'approvals': False})
 
     async def _channels(self, request):
         def operation():
@@ -261,50 +293,135 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPNotFound()
         body = await _body(request)
         content = body.get('text')
+        client_id = body.get('client_message_id')
         if self._stopping:
             raise web.HTTPServiceUnavailable(text='adapter stopping')
-        if not isinstance(content, str) or not content.strip() or len(content) > 16000:
-            raise web.HTTPBadRequest(text='invalid text')
-        source = self._source(thread['project_id'], tid)
-        event = MessageEvent(text=content, source=source, message_id=uuid.uuid4().hex)
-        ingress_id = 'ingress:' + event.message_id
         try:
-            self._store.begin_turn(tid, ingress_id)
-        except HistoryPending as exc:
-            raise web.HTTPConflict(text=str(exc)) from exc
+            receipt, created = await asyncio.to_thread(self._store.accept, tid, client_id, content)
+        except OverflowError as exc:
+            raise web.HTTPTooManyRequests(text=str(exc)) from exc
+        except ValueError as exc:
+            if 'conflict' in str(exc):
+                raise web.HTTPConflict(text=str(exc)) from exc
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        if created:
+            self._events_changed.set()
+            self._wake_thread(tid)
+        return web.json_response({'receipt':receipt}, status=202)
+
+    def _wake_thread(self, thread_id):
+        task = self._queue_tasks.get(thread_id)
+        if task is None or task.done():
+            task = asyncio.create_task(self._queue_loop(thread_id))
+            self._queue_tasks[thread_id] = task
+            task.add_done_callback(lambda _: self._queue_tasks.pop(thread_id, None))
+
+    async def _queue_loop(self, thread_id):
+        while not self._stopping:
+            while self._gateway_starting():
+                await asyncio.sleep(.05)
+            claim = await asyncio.to_thread(self._store.claim_next, thread_id)
+            if claim is None:
+                return
+            receipt_id, content = claim
+            self._events_changed.set()
+            thread = self._store.get_thread(thread_id)
+            event = MessageEvent(text=content, source=self._source(thread['project_id'],thread_id),
+                                 message_id=receipt_id)
+            try:
+                await self.handle_message(event)
+                owner = self._session_tasks.get(self._event_session_key(event)) if event._gateway_accepted else None
+                # Gateway startup restore may accept the event into its bounded
+                # startup queue before the adapter owner task exists. Keep the
+                # plugin receipt running until that exact owner appears.
+                if event._gateway_accepted and owner is None:
+                    for _ in range(3000):
+                        if self._stopping:
+                            raise asyncio.CancelledError()
+                        await asyncio.sleep(.01)
+                        owner=self._session_tasks.get(self._event_session_key(event))
+                        if owner is not None:
+                            break
+                if owner is None:
+                    raise RuntimeError('gateway did not start owner')
+                while True:
+                    linked=await asyncio.to_thread(self._store.link_user_from_core,receipt_id,
+                                                   get_hermes_home()/'state.db')
+                    if linked:
+                        await asyncio.shield(owner)
+                        break
+                    try:
+                        await asyncio.wait_for(asyncio.shield(owner),.1)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+                await self._settle_ingress(thread_id, 'ingress:'+receipt_id, receipt_id,
+                                           owner_finished=True)
+                state = self._store.turn_state('ingress:'+receipt_id)
+                await asyncio.to_thread(self._store.finish_receipt, receipt_id,
+                                         {'complete':'completed','failed':'failed',
+                                          'interrupted':'interrupted'}.get(state,'unknown'))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception('Hermes App queued execution failed: %s',receipt_id)
+                await asyncio.to_thread(self._store.mark_ingress_unknown,thread_id,'ingress:'+receipt_id)
+                await asyncio.to_thread(self._store.finish_receipt,receipt_id,'unknown')
+            finally:
+                self._events_changed.set()
+
+    async def _receipt(self, request):
+        receipt = await asyncio.to_thread(self._store.receipt, request.match_info['id'])
+        if receipt is None:
+            raise web.HTTPNotFound()
+        return web.json_response({'receipt':receipt})
+
+    async def _sync(self, request):
         try:
-            await self.handle_message(event)
-        except BaseException:
-            self._store.reject_turn(ingress_id)
-            raise
-        if not event._gateway_accepted:
-            self._store.reject_turn(ingress_id)
-            raise web.HTTPConflict(text='gateway did not dispatch')
-        # handle_message returns after spawning the gateway owner. Hooks may run
-        # before its late transcript writes and delivery; keep ingress busy until
-        # that exact task finishes, so a second POST cannot enter core steer mode.
-        session_key = self._event_session_key(event)
-        owner = self._session_tasks.get(session_key)
-        if owner is None:
-            self._store.reject_turn(ingress_id)
-            raise web.HTTPConflict(text='gateway owner unavailable')
-        owner.add_done_callback(lambda _: self._schedule_settlement(tid, ingress_id, event.message_id))
-        return web.json_response({'status': 'dispatched_volatile', 'durable': False}, status=202)
+            limit = int(request.query.get('limit','100'))
+            page = await asyncio.to_thread(self._store.sync_page,cursor=request.query.get('cursor'),limit=limit)
+        except (ValueError,TypeError) as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        return web.json_response(page)
+
+    async def _snapshot(self,request):
+        try:
+            limit=int(request.query.get('limit','50'))
+            page=await asyncio.to_thread(self._store.snapshot,after=request.query.get('after'),limit=limit)
+        except (ValueError,TypeError) as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        return web.json_response(page)
+
+    async def _read(self, request):
+        thread_id=request.match_info['id']
+        if self._store.get_thread(thread_id) is None:
+            raise web.HTTPNotFound()
+        body=await _body(request)
+        try:
+            result=await asyncio.to_thread(self._store.read_thread,thread_id,body.get('ref_seq'))
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        self._events_changed.set()
+        return web.json_response(result)
 
     def _schedule_settlement(self, thread_id, ingress_id, platform_message_id):
         task = asyncio.create_task(self._settle_ingress(thread_id, ingress_id, platform_message_id))
         self._settlement_tasks.add(task)
         task.add_done_callback(self._settlement_tasks.discard)
 
-    async def _settle_ingress(self, thread_id, ingress_id, platform_message_id):
+    async def _settle_ingress(self, thread_id, ingress_id, platform_message_id, *, owner_finished=False):
         try:
-            # Keep the short, paged SQLite reconciliation on this task. A
-            # cancelled to_thread await would leave an untracked DB writer.
-            self._store.settle_ingress(thread_id, ingress_id,
-                                       platform_message_id, get_hermes_home() / 'state.db')
+            writer=asyncio.create_task(asyncio.to_thread(
+                self._store.settle_ingress,thread_id,ingress_id,platform_message_id,
+                get_hermes_home()/'state.db',owner_finished=owner_finished))
+            try:
+                await asyncio.shield(writer)
+            except asyncio.CancelledError:
+                await writer  # A plugin-owned DB writer must finish before shutdown.
+                raise
         except Exception:
             log.exception('Hermes App ingress reconciliation failed: %s', ingress_id)
-            self._store.mark_ingress_unknown(thread_id, ingress_id)
+            await asyncio.to_thread(self._store.mark_ingress_unknown,thread_id,ingress_id)
 
     async def _history(self, request):
         tid = request.match_info['id']
@@ -323,17 +440,45 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response(result)
 
     async def _ws(self, request):
-        ws = web.WebSocketResponse(heartbeat=30)
+        try:
+            cursor=request.query.get('cursor')
+            await asyncio.to_thread(self._store.sync_page,cursor=cursor,limit=1)
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        ws = web.WebSocketResponse(heartbeat=30, max_msg_size=1024)
         await ws.prepare(request)
         self._sockets.add(ws)
+        token=request.headers.get('Authorization','')
         try:
-            await ws.send_json({'type': 'hello', 'protocol': 1, 'durable_sync': False})
-            async for msg in ws:
-                if msg.type == WSMsgType.TEXT:
-                    if msg.data == 'ping':
+            await ws.send_json({'type':'hello','protocol':1,'durable_sync':True})
+            while not ws.closed and not self._stopping:
+                if not hmac.compare_digest(token,'Bearer '+os.environ.get('HERMES_APP_TOKEN','')):
+                    await ws.close(code=1008,message=b'credential revoked')
+                    break
+                page=await asyncio.to_thread(self._store.sync_page,cursor=cursor,limit=100)
+                if page['events']:
+                    for event in page['events']:
+                        transport=request.transport
+                        if transport is None or transport.get_write_buffer_size()>1048576:
+                            await ws.close(code=1013,message=b'replay via HTTP')
+                            break
+                        await asyncio.wait_for(ws.send_json({'type':'event',**event}),5)
+                    if ws.closed:
+                        break
+                    cursor=page['next_cursor']
+                    continue
+                self._events_changed.clear()
+                try:
+                    msg=await asyncio.wait_for(ws.receive(),.25)
+                    if msg.type==WSMsgType.TEXT and msg.data=='ping':
                         await ws.send_str('pong')
-                    else:
-                        await ws.send_json({'type': 'error', 'code': 'unsupported'})
+                    elif msg.type in (WSMsgType.CLOSE,WSMsgType.CLOSED,WSMsgType.ERROR):
+                        break
+                except asyncio.TimeoutError:
+                    try:
+                        await asyncio.wait_for(self._events_changed.wait(),5)
+                    except asyncio.TimeoutError:
+                        pass
         finally:
             self._sockets.discard(ws)
         return ws

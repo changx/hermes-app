@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -146,7 +147,7 @@ async def main():
         assert exc.status == 401
         async with aiohttp.ClientSession(headers={'Authorization':'Bearer '+os.environ['HERMES_APP_TOKEN']}) as a, aiohttp.ClientSession(headers={'Authorization':'Bearer '+os.environ['HERMES_APP_TOKEN']}) as b:
             async with a.get(root+'/v1/capabilities') as resp:
-                caps = await resp.json(); assert resp.status == 200 and caps['durable_accept'] is False
+                caps = await resp.json(); assert resp.status == 200 and caps['durable_accept'] is True
             ws1 = await a.ws_connect(root.replace('http:','ws:')+'/v1/events')
             ws2 = await b.ws_connect(root.replace('http:','ws:')+'/v1/events')
             assert (await ws1.receive_json())['type'] == 'hello'
@@ -160,9 +161,9 @@ async def main():
                 assert resp.status == 201, await resp.text(); two = (await resp.json())['thread']
             async with b.get(root+f"/v1/threads/{one['id']}") as resp:
                 assert resp.status == 200 and (await resp.json())['thread']['session_id'] == one['session_id']
-            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FIRST'}) as resp:
-                assert resp.status == 202, await resp.text(); assert (await resp.json())['durable'] is False
-            async with b.post(root+f"/v1/threads/{two['id']}/messages", json={'text':'P1_OTHER'}) as resp:
+            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_FIRST'}) as resp:
+                assert resp.status == 202, await resp.text(); assert (await resp.json())['receipt']['durable'] is True
+            async with b.post(root+f"/v1/threads/{two['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_OTHER'}) as resp:
                 assert resp.status == 202, await resp.text()
             for _ in range(100):
                 if len(model.requests) >= 2:
@@ -184,7 +185,7 @@ async def main():
             assert [(m['role'], m['text']) for m in first_history['messages']] == [
                 ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL')], first_history
             if COMPACT_MODE == 'race':
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_RACE'}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_RACE'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     if (HOME/'race-hook-entered').exists():
@@ -198,8 +199,8 @@ async def main():
                     ('user','P1_RACE'),('assistant','SYNTHETIC_P1_FINAL')], during
                 assert during['incomplete_turns'], during
                 async with b.post(root+f"/v1/threads/{one['id']}/messages",
-                                  json={'text':'P1_FAST_SECOND'}) as resp:
-                    assert resp.status == 409, await resp.text()
+                                  json={'client_message_id':uuid.uuid4().hex,'text':'P1_FAST_SECOND'}) as resp:
+                    assert resp.status == 202, await resp.text()
                 (HOME/'race-hook-release').write_text('1')
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -209,24 +210,25 @@ async def main():
                     await asyncio.sleep(.05)
                 assert not settled['incomplete_turns']
                 async with a.post(root+f"/v1/threads/{one['id']}/messages",
-                                  json={'text':'P1_AFTER_RACE'}) as resp:
+                                  json={'client_message_id':uuid.uuid4().hex,'text':'P1_AFTER_RACE'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                         after_race = await resp.json()
-                        if resp.status == 200 and len(after_race['messages']) == 6 and not after_race['incomplete_turns']:
+                        if resp.status == 200 and len(after_race['messages']) == 8 and not after_race['incomplete_turns']:
                             break
                     await asyncio.sleep(.05)
                 assert [(m['role'],m['text']) for m in after_race['messages']] == [
                     ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL'),
                     ('user','P1_RACE'),('assistant','SYNTHETIC_P1_FINAL'),
+                    ('user','P1_FAST_SECOND'),('assistant','SYNTHETIC_P1_FINAL'),
                     ('user','P1_AFTER_RACE'),('assistant','SYNTHETIC_P1_FINAL')]
                 (HOME.parent/'runner-race-result.json').write_text(json.dumps({
-                    'mode':'race','busy_after_post_hook':True,'second_send_status':409,
+                    'mode':'race','busy_after_post_hook':True,'second_send_status':202,
                     'after_release_exact':True,'during':during,'after':after_race},sort_keys=True))
                 return
             if COMPACT_MODE == 'failed':
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FAIL'}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_FAIL'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -251,7 +253,7 @@ async def main():
             if COMPACT_MODE == 'midturn':
                 for index in range(5):
                     seed = f'P1_SEED_{index} ' + 'seed ' * 90
-                    async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':seed}) as resp:
+                    async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':seed}) as resp:
                         assert resp.status == 202, await resp.text()
                     for _ in range(100):
                         async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -263,7 +265,7 @@ async def main():
                     assert len(seeded_page['messages']) == 4+index*2 and not seeded_page['incomplete_turns']
                 mid_before = seeded_page
                 requests_before = len(model.requests)
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_MIDTURN'}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_MIDTURN'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -318,6 +320,7 @@ async def main():
                     ('user','P1_MIDTURN'),('assistant','P1_INTERIM_1'),
                     ('assistant','P1_INTERIM_2'),('assistant','P1_INTERIM_3'),
                     ('assistant','SYNTHETIC_P1_FINAL')], mid_page
+                assert not mid_page['turn_outcomes'] and not mid_page['incomplete_turns'],mid_page
                 with sqlite3.connect(HOME/'state.db') as raw:
                     inactive_rows = raw.execute('SELECT COUNT(*) FROM messages WHERE session_id=? AND active=0',
                                                 (one['session_id'],)).fetchone()[0]
@@ -362,7 +365,7 @@ async def main():
                           'messages':mid_page}
                 (HOME.parent/'runner-midturn-result.json').write_text(json.dumps(result,sort_keys=True))
                 return
-            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_SECOND'}) as resp:
+            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_SECOND'}) as resp:
                 assert resp.status == 202, await resp.text()
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -379,7 +382,7 @@ async def main():
                     if resp.status == 200 and len(page['messages']) == 4 and not page['incomplete_turns']:
                         break
                 await asyncio.sleep(.2)
-            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FIRST'}) as resp:
+            async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_FIRST'}) as resp:
                 assert resp.status == 202, await resp.text()
             expected = [('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL'),
                         ('user','P1_SECOND'),('assistant','SYNTHETIC_P1_FINAL'),
@@ -392,7 +395,7 @@ async def main():
                 await asyncio.sleep(.2)
             for index in range(6):
                 bulk = f'P1_BULK_{index} ' + 'alpha beta gamma delta '*60
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':bulk}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':bulk}) as resp:
                     assert resp.status == 202, await resp.text()
                 expected.extend([('user',bulk),('assistant','SYNTHETIC_P1_FINAL')])
                 for _ in range(100):
@@ -420,7 +423,7 @@ async def main():
                 assert effective_threshold == 2400, effective_threshold
                 assert preflight_model_calls > 0, ('no automatic summary HTTP request', len(model.requests))
                 assert not before_page['incomplete_turns']
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_AFTER_AUTO'}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_AFTER_AUTO'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -517,7 +520,7 @@ async def main():
                 assert turn_result['final_response'] == 'SYNTHETIC_P1_FINAL', turn_result
                 continuation_db.close()
             else:
-                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_AFTER_COMPACT'}) as resp:
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_AFTER_COMPACT'}) as resp:
                     assert resp.status == 202, await resp.text()
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
@@ -554,7 +557,7 @@ async def main():
                 assert resp.status == 200, await resp.text()
             async with b.post(root+f"/v1/channels/{channel['id']}/threads", json={'title':'Three'}) as resp:
                 assert resp.status == 201, await resp.text(); three = (await resp.json())['thread']
-            async with b.post(root+f"/v1/threads/{three['id']}/messages", json={'text':'P1_THIRD'}) as resp:
+            async with b.post(root+f"/v1/threads/{three['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_THIRD'}) as resp:
                 assert resp.status == 202, await resp.text()
             for _ in range(100):
                 if any('P1_THIRD' in json.dumps(x) for x in model.requests):
@@ -600,8 +603,13 @@ async def main():
                     'cold':cold_page,'branch':branch_page}}
             await asyncio.wait_for(runner.stop(), 45)
             runner = None
-            assert (await asyncio.wait_for(ws1.receive(), 3)).type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED)
-            assert (await asyncio.wait_for(ws2.receive(), 3)).type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED)
+            for ws in (ws1,ws2):
+                for _ in range(200):
+                    item=await asyncio.wait_for(ws.receive(),3)
+                    if item.type in (aiohttp.WSMsgType.CLOSE,aiohttp.WSMsgType.CLOSED):
+                        break
+                else:
+                    raise AssertionError('socket did not close after buffered replay')
             result['websockets_closed'] = True
             try:
                 await a.get(root+'/v1/capabilities', timeout=aiohttp.ClientTimeout(total=2))

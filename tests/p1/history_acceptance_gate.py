@@ -4,14 +4,15 @@ The old raw core projector negatives remain in compression-*.json. They do not
 decide whether plugin-owned original references work.
 """
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EVIDENCE = ROOT / 'docs' / 'p1' / 'evidence'
+EVIDENCE = Path(os.environ.get('P1_EVIDENCE_DIR',str(ROOT / 'docs' / 'p1' / 'evidence')))
 runner = json.loads((EVIDENCE / 'runner.json').read_text())
 variants = {mode: json.loads((EVIDENCE / f'runner-{mode}.json').read_text())
             for mode in ('idle', 'rotate')}
-raw = {mode: json.loads((EVIDENCE / f'compression-{mode}.json').read_text())
+raw = {mode: json.loads((ROOT / 'docs' / 'p1' / 'evidence' / f'compression-{mode}.json').read_text())
        for mode in ('inplace', 'rotate', 'idle', 'inplace_idle')}
 preflight = json.loads((EVIDENCE / 'runner-preflight.json').read_text()) if (EVIDENCE / 'runner-preflight.json').exists() else {}
 preflight_repeat = json.loads((EVIDENCE / 'runner-preflight-repeat.json').read_text()) if (EVIDENCE / 'runner-preflight-repeat.json').exists() else {}
@@ -97,7 +98,8 @@ require(midturn.get('tool_called') is True and midturn.get('handler_called') is 
         and midturn.get('summary_http_count',0) > 0 and midturn.get('inactive_core_rows',0) > 0
         and midturn.get('history_exact') is True and midturn.get('bounded_pages_exact') is True
         and midturn.get('cold_exact') is True and midturn.get('branch_excluded') is True
-        and midturn.get('description_init_once') is True,
+        and midturn.get('description_init_once') is True
+        and not midturn.get('messages',{}).get('turn_outcomes'),
         'automatic midturn compression through a real tool loop not proven')
 require(any(m.get('text') == 'P1_FAIL' and m.get('role') == 'user'
             for m in failed.get('page',{}).get('messages',[]))
@@ -106,7 +108,7 @@ require(any(m.get('text') == 'P1_FAIL' and m.get('role') == 'user'
         and bool(failed.get('page',{}).get('turn_outcomes'))
         and not failed.get('page',{}).get('incomplete_turns'),
         'failed GatewayRunner turn user row and outcome not visible')
-require(race.get('busy_after_post_hook') is True and race.get('second_send_status') == 409
+require(race.get('busy_after_post_hook') is True and race.get('second_send_status') == 202
         and race.get('after_release_exact') is True and not race.get('after',{}).get('incomplete_turns'),
         'fast second send entered gateway before owner task completion')
 record = {'gate':'P1-02 complete history lifecycle','passed':not failures,'failures':failures,

@@ -1,0 +1,10 @@
+{
+  "events_after_cursor": 525,
+  "future_foreign_rejected": true,
+  "mode": "offline_sync",
+  "offline_final_visible": true,
+  "read_ref": 2,
+  "revocation_closes_socket": true,
+  "two_ws_clients": true,
+  "unread_count": 0
+}

@@ -36,8 +36,22 @@ def pre_llm_call(**kwargs):
         return None
     turn_id, session_id = kwargs.get('turn_id'), kwargs.get('session_id')
     if turn_id and session_id:
-        _store().bind_turn(turn_id, session_id, _compression_parent(session_id))
+        store=_store()
+        thread_id=store.bind_turn(turn_id, session_id, _compression_parent(session_id))
+        _link_core_user(store,thread_id)
     return None
+
+
+def _link_core_user(store,thread_id):
+    """Clear transient queued body once core persisted its exact inbound user ID."""
+    ingress=store.pending_ingress_id(thread_id) if thread_id else None
+    if not ingress:
+        return
+    with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro',uri=True)) as db:
+        rows=db.execute("SELECT id FROM messages WHERE role='user' AND platform_message_id=? LIMIT 2",
+                        (ingress,)).fetchall()
+    if len(rows)==1:
+        store.link_user_receipt(ingress,rows[0][0])
 
 
 def post_tool_call(**kwargs):
@@ -126,6 +140,7 @@ def post_llm_call(**kwargs):
         return None
     store = _store()
     thread_id = store.bind_turn(turn_id, session_id)
+    _link_core_user(store,thread_id)
     if thread_id is None:
         log.error('unmapped Hermes App post_llm_call session=%s turn=%s', session_id, turn_id)
         return None

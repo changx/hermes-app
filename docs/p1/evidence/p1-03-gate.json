@@ -1,0 +1,22 @@
+{
+  "active_profile_untouched": true,
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "core_source_unchanged": true,
+  "delivery_modes": [
+    "queued",
+    "tool",
+    "final",
+    "offline_sync"
+  ],
+  "full_suite": "32 passed in 148.43s",
+  "gate": "P1-03 local delivery and durable sync",
+  "midturn_completed": true,
+  "midturn_visible_row_ids": [
+    "17",
+    "18",
+    "20",
+    "29",
+    "36"
+  ],
+  "p1_02_strict_gate": true
+}

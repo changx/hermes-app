@@ -1,0 +1,11 @@
+{
+  "hook_order_verified": true,
+  "mode": "final",
+  "model_requests_after": 1,
+  "model_requests_before": 1,
+  "queued_recovered": false,
+  "receipt": "rc_af1eaad2440ad429140386b301295650",
+  "replayed_events": 3,
+  "state": "unknown",
+  "visible_messages": 2
+}
