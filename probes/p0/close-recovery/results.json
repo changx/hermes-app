@@ -1,0 +1,233 @@
+{
+  "checks": {
+    "cold_page_equivalence": true,
+    "independent_readers": true,
+    "at_least_one_executor_admission": true,
+    "gap_recovered_once": true
+  },
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "phases": [
+    {
+      "phase": "initial",
+      "exit": 0,
+      "stderr": "shared-state.db (hosted_rooms): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nshared-state.db (room policy checkpoint): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nstate.db (hosted_room_driver): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\n",
+      "stdout": ""
+    },
+    {
+      "phase": "cold",
+      "exit": 0,
+      "stderr": "shared-state.db (hosted_rooms): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nshared-state.db (room policy checkpoint): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nstate.db (hosted_room_driver): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\n",
+      "stdout": ""
+    },
+    {
+      "phase": "reader",
+      "exit": 0,
+      "stderr": "-state.db (hosted_rooms): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nshared-state.db (room policy checkpoint): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nstate.db (hosted_room_driver): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\n"
+    },
+    {
+      "phase": "reader",
+      "exit": 0,
+      "stderr": "-state.db (hosted_rooms): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nshared-state.db (room policy checkpoint): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\nstate.db (hosted_room_driver): linked SQLite 3.50.4 (interpreter /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python) is vulnerable to the WAL-reset corruption bug (https://sqlite.org/wal.html#walresetbug) \u2014 using journal_mode=DELETE instead of enabling WAL. Upgrade to SQLite 3.51.3+ (or backports 3.50.7 / 3.44.6); Hermes-managed installs can repair the embedded runtime with `hermes update`. See `hermes doctor`. This warning fires once per process per database.\n"
+    }
+  ],
+  "observed": {
+    "initial": {
+      "pid": 2898639,
+      "created": "synthetic-room",
+      "send_seq": [
+        1,
+        1,
+        2
+      ],
+      "send_conflict_code": 4111,
+      "submits": [
+        {
+          "task_id": "dtask:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+          "prompt": "[Discussion: \"synthetic\"] You are @ops, one participant with @hermes and the user.\n\nNew messages in this thread since your last turn (oldest first):\n  User (user): @ops synthetic hello\n\nRules for this Discussion:\n- Reply with one conversational message only when you have something new worth adding.\n- If you have nothing new to add, reply with exactly \"(pass)\".\n- Mention a teammate by handle to pull them into the next round; do not repeat points already made.\n- Never reveal content from private conversations. Your reply is published verbatim.",
+          "generation": 1
+        }
+      ],
+      "events": [
+        {
+          "room_id": "synthetic-room",
+          "seq": 1,
+          "event_id": "user:c78017822f832e02483489363c87e5f77bfdd24b54cb50fdc4c3e04f6a4a6020",
+          "kind": "message.user",
+          "actor": {
+            "id": "desktop",
+            "kind": "user"
+          },
+          "authority_epoch": 1,
+          "payload": {
+            "text": "@ops synthetic hello",
+            "thread_id": "thread-1"
+          },
+          "created_at": 1790325319.0697777,
+          "idempotent": false
+        },
+        {
+          "room_id": "synthetic-room",
+          "seq": 2,
+          "event_id": "user:9f59783006132b770ce3f79ea0588e2e10d3207e26d802042f708fa0d57892d8",
+          "kind": "message.user",
+          "actor": {
+            "id": "desktop",
+            "kind": "user"
+          },
+          "authority_epoch": 1,
+          "payload": {
+            "text": "@ops synthetic hello",
+            "thread_id": "thread-1"
+          },
+          "created_at": 1790325319.289487,
+          "idempotent": false
+        },
+        {
+          "room_id": "synthetic-room",
+          "seq": 3,
+          "event_id": "dmessage:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+          "kind": "message.member",
+          "actor": {
+            "id": "ops",
+            "kind": "member",
+            "profile": "ops"
+          },
+          "authority_epoch": 1,
+          "payload": {
+            "discussion_event_id": "user:c78017822f832e02483489363c87e5f77bfdd24b54cb50fdc4c3e04f6a4a6020",
+            "member_id": "ops",
+            "member_index": 0,
+            "round_index": 0,
+            "task_id": "dtask:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+            "text": "SYNTHETIC_REPLY",
+            "thread_id": "thread-1",
+            "turn_id": "d1.r0.p0.s1.md6be723229724adf08cf2a2d"
+          },
+          "created_at": 1790325319.3079588,
+          "idempotent": false
+        },
+        {
+          "room_id": "synthetic-room",
+          "seq": 4,
+          "event_id": "dterminal:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+          "kind": "turn.settled",
+          "actor": {
+            "id": "install:71d198742864491d886a86849edee620",
+            "kind": "gateway"
+          },
+          "authority_epoch": 1,
+          "payload": {
+            "discussion_event_id": "user:c78017822f832e02483489363c87e5f77bfdd24b54cb50fdc4c3e04f6a4a6020",
+            "member_id": "ops",
+            "member_index": 0,
+            "message_event_id": "dmessage:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+            "passed": false,
+            "round_index": 0,
+            "seen_through_seq": 1,
+            "task_id": "dtask:a2ddb8ae728861c8571e272cece35e56a18a28b851f531de",
+            "thread_id": "thread-1",
+            "turn_id": "d1.r0.p0.s1.md6be723229724adf08cf2a2d"
+          },
+          "created_at": 1790325319.3109982,
+          "idempotent": false
+        },
+        {
+          "room_id": "synthetic-room",
+          "seq": 5,
+          "event_id": "dactivity:user:9f59783006132b770ce3f79ea0588e2e10d3207e26d802042f708fa0d57892d8:silent_round",
+          "kind": "room.activity",
+          "actor": {
+            "id": "install:71d198742864491d886a86849edee620",
+            "kind": "gateway"
+          },
+          "authority_epoch": 1,
+          "payload": {
+            "discussion_event_id": "user:9f59783006132b770ce3f79ea0588e2e10d3207e26d802042f708fa0d57892d8",
+            "reason_code": "silent_round",
+            "status": "settled",
+            "thread_id": "thread-1"
+          },
+          "created_at": 1790325319.3415096,
+          "idempotent": false
+        }
+      ],
+      "cursor": 5,
+      "driver_status": {
+        "running": true,
+        "working": false,
+        "blocked": false,
+        "counts": {
+          "settled": 1
+        },
+        "pending_actions": [],
+        "peer_routes": []
+      }
+    },
+    "cold": {
+      "pid": 2898659,
+      "page1_seq": [
+        1,
+        2
+      ],
+      "all_seq": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "cursor": 5,
+      "replay_seq": 1,
+      "future_error": {
+        "code": 4112,
+        "message": "since_seq is ahead of the hosted room log"
+      },
+      "gap_seq": 6,
+      "gap_after_kinds": [
+        "message.user",
+        "message.member",
+        "turn.settled"
+      ],
+      "cold_submits": [
+        {
+          "task_id": "dtask:cb6c82744ef089a1734ad25146826637c5228139dc43e169",
+          "prompt": "[Discussion: \"synthetic\"] You are @ops, one participant with @hermes and the user.\n\nNew messages in this thread since your last turn (oldest first):\n  User (user): @ops synthetic after-gap\n\nRules for this Discussion:\n- Reply with one conversational message only when you have something new worth adding.\n- If you have nothing new to add, reply with exactly \"(pass)\".\n- Mention a teammate by handle to pull them into the next round; do not repeat points already made.\n- Never reveal content from private conversations. Your reply is published verbatim.",
+          "generation": 1
+        }
+      ]
+    }
+  },
+  "readers": [
+    {
+      "pid": 2898683,
+      "seq": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "cursor": 9
+    },
+    {
+      "pid": 2898681,
+      "seq": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "cursor": 9
+    }
+  ],
+  "all_phases_pass": true
+}
