@@ -1,5 +1,13 @@
 # P1-03 第二 gate：持久接收、恢复与同步
 
+## Controller 审查修复（2026-09-25）
+
+在原第二 gate 后修复四处边界：空队列 claim 与新接收交错时的漏唤醒，以及旧任务回调误删新 owner；同轮压缩复制用户锚点后、最终行已持久但 post hook 尚未发布时的崩溃恢复；Channel 创建、名称/Description 编辑与删除的持久失效事件；Thread 归档后已接收请求的幂等重试和新请求的事务内拒绝。恢复只查询当前 Thread 已关联的 session，保留旧引用序号，缺失 final 才补引用和事件。执行结束未证实时收据继续保持 `unknown`，不会重新执行模型或工具。Channel 正文由 ProjectDB 提供，插件只保存摘要、版本及事件；两库之间的崩溃窗口由启动及读取时对账修复，短暂断线仍需按游标追增量。
+
+本次任务作用域证据：`delivery-channels.json`、`delivery-compact-final-crash.json`。前者由两个真实 HTTP/WS 客户端验证 Channel 创建、改名、Description 编辑、删除和 Thread 创建、归档的实时事件及离线游标补齐；后者以真实隔离 GatewayRunner、合成模型和三次工具调用触发同轮压缩，在核心 final 已持久、插件原始 interim 引用已发布时 SIGSTOP/SIGKILL，然后重启确认原始顺序、final 唯一补发、游标有效、无额外模型/工具调用。该场景仍不证明真实外部工具的跨进程 exactly once。合成 scheduler/数据库单元测试覆盖空 claim 竞态和复制锚点，不替代真实 Gateway 崩溃验证。
+
+最终完整 `tests/p1` 为 `39 passed in 158.13s`；相同任务作用域证据目录运行严格 `history_acceptance_gate.py` 得到 `passed:true`、`failures:[]`。命令以固定基线 `.venv`、`uv --offline`、`TMPDIR` 和 `P1_EVIDENCE_DIR` 在下文格式执行，证据目录为 `/home/hermes/.hermes/profiles/jamie/cache/scratch/p1-review-03`。原 P1-02 JSON 工作树改动及未跟踪诊断日志为既有控制器/worker 资料，本次提交不包含。
+
 日期：2026-09-25。**本地实现已提交待主控独立复核；卡片保持运行，不由本 worker 关闭。** 固定 Hermes 核心基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，只读使用；未修改核心、安装活动 profile、部署、推送或调用付费模型。精确 HTTP/WS 契约及源码边界见 [protocol.md](protocol.md)。
 
 ## 已实现并实测

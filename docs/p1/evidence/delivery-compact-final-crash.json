@@ -1,0 +1,15 @@
+{
+  "copied_anchors": 2,
+  "final_replayed_once": true,
+  "final_row_id": 26,
+  "mode": "compact_final_crash",
+  "model_requests_after_restart": 0,
+  "prekill_refs": [
+    12,
+    13,
+    15,
+    24
+  ],
+  "receipt_state": "unknown",
+  "tool_calls": 3
+}

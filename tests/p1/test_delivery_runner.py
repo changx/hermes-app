@@ -20,13 +20,16 @@ TOKEN='synthetic-p1-test-token-with-32-characters'
 
 
 def _env(root):
-    return {'PATH':'/usr/local/bin:/usr/bin:/bin','HOME':str(root),'HERMES_HOME':str(root/'h'),
+    env={'PATH':'/usr/local/bin:/usr/bin:/bin','HOME':str(root),'HERMES_HOME':str(root/'h'),
             'XDG_CONFIG_HOME':str(root/'x'),'XDG_DATA_HOME':str(root/'d'),
             'TMPDIR':os.environ.get('TMPDIR','/tmp'),'PYTHONPATH':str(BASE),
             'PYTHONDONTWRITEBYTECODE':'1','PYTHONNOUSERSITE':'1','TIRITH_ENABLED':'false',
             'HERMES_APP_TOKEN':TOKEN,'HERMES_APP_ALLOWED_USERS':'owner',
             'LANG':'C.UTF-8','HTTP_PROXY':'http://127.0.0.1:1',
             'HTTPS_PROXY':'http://127.0.0.1:1','NO_PROXY':'localhost,127.0.0.1,::1'}
+    if (root/'compact-crash').exists():
+        env['P1_COMPACT_CRASH']='1'
+    return env
 
 
 async def _wait(path, proc=None, seconds=35):
@@ -328,5 +331,157 @@ def test_real_offline_sync_and_read():
         _assert_artifact_bound(root)
         EVIDENCE.mkdir(parents=True,exist_ok=True)
         (EVIDENCE/'delivery-offline-sync.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+    finally:
+        shutil.rmtree(root)
+
+
+async def _channel_changes(root):
+    proc,log,url=await _start(root,'channels')
+    try:
+        async with aiohttp.ClientSession(headers={'Authorization':'Bearer '+TOKEN}) as first, \
+                   aiohttp.ClientSession(headers={'Authorization':'Bearer '+TOKEN}) as second:
+            status,snapshot=await _get(second,url+'/v1/snapshot')
+            assert status==200
+            start=snapshot['waterline']
+            ws=await second.ws_connect(url.replace('http:','ws:')+'/v1/events?cursor='+start)
+            assert (await ws.receive_json())['type']=='hello'
+            status,data=await _post(first,url+'/v1/channels',{'name':'Shared','description':'initial'})
+            assert status==201,data
+            cid=data['channel']['id']
+            for change in ({'name':'Renamed'},{'description':'edited'}):
+                async with first.patch(url+f'/v1/channels/{cid}',json=change) as response:
+                    assert response.status==200,await response.text()
+            status,data=await _post(first,url+f'/v1/channels/{cid}/threads',{'title':'Work'})
+            assert status==201,data
+            tid=data['thread']['id']
+            async with first.delete(url+f'/v1/threads/{tid}') as response:
+                assert response.status==200,await response.text()
+            status,data=await _post(first,url+'/v1/channels',{'name':'Disposable'})
+            assert status==201,data
+            deleted=data['channel']['id']
+            async with first.delete(url+f'/v1/channels/{deleted}') as response:
+                assert response.status==200,await response.text()
+            live=[]
+            for _ in range(7):
+                item=await asyncio.wait_for(ws.receive_json(),5)
+                assert item['type']=='event',item
+                live.append(item)
+            assert [(e['kind'],e['ref']) for e in live]==[
+                ('channel',cid),('channel',cid),('channel',cid),
+                ('thread',tid),('thread',tid),('channel',deleted),('channel',deleted)]
+            assert [e['version'] for e in live if e['ref']==cid]==[1,2,3]
+            assert [e['version'] for e in live if e['ref']==deleted]==[1,2]
+            await ws.close()
+            status,channels=await _get(second,url+'/v1/channels')
+            assert status==200
+            assert [(p['id'],p['name'],p['description']) for p in channels['channels']]==[
+                (cid,'Renamed','edited')]
+            status,thread=await _get(second,url+f'/v1/threads/{tid}')
+            assert status==200 and thread['thread']['archived']==1
+            status,page=await _get(second,url+'/v1/sync?cursor='+start)
+            assert status==200 and page['events']==[
+                {key:value for key,value in event.items() if key!='type'} for event in live]
+            assert page['next_cursor']==page['waterline']
+            status,later=await _get(second,url+'/v1/snapshot')
+            assert status==200 and later['waterline']==page['waterline']
+            return {'events':len(live),'channel_versions':[1,2,3],
+                    'deleted_versions':[1,2],'thread_archived':True,
+                    'two_clients':True,'catchup_exact':True}
+    finally:
+        _kill(proc,log)
+
+
+def test_real_two_client_channel_thread_changes():
+    root=Path(tempfile.mkdtemp(prefix='p103-channels-',dir=os.environ['TMPDIR']))
+    (root/'h').mkdir()
+    try:
+        result=asyncio.run(_channel_changes(root))
+        _assert_artifact_bound(root)
+        EVIDENCE.mkdir(parents=True,exist_ok=True)
+        (EVIDENCE/'delivery-channels.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+    finally:
+        shutil.rmtree(root)
+
+
+async def _compact_final_crash(root):
+    home=root/'h'
+    (root/'compact-crash').write_text('1')
+    proc,log,url=await _start(root,'compact-before')
+    try:
+        async with aiohttp.ClientSession(headers={'Authorization':'Bearer '+TOKEN}) as client:
+            tid=await _new_thread(client,url)
+            endpoint=url+f'/v1/threads/{tid}/messages'
+            for index in range(5):
+                status,data=await _post(client,endpoint,{
+                    'client_message_id':f'compact-seed-{index}',
+                    'text':f'P1_SEED_{index} '+'seed '*90})
+                assert status==202,data
+                await _receipt(client,url,data['receipt']['id'],'completed',seconds=40)
+            cursor=(await _get(client,url+'/v1/sync'))[1]['waterline']
+            status,data=await _post(client,endpoint,{
+                'client_message_id':'compact-final','text':'P1_COMPACT_FINAL_WINDOW'})
+            assert status==202,data
+            receipt=data['receipt']['id']
+            await _wait(home/'final-hook-marker',proc,seconds=60)
+            assert (home/'tool-marker').read_text().splitlines()==['called']*3
+            assert (home/'compact-aux-marker').exists()
+            with sqlite3.connect(home/'state.db') as core:
+                anchors=core.execute('SELECT id FROM messages WHERE platform_message_id=? ORDER BY id',
+                                     (receipt,)).fetchall()
+                final=core.execute("SELECT id FROM messages WHERE role='assistant' "
+                                   "AND content LIKE '%SYNTHETIC_P1_FINAL%' ORDER BY id DESC LIMIT 1").fetchone()
+                assert len(anchors)>=2 and final,anchors
+                final_id=final[0]
+            with sqlite3.connect(home/'hermes-app'/'metadata.sqlite') as meta:
+                turn=meta.execute('SELECT turn_id FROM ingress_links WHERE ingress_id=?',
+                                  ('ingress:'+receipt,)).fetchone()
+                assert turn
+                before_refs=meta.execute('SELECT seq,row_id FROM message_refs WHERE turn_id=? ORDER BY seq',
+                                         turn).fetchall()
+                assert len(before_refs)>=2 and before_refs[0][1]==anchors[0][0]
+                assert final_id not in [r[1] for r in before_refs]
+            requests_before=len(_requests(home))
+            _kill(proc,log);proc=None
+            proc,log,url=await _start(root,'compact-after')
+            await _receipt(client,url,receipt,'unknown')
+            status,page=await _get(client,url+f'/v1/threads/{tid}/messages?limit=100')
+            assert status==200,page
+            assert [(m['role'],m['text']) for m in page['messages'][-5:]]==[
+                ('user','P1_COMPACT_FINAL_WINDOW'),('assistant','P1_INTERIM_1'),
+                ('assistant','P1_INTERIM_2'),('assistant','P1_INTERIM_3'),
+                ('assistant','SYNTHETIC_P1_FINAL')],page
+            assert [m['id'] for m in page['messages'][-5:-1]]==[
+                str(row_id) for _,row_id in before_refs]
+            assert page['messages'][-1]['id']==str(final_id)
+            status,replay=await _get(client,url+'/v1/sync?cursor='+cursor)
+            assert status==200,replay
+            final_events=[e for e in replay['events'] if e['kind']=='message' and
+                          e['ref']==str(page['messages'][-1]['ref_seq'])]
+            assert len(final_events)==1,replay
+            assert len(_requests(home))==requests_before
+            assert (home/'tool-marker').read_text().splitlines()==['called']*3
+            return {'mode':'compact_final_crash','tool_calls':3,'copied_anchors':len(anchors),
+                    'prekill_refs':[r[1] for r in before_refs],'final_row_id':final_id,
+                    'final_replayed_once':True,'model_requests_after_restart':0,
+                    'receipt_state':'unknown'}
+    finally:
+        if proc is not None:
+            _kill(proc,log)
+
+
+def test_real_compacted_multitool_final_crash_recovery():
+    root=Path(tempfile.mkdtemp(prefix='p103-compact-crash-',dir=os.environ['TMPDIR']))
+    (root/'h').mkdir()
+    try:
+        result=asyncio.run(_compact_final_crash(root))
+        _assert_artifact_bound(root)
+        EVIDENCE.mkdir(parents=True,exist_ok=True)
+        (EVIDENCE/'delivery-compact-final-crash.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+    except BaseException:
+        EVIDENCE.mkdir(parents=True,exist_ok=True)
+        logs='\n'.join(p.name+'\n'+p.read_text(errors='replace')[-15000:]
+                       for p in root.glob('child-*.log'))
+        (EVIDENCE/'delivery-compact-final-crash-failure.log').write_text(logs[-30000:])
+        raise
     finally:
         shutil.rmtree(root)

@@ -22,11 +22,13 @@ class Model(BaseHTTPRequestHandler):
         request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         latest=next((str(m.get('content','')) for m in reversed(request.get('messages',[]))
                      if m.get('role')=='user'),'')
+        compact=os.environ.get('P1_COMPACT_CRASH')=='1'
         block='P1_BLOCK' in latest and not (HOME/'model-block-once').exists()
         if block:
             (HOME/'model-block-once').write_text('1')
         with (HOME/'model-requests.jsonl').open('a') as stream:
             stream.write(json.dumps({'blocked':block,'tool':'P1_TOOL_WINDOW' in latest,
+                                      'compact':'P1_COMPACT_FINAL_WINDOW' in json.dumps(request.get('messages',[])),
                                       'final':'P1_FINAL_WINDOW' in latest,'latest':latest[:200]})+'\n')
             stream.flush(); os.fsync(stream.fileno())
         if block:
@@ -34,10 +36,17 @@ class Model(BaseHTTPRequestHandler):
             while not (HOME/'model-release').exists() and time.monotonic()<deadline:
                 time.sleep(.02)
         call_tool=('P1_TOOL_WINDOW' in latest and not any(m.get('role')=='tool' for m in request.get('messages',[])))
-        answer='SYNTHETIC_P1_FINAL' if not call_tool else 'P1_TOOL_INTERIM'
-        call={'index':0,'id':'p1_crash_call','type':'function',
+        if (compact and self.server.tool_calls<3 and
+                any('p1_marker' in json.dumps(tool) for tool in request.get('tools',[])) and
+                ('P1_COMPACT_FINAL_WINDOW' in json.dumps(request.get('messages',[])) or self.server.tool_calls>0)):
+            self.server.tool_calls+=1
+            call_tool=True
+        answer='SYNTHETIC_P1_FINAL' if not call_tool else (
+            f'P1_INTERIM_{self.server.tool_calls}' if compact else 'P1_TOOL_INTERIM')
+        call={'index':0,'id':f'p1_crash_call_{self.server.tool_calls}' if compact else 'p1_crash_call','type':'function',
               'function':{'name':'p1_marker','arguments':'{}'}}
-        usage={'prompt_tokens':30,'completion_tokens':5,'total_tokens':35}
+        prompt_tokens=max(30,len(json.dumps(request.get('messages',[])))//4) if compact else 30
+        usage={'prompt_tokens':prompt_tokens,'completion_tokens':5,'total_tokens':prompt_tokens+5}
         if request.get('stream'):
             chunks=[{'id':'s','object':'chat.completion.chunk','model':'p1-local',
                      'choices':[{'index':0,'delta':{'role':'assistant','content':answer},'finish_reason':None}]},
@@ -72,12 +81,17 @@ async def main():
     shutil.copytree(ROOT/'plugins'/'hermes_app',HOME/'plugins'/'hermes-app',dirs_exist_ok=True)
     shutil.copytree(Path(__file__).with_name('crash_hook_plugin'),HOME/'plugins'/'a-p1-crash-hook',dirs_exist_ok=True)
     model=ThreadingHTTPServer(('127.0.0.1',0),Model)
+    model.tool_calls=0
     worker=threading.Thread(target=model.serve_forever,daemon=True)
     worker.start()
+    compression_cfg=(
+        'compression:\n  enabled: true\n  in_place: true\n  threshold_tokens: 2300\n'
+        '  protect_first_n: 1\n  protect_last_n: 2\n  tail_mode: legacy\n'
+        if os.environ.get('P1_COMPACT_CRASH')=='1' else 'compression:\n  enabled: false\n')
     (HOME/'config.yaml').write_text(
         'model:\n  provider: custom\n  default: p1-local\n  context_length: 65536\n'
         f'  base_url: http://127.0.0.1:{model.server_port}/v1\n'
-        'compression:\n  enabled: false\n'
+        + compression_cfg +
         'auxiliary:\n  title_generation:\n    enabled: false\n'
         'security:\n  tirith_enabled: false\n'
         'platform_toolsets:\n  hermes_app: [p1_crash]\n'

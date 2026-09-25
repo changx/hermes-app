@@ -6,17 +6,19 @@
 
 `POST /v1/threads/{thread_id}/messages` 请求为 `{"client_message_id":"设备生成的唯一 ID","text":"正文"}`。ID 限 1–128 个 ASCII 字母、数字、`-_.:`；正文 UTF-8 最多 16000 字节且非空。成功返回 HTTP 202 和 `{"receipt":{"id":"rc_...","client_message_id":"...","thread_id":"...","state":"queued","durable":true}}`。202 是**持久 accepted 确认**；`state` 描述执行阶段，可能在响应送出前已经前进。`GET /v1/receipts/{id}` 返回当前收据。
 
-同一 `client_message_id`、Thread 和原始正文重试返回原收据，绝不再次派发；改正文或 Thread 返回 409。两次独立发送须使用不同 ID，即使正文相同。正文 SHA-256 仅检查重试载荷一致性，不作消息身份或历史去重。收据 ID 由服务端生成、不透明。接收、临时队列正文及一条 `receipt` 同步事件在同一 SQLite `BEGIN IMMEDIATE` 事务提交后才确认。队列正文只用于交接；以核心 `messages.platform_message_id=receipt.id` 找到原始用户行后清空。核心 SessionDB 是唯一聊天正文来源；同步事件只有引用、版本与状态，不含正文。
+同一 `client_message_id`、Thread 和原始正文重试返回原收据，绝不再次派发，Thread 归档后亦然；归档后新 ID 发送返回 409。归档检查与接收写入同一事务；改正文或 Thread 返回 409。两次独立发送须使用不同 ID，即使正文相同。正文 SHA-256 仅检查重试载荷一致性，不作消息身份或历史去重。收据 ID 由服务端生成、不透明。接收、临时队列正文及一条 `receipt` 同步事件在同一 SQLite `BEGIN IMMEDIATE` 事务提交后才确认。队列正文只用于交接；以核心 `messages.platform_message_id=receipt.id` 找到原始用户行后清空。核心 SessionDB 是唯一聊天正文来源；同步事件只有引用、版本与状态，不含正文。
 
 每 Thread 同时最多 32 条 `queued/running` 收据，满队列返回 429；请求体上限 64 KiB。普通发送按接收顺序排队，单 Thread 只向核心派发一个 owner；不同 Thread 可以并发。状态为 `queued`、`running`、`completed`、`failed`、`interrupted`、`unknown`。`unknown` 表示执行/副作用边界无法证实，不能自动重试模型或工具；重试相同 client ID 仍返回原收据。崩溃时已经开始的收据变 `unknown`，尚未开始的 `queued` 在重启后重新派发。旧 `unknown` 队首不阻止后续真实 `queued`：它保留原接收顺序和可见状态，执行调度跳过它，不伪称旧执行成功。
 
-实时完成仅在确切 Gateway owner task 结束后结算。正式 `post_llm_call` 的成功原始行引用，或该 owner 已结束且精确入站用户 ID 与 SessionDB `assistant.finish_reason='stop'`、无 tool call 的最终行共同证明完成；失败/中断 hook 仍优先。压缩复制行不覆盖正式 hook 记录的原始引用。重启时若 final 已持久而插件还未写通知，插件按精确入站 ID 补可见原始行引用并发缺失 `message` 事件；没有可恢复的 owner 结束证据时执行仍为 `unknown`。一个已存在的 assistant/interim 行本身不构成完成证明。
+实时完成仅在确切 Gateway owner task 结束后结算。正式 `post_llm_call` 的成功原始行引用，或该 owner 已结束且精确入站用户 ID 与 SessionDB `assistant.finish_reason='stop'`、无 tool call 的最终行共同证明完成；失败/中断 hook 仍优先。压缩复制行不覆盖正式 hook 记录的原始引用。重启时按 Thread 已拥有的 session 和已发布原始用户锚点继续查找，保留原有引用顺序，并为已落库但未发布的 final 补一条 `message` 事件；复制的用户行不成为第二条可见消息。没有可恢复的 owner 结束证据时执行仍为 `unknown`。一个已存在的 assistant/interim 行本身不构成完成证明。
 
 ## 历史、快照与增量
 
 `GET /v1/threads/{id}/messages?after=<cursor>&limit=1..100` 返回核心可见投影，每条含稳定 `ref_seq`、核心原始 `id`、`role`、`text`。`ref_seq` 是已发布逻辑引用，压缩复制行不会改写已发序号。缺失原始行返回 409；不以摘要伪造原文。
 
 `GET /v1/snapshot?after=<opaque>&limit=1..100` 返回有界 Thread 元数据、最后可见引用、已读引用、实际可见未读数、`next_after` 和在同一 SQLite 读事务取得的准确 `waterline`。分页的每个响应各有水位；客户端先保存首页水位，分页结束后从该水位调用增量即可补上分页期间的变化。
+
+Channel 正文仍由 Hermes ProjectDB 管理，`GET /v1/channels` 返回当前权威列表。Channel 创建、改名、Description 编辑、删除各写一条持久 `kind=channel` 失效事件，`thread_id` 为空，`ref` 为 Project ID，`version` 按该 ID 递增；删除后列表不再包含该 ID。Thread 创建和归档沿用 `kind=thread` 事件。初次连接先取 `/v1/snapshot` 保存首页水位，再取 `/v1/channels`，最后从该水位追 `/v1/sync`；增量收到 Channel 事件后重取 `/v1/channels`，收到 Thread 事件后取对应 Thread 或快照。Project 写入与插件事件之间若崩溃，启动时按 ProjectDB 对账补事件；`/v1/sync`、`/v1/snapshot` 和 `/v1/channels` 读取前也会对账。两库不共享事务，短暂断开需从游标补齐。
 
 `GET /v1/sync?cursor=<opaque>&limit=1..200` 返回全局持久事件页：`events`、`waterline`、`next_cursor`、`has_more`。无 cursor 表示从头读。每条事件含递增 `event_id`、`cursor`、`kind`、`thread_id`、不透明或数字引用 `ref` 与 `version`。事件只含引用，客户端按需要取收据、快照或历史。cursor 绑定固定 owner/profile 元数据库路径指纹；无效、外 profile、未来或不存在的序号返回 400，必须重新取快照，绝不静默返回空数组。
 

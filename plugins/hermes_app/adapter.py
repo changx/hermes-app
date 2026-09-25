@@ -66,6 +66,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._store = _store()
         self._settlement_tasks = set()
         self._queue_tasks = {}
+        self._queue_wakes = {}
+        self._channel_refresh_lock = asyncio.Lock()
         self._events_changed = asyncio.Event()
         self._stopping = False
         self.port = None
@@ -118,6 +120,7 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise
         self._mark_connected()
         self._stopping = False
+        await self._refresh_channels()
         for thread_id in await asyncio.to_thread(self._store.recover_receipts,get_hermes_home()/'state.db'):
             self._wake_thread(thread_id)
         return True
@@ -194,6 +197,7 @@ class HermesAppAdapter(BasePlatformAdapter):
                     return [p.to_dict() for p in projects_db.list_projects(conn, include_archived=True)]
                 return None
         if request.method == 'GET':
+            await self._refresh_channels()
             return web.json_response({'channels': await asyncio.to_thread(operation)})
         body = await _body(request)
         name = body.get('name')
@@ -206,7 +210,9 @@ class HermesAppAdapter(BasePlatformAdapter):
             with projects_db.connect_closing() as conn:
                 pid = projects_db.create_project(conn, name=name, description=description)
                 return projects_db.get_project(conn, pid).to_dict()
-        return web.json_response({'channel': await asyncio.to_thread(create)}, status=201)
+        channel = await asyncio.to_thread(create)
+        await self._refresh_channels()
+        return web.json_response({'channel': channel}, status=201)
 
     async def _channel(self, request):
         cid = request.match_info['id']
@@ -236,7 +242,19 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPNotFound()
         if result == 'has_threads':
             raise web.HTTPConflict(text='channel has threads')
+        await self._refresh_channels()
         return web.json_response(result)
+
+    async def _refresh_channels(self):
+        # ProjectDB is authoritative. Reconciliation also repairs a crash in the
+        # gap between its write and the plugin's change event.
+        async with self._channel_refresh_lock:
+            def refresh():
+                with projects_db.connect_closing() as conn:
+                    channels = [p.to_dict() for p in projects_db.list_projects(conn, include_archived=True)]
+                return self._store.reconcile_channels(channels)
+            if await asyncio.to_thread(refresh):
+                self._events_changed.set()
 
     async def _threads(self, request):
         cid = request.match_info['id']
@@ -288,9 +306,6 @@ class HermesAppAdapter(BasePlatformAdapter):
         if self._stopping:
             raise web.HTTPServiceUnavailable(text='adapter stopping')
         tid = request.match_info['id']
-        thread = self._store.get_thread(tid)
-        if thread is None or thread['archived']:
-            raise web.HTTPNotFound()
         body = await _body(request)
         content = body.get('text')
         client_id = body.get('client_message_id')
@@ -303,6 +318,10 @@ class HermesAppAdapter(BasePlatformAdapter):
         except ValueError as exc:
             if 'conflict' in str(exc):
                 raise web.HTTPConflict(text=str(exc)) from exc
+            if 'archived' in str(exc):
+                raise web.HTTPConflict(text=str(exc)) from exc
+            if 'unknown thread' in str(exc):
+                raise web.HTTPNotFound() from exc
             raise web.HTTPBadRequest(text=str(exc)) from exc
         if created:
             self._events_changed.set()
@@ -310,18 +329,29 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response({'receipt':receipt}, status=202)
 
     def _wake_thread(self, thread_id):
+        self._queue_wakes[thread_id] = self._queue_wakes.get(thread_id, 0) + 1
         task = self._queue_tasks.get(thread_id)
         if task is None or task.done():
             task = asyncio.create_task(self._queue_loop(thread_id))
             self._queue_tasks[thread_id] = task
-            task.add_done_callback(lambda _: self._queue_tasks.pop(thread_id, None))
+            def finished(done):
+                if self._queue_tasks.get(thread_id) is done:
+                    self._queue_tasks.pop(thread_id, None)
+                    self._queue_wakes.pop(thread_id, None)
+                if not done.cancelled() and done.exception() is not None:
+                    log.error('Hermes App queue owner failed for %s', thread_id,
+                              exc_info=done.exception())
+            task.add_done_callback(finished)
 
     async def _queue_loop(self, thread_id):
         while not self._stopping:
             while self._gateway_starting():
                 await asyncio.sleep(.05)
+            generation = self._queue_wakes.get(thread_id, 0)
             claim = await asyncio.to_thread(self._store.claim_next, thread_id)
             if claim is None:
+                if generation != self._queue_wakes.get(thread_id, 0):
+                    continue
                 return
             receipt_id, content = claim
             self._events_changed.set()
@@ -378,6 +408,7 @@ class HermesAppAdapter(BasePlatformAdapter):
 
     async def _sync(self, request):
         try:
+            await self._refresh_channels()
             limit = int(request.query.get('limit','100'))
             page = await asyncio.to_thread(self._store.sync_page,cursor=request.query.get('cursor'),limit=limit)
         except (ValueError,TypeError) as exc:
@@ -386,6 +417,7 @@ class HermesAppAdapter(BasePlatformAdapter):
 
     async def _snapshot(self,request):
         try:
+            await self._refresh_channels()
             limit=int(request.query.get('limit','50'))
             page=await asyncio.to_thread(self._store.snapshot,after=request.query.get('after'),limit=limit)
         except (ValueError,TypeError) as exc:

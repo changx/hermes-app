@@ -1,0 +1,15 @@
+{
+  "catchup_exact": true,
+  "channel_versions": [
+    1,
+    2,
+    3
+  ],
+  "deleted_versions": [
+    1,
+    2
+  ],
+  "events": 7,
+  "thread_archived": true,
+  "two_clients": true
+}

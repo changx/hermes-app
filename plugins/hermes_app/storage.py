@@ -61,6 +61,9 @@ class Store:
                     thread_id TEXT NOT NULL, ref TEXT NOT NULL, version INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS read_positions (
                     thread_id TEXT PRIMARY KEY REFERENCES threads(id), ref_seq INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS channel_versions (
+                    id TEXT PRIMARY KEY, digest TEXT NOT NULL, version INTEGER NOT NULL,
+                    deleted INTEGER NOT NULL DEFAULT 0);
                 CREATE TRIGGER IF NOT EXISTS published_ref AFTER INSERT ON message_refs BEGIN
                     INSERT INTO sync_events(kind,thread_id,ref,version)
                     VALUES ('message',NEW.thread_id,CAST(NEW.seq AS TEXT),1);
@@ -102,6 +105,11 @@ class Store:
                 if row['thread_id'] != thread_id or row['payload_hash'] != digest:
                     raise ValueError('client_message_id conflict')
                 return self._receipt(row), False
+            thread = db.execute('SELECT archived FROM threads WHERE id=?', (thread_id,)).fetchone()
+            if thread is None:
+                raise ValueError('unknown thread')
+            if thread['archived']:
+                raise ValueError('thread archived')
             pending = db.execute("SELECT COUNT(*) FROM receipts WHERE thread_id=? AND state IN ('queued','running')",
                                  (thread_id,)).fetchone()[0]
             if pending >= 32:
@@ -122,6 +130,34 @@ class Store:
         with self._connect() as db:
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             return self._receipt(row) if row else None
+
+    def reconcile_channels(self, channels):
+        """Durable ProjectDB invalidations; no channel body is duplicated here."""
+        digests = {channel['id']: hashlib.sha256(json.dumps(
+            channel, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+                   for channel in channels}
+        changed = False
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            previous = {row['id']: row for row in db.execute('SELECT * FROM channel_versions')}
+            for channel_id, digest in digests.items():
+                old = previous.get(channel_id)
+                if old is not None and old['digest'] == digest and not old['deleted']:
+                    continue
+                version = old['version'] + 1 if old else 1
+                db.execute('INSERT INTO channel_versions(id,digest,version,deleted) VALUES (?,?,?,0) '
+                           'ON CONFLICT(id) DO UPDATE SET digest=excluded.digest,version=excluded.version,deleted=0',
+                           (channel_id, digest, version))
+                self._event(db, 'channel', '', channel_id, version)
+                changed = True
+            for channel_id, old in previous.items():
+                if channel_id not in digests and not old['deleted']:
+                    version = old['version'] + 1
+                    db.execute('UPDATE channel_versions SET deleted=1,version=? WHERE id=?',
+                               (version, channel_id))
+                    self._event(db, 'channel', '', channel_id, version)
+                    changed = True
+        return changed
 
     def recover_receipts(self, source_db=None):
         if source_db and Path(source_db).exists():
@@ -144,32 +180,66 @@ class Store:
     def _recover_visible_result(self, receipt_id, thread_id, source_db):
         """Publish exact core rows after a crash, retaining uncertain execution state."""
         from .projection import visible_text
+        with self._connect() as db:
+            sessions = [r['session_id'] for r in db.execute(
+                'SELECT session_id FROM session_links WHERE thread_id=?', (thread_id,))]
+            linked = db.execute('SELECT turn_id FROM ingress_links WHERE ingress_id=?',
+                                ('ingress:' + receipt_id,)).fetchone()
+            turn_id = linked['turn_id'] if linked else 'settled:' + receipt_id
+            old = [(r['session_id'], r['row_id'], r['role']) for r in db.execute(
+                'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq',
+                (turn_id,))]
+            receipt = db.execute('SELECT user_row_id FROM receipts WHERE id=? AND thread_id=?',
+                                 (receipt_id, thread_id)).fetchone()
+        if not sessions or receipt is None:
+            return
+        marks = ','.join('?' for _ in sessions)
         with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
             source.row_factory=sqlite3.Row
-            anchors=source.execute("SELECT * FROM messages WHERE role='user' AND platform_message_id=?",
-                                   (receipt_id,)).fetchall()
-            if len(anchors)!=1:
+            anchors=source.execute(
+                f"SELECT * FROM messages WHERE session_id IN ({marks}) AND role='user' "
+                'AND platform_message_id=? ORDER BY id', [*sessions, receipt_id]).fetchall()
+            if not anchors:
                 return
-            anchor=anchors[0]
-            next_user=source.execute("SELECT MIN(id) FROM messages WHERE session_id=? AND role='user' "
-                                     "AND platform_message_id IS NOT NULL AND id>?",
-                                     (anchor['session_id'],anchor['id'])).fetchone()[0]
-            final=source.execute("SELECT * FROM messages WHERE session_id=? AND role='assistant' "
-                                 "AND id>? AND id<? AND (tool_calls IS NULL OR tool_calls='[]') "
-                                 "ORDER BY id DESC LIMIT 1",
-                                 (anchor['session_id'],anchor['id'],next_user or 9223372036854775807)).fetchone()
+            anchor = next((r for r in anchors if old and r['id'] == old[0][1] and
+                           r['session_id'] == old[0][0]), None)
+            if anchor is None and receipt['user_row_id'] is not None:
+                anchor = next((r for r in anchors if r['id'] == receipt['user_row_id']), None)
+            anchor = anchor or anchors[0]
+            if old and old[0] != (anchor['session_id'], anchor['id'], 'user'):
+                return
+            next_user=source.execute(
+                f"SELECT MIN(id) FROM messages WHERE session_id IN ({marks}) AND role='user' "
+                'AND platform_message_id IS NOT NULL AND platform_message_id!=? AND id>?',
+                [*sessions, receipt_id, anchor['id']]).fetchone()[0] or 9223372036854775807
+            last = old[-1][1] if old else anchor['id']
+            final=source.execute(
+                f"SELECT * FROM messages WHERE session_id IN ({marks}) AND role='assistant' "
+                "AND id>? AND id<? AND finish_reason='stop' "
+                "AND (tool_calls IS NULL OR tool_calls='[]') ORDER BY id DESC LIMIT 1",
+                [*sessions, last, next_user]).fetchone()
+            initial=[]
+            if not old:
+                first_copy = next((r['id'] for r in anchors if r['id'] > anchor['id']), next_user)
+                initial = source.execute(
+                    f"SELECT * FROM messages WHERE session_id IN ({marks}) AND id>? AND id<? "
+                    "AND role='assistant' ORDER BY id LIMIT 4097",
+                    [*sessions, anchor['id'], min(first_copy, next_user)]).fetchall()
+                if len(initial)>4096:
+                    raise OverflowError('recovery row bound exceeded')
         if visible_text(dict(anchor)) is None:
             return
+        refs = ([] if old else [(anchor['session_id'], anchor['id'], 'user')])
+        refs.extend((r['session_id'], r['id'], 'assistant') for r in initial
+                    if visible_text(dict(r)) is not None)
+        if final and visible_text(dict(final)) is not None and final['id'] > (refs[-1][1] if refs else last):
+            refs.append((final['session_id'], final['id'], 'assistant'))
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            turn=db.execute('SELECT turn_id FROM ingress_links WHERE ingress_id=?',('ingress:'+receipt_id,)).fetchone()
-            turn_id=turn[0] if turn else 'settled:'+receipt_id
             db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'pending')",(turn_id,thread_id))
-            db.execute('INSERT OR IGNORE INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
-                       'VALUES (?,?,?,?,?)',(thread_id,turn_id,anchor['session_id'],anchor['id'],'user'))
-            if final and visible_text(dict(final)) is not None:
+            for session_id, row_id, role in refs:
                 db.execute('INSERT OR IGNORE INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
-                           'VALUES (?,?,?,?,?)',(thread_id,turn_id,final['session_id'],final['id'],'assistant'))
+                           'VALUES (?,?,?,?,?)',(thread_id,turn_id,session_id,row_id,role))
             db.execute('UPDATE receipts SET user_row_id=?,pending_text=NULL WHERE id=?',
                        (anchor['id'],receipt_id))
 
@@ -205,11 +275,23 @@ class Store:
                        (row_id,receipt_id))
 
     def link_user_from_core(self, receipt_id, source_db):
+        with self._connect() as db:
+            receipt=db.execute('SELECT thread_id,user_row_id FROM receipts WHERE id=?',
+                               (receipt_id,)).fetchone()
+            if receipt is None:
+                return False
+            sessions=[r['session_id'] for r in db.execute(
+                'SELECT session_id FROM session_links WHERE thread_id=?',(receipt['thread_id'],))]
+        if not sessions:
+            return False
+        marks=','.join('?' for _ in sessions)
         with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
-            rows=source.execute("SELECT id FROM messages WHERE role='user' AND platform_message_id=? LIMIT 2",
-                                (receipt_id,)).fetchall()
-        if len(rows)==1:
-            self.link_user_receipt(receipt_id,rows[0][0])
+            rows=source.execute(
+                f"SELECT id FROM messages WHERE session_id IN ({marks}) AND role='user' "
+                'AND platform_message_id=? ORDER BY id LIMIT 2', [*sessions,receipt_id]).fetchall()
+        if rows:
+            original=next((r[0] for r in rows if r[0]==receipt['user_row_id']),rows[0][0])
+            self.link_user_receipt(receipt_id,original)
             return True
         return False
 

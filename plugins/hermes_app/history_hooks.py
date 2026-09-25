@@ -45,13 +45,8 @@ def pre_llm_call(**kwargs):
 def _link_core_user(store,thread_id):
     """Clear transient queued body once core persisted its exact inbound user ID."""
     ingress=store.pending_ingress_id(thread_id) if thread_id else None
-    if not ingress:
-        return
-    with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro',uri=True)) as db:
-        rows=db.execute("SELECT id FROM messages WHERE role='user' AND platform_message_id=? LIMIT 2",
-                        (ingress,)).fetchall()
-    if len(rows)==1:
-        store.link_user_receipt(ingress,rows[0][0])
+    if ingress:
+        store.link_user_from_core(ingress,get_hermes_home() / 'state.db')
 
 
 def post_tool_call(**kwargs):
