@@ -1,0 +1,9 @@
+
+> hermes-app-p0-clients-probe@0.0.1 build
+> node build.mjs
+
+
+  dist/renderer/renderer.js  41.6kb
+
+⚡ Done in 11ms
+SDK included: 24 modules; forbidden native inputs: 0

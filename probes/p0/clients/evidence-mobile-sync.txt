@@ -1,0 +1,10 @@
+
+> hermes-app-p0-clients-probe@0.0.1 mobile:sync
+> cap sync android
+
+✔ Copying web assets from renderer to android/app/src/main/assets/public in 4.48ms
+✔ Creating capacitor.config.json in android/app/src/main/assets in 560.75μs
+✔ copy android in 13.02ms
+✔ Updating Android plugins in 503.69μs
+✔ update android in 15.02ms
+[info] Sync finished in 0.034s

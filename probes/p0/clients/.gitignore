@@ -1,0 +1,10 @@
+node_modules/
+dist/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/local.properties
+*.deb
+*.log
+.electron-stage/

@@ -1,0 +1,2 @@
+[2821967:0924/233902.221037:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.systemd1.Manager.StartTransientUnit: object_path= /org/freedesktop/systemd1: org.freedesktop.systemd1.UnitExists: Unit app-org.chromium.Chromium-2821967.scope was already loaded or has a fragment file.
+P0_DESKTOP_SELFTEST_OK {"title":"Hermes App P0 客户端壳验证","state":"连接状态：idle","synthetic":"合成诊断界面："}

@@ -1,0 +1,6 @@
+{
+  "appId": "dev.hermesapp.p0clients",
+  "appName": "Hermes P0 Synthetic Probe",
+  "webDir": "dist/renderer",
+  "server": { "androidScheme": "https" }
+}

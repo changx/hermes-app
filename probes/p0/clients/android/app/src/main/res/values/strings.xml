@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hermes P0 Synthetic Probe</string>
+    <string name="title_activity_main">Hermes P0 Synthetic Probe</string>
+    <string name="package_name">dev.hermesapp.p0clients</string>
+    <string name="custom_url_scheme">dev.hermesapp.p0clients</string>
+</resources>

@@ -1,0 +1,32 @@
+
+ RUN  v4.1.10 /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline
+
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > routes responses to the pending call and keeps JSON-RPC code/data on errors 5ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > ignores the non-object JSON line null without throwing 1ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > ignores the non-object JSON line 42 without throwing 0ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > ignores the non-object JSON line "str" without throwing 0ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > ignores the non-object JSON line true without throwing 0ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > detach fails every in-flight call and a per-call timeout names the method 7ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > 'any-inbound' liveness (desktop/web): pings while frames keep arriving and reports a silent transport 2ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > 'response' liveness (explicit opt-in): unanswered pings fail the heartbeat even while deltas stream 1ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > advertises server-request support once per gateway.ready and shrugs off an older backend 2ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > routes a server request to the first accepting handler and answers -32601 when nobody accepts 1ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > re-delivers open_requests from a response before the caller sees the result, tagged replayed 1ms
+ ✓ apps/shared/src/json-rpc-channel.test.ts > JsonRpcRequestChannel > answers -32603 when a handler throws, keeps later frames working, and still answers -32601 otherwise 1ms
+ ✓ apps/shared/src/json-rpc-gateway-connect.test.ts > JsonRpcGatewayClient.connect failure classes > a handshake close carries its code and reason, distinct from a timeout 50ms
+ ✓ apps/shared/src/json-rpc-gateway-connect.test.ts > JsonRpcGatewayClient.connect failure classes > every failure keeps the base message as its prefix — the overlay headline and includes() matchers bind to it 0ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > records per-session seq watermarks from live events 22ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > fetches replay on reconnect for sessions it has watermarks for 2ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > dispatches replayed events through the normal handler path 52ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > does not attempt replay when nothing was ever observed 21ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > replayed seqs advance watermarks but never regress them 1ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > rejects envelope-shaped replay elements (the #94219 server-shape bug) 1ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > holds live frames racing the replay fetch — no double dispatch, no skipped gap 52ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > restarts replay after its socket is invalidated before rejected cleanup runs 54ms
+ ✓ apps/shared/src/json-rpc-gateway-replay.test.ts > JsonRpcGatewayClient event-seq tracking + replay resume > clears stale watermarks when the backend epoch changes (restart poisoning) 55ms
+
+ Test Files  3 passed (3)
+      Tests  23 passed (23)
+   Start at  23:37:15
+   Duration  476ms (transform 169ms, setup 0ms, import 212ms, tests 341ms, environment 0ms)
+

@@ -1,0 +1,2 @@
+dpkg-deb: building package 'hermes-p0-synthetic-probe' in '/opt/projects/jamie/_worktrees/hermes-app/p0-clients/probes/p0/clients/hermes-p0-synthetic-probe_0.0.1_amd64.deb'.
+Local desktop package built (synthetic probe, no deployment/signing).

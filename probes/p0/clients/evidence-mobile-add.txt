@@ -1,0 +1,15 @@
+
+> hermes-app-p0-clients-probe@0.0.1 mobile:add
+> cap add android
+
+✔ Adding native android project in android in 34.17ms
+✔ add in 34.99ms
+✔ Copying web assets from renderer to android/app/src/main/assets/public in 2.38ms
+✔ Creating capacitor.config.json in android/app/src/main/assets in 222.01μs
+✔ copy android in 6.61ms
+✔ Updating Android plugins in 672.40μs
+✔ update android in 7.93ms
+✔ Syncing Gradle in 99.72μs
+[success] android platform added!
+Follow the Developer Workflow guide to get building:
+https://capacitorjs.com/docs/basics/workflow
