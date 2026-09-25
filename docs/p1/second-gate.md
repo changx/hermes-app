@@ -8,7 +8,7 @@
 
 最终完整 `tests/p1` 为 `39 passed in 158.13s`；相同任务作用域证据目录运行严格 `history_acceptance_gate.py` 得到 `passed:true`、`failures:[]`。命令以固定基线 `.venv`、`uv --offline`、`TMPDIR` 和 `P1_EVIDENCE_DIR` 在下文格式执行，证据目录为 `/home/hermes/.hermes/profiles/jamie/cache/scratch/p1-review-03`。原 P1-02 JSON 工作树改动及未跟踪诊断日志为既有控制器/worker 资料，本次提交不包含。
 
-日期：2026-09-25。**本地实现已提交待主控独立复核；卡片保持运行，不由本 worker 关闭。** 固定 Hermes 核心基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，只读使用；未修改核心、安装活动 profile、部署、推送或调用付费模型。精确 HTTP/WS 契约及源码边界见 [protocol.md](protocol.md)。
+日期：2026-09-25。**P1-03 已通过主控验收。** 主控审查提交 `8311da9`，独立执行完整回归 `39 passed in 166.61s`，严格历史 gate 为 `passed:true`；使用独立证据目录 `$TMPDIR/hermes-app-p1-controller-03-review`，包含空队列竞态、压缩后 final 窗口、Channel 双端同步及归档重试修复。可以进入 P1-04/05；整体 P1 尚未交付。 固定 Hermes 核心基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，只读使用；未修改核心、安装活动 profile、部署、推送或调用付费模型。精确 HTTP/WS 契约及源码边界见 [protocol.md](protocol.md)。
 
 ## 已实现并实测
 
