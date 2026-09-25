@@ -504,6 +504,14 @@ async def main():
                 assert resp.status == 200
                 compressed_page = await resp.json()
             assert compressed_page == before_page, (before_page, compressed_page)
+            async with b.get(root+f"/v1/threads/{one['id']}/search?q=P1_BULK_0&limit=1") as resp:
+                assert resp.status == 200, await resp.text()
+                search_page = await resp.json()
+            assert len(search_page['messages']) == 1 and 'P1_BULK_0' in search_page['messages'][0]['text']
+            assert search_page['messages'][0]['ref_seq'] == next(
+                m['ref_seq'] for m in before_page['messages'] if 'P1_BULK_0' in m['text'])
+            async with b.get(root+f"/v1/threads/{one['id']}/search?q=P1_DESC_A&limit=1") as resp:
+                assert resp.status == 200 and not (await resp.json())['messages']
             assert [m['id'] for m in adapter._store.history_page(
                 one['id'], HOME/'state.db', limit=100)['messages']] == original_ids
             if COMPACT_MODE == 'rotate':

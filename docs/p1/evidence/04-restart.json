@@ -1,0 +1,6 @@
+{
+  "new_generation_rejected_old_id": true,
+  "old_generation_expired": true,
+  "stopped_approval_waiter": true,
+  "stopped_clarify_waiter": true
+}

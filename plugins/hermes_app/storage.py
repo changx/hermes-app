@@ -64,6 +64,20 @@ class Store:
                 CREATE TABLE IF NOT EXISTS channel_versions (
                     id TEXT PRIMARY KEY, digest TEXT NOT NULL, version INTEGER NOT NULL,
                     deleted INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS interactions (
+                    id TEXT PRIMARY KEY, kind TEXT NOT NULL, thread_id TEXT NOT NULL,
+                    receipt_id TEXT NOT NULL, generation TEXT NOT NULL,
+                    prompt TEXT NOT NULL, choices TEXT NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'pending');
+                CREATE INDEX IF NOT EXISTS interactions_thread ON interactions(thread_id,state);
+                CREATE TABLE IF NOT EXISTS attachments (
+                    id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
+                    name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
+                    receipt_id TEXT REFERENCES receipts(id), created_at INTEGER NOT NULL DEFAULT (unixepoch()));
+                CREATE INDEX IF NOT EXISTS attachments_receipt ON attachments(receipt_id);
+                CREATE TABLE IF NOT EXISTS deliveries (
+                    execution_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
+                    row_id INTEGER NOT NULL UNIQUE, ref_seq INTEGER NOT NULL);
                 CREATE TRIGGER IF NOT EXISTS published_ref AFTER INSERT ON message_refs BEGIN
                     INSERT INTO sync_events(kind,thread_id,ref,version)
                     VALUES ('message',NEW.thread_id,CAST(NEW.seq AS TEXT),1);
@@ -91,13 +105,19 @@ class Store:
         db.execute('INSERT INTO sync_events(kind,thread_id,ref,version) VALUES (?,?,?,?)',
                    (kind, thread_id, ref, version))
 
-    def accept(self, thread_id, client_message_id, text):
+    def accept(self, thread_id, client_message_id, text, attachment_ids=()):
         if not isinstance(client_message_id, str) or not 1 <= len(client_message_id) <= 128 or not all(
                 c.isascii() and (c.isalnum() or c in '-_.:') for c in client_message_id):
             raise ValueError('invalid client_message_id')
         if not isinstance(text, str) or not text.strip() or len(text.encode()) > 16000:
             raise ValueError('invalid text')
-        digest = hashlib.sha256(text.encode()).hexdigest()  # Integrity only; never identity.
+        if not isinstance(attachment_ids, (list, tuple)) or len(attachment_ids) > 8 or any(
+                not isinstance(item, str) or not item.startswith('att_') for item in attachment_ids):
+            raise ValueError('invalid attachments')
+        if len(set(attachment_ids)) != len(attachment_ids):
+            raise ValueError('duplicate attachment')
+        digest = hashlib.sha256(text.encode() if not attachment_ids else
+            json.dumps([text,list(attachment_ids)],ensure_ascii=False).encode()).hexdigest()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM receipts WHERE client_message_id=?', (client_message_id,)).fetchone()
@@ -114,9 +134,16 @@ class Store:
                                  (thread_id,)).fetchone()[0]
             if pending >= 32:
                 raise OverflowError('thread queue full')
+            for attachment_id in attachment_ids:
+                attachment = db.execute('SELECT thread_id,receipt_id FROM attachments WHERE id=?',
+                                        (attachment_id,)).fetchone()
+                if not attachment or attachment['thread_id'] != thread_id or attachment['receipt_id']:
+                    raise ValueError('attachment unavailable')
             receipt_id = 'rc_' + secrets.token_hex(16)
             db.execute("INSERT INTO receipts(id,client_message_id,thread_id,payload_hash,pending_text,state) "
                        "VALUES (?,?,?,?,?,'queued')", (receipt_id,client_message_id,thread_id,digest,text))
+            for attachment_id in attachment_ids:
+                db.execute('UPDATE attachments SET receipt_id=? WHERE id=?', (receipt_id,attachment_id))
             self._event(db, 'receipt', thread_id, receipt_id)
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             return self._receipt(row), True
@@ -265,8 +292,158 @@ class Store:
             row = db.execute('SELECT thread_id,state FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             if not row or row['state'] != 'running':
                 return
-            db.execute('UPDATE receipts SET state=? WHERE id=?', (state,receipt_id))
+            db.execute('UPDATE receipts SET state=?,pending_text=CASE WHEN ?=? THEN NULL ELSE pending_text END '
+                       'WHERE id=?', (state,state,'interrupted',receipt_id))
             self._event(db,'receipt',row['thread_id'],receipt_id,3)
+
+    def cancel_queued(self, thread_id, receipt_id):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed=db.execute("UPDATE receipts SET state='interrupted',pending_text=NULL "
+                               "WHERE id=? AND thread_id=? AND state='queued'",(receipt_id,thread_id)).rowcount
+            if changed:
+                self._event(db,'receipt',thread_id,receipt_id,3)
+            return bool(changed)
+
+    def attachment_add(self, thread_id, attachment_id, name, mime, size):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            thread=db.execute('SELECT archived FROM threads WHERE id=?',(thread_id,)).fetchone()
+            if not thread:
+                raise ValueError('unknown thread')
+            if thread['archived']:
+                raise ValueError('thread archived')
+            count,total=db.execute('SELECT COUNT(*),COALESCE(SUM(size),0) FROM attachments '
+                                   'WHERE thread_id=? AND receipt_id IS NULL',(thread_id,)).fetchone()
+            if count>=64 or total+size>64*1024*1024:
+                raise OverflowError('unattached upload quota reached; delete unused attachments')
+            db.execute('INSERT INTO attachments(id,thread_id,name,mime,size) VALUES (?,?,?,?,?)',
+                       (attachment_id,thread_id,name,mime,size))
+            self._event(db,'attachment',thread_id,attachment_id)
+
+    def attachment(self, thread_id, attachment_id):
+        with self._connect() as db:
+            row=db.execute('SELECT * FROM attachments WHERE thread_id=? AND id=?',
+                           (thread_id,attachment_id)).fetchone()
+            return dict(row) if row else None
+
+    def receipt_attachments(self, receipt_id):
+        with self._connect() as db:
+            return [dict(r) for r in db.execute('SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid',
+                                                (receipt_id,))]
+
+    def attachment_delete_unattached(self, thread_id, attachment_id):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed=db.execute('DELETE FROM attachments WHERE thread_id=? AND id=? AND receipt_id IS NULL',
+                               (thread_id,attachment_id)).rowcount
+            if changed:
+                self._event(db,'attachment',thread_id,attachment_id,2)
+            return bool(changed)
+
+    def expire_interactions(self, generation):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            rows=db.execute("SELECT id,thread_id FROM interactions WHERE state='pending' AND generation!=?",
+                            (generation,)).fetchall()
+            for row in rows:
+                db.execute("UPDATE interactions SET state='expired' WHERE id=?",(row['id'],))
+                self._event(db,'interaction',row['thread_id'],row['id'],2)
+            return len(rows)
+
+    def interaction_add(self, kind, request_id, thread_id, receipt_id, generation, prompt, choices):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('INSERT OR IGNORE INTO interactions VALUES (?,?,?,?,?,?,?,?)',
+                       (request_id,kind,thread_id,receipt_id,generation,prompt,
+                        json.dumps(choices,ensure_ascii=False),'pending'))
+            if db.execute('SELECT changes()').fetchone()[0]:
+                self._event(db,'interaction',thread_id,request_id)
+
+    def interaction(self, thread_id, request_id):
+        with self._connect() as db:
+            row=db.execute('SELECT * FROM interactions WHERE thread_id=? AND id=?',
+                           (thread_id,request_id)).fetchone()
+            if not row:
+                return None
+            value=dict(row)
+            value['choices']=json.loads(value['choices'])
+            return value
+
+    def pending_interactions(self, thread_id, generation):
+        with self._connect() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT id,kind,receipt_id FROM interactions WHERE thread_id=? AND generation=? AND state='pending'",
+                (thread_id,generation))]
+
+    def interaction_settle(self, thread_id, request_id, generation, state):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed=db.execute("UPDATE interactions SET state=? WHERE thread_id=? AND id=? "
+                               "AND generation=? AND state='pending'",(state,thread_id,request_id,generation)).rowcount
+            if changed:
+                self._event(db,'interaction',thread_id,request_id,2)
+            return bool(changed)
+
+    def expire_receipt_interactions(self, receipt_id, generation):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            rows=db.execute("SELECT id,thread_id FROM interactions WHERE receipt_id=? AND generation=? "
+                            "AND state='pending'",(receipt_id,generation)).fetchall()
+            for row in rows:
+                db.execute("UPDATE interactions SET state='expired' WHERE id=?",(row['id'],))
+                self._event(db,'interaction',row['thread_id'],row['id'],2)
+            return len(rows)
+
+    def delivery_ref(self, execution_id):
+        with self._connect() as db:
+            row=db.execute('SELECT thread_id,row_id,ref_seq FROM deliveries WHERE execution_id=?',
+                           (execution_id,)).fetchone()
+            return dict(row) if row else None
+
+    def publish_delivery(self, execution_id, thread_id, session_id, row_id):
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old=db.execute('SELECT thread_id,ref_seq FROM deliveries WHERE execution_id=?',
+                           (execution_id,)).fetchone()
+            if old:
+                if old['thread_id']!=thread_id:
+                    raise ValueError('delivery belongs to another thread')
+                return old['ref_seq']
+            if not db.execute('SELECT 1 FROM session_links WHERE thread_id=? AND session_id=?',
+                              (thread_id,session_id)).fetchone():
+                raise ValueError('delivery session belongs to another thread')
+            turn_id='cron:'+execution_id
+            db.execute("INSERT INTO turns VALUES (?,?,'complete')",(turn_id,thread_id))
+            db.execute("INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) "
+                       "VALUES (?,?,?,?,'assistant')",(thread_id,turn_id,session_id,row_id))
+            seq=db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            db.execute('INSERT INTO deliveries VALUES (?,?,?,?)',(execution_id,thread_id,row_id,seq))
+            return seq
+
+    def recover_deliveries(self, source_db):
+        """Repair the core-row / plugin-ref crash window without replaying cron."""
+        if not Path(source_db).exists():
+            return 0
+        with self._connect() as db:
+            links={r['session_id']:r['thread_id'] for r in db.execute('SELECT * FROM session_links')}
+        if not links:
+            return 0
+        with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
+            source.row_factory=sqlite3.Row
+            rows=source.execute("SELECT id,session_id,platform_message_id FROM messages "
+                "WHERE display_kind='cron_delivery' AND platform_message_id LIKE 'cron:%' "
+                'ORDER BY id LIMIT 10001').fetchall()
+        if len(rows)>10000:
+            raise OverflowError('cron delivery recovery bound exceeded')
+        repaired=0
+        for row in rows:
+            thread_id=links.get(row['session_id'])
+            execution_id=row['platform_message_id'].removeprefix('cron:')
+            if thread_id and execution_id and not self.delivery_ref(execution_id):
+                self.publish_delivery(execution_id,thread_id,row['session_id'],row['id'])
+                repaired+=1
+        return repaired
 
     def link_user_receipt(self, receipt_id, row_id):
         with self._connect() as db:
@@ -709,6 +886,46 @@ class Store:
                              'role': row['role'], 'text': text})
         return {'messages': messages, 'next_cursor': self._cursor(thread_id, page[-1]['seq']) if more else None,
                 'incomplete_turns': pending, 'turn_outcomes': outcomes}
+
+    def search_page(self, thread_id, source_db, query, *, limit=20, after=None):
+        if not isinstance(query,str) or not 1 <= len(query.strip()) <= 200:
+            raise ValueError('query required (1..200 characters)')
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError('limit must be 1..100')
+        cursor=self._parse_cursor(thread_id,after) if after is not None else 0
+        with self._connect() as db:
+            if after is not None and not db.execute(
+                    'SELECT 1 FROM message_refs WHERE thread_id=? AND seq=?',(thread_id,cursor)).fetchone():
+                raise ValueError('invalid cursor')
+            refs=db.execute('SELECT seq,session_id,row_id,role FROM message_refs '
+                            'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT 501',
+                            (thread_id,cursor)).fetchall()
+        page=refs[:500]
+        if not page:
+            return {'messages':[],'next_cursor':None}
+        from .projection import visible_text
+        ids=[r['row_id'] for r in page]
+        with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
+            source.row_factory=sqlite3.Row
+            rows={r['id']:r for r in source.execute(
+                f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})",ids)}
+        matches=[]
+        scanned=cursor
+        needle=query.casefold()
+        for ref in page:
+            row=rows.get(ref['row_id'])
+            if row is None or row['session_id']!=ref['session_id'] or row['role']!=ref['role']:
+                raise MissingOriginal(f"original row {ref['row_id']} unavailable")
+            content=visible_text(dict(row))
+            if content is None:
+                raise MissingOriginal(f"original row {ref['row_id']} is not visible")
+            scanned=ref['seq']
+            if needle in content.casefold():
+                matches.append({'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content})
+            if len(matches)>=limit:
+                break
+        more=len(refs)>len(page) or scanned != page[-1]['seq']
+        return {'messages':matches,'next_cursor':self._cursor(thread_id,scanned) if more else None}
 
     def get_thread(self, thread_id):
         with self._connect() as db:

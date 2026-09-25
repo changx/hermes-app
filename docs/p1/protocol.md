@@ -32,4 +32,26 @@ Channel 正文仍由 Hermes ProjectDB 管理，`GET /v1/channels` 返回当前�
 - `gateway/run_startup.py::_run_startup_resume_event`：内部空消息调用本 adapter 的 `handle_message`。本 adapter 只拦截这类内部空消息，防止核心与插件对同一旧执行同时恢复；其他平台不受影响。恢复队列等待固定基线 `GatewayRunner._startup_restore_in_progress` 关闭后派发。适配器从基线的 `_standalone_scoped` 回调读取此标志；基线升级须重新验证此私有边界。
 - 正式 `pre_llm_call`、`post_tool_call`、`pre_auxiliary_call`、`post_llm_call`、`on_session_end` 保留 P1-02 的原始行捕获。插件不修改、复制或 monkey patch Hermes 核心。
 
-本阶段未实现 P1-04 审批/附件/主动任务投递或 P1-05 TS 客户端。跨进程运行中的外部工具副作用不承诺 exactly once；已开始但边界不明的执行保持 `unknown`，等待用户显式处理。
+P1-03 原始交付未含 P1-04 审批/附件/主动任务投递或 P1-05 TS 客户端；以下记录 P1-04 的后续增量。跨进程运行中的外部工具副作用不承诺 exactly once；已开始但边界不明的执行保持 `unknown`，等待用户显式处理。
+
+## P1-04 本地增量（待主控复核）
+
+本节描述隔离插件实现；前述 P1-03 收据、历史、同步、Description 一次性初始化规则保持不变。HTTP/WS 使用同一 Bearer 认证。所有 `id` 均为服务端不透明引用；路由中的 Thread 必须属于当前固定 owner/profile，不能以请求参数改选 profile。
+
+### 审批、澄清与停止
+
+- 核心仍拥有审批策略、队列与超时。插件仅通过 adapter 的正式 `send_exec_approval`/`send_clarify` 呈现请求；记录 `request_id/clarify_id`、Thread、执行收据、当前进程代际、允许选择与最小提示信息。`GET /v1/threads/{id}/interactions/{request_id}` 返回此状态；`POST .../answer` 使用 `{"choice":"...","receipt_id":"rc_...","generation":"..."}`，后两项必须与当前请求完全一致。未知或其他 Thread 的 ID 为 404，错误选择为 400，过期/已答/旧代际/收据不符为 409。审批调用核心 `resolve_gateway_approval(...,request_id=精确ID)`；澄清调用 `resolve_gateway_clarify(精确ID,...)`，没有 oldest/resolve_all/自动同意后备路径。成功答复持久写 `interaction` 失效事件；两个设备竞争只有一个赢得核心 waiter，其他设备从事件收起卡片。
+- 运行结束、核心 waiter 超时或中断时交互过期；进程重启先将旧代际所有 pending 标为 expired，旧按钮不能作用于新执行。交互只是短期控制元数据，历史正文仍只来自 SessionDB。
+- `POST /v1/threads/{id}/stop` 停止该 Thread 当前 owner：调用核心硬中断路径，清除该 Session 的澄清 waiter、撤回该 Thread 精确审批 waiter；返回是否找到当前执行。`POST /v1/threads/{id}/receipts/{receipt_id}/cancel` 只取消仍 queued 的收据并清空未派发正文，失败返回 409。其他 Thread 不受影响。核心工具的实际外部副作用仍以核心中断与工具自己的中断协作为界，不能把网络请求取消当成工具已停止。
+
+### 附件
+
+`POST /v1/threads/{id}/attachments` 接收原始请求流，`X-File-Name` 为供下载展示的单个文件名；每文件最多 10 MiB，每消息最多 8 个附件，单 Thread 未附上传最多 64 个或共 64 MiB（超限返回 429，用户删除不用的上传后重试），空文件、路径分隔符及控制换行被拒绝。文件写入 profile 内 `hermes-app/attachments/` 的随机临时文件，`fsync` 后原子更名为 `att_` 不透明 ID；传输中断、超限或元数据写入失败会移除临时/孤立文件。服务端根据文件名选安全 MIME，HTML/SVG/JavaScript 强制作为二进制下载。
+
+`GET /v1/threads/{id}/attachments/{attachment_id}` 严格检查 Thread/元数据、`O_NOFOLLOW`、普通文件与大小；返回 `Content-Disposition: attachment` 和 `nosniff`。`DELETE` 只可删除**尚未附到收据**的上传；已附文件随归档 Thread 保留，不能借此删除原文或其他 Thread 文件。`POST /v1/threads/{id}/messages` 可加 `"attachments":["att_..."]`；接收事务校验同 Thread、未被领取，并绑定收据。重试同一 client ID 必须保持正文及附件 ID 完全相同。派发时将受控本地路径、MIME 和未内联标记放进核心 `MessageEvent.media_urls/media_types/media_text_inlined`，让 Agent 使用现有附件机制。插件仅保存文件元数据和收据引用，不另建聊天正文库。失败未附上传由用户显式 DELETE；启动时仅清理本插件命名且没有元数据的孤立文件和中断上传临时文件（最多检查 10000 项），不自动广泛清理或删除归档历史。
+
+### 主动投递与搜索
+
+真实 cron job 的 `deliver=origin` 目标须含本插件的 Project chat ID 与 Thread ID，并显式 `attach_to_session=false`，避免核心再次镜像到会话。adapter 从核心 cron 执行账本取得当前执行 ID；只接受已认领或运行中的新投递。以执行 ID 在核心 SessionDB 写一条 `assistant` 原始行（`platform_message_id=cron:<execution_id>`），再在插件发布稳定引用和 `message` 事件；崩溃窗口以该核心行补引用，同一执行重投不再生成第二条，两个不同执行即使正文相同也各有引用。普通 Agent final 已由核心写入，不经此路径重复保存。
+
+`GET /v1/threads/{id}/search?q=<text>&after=<opaque>&limit=1..100` 扫描当前 Thread 已发布的可见原始引用，每页最多检查 500 条原始行，大小写折叠匹配后返回与历史相同的 `id/ref_seq/role/text` 和下一页游标。压缩摘要、内部提示及其他 Thread/branch 没有可见引用，不进入搜索；原始行缺失返回 409。归档不移除搜索、历史、附件或已接收发送的幂等记录。

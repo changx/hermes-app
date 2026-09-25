@@ -1,0 +1,20 @@
+{
+  "agent_saw_attachment_path": true,
+  "approval_two_client_codes": [
+    200,
+    409
+  ],
+  "archived_search_retry": true,
+  "clarify_answered": true,
+  "cold_download_and_cron": true,
+  "cron_crash_window_repaired": true,
+  "cron_jobs": [
+    "f8ed5509cb0c",
+    "f665885cd1e8"
+  ],
+  "cron_refs": [
+    14,
+    15
+  ],
+  "stop_isolated": true
+}

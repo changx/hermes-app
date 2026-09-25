@@ -1,0 +1,12 @@
+{
+  "gate": "P1-02 complete history lifecycle",
+  "passed": true,
+  "failures": [],
+  "raw_core_projector_negatives": {
+    "inplace": true,
+    "rotate": true,
+    "idle": true,
+    "inplace_idle": true
+  },
+  "scope": "real isolated GatewayRunner in-place, idle, rotation, repeated preflight, post-tool compression, early failure and held post-hook race"
+}
