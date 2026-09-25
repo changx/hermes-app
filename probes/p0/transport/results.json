@@ -1,0 +1,85 @@
+{
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "transport": "actual loopback TCP WebSockets via tui_gateway.ws.handle_ws",
+  "model_executor": "synthetic: agent construction disabled; optional prompt.submit worker stub",
+  "test_grace_seconds": 1.5,
+  "test_activity_stale_seconds": 0.6,
+  "cases": [
+    {
+      "case": "fanout",
+      "same_runtime_sid": true,
+      "seq_a": 1,
+      "seq_b": 1,
+      "peers": 2
+    },
+    {
+      "case": "reconnect",
+      "remaining_peer_seq": 2,
+      "replayed_seq": [
+        2
+      ],
+      "truncated": false
+    },
+    {
+      "case": "approval_one_shot",
+      "broadcast_id_equal": true,
+      "verdicts": [
+        {
+          "choice": "once"
+        }
+      ],
+      "late_answer_dropped": true
+    },
+    {
+      "case": "queue_backed_approval",
+      "choice": "once",
+      "queue_resolved_once": true,
+      "other_peer_received_cancel": false
+    },
+    {
+      "case": "bounded_replay",
+      "emitted": 530,
+      "drop_sink_writes": 0,
+      "retained": 512,
+      "latest_seq": 532,
+      "truncated": true
+    },
+    {
+      "case": "idle_last_client_reap",
+      "live_after_grace": false
+    },
+    {
+      "case": "fresh_detached_synthetic_turn",
+      "accepted": "streaming",
+      "alive_after_grace": true,
+      "ticks_before": 1,
+      "ticks_after": 20,
+      "cancel_requested": false
+    },
+    {
+      "case": "stale_detached_synthetic_turn",
+      "accepted": "streaming",
+      "interrupted_after_grace": true,
+      "ticks": 15
+    },
+    {
+      "case": "same_rpc_id_retry_after_completion",
+      "first": "streaming",
+      "second": "streaming",
+      "stored_user_rows": 2
+    },
+    {
+      "case": "process_restart",
+      "epoch_changed": true,
+      "old_sid_replay_count": 0,
+      "old_sid_truncated": false,
+      "new_runtime_sid": true,
+      "durable_seed_contents": [
+        "synthetic first message",
+        "synthetic answer"
+      ]
+    }
+  ],
+  "child_processes_stopped": true,
+  "temporary_home_removed": true
+}
