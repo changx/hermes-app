@@ -1,0 +1,143 @@
+{
+  "hermes_revision": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "probe": "dashboard_loaded_history_domain_sync",
+  "synthetic_data": true,
+  "network_listener": false,
+  "model_calls": 0,
+  "checks": [
+    {
+      "name": "host_auth_rejects_wrong_token",
+      "passed": true,
+      "observed": {
+        "status": 401
+      }
+    },
+    {
+      "name": "mounted_plugin_project_crud",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "project_archive_list",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "mounted_plugin_history_projection",
+      "passed": true,
+      "observed": {
+        "visible": [
+          "synthetic-original-A",
+          "synthetic-answer-A",
+          "synthetic-later-A"
+        ]
+      }
+    },
+    {
+      "name": "no_branch_summary_or_scaffolding",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "mounted_plugin_receipt_retry_and_new_send",
+      "passed": true,
+      "observed": {
+        "first_seq": 1,
+        "second_seq": 2,
+        "conflict_status": 409
+      }
+    },
+    {
+      "name": "mounted_plugin_cursor_pages",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "snapshot_then_delta_has_no_gap",
+      "passed": true,
+      "observed": {
+        "snapshot_cursor": 2
+      }
+    },
+    {
+      "name": "future_cursor_rejected",
+      "passed": true,
+      "observed": {
+        "status": 400
+      }
+    },
+    {
+      "name": "plugin_metadata_monotonic_read",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "no_per_user_auth_in_demo",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "runtime_disable_gates_plugin",
+      "passed": true,
+      "observed": {
+        "status": 404
+      }
+    },
+    {
+      "name": "event_admission_gap_reproduced",
+      "passed": true,
+      "observed": {
+        "admitted_tasks": 0
+      }
+    },
+    {
+      "name": "raw_driver_admission_is_idempotent_not_atomic_with_event",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "cold_process_plugin_event_and_receipt_read",
+      "passed": true,
+      "observed": {
+        "new_process_events": [
+          "user:c78017822f832e02483489363c87e5f77bfdd24b54cb50fdc4c3e04f6a4a6020",
+          "user:9f59783006132b770ce3f79ea0588e2e10d3207e26d802042f708fa0d57892d8",
+          "user:5b03c66c6e53df26bd694a309b8a83f03766d5ffd41906f25e3c9eb4802bf05b"
+        ],
+        "new_process_read_cursor": 2
+      }
+    },
+    {
+      "name": "core_search_primitive_reachable_not_thread_scoped",
+      "passed": true,
+      "observed": {
+        "hits": 1
+      }
+    },
+    {
+      "name": "core_root_deleted",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "deletion_does_not_cascade_plugin_metadata",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "project_description_persists_separately",
+      "passed": true,
+      "observed": {}
+    }
+  ],
+  "passed": 19,
+  "total": 19,
+  "limitations": [
+    "dashboard plugin route is not a gateway platform/hosted-room RPC",
+    "room and driver imports are internal APIs, not documented extension contracts",
+    "history route fully materializes lineage; no bounded cross-lineage paging or stable logical IDs",
+    "event and execution admission are separate commits, not atomic",
+    "read metadata prototype has no user ACL, project link, deletion hook or production schema"
+  ],
+  "temporary_directory_removed": true
+}
