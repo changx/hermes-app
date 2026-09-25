@@ -4,12 +4,14 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import pytest
 
 BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline')
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_real_runner_loopback():
+@pytest.mark.parametrize('mode', ['inplace', 'idle', 'rotate'])
+def test_real_runner_loopback(mode):
     # A short path is required by the baseline's AF_UNIX loop heartbeat socket.
     isolated = Path(tempfile.mkdtemp(prefix='p1-', dir=os.environ['TMPDIR']))
     home = isolated / 'h'
@@ -21,6 +23,7 @@ def test_real_runner_loopback():
         'PYTHONDONTWRITEBYTECODE':'1', 'PYTHONNOUSERSITE':'1', 'TIRITH_ENABLED':'false',
         'HERMES_APP_TOKEN':'synthetic-p1-test-token-with-32-characters',
         'HERMES_APP_ALLOWED_USERS':'owner',
+        'P1_COMPACT_MODE':mode,
         'LANG':'C.UTF-8', 'HTTP_PROXY':'http://127.0.0.1:1', 'HTTPS_PROXY':'http://127.0.0.1:1',
         'NO_PROXY':'localhost,127.0.0.1,::1',
     }
@@ -28,11 +31,12 @@ def test_real_runner_loopback():
         proc = subprocess.run([str(BASE/'.venv/bin/python'), str(ROOT/'tests/p1/runner_probe.py')],
             env=env, cwd=ROOT, capture_output=True, text=True, timeout=150)
         assert proc.returncode == 0, proc.stdout[-2000:] + '\n' + proc.stderr[-5000:]
-        record = json.loads((isolated/'runner-result.json').read_text())
+        record = json.loads((isolated/f'runner-{mode}-result.json').read_text())
         assert record['listener_closed'] and record['two_clients'] and record['initial_description']
         evidence = ROOT/'docs/p1/evidence'
         evidence.mkdir(parents=True, exist_ok=True)
-        (evidence/'runner.json').write_text(json.dumps(record, indent=2, sort_keys=True)+'\n')
+        (evidence/('runner.json' if mode == 'inplace' else f'runner-{mode}.json')).write_text(
+            json.dumps(record, indent=2, sort_keys=True)+'\n')
     finally:
         import shutil
         shutil.rmtree(isolated)

@@ -39,7 +39,7 @@
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
 - https://hermes-agent.nousresearch.com/docs/user-guide/desktop
 
-## 3. P0 后推荐路线（P1-01/02 局部实现；历史 gate 未通过）
+## 3. P0 后推荐路线（P1-01/02 局部实现；历史生命周期子集已验证）
 
 1. 使用正式 Hermes App platform plugin 接入真实 GatewayRunner，插件自有 HTTP/WS 提供 App 契约；可用核心接口及纯 TS 模块按边界复用。没有正式新增 TUI RPC method 扩展点时，不修改内部 method 表。
 2. 通过 Hermes plugin 补 Channel/Thread 的稳定映射、提示继承以及可见历史的统一读取，复用已有能力而不修改核心；模型 compaction 不改用户原文。

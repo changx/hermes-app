@@ -1,11 +1,12 @@
 {
-  "gate": "P1-01/02",
-  "passed": false,
-  "failures": [
-    "history API status 501 (required 200 with stable bounded page)",
-    "inplace: visible sequence 32 -> 32 changed",
-    "rotate: visible sequence 32 -> 34 changed",
-    "idle: visible sequence 32 -> 34 changed",
-    "inplace_idle: visible sequence 32 -> 32 changed"
-  ]
+  "gate": "P1-02 plugin history lifecycle subset",
+  "passed": true,
+  "failures": [],
+  "raw_core_projector_negatives": {
+    "inplace": true,
+    "rotate": true,
+    "idle": true,
+    "inplace_idle": true
+  },
+  "scope": "actual gateway turns, in-place and idle compaction, rotation with AIAgent child continuation; automatic preflight and midturn compaction remain open"
 }

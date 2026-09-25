@@ -16,7 +16,8 @@ from gateway.platforms.event import MessageEvent
 from hermes_constants import get_hermes_home
 from hermes_cli import projects_db
 
-from .storage import Store
+from .storage import Store, HistoryPending, MissingOriginal
+from .history_hooks import pre_llm_call, post_llm_call
 
 
 def _store():
@@ -128,7 +129,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response({'protocol': 1, 'baseline': '2f16a1aa5a35feec496949abdef7ad51aea0e7ef',
             'owner': 'single', 'channels': True, 'threads': True,
             'execution_ingress': 'volatile_dispatched', 'durable_accept': False,
-            'history': False, 'durable_sync': False, 'attachments': False, 'approvals': False})
+            'history': True, 'durable_sync': False, 'attachments': False, 'approvals': False})
 
     async def _channels(self, request):
         def operation():
@@ -232,15 +233,36 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPBadRequest(text='invalid text')
         source = self._source(thread['project_id'], tid)
         event = MessageEvent(text=content, source=source, message_id=uuid.uuid4().hex)
-        await self.handle_message(event)
+        ingress_id = 'ingress:' + event.message_id
+        try:
+            self._store.begin_turn(tid, ingress_id)
+        except HistoryPending as exc:
+            raise web.HTTPConflict(text=str(exc)) from exc
+        try:
+            await self.handle_message(event)
+        except BaseException:
+            self._store.reject_turn(ingress_id)
+            raise
         if not event._gateway_accepted:
+            self._store.reject_turn(ingress_id)
             raise web.HTTPConflict(text='gateway did not dispatch')
         return web.json_response({'status': 'dispatched_volatile', 'durable': False}, status=202)
 
     async def _history(self, request):
-        if self._store.get_thread(request.match_info['id']) is None:
+        tid = request.match_info['id']
+        if self._store.get_thread(tid) is None:
             raise web.HTTPNotFound()
-        raise web.HTTPNotImplemented(text='stable history references are not yet verified')
+        try:
+            limit = int(request.query.get('limit', '50'))
+            result = await asyncio.to_thread(self._store.history_page, tid,
+                get_hermes_home() / 'state.db', limit=limit, after=request.query.get('after'))
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        except HistoryPending as exc:
+            raise web.HTTPConflict(text=str(exc)) from exc
+        except MissingOriginal as exc:
+            raise web.HTTPConflict(text=str(exc)) from exc
+        return web.json_response(result)
 
     async def _ws(self, request):
         ws = web.WebSocketResponse(heartbeat=30)
@@ -261,6 +283,8 @@ class HermesAppAdapter(BasePlatformAdapter):
 
 def register(ctx):
     ctx.register_system_prompt_section('hermes_app.channel', _initial_description, max_chars=4000)
+    ctx.register_hook('pre_llm_call', pre_llm_call)
+    ctx.register_hook('post_llm_call', post_llm_call)
     ctx.register_platform(name='hermes_app', label='Hermes App local foundation',
         adapter_factory=HermesAppAdapter, check_fn=lambda: True,
         validate_config=lambda cfg: bool(cfg.enabled),
