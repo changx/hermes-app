@@ -5,15 +5,23 @@ from pathlib import Path
 
 
 def _record(name, **kwargs):
+    from agent.relay_runtime import current_turn
+    turn = current_turn()
     path = Path(os.environ['HERMES_HOME']) / 'synthetic-events.jsonl'
     with path.open('a') as output:
         output.write(json.dumps({'event': name, 'aux_task': kwargs.get('aux_task'),
-                                 'turn_id': kwargs.get('turn_id')}) + '\n')
+                                 'turn_id': kwargs.get('turn_id') or getattr(turn, 'turn_id', '')}) + '\n')
 
 
 def _expand(args, **kwargs):
-    _record('tool_handler')
-    return 'P1_TOOL_RESULT ' + 'synthetic local data ' * 4000
+    global _tool_count
+    _tool_count += 1
+    _record('tool_handler', **kwargs)
+    return ('P1_TOOL_RESULT small' if _tool_count == 1 else
+            'P1_TOOL_RESULT ' + 'synthetic local data ' * 4000)
+
+
+_tool_count = 0
 
 
 def _hold_after_history(**kwargs):

@@ -3,12 +3,12 @@
     "incomplete_turns": [],
     "messages": [
       {
-        "id": "3",
+        "id": "1",
         "role": "user",
         "text": "P1_FIRST"
       },
       {
-        "id": "4",
+        "id": "2",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
@@ -110,12 +110,12 @@
     "incomplete_turns": [],
     "messages": [
       {
-        "id": "3",
+        "id": "1",
         "role": "user",
         "text": "P1_FIRST"
       },
       {
-        "id": "4",
+        "id": "2",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
@@ -208,7 +208,7 @@
   "effective_threshold": 2400,
   "inactive_core_rows": 13,
   "mode": "preflight",
-  "run_id": "p1-b4jx02f5",
+  "run_id": "p1-3fmhge63",
   "summary_http_count": 1,
   "summary_http_count_min": 1
 }

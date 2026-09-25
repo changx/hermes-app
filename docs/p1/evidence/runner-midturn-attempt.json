@@ -1,16 +1,465 @@
 {
   "auxiliary_tasks": [
+    "compression",
     "compression"
+  ],
+  "core_rows": [
+    {
+      "active": 0,
+      "content": "P1_FIRST",
+      "display_kind": null,
+      "id": 1,
+      "platform_message_id": "aa5ce86e2fdb4eea8c71a22fedd87277",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 2,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": null,
+      "display_kind": null,
+      "id": 3,
+      "platform_message_id": null,
+      "role": "session_meta",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "P1_OTHER",
+      "display_kind": null,
+      "id": 4,
+      "platform_message_id": "359332e024ab44409212bbc1f0edacb8",
+      "role": "user",
+      "session_id": "20260925_042209_fd5d036c"
+    },
+    {
+      "active": 1,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 5,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_fd5d036c"
+    },
+    {
+      "active": 1,
+      "content": null,
+      "display_kind": null,
+      "id": 6,
+      "platform_message_id": null,
+      "role": "session_meta",
+      "session_id": "20260925_042209_fd5d036c"
+    },
+    {
+      "active": 0,
+      "content": "P1_SEED_0 seed seed seed seed seed seed seed seed seed seed seed seed seed seed ",
+      "display_kind": null,
+      "id": 7,
+      "platform_message_id": "d835daac92a242e7a3eccd112561bf4a",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 8,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_SEED_1 seed seed seed seed seed seed seed seed seed seed seed seed seed seed ",
+      "display_kind": null,
+      "id": 9,
+      "platform_message_id": "d650d73b9ebb4bf8aedba66f723dc095",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 10,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_SEED_2 seed seed seed seed seed seed seed seed seed seed seed seed seed seed ",
+      "display_kind": null,
+      "id": 11,
+      "platform_message_id": "c14fe53254e742bdb1d8644597549f5d",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 12,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_SEED_3 seed seed seed seed seed seed seed seed seed seed seed seed seed seed ",
+      "display_kind": null,
+      "id": 13,
+      "platform_message_id": "d7d117278cb64c18b8005c331c816ee3",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 14,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_SEED_4 seed seed seed seed seed seed seed seed seed seed seed seed seed seed ",
+      "display_kind": null,
+      "id": 15,
+      "platform_message_id": "5aae00d4875d4f90a6f75de3c7888efd",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 16,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_MIDTURN",
+      "display_kind": null,
+      "id": 17,
+      "platform_message_id": "8c410d42ca2a4aea9603e50c03cb3828",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_INTERIM_1",
+      "display_kind": null,
+      "id": 18,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_TOOL_RESULT small",
+      "display_kind": null,
+      "id": 19,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_INTERIM_2",
+      "display_kind": null,
+      "id": 20,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\n",
+      "display_kind": null,
+      "id": 21,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_FIRST",
+      "display_kind": null,
+      "id": 22,
+      "platform_message_id": null,
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "[PRIOR CONTEXT \u2014 for reference only; not a new message]\nSYNTHETIC_P1_FINAL\n\n[END",
+      "display_kind": null,
+      "id": 23,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_MIDTURN",
+      "display_kind": null,
+      "id": 24,
+      "platform_message_id": "8c410d42ca2a4aea9603e50c03cb3828",
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_INTERIM_1",
+      "display_kind": null,
+      "id": 25,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_TOOL_RESULT small",
+      "display_kind": null,
+      "id": 26,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_INTERIM_2",
+      "display_kind": null,
+      "id": 27,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\n",
+      "display_kind": null,
+      "id": 28,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "P1_INTERIM_3",
+      "display_kind": null,
+      "id": 29,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 0,
+      "content": "[hermes note: this result is byte-identical to the p1_synthetic_expand result ea",
+      "display_kind": null,
+      "id": 30,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "[CONTEXT COMPACTION \u2014 REFERENCE ONLY] Earlier turns were compacted into the summ",
+      "display_kind": null,
+      "id": 31,
+      "platform_message_id": null,
+      "role": "user",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "P1_INTERIM_2",
+      "display_kind": null,
+      "id": 32,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\n",
+      "display_kind": null,
+      "id": 33,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "P1_INTERIM_3",
+      "display_kind": null,
+      "id": 34,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "[hermes note: this result is byte-identical to the p1_synthetic_expand result ea",
+      "display_kind": null,
+      "id": 35,
+      "platform_message_id": null,
+      "role": "tool",
+      "session_id": "20260925_042209_b31d7550"
+    },
+    {
+      "active": 1,
+      "content": "SYNTHETIC_P1_FINAL",
+      "display_kind": null,
+      "id": 36,
+      "platform_message_id": null,
+      "role": "assistant",
+      "session_id": "20260925_042209_b31d7550"
+    }
   ],
   "handler_called": true,
   "mode": "midturn",
-  "request_count": 3,
+  "post_tool_compression": true,
+  "request_count": 6,
+  "target_events": [
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": "compression",
+      "event": "pre_auxiliary_call",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": "compression",
+      "event": "pre_auxiliary_call",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    }
+  ],
+  "target_turn_ids": [
+    "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+  ],
+  "tool_call_count": 3,
   "tool_called": true,
   "tool_result_excerpt": [
-    "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\nFull output saved to: /home/hermes/.hermes/profiles/jamie/cache/scratch/p1-hd_10b1v/h/cache/spillover/p1_call_1.txt\nUse the read_file tool with offset and limit to access specific sections of this output.\nRecovery: page through the saved file with read_file (offset/limit) or process it with execute_code \u2014 do NOT re-request the same data from the remote API; the full result is already on disk.\n\nPreview (first 1500 chars):\nP1_TOOL_RESULT synthetic local data synthetic local data synthetic local data synthetic local d"
+    "P1_TOOL_RESULT small",
+    "P1_TOOL_RESULT small",
+    "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\nFull output saved to: /home/hermes/.hermes/profiles/jamie/cache/scratch/p1-f_ep0axl/h/cache/spillover/p1_call_2.txt\nUse the read_file tool with offset and limit to access specific sections of this output.\nRecovery: page through the saved file with read_file (offset/limit) or process it with execute_code \u2014 do NOT re-request the same data from the remote API; the full result is already on disk.\n\nPreview (first 1500 chars):\nP1_TOOL_RESULT synthetic local data synthetic local data synthetic local data synthetic local d",
+    "<persisted-output>\nThis tool result was too large (84,015 characters, 82.0 KB).\nFull output saved to: /home/hermes/.hermes/profiles/jamie/cache/scratch/p1-f_ep0axl/h/cache/spillover/p1_call_2.txt\nUse the read_file tool with offset and limit to access specific sections of this output.\nRecovery: page through the saved file with read_file (offset/limit) or process it with execute_code \u2014 do NOT re-request the same data from the remote API; the full result is already on disk.\n\nPreview (first 1500 chars):\nP1_TOOL_RESULT synthetic local data synthetic local data synthetic local data synthetic local d",
+    "[hermes note: this result is byte-identical to the p1_synthetic_expand result earlier this turn (tool_call_id p1_call_2). Refer to that result; it has not changed. Args: {}]\n[The referenced result was persisted to: /home/hermes/.hermes/profiles/jamie/cache/scratch/p1-f_ep0axl/h/cache/spillover/p1_call_2.txt \u2014 page through it with read_file if you need the full content.]"
   ],
   "tool_result_wire_chars": [
-    2029
+    20,
+    20,
+    2029,
+    2029,
+    372
+  ],
+  "turn_rows": [
+    [
+      "ingress:aa5ce86e2fdb4eea8c71a22fedd87277",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:359332e024ab44409212bbc1f0edacb8",
+      "th_f969c2e423354420bea4ad4e",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:b47aa14b",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_fd5d036c:20260925_042209_fd5d036c:ea00362c",
+      "th_f969c2e423354420bea4ad4e",
+      "complete"
+    ],
+    [
+      "ingress:d835daac92a242e7a3eccd112561bf4a",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:ef62220d",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:d650d73b9ebb4bf8aedba66f723dc095",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:4e531375",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:c14fe53254e742bdb1d8644597549f5d",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:49659b55",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:d7d117278cb64c18b8005c331c816ee3",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:566775a0",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:5aae00d4875d4f90a6f75de3c7888efd",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:c77ced4e",
+      "th_3c81833495224aef88830224",
+      "complete"
+    ],
+    [
+      "ingress:8c410d42ca2a4aea9603e50c03cb3828",
+      "th_3c81833495224aef88830224",
+      "unknown"
+    ],
+    [
+      "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec",
+      "th_3c81833495224aef88830224",
+      "unknown"
+    ]
   ],
   "visible_roles": [
     "user",
@@ -27,11 +476,13 @@
     "assistant",
     "user",
     "assistant",
+    "assistant",
+    "assistant",
     "assistant"
   ],
   "visible_row_ids": [
-    "3",
-    "5",
+    "1",
+    "2",
     "7",
     "8",
     "9",
@@ -42,8 +493,10 @@
     "14",
     "15",
     "16",
-    "22",
-    "23",
-    "25"
+    "17",
+    "18",
+    "20",
+    "29",
+    "36"
   ]
 }

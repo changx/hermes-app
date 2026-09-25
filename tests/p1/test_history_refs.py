@@ -93,6 +93,74 @@ def test_unreconciled_gateway_owner_releases_busy_with_unknown(tmp_path):
     store.begin_turn(tid,'ingress:two')
 
 
+def test_late_final_appends_without_invalidating_published_cursor(tmp_path):
+    source = tmp_path/'state.db'
+    with sqlite3.connect(source) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, '
+                   'content TEXT, display_kind TEXT, platform_message_id TEXT)')
+        db.executemany('INSERT INTO messages VALUES (?,?,?,?,?,?)', [
+            (1,'s','user','ask',None,'incoming'),
+            (2,'s','assistant','interim',None,None)])
+    store = Store(tmp_path/'meta.db')
+    tid = store.create_thread('p','title','s','')
+    store.begin_turn(tid,'ingress:incoming')
+    store.record_turn(tid,'turn',[('s',1,'user'),('s',2,'assistant')])
+    first = store.history_page(tid,source,limit=1)
+    cursor = first['next_cursor']
+    assert [m['id'] for m in store.history_page(tid,source,after=cursor)['messages']] == ['2']
+    with sqlite3.connect(source) as db:
+        db.execute("INSERT INTO messages VALUES (3,'s','assistant','final',NULL,NULL)")
+    store.settle_ingress(tid,'ingress:incoming','incoming',source)
+    assert [m['id'] for m in store.history_page(tid,source,after=cursor)['messages']] == ['2','3']
+    assert [m['id'] for m in store.history_page(tid,source)['messages']] == ['1','2','3']
+    assert not store.history_page(tid,source)['turn_outcomes']
+
+
+def test_incompatible_settlement_preserves_published_refs_and_reports_unknown(tmp_path):
+    source = tmp_path/'state.db'
+    with sqlite3.connect(source) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, '
+                   'content TEXT, display_kind TEXT, platform_message_id TEXT)')
+        db.executemany('INSERT INTO messages VALUES (?,?,?,?,?,?)', [
+            (1,'s','user','ask',None,'incoming'),
+            (2,'s','assistant','late earlier',None,None),
+            (3,'s','assistant','interim',None,None)])
+    store = Store(tmp_path/'meta.db')
+    tid = store.create_thread('p','title','s','')
+    store.begin_turn(tid,'ingress:incoming')
+    store.record_turn(tid,'turn',[('s',1,'user'),('s',3,'assistant')])
+    cursor = store.history_page(tid,source,limit=1)['next_cursor']
+    store.settle_ingress(tid,'ingress:incoming','incoming',source)
+    page = store.history_page(tid,source)
+    assert [m['id'] for m in page['messages']] == ['1','3']
+    assert [m['id'] for m in store.history_page(tid,source,after=cursor)['messages']] == ['3']
+    assert page['turn_outcomes'] == [{'turn_id':'turn','state':'unknown'}]
+
+
+def test_settlement_pages_more_than_200_raw_rows(tmp_path):
+    source = tmp_path/'state.db'
+    with sqlite3.connect(source) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, '
+                   'content TEXT, display_kind TEXT, platform_message_id TEXT)')
+        db.execute("INSERT INTO messages VALUES (1,'s','user','ask',NULL,'incoming')")
+        db.executemany('INSERT INTO messages VALUES (?,\'s\',\'assistant\',?,NULL,NULL)',
+                       [(i,f'part {i}') for i in range(2,253)])
+    store = Store(tmp_path/'meta.db')
+    tid = store.create_thread('p','title','s','')
+    store.begin_turn(tid,'ingress:incoming')
+    store.settle_ingress(tid,'ingress:incoming','incoming',source)
+    ids, cursor = [], None
+    while True:
+        page = store.history_page(tid,source,limit=37,after=cursor)
+        ids.extend(int(m['id']) for m in page['messages'])
+        cursor = page['next_cursor']
+        if cursor is None:
+            break
+    assert ids == list(range(1,253))
+    assert store.history_page(tid,source)['turn_outcomes'] == [
+        {'turn_id':'settled:incoming','state':'unknown'}]
+
+
 def test_hook_keeps_interim_and_user_only_turn_and_reports_pending(tmp_path):
     home = tmp_path / 'home'
     home.mkdir()

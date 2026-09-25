@@ -165,10 +165,45 @@ class Store:
                 return
             if not existing:
                 db.execute("INSERT INTO turns VALUES (?,?,'pending')", (turn_id, thread_id))
-            for session_id, row_id, role in refs:
+            old = [(r['session_id'], r['row_id'], r['role']) for r in db.execute(
+                'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
+            if refs[:len(old)] != old:
+                raise ValueError('turn identity changed')
+            for session_id, row_id, role in refs[len(old):]:
                 db.execute('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) VALUES (?,?,?,?,?)',
                            (thread_id, turn_id, session_id, row_id, role))
             db.execute("UPDATE turns SET state='complete' WHERE turn_id=?", (turn_id,))
+
+    def append_hook_refs(self, thread_id, turn_id, refs, *, complete=False):
+        """Record original rows observed by a formal hook before compaction archives them."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT thread_id,state FROM turns WHERE turn_id=?', (turn_id,)).fetchone()
+            if row is None or row['thread_id'] != thread_id or row['state'] not in ('pending','complete'):
+                raise ValueError('unmapped or settled hook turn')
+            old = [(r['session_id'],r['row_id'],r['role']) for r in db.execute(
+                'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
+            if not old and (not refs or refs[0][2] != 'user'):
+                raise ValueError('hook turn needs original user anchor')
+            if any(ref[2] not in ('user','assistant') for ref in refs):
+                raise ValueError('invalid visible row')
+            if old and refs and refs[0][1] <= old[-1][1]:
+                raise ValueError('hook rows out of order')
+            db.executemany('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
+                           'VALUES (?,?,?,?,?)', [(thread_id,turn_id,*ref) for ref in refs])
+            if complete:
+                db.execute("UPDATE turns SET state='complete' WHERE turn_id=?", (turn_id,))
+
+    def turn_refs(self, turn_id):
+        with self._connect() as db:
+            return [(r['session_id'],r['row_id'],r['role']) for r in db.execute(
+                'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
+
+    def pending_ingress_id(self, thread_id):
+        with self._connect() as db:
+            row = db.execute("SELECT turn_id FROM turns WHERE thread_id=? AND state='pending' "
+                             "AND turn_id LIKE 'ingress:%' ORDER BY rowid DESC LIMIT 1", (thread_id,)).fetchone()
+            return row['turn_id'].removeprefix('ingress:') if row else None
 
     def settle_ingress(self, thread_id, ingress_id, platform_message_id, source_db):
         """Reconcile an inbound turn only after its gateway owner task has finished.
@@ -195,14 +230,20 @@ class Store:
                 rows = []
             else:
                 anchor = anchors[0]
-                rows = [dict(r) for r in source.execute(
-                    'SELECT * FROM messages WHERE session_id=? AND id>=? '
-                    'AND id < COALESCE((SELECT MIN(id) FROM messages WHERE session_id=? '
-                    "AND role='user' AND platform_message_id IS NOT NULL AND id>?), "
-                    '9223372036854775807) ORDER BY id LIMIT 201',
-                    (anchor['session_id'], anchor['id'], anchor['session_id'], anchor['id']))]
-                if len(rows) > 200:
-                    raise ValueError('turn exceeds bounded reconciliation limit')
+                next_user = source.execute(
+                    "SELECT MIN(id) FROM messages WHERE session_id=? AND role='user' "
+                    'AND platform_message_id IS NOT NULL AND id>?',
+                    (anchor['session_id'], anchor['id'])).fetchone()[0]
+                rows, last_id = [], anchor['id'] - 1
+                while True:
+                    batch = source.execute(
+                        'SELECT * FROM messages WHERE session_id=? AND id>? AND id<? '
+                        'ORDER BY id LIMIT 128',
+                        (anchor['session_id'], last_id, next_user or 9223372036854775807)).fetchall()
+                    if not batch:
+                        break
+                    rows.extend(dict(r) for r in batch)
+                    last_id = batch[-1]['id']
         visible = [r for r in rows if visible_text(r) is not None]
         refs = [(r['session_id'], r['id'], r['role']) for r in visible]
         with self._connect() as db:
@@ -230,20 +271,22 @@ class Store:
             old = [(r['session_id'], r['row_id'], r['role']) for r in db.execute(
                 'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq',
                 (turn['turn_id'],))]
-            if refs and refs != old:
-                # No successor ingress can start before this transaction. Preserve
-                # original row identities while repairing a partial hook snapshot.
-                db.execute('DELETE FROM message_refs WHERE turn_id=?', (turn['turn_id'],))
+            compatible = bool(refs) and refs[:len(old)] == old
+            if compatible and len(refs) > len(old):
+                # Published seq values are cursor identities. Append only the
+                # unobserved tail; a hook may have published an interim page.
                 db.executemany('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
-                               'VALUES (?,?,?,?,?)', [(thread_id, turn['turn_id'], *r) for r in refs])
-            if turn['state'] == 'pending':
+                               'VALUES (?,?,?,?,?)', [(thread_id, turn['turn_id'], *r)
+                                                    for r in refs[len(old):]])
+            if not compatible:
+                # Keep issued cursors valid and expose the unresolved mapping.
                 db.execute("UPDATE turns SET state='unknown' WHERE turn_id=?", (turn['turn_id'],))
-            elif not refs:
+            elif turn['state'] == 'pending':
                 db.execute("UPDATE turns SET state='unknown' WHERE turn_id=?", (turn['turn_id'],))
             db.execute("UPDATE turns SET state='unknown' WHERE thread_id=? AND state='pending' "
                        "AND turn_id NOT LIKE 'ingress:%'", (thread_id,))
             db.execute("UPDATE turns SET state=? WHERE turn_id=?",
-                       ('complete' if turn['state'] == 'complete' and refs else 'unknown', ingress_id))
+                       ('complete' if turn['state'] == 'complete' and compatible else 'unknown', ingress_id))
 
     @staticmethod
     def _cursor(thread_id, seq):

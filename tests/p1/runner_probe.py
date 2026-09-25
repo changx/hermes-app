@@ -41,13 +41,13 @@ class Model(BaseHTTPRequestHandler):
         answer = 'SYNTHETIC_P1_FINAL'
         usage_prompt = (max(30, len(json.dumps(request.get('messages', []))) // 4)
                         if COMPACT_MODE in ('preflight', 'midturn') else 30)
-        call_tool = (COMPACT_MODE == 'midturn' and not self.server.tool_called
+        call_tool = (COMPACT_MODE == 'midturn' and self.server.tool_calls < 3
                      and any('p1_synthetic_expand' in json.dumps(t) for t in request.get('tools', []))
                      and 'P1_MIDTURN' in json.dumps(request.get('messages', [])))
         if call_tool:
-            self.server.tool_called = True
-            answer = 'P1_INTERIM'
-        tool_call = {'index':0,'id':'p1_call_1','type':'function',
+            self.server.tool_calls += 1
+            answer = f'P1_INTERIM_{self.server.tool_calls}'
+        tool_call = {'index':0,'id':f'p1_call_{self.server.tool_calls}','type':'function',
                      'function':{'name':'p1_synthetic_expand','arguments':'{}'}}
         if request.get('stream'):
             chunks = [
@@ -88,7 +88,7 @@ async def main():
     shutil.copytree(Path(__file__).with_name('synthetic_tool_plugin'), HOME/'plugins'/'p1-synthetic-tool')
     model = ThreadingHTTPServer(('127.0.0.1', 0), Model)
     model.requests = []
-    model.tool_called = False
+    model.tool_calls = 0
     worker = threading.Thread(target=model.serve_forever, daemon=True)
     worker.start()
     (HOME / 'config.yaml').write_text(
@@ -268,12 +268,30 @@ async def main():
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                         mid_page = await resp.json()
-                        if resp.status == 200 and not mid_page['incomplete_turns'] and len(mid_page['messages']) >= 15:
+                        if resp.status == 200 and not mid_page['incomplete_turns'] and len(mid_page['messages']) >= 17:
                             break
                     await asyncio.sleep(.2)
                 events = [json.loads(line) for line in (HOME/'synthetic-events.jsonl').read_text().splitlines()]
-                attempt = {'mode':'midturn','tool_called':model.tool_called,
-                           'handler_called':any(e['event']=='tool_handler' for e in events),
+                handlers = [e for e in events if e['event'] == 'tool_handler']
+                target_turns = {e['turn_id'] for e in handlers if e['turn_id']}
+                target_events = [e for e in events if e['turn_id'] in target_turns]
+                with sqlite3.connect(HOME/'state.db') as raw:
+                    raw.row_factory = sqlite3.Row
+                    core_rows = [dict(r) for r in raw.execute(
+                        'SELECT id,session_id,role,platform_message_id,active,display_kind,'
+                        'substr(content,1,80) AS content FROM messages ORDER BY id')]
+                with sqlite3.connect(HOME/'hermes-app'/'metadata.sqlite') as meta:
+                    ingress_rows = list(meta.execute('SELECT * FROM turns ORDER BY rowid'))
+                post_tool_compression = (len(target_turns) == 1 and
+                    any(e['event'] == 'pre_auxiliary_call' and e['aux_task'] == 'compression'
+                        and sum(prior['event'] == 'tool_handler' for prior in target_events[:i]) >= 2
+                        for i, e in enumerate(target_events)))
+                attempt = {'mode':'midturn','tool_called':model.tool_calls == 3,
+                           'tool_call_count':model.tool_calls,
+                           'handler_called':len(handlers) == 3,
+                           'target_turn_ids':sorted(target_turns),
+                           'target_events':target_events,
+                           'post_tool_compression':post_tool_compression,
                            'auxiliary_tasks':[e['aux_task'] for e in events if e['event']=='pre_auxiliary_call'],
                            'request_count':len(model.requests)-requests_before,
                            'tool_result_wire_chars':[
@@ -283,19 +301,22 @@ async def main():
                                str(m.get('content'))[:600] for r in model.requests[requests_before:]
                                for m in r.get('messages', []) if m.get('role') == 'tool'],
                            'visible_roles':[m['role'] for m in mid_page['messages']],
-                           'visible_row_ids':[m['id'] for m in mid_page['messages']]}
+                           'visible_row_ids':[m['id'] for m in mid_page['messages']],
+                           'core_rows':core_rows,
+                           'turn_rows':ingress_rows}
                 (HOME.parent/'runner-midturn-attempt.json').write_text(json.dumps(attempt,sort_keys=True))
-                assert model.tool_called
+                assert model.tool_calls == 3, attempt
                 assert attempt['handler_called']
-                assert any('compress' in str(task).lower() for task in attempt['auxiliary_tasks']), {
+                assert post_tool_compression, {
                     'requests':len(model.requests)-requests_before,
                     'wire_roles_and_chars':[[(m.get('role'), len(str(m.get('content')))) for m in r.get('messages', [])]
                                             for r in model.requests[requests_before:]],
                     'page':mid_page}
-                assert len(model.requests)-requests_before >= 3
+                assert len(model.requests)-requests_before >= 4
                 assert mid_page['messages'][:len(mid_before['messages'])] == mid_before['messages']
-                assert [(m['role'],m['text']) for m in mid_page['messages'][-3:]] == [
-                    ('user','P1_MIDTURN'),('assistant','P1_INTERIM'),
+                assert [(m['role'],m['text']) for m in mid_page['messages'][-5:]] == [
+                    ('user','P1_MIDTURN'),('assistant','P1_INTERIM_1'),
+                    ('assistant','P1_INTERIM_2'),('assistant','P1_INTERIM_3'),
                     ('assistant','SYNTHETIC_P1_FINAL')], mid_page
                 with sqlite3.connect(HOME/'state.db') as raw:
                     inactive_rows = raw.execute('SELECT COUNT(*) FROM messages WHERE session_id=? AND active=0',
@@ -325,7 +346,11 @@ async def main():
                     branch = await resp.json()
                 assert not {m['id'] for m in branch['messages']} & {m['id'] for m in mid_page['messages']}
                 assert self_description_calls(HOME) == (1, 1)
-                result = {'mode':'midturn','tool_called':model.tool_called,
+                result = {'mode':'midturn','tool_called':model.tool_calls == 3,
+                          'tool_call_count':model.tool_calls,
+                          'post_tool_compression':post_tool_compression,
+                          'target_turn_ids':sorted(target_turns),
+                          'target_events':target_events,
                           'handler_called':attempt['handler_called'],
                           'summary_http_count':sum('compress' in str(t).lower() for t in attempt['auxiliary_tasks']),
                           'history_exact':True,

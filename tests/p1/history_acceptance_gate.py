@@ -87,6 +87,13 @@ require(len(repeat) >= 2 and len({r.get('run_id') for r in repeat}) == len(repea
                 and r.get('after_count') == r.get('before_count',0)+2 for r in repeat),
         'repeated automatic preflight runs did not settle with exact cold original history')
 require(midturn.get('tool_called') is True and midturn.get('handler_called') is True
+        and midturn.get('tool_call_count') == 3 and midturn.get('post_tool_compression') is True
+        and len(midturn.get('target_turn_ids', [])) == 1
+        and sum(e.get('event') == 'tool_handler' for e in midturn.get('target_events', [])) == 3
+        and any(e.get('event') == 'pre_auxiliary_call' and e.get('aux_task') == 'compression'
+                and sum(p.get('event') == 'tool_handler'
+                        for p in midturn.get('target_events', [])[:i]) >= 2
+                for i,e in enumerate(midturn.get('target_events', [])))
         and midturn.get('summary_http_count',0) > 0 and midturn.get('inactive_core_rows',0) > 0
         and midturn.get('history_exact') is True and midturn.get('bounded_pages_exact') is True
         and midturn.get('cold_exact') is True and midturn.get('branch_excluded') is True

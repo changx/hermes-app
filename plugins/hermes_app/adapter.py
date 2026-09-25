@@ -18,7 +18,7 @@ from hermes_constants import get_hermes_home
 from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
-from .history_hooks import pre_llm_call, post_llm_call, on_session_end
+from .history_hooks import pre_llm_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +64,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._site = None
         self._sockets = set()
         self._store = _store()
+        self._settlement_tasks = set()
+        self._stopping = False
         self.port = None
 
     def _source(self, project_id, thread_id):
@@ -108,9 +110,28 @@ class HermesAppAdapter(BasePlatformAdapter):
             self._site = None
             raise
         self._mark_connected()
+        self._stopping = False
         return True
 
+    async def cancel_background_tasks(self):
+        self._stopping = True
+        await super().cancel_background_tasks()
+        # Core cancellation completes owner tasks, which in turn schedules their
+        # reconciliation callbacks. Let those callbacks run before draining.
+        await asyncio.sleep(0)
+        await self._drain_settlements()
+
+    async def _drain_settlements(self):
+        while self._settlement_tasks:
+            await asyncio.gather(*tuple(self._settlement_tasks), return_exceptions=True)
+
     async def disconnect(self):
+        self._stopping = True
+        if self._site is not None:
+            await self._site.stop()
+        # Direct disconnect also has to stop owners; GatewayRunner normally
+        # invokes cancel_background_tasks before this method.
+        await self.cancel_background_tasks()
         for ws in tuple(self._sockets):
             await ws.close(code=1001, message=b'plugin stopping')
         self._sockets.clear()
@@ -232,12 +253,16 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response({'thread': result})
 
     async def _submit(self, request):
+        if self._stopping:
+            raise web.HTTPServiceUnavailable(text='adapter stopping')
         tid = request.match_info['id']
         thread = self._store.get_thread(tid)
         if thread is None or thread['archived']:
             raise web.HTTPNotFound()
         body = await _body(request)
         content = body.get('text')
+        if self._stopping:
+            raise web.HTTPServiceUnavailable(text='adapter stopping')
         if not isinstance(content, str) or not content.strip() or len(content) > 16000:
             raise web.HTTPBadRequest(text='invalid text')
         source = self._source(thread['project_id'], tid)
@@ -263,17 +288,23 @@ class HermesAppAdapter(BasePlatformAdapter):
         if owner is None:
             self._store.reject_turn(ingress_id)
             raise web.HTTPConflict(text='gateway owner unavailable')
-        owner.add_done_callback(lambda _: asyncio.create_task(
-            self._settle_ingress(tid, ingress_id, event.message_id)))
+        owner.add_done_callback(lambda _: self._schedule_settlement(tid, ingress_id, event.message_id))
         return web.json_response({'status': 'dispatched_volatile', 'durable': False}, status=202)
+
+    def _schedule_settlement(self, thread_id, ingress_id, platform_message_id):
+        task = asyncio.create_task(self._settle_ingress(thread_id, ingress_id, platform_message_id))
+        self._settlement_tasks.add(task)
+        task.add_done_callback(self._settlement_tasks.discard)
 
     async def _settle_ingress(self, thread_id, ingress_id, platform_message_id):
         try:
-            await asyncio.to_thread(self._store.settle_ingress, thread_id, ingress_id,
-                                    platform_message_id, get_hermes_home() / 'state.db')
+            # Keep the short, paged SQLite reconciliation on this task. A
+            # cancelled to_thread await would leave an untracked DB writer.
+            self._store.settle_ingress(thread_id, ingress_id,
+                                       platform_message_id, get_hermes_home() / 'state.db')
         except Exception:
             log.exception('Hermes App ingress reconciliation failed: %s', ingress_id)
-            await asyncio.to_thread(self._store.mark_ingress_unknown, thread_id, ingress_id)
+            self._store.mark_ingress_unknown(thread_id, ingress_id)
 
     async def _history(self, request):
         tid = request.match_info['id']
@@ -311,6 +342,8 @@ class HermesAppAdapter(BasePlatformAdapter):
 def register(ctx):
     ctx.register_system_prompt_section('hermes_app.channel', _initial_description, max_chars=4000)
     ctx.register_hook('pre_llm_call', pre_llm_call)
+    ctx.register_hook('post_tool_call', post_tool_call)
+    ctx.register_hook('pre_auxiliary_call', pre_auxiliary_call)
     ctx.register_hook('post_llm_call', post_llm_call)
     ctx.register_hook('on_session_end', on_session_end)
     ctx.register_platform(name='hermes_app', label='Hermes App local foundation',

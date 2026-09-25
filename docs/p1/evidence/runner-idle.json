@@ -11,8 +11,8 @@
   "history_after_compaction_exact": true,
   "history_after_next_turn_exact": true,
   "history_original_ids": [
-    "3",
     "4",
+    "5",
     "7",
     "8",
     "9",
@@ -37,12 +37,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "4",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "4",
+          "id": "5",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -144,12 +144,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "4",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "4",
+          "id": "5",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -258,12 +258,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "4",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "4",
+          "id": "5",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -365,12 +365,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "4",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "4",
+          "id": "5",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -462,17 +462,17 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "4",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "4",
+          "id": "5",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF8yYTExYmJmYjVlNGY0OTQyYTY0MzI3YmMiLDRd",
+      "next_cursor": "WyJ0aF9hOGVmZDM3NTlhMjY0ZDAzYWY5ZjNkMGQiLDRd",
       "turn_outcomes": []
     },
     "page2": {
@@ -489,7 +489,7 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF8yYTExYmJmYjVlNGY0OTQyYTY0MzI3YmMiLDZd",
+      "next_cursor": "WyJ0aF9hOGVmZDM3NTlhMjY0ZDAzYWY5ZjNkMGQiLDZd",
       "turn_outcomes": []
     }
   },

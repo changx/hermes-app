@@ -3,12 +3,12 @@
     "incomplete_turns": [],
     "messages": [
       {
-        "id": "3",
+        "id": "1",
         "role": "user",
         "text": "P1_FIRST"
       },
       {
-        "id": "5",
+        "id": "2",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
@@ -72,17 +72,17 @@
   "description_init_once": true,
   "handler_called": true,
   "history_exact": true,
-  "inactive_core_rows": 16,
+  "inactive_core_rows": 27,
   "messages": {
     "incomplete_turns": [],
     "messages": [
       {
-        "id": "3",
+        "id": "1",
         "role": "user",
         "text": "P1_FIRST"
       },
       {
-        "id": "5",
+        "id": "2",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
@@ -137,17 +137,27 @@
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
-        "id": "22",
+        "id": "17",
         "role": "user",
         "text": "P1_MIDTURN"
       },
       {
-        "id": "23",
+        "id": "18",
         "role": "assistant",
-        "text": "P1_INTERIM"
+        "text": "P1_INTERIM_1"
       },
       {
-        "id": "25",
+        "id": "20",
+        "role": "assistant",
+        "text": "P1_INTERIM_2"
+      },
+      {
+        "id": "29",
+        "role": "assistant",
+        "text": "P1_INTERIM_3"
+      },
+      {
+        "id": "36",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       }
@@ -156,12 +166,44 @@
     "turn_outcomes": [
       {
         "state": "unknown",
-        "turn_id": "20260925_035508_cfda027b:20260925_035508_cfda027b:dfaa0f9c"
+        "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
       }
     ]
   },
   "mode": "midturn",
-  "model_requests_during_turn": 3,
-  "summary_http_count": 1,
+  "model_requests_during_turn": 6,
+  "post_tool_compression": true,
+  "summary_http_count": 2,
+  "target_events": [
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": "compression",
+      "event": "pre_auxiliary_call",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": null,
+      "event": "tool_handler",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    },
+    {
+      "aux_task": "compression",
+      "event": "pre_auxiliary_call",
+      "turn_id": "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+    }
+  ],
+  "target_turn_ids": [
+    "20260925_042209_b31d7550:20260925_042209_b31d7550:96e739ec"
+  ],
+  "tool_call_count": 3,
   "tool_called": true
 }
