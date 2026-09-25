@@ -1,0 +1,17 @@
+{
+  "adapter": "HermesAppAdapter",
+  "auth_http_ws": true,
+  "channel_change_new_thread_only": true,
+  "history_status": 501,
+  "initial_description": true,
+  "listener_closed": true,
+  "model_requests": 4,
+  "profile_rejected": true,
+  "runner": "GatewayRunner",
+  "second_turn_description_once": true,
+  "thread_archive": true,
+  "thread_raw_isolation": true,
+  "two_clients": true,
+  "volatile_receipt": true,
+  "websockets_closed": true
+}

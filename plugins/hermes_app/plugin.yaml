@@ -1,0 +1,5 @@
+name: hermes-app
+label: Hermes App local P1 foundation
+kind: platform
+version: 0.1.0
+description: Single-owner local App transport and metadata; pinned to Hermes 2f16a1aa5a35feec496949abdef7ad51aea0e7ef

@@ -1,0 +1,11 @@
+{
+  "gate": "P1-01/02",
+  "passed": false,
+  "failures": [
+    "history API status 501 (required 200 with stable bounded page)",
+    "inplace: visible sequence 32 -> 32 changed",
+    "rotate: visible sequence 32 -> 34 changed",
+    "idle: visible sequence 32 -> 34 changed",
+    "inplace_idle: visible sequence 32 -> 32 changed"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "active_rows_with_new_ids": 4,
+  "after_count": 32,
+  "before_count": 32,
+  "canonical_visible_equal": false,
+  "changed_cwd_rebuild_description_count": 0,
+  "child_is_root": true,
+  "first_diffs": [
+    {
+      "after": "P1_REPLY_00 response text resp",
+      "before": "P1_USER_00 alpha beta gamma de",
+      "ordinal": 0
+    },
+    {
+      "after": "P1_USER_01 alpha beta gamma de",
+      "before": "P1_REPLY_00 response text resp",
+      "ordinal": 1
+    },
+    {
+      "after": "P1_REPLY_01 response text resp",
+      "before": "P1_USER_01 alpha beta gamma de",
+      "ordinal": 2
+    },
+    {
+      "after": "P1_USER_02 alpha beta gamma de",
+      "before": "P1_REPLY_01 response text resp",
+      "ordinal": 3
+    },
+    {
+      "after": "P1_REPLY_02 response text resp",
+      "before": "P1_USER_02 alpha beta gamma de",
+      "ordinal": 4
+    }
+  ],
+  "initial_description_consumed": true,
+  "initial_prompt_description_count": 1,
+  "mode": "inplace_idle",
+  "original_row_ids_preserved": true,
+  "repeated_user_after": 2,
+  "repeated_user_before": 2,
+  "section_registered": true,
+  "successor_description_not_injected": true,
+  "summary_model_calls": 1
+}
