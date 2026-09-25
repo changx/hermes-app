@@ -1,0 +1,6 @@
+
+> hermes-app-p0-expo-sdk-probe@0.0.1 test:protocol
+> node verify-baseline.cjs && node protocol-test.cjs
+
+Hermes shared SDK pinned baseline 2f16a1aa5a35feec496949abdef7ad51aea0e7ef
+{"status":"PASS","sdkInputs":["../../../../../hermes-agent/hermes-app-p0-baseline/apps/shared/src/json-rpc-channel.ts"],"checks":["request-response","event","unhandled-server-request","typed-error","disconnect-pending"],"transport":"synthetic in-memory only","output":"/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/p0/close-mobile/sdk-protocol-test.cjs"}

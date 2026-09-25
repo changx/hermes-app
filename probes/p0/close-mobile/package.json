@@ -1,0 +1,16 @@
+{
+  "name": "hermes-app-p0-expo-sdk-probe",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.js",
+  "scripts": {
+    "export:android-js": "node verify-baseline.cjs && expo export --platform android --output-dir dist --no-bytecode --no-minify --max-workers 2",
+    "test:protocol": "node verify-baseline.cjs && node protocol-test.cjs"
+  },
+  "dependencies": {
+    "expo": "54.0.37",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": { "esbuild": "0.28.1" }
+}

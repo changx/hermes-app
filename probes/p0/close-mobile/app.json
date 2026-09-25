@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "Hermes SDK P0 Probe",
+    "slug": "hermes-sdk-p0-probe",
+    "version": "0.0.1",
+    "platforms": ["android"],
+    "android": { "package": "dev.hermesapp.p0sdkprobe" }
+  }
+}
