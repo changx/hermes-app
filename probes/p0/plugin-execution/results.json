@@ -1,0 +1,152 @@
+{
+  "loader": {
+    "name": "p0_execution",
+    "source": "plugin",
+    "cron_deliver_env_var": "P0_EXECUTION_HOME_CHANNEL",
+    "unload_removed": true,
+    "disabled_skipped": true
+  },
+  "adapter": {
+    "accepted": true,
+    "observed": [
+      [
+        "slow",
+        "Channel A description",
+        "t1"
+      ],
+      [
+        "second",
+        "Channel A description",
+        "t1"
+      ],
+      [
+        "isolated",
+        "Thread t2 override",
+        "t2"
+      ],
+      [
+        "other",
+        "Channel B description",
+        "t3"
+      ],
+      [
+        "fail",
+        "Channel B description",
+        "t4"
+      ]
+    ],
+    "delivered": [
+      {
+        "chat_id": "a",
+        "content": "synthetic-final",
+        "metadata": {
+          "thread_id": "t1",
+          "notify": true
+        }
+      },
+      {
+        "chat_id": "a",
+        "content": "synthetic-second",
+        "metadata": {
+          "thread_id": "t1",
+          "notify": true
+        }
+      },
+      {
+        "chat_id": "a",
+        "content": "synthetic-isolated",
+        "metadata": {
+          "thread_id": "t2",
+          "notify": true
+        }
+      },
+      {
+        "chat_id": "b",
+        "content": "synthetic-other",
+        "metadata": {
+          "thread_id": "t3",
+          "notify": true
+        }
+      },
+      {
+        "chat_id": "b",
+        "content": "Sorry, I encountered an error (RuntimeError).\nsynthetic failure\nTry again or use /reset to start a fresh session.",
+        "metadata": {
+          "thread_id": "t4"
+        }
+      }
+    ],
+    "queued_while_busy": true,
+    "stop_reaped": true,
+    "synthetic_error_delivery_count": 1,
+    "offline_owner": "adapter task still running; no network client was implemented"
+  },
+  "prompts": {
+    "first_second_fresh": [
+      "Channel A description",
+      "Channel A description",
+      "Channel B description"
+    ],
+    "limitation": "prompt assembly exercised, not a real model call/compaction or cached-agent invalidation"
+  },
+  "approvals": {
+    "first": 1,
+    "stale": 0,
+    "outcome": {
+      "resolved": true,
+      "choice": "once",
+      "reason": null
+    },
+    "pending_after": [],
+    "restart_restore": "not proven: approval queue is process-local",
+    "plugin_observer_hooks": [
+      {
+        "phase": "pre",
+        "session_key": "p0_execution:synthetic"
+      },
+      {
+        "phase": "post",
+        "choice": "once"
+      }
+    ]
+  },
+  "clarify": {
+    "first": "resolved",
+    "stale": false,
+    "answer": "yes",
+    "expired_late": false,
+    "restart_restore": "not proven: queue is process-local"
+  },
+  "cron": {
+    "origin_targets": [
+      {
+        "platform": "p0_execution",
+        "chat_id": "a",
+        "thread_id": "t1",
+        "_resolved_from": "origin"
+      }
+    ],
+    "local_targets": [],
+    "limitation": "target resolver only; no cron fire or push provider called"
+  },
+  "cron_live_send": {
+    "error": null,
+    "delivered": [
+      {
+        "chat_id": "a",
+        "content": "Cronjob Response: synthetic-cron-send\n(job_id: synthetic-cron-send)\n-------------\n\nsynthetic-cron-output\n\nTo stop or manage this job, send me a new message (e.g. \"stop reminder synthetic-cron-send\").",
+        "metadata": {
+          "job_id": "synthetic-cron-send",
+          "notify": true,
+          "thread_id": "t1"
+        }
+      }
+    ],
+    "limitation": "real cron delivery function to in-memory adapter; no scheduler fire, durable history, APNs/FCM"
+  },
+  "crash": {
+    "child_exit": 73,
+    "accepted_marker": true,
+    "limitation": "crashed synthetic adapter callback before model or tool; marker is probe-owned, not durable Hermes turn admission; no automatic retry attempted"
+  }
+}
