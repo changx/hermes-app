@@ -1,0 +1,72 @@
+{
+  "after": {
+    "incomplete_turns": [],
+    "messages": [
+      {
+        "id": "1",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "2",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_RACE"
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "9",
+        "role": "user",
+        "text": "P1_AFTER_RACE"
+      },
+      {
+        "id": "10",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": []
+  },
+  "after_release_exact": true,
+  "busy_after_post_hook": true,
+  "during": {
+    "incomplete_turns": [
+      "ingress:76fdc7a13f244ad99634599afaa50a6b"
+    ],
+    "messages": [
+      {
+        "id": "1",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "2",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_RACE"
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": []
+  },
+  "mode": "race",
+  "second_send_status": 409
+}

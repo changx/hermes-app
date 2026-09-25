@@ -11,8 +11,8 @@ from hermes_constants import set_hermes_home_override, reset_hermes_home_overrid
 def test_repeated_text_order_pages_and_missing_original(tmp_path):
     source = tmp_path / 'state.db'
     with sqlite3.connect(source) as db:
-        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT)')
-        db.executemany('INSERT INTO messages VALUES (?,?,?,?,?)', [
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT, platform_message_id TEXT)')
+        db.executemany('INSERT INTO messages(id,session_id,role,content,display_kind) VALUES (?,?,?,?,?)', [
             (10, 'root', 'user', 'same', None), (11, 'root', 'assistant', 'reply', None),
             (12, 'root', 'user', 'same', None), (13, 'root', 'assistant', 'reply', None),
             (14, 'branch', 'user', 'foreign', None)])
@@ -64,13 +64,42 @@ def test_projection_never_exposes_carrier_or_internal_marker():
     assert visible_text({'role':'assistant','content':'internal','display_kind':'hidden'}) is None
 
 
+def test_history_projects_sqlite_json_tool_fields(tmp_path):
+    source = tmp_path/'state.db'
+    with sqlite3.connect(source) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, '
+                   'content TEXT, display_kind TEXT, tool_calls TEXT, display_metadata TEXT)')
+        db.executemany('INSERT INTO messages VALUES (?,?,?,?,?,?,?)', [
+            (1,'s','user','run tool',None,None,None),
+            (2,'s','assistant','P1_INTERIM',None,
+             '[{"id":"x","type":"function","function":{"name":"p1_synthetic_expand","arguments":"{}"}}]',
+             '{}')])
+    store = Store(tmp_path/'meta.db')
+    tid = store.create_thread('p','title','s','')
+    store.record_turn(tid,'turn',[('s',1,'user'),('s',2,'assistant')])
+    page = store.history_page(tid,source)
+    assert [m['id'] for m in page['messages']] == ['1','2']
+    assert 'P1_INTERIM' in page['messages'][1]['text']
+
+
+def test_unreconciled_gateway_owner_releases_busy_with_unknown(tmp_path):
+    store = Store(tmp_path/'meta.db')
+    tid = store.create_thread('p','title','s','')
+    store.begin_turn(tid,'ingress:one')
+    store.mark_ingress_unknown(tid,'ingress:one')
+    page = store.history_page(tid,tmp_path/'unused.db')
+    assert page['incomplete_turns'] == []
+    assert page['turn_outcomes'] == [{'turn_id':'settled:one','state':'unknown'}]
+    store.begin_turn(tid,'ingress:two')
+
+
 def test_hook_keeps_interim_and_user_only_turn_and_reports_pending(tmp_path):
     home = tmp_path / 'home'
     home.mkdir()
     source = home / 'state.db'
     with sqlite3.connect(source) as db:
-        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT)')
-        db.executemany('INSERT INTO messages VALUES (?,?,?,?,?)', [
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, display_kind TEXT, platform_message_id TEXT)')
+        db.executemany('INSERT INTO messages(id,session_id,role,content,display_kind) VALUES (?,?,?,?,?)', [
             (1, 's', 'user', 'ask', None),
             (2, 's', 'assistant', 'working', None),
             (3, 's', 'assistant', 'final', None),
@@ -79,6 +108,8 @@ def test_hook_keeps_interim_and_user_only_turn_and_reports_pending(tmp_path):
             (6, 's', 'user', '[System: session_meta]', None),
             (7, 's', 'user', '[{"type":"text","text":"part text"}]', None),
             (8, 's', 'user', 'interrupted ask', None)])
+        db.executemany('UPDATE messages SET platform_message_id=? WHERE id=?',
+                       [('1', 1), ('2', 4), ('3', 7), ('4', 8)])
     store = Store(home / 'hermes-app' / 'metadata.sqlite')
     tid = store.create_thread('p', 'title', 's', '')
     token = set_hermes_home_override(home)
@@ -90,18 +121,22 @@ def test_hook_keeps_interim_and_user_only_turn_and_reports_pending(tmp_path):
                 {'role': 'assistant', 'content': 'final', '_row_id': 3}])
         assert [(m['id'], m['text']) for m in store.history_page(tid, source)['messages']] == [
             ('1', 'ask'), ('2', 'working'), ('3', 'final')]
+        assert store.history_page(tid, source)['incomplete_turns'] == ['ingress:1']
+        store.settle_ingress(tid, 'ingress:1', '1', source)
         store.begin_turn(tid, 'ingress:2')
         page = store.history_page(tid, source)
         assert [m['id'] for m in page['messages']] == ['1', '2', '3']
         assert page['incomplete_turns'] == ['ingress:2']
         post_llm_call(platform='hermes_app', turn_id='t2', session_id='s',
             conversation_history=[{'role': 'user', 'content': 'failed ask', '_row_id': 4}])
+        store.settle_ingress(tid, 'ingress:2', '2', source)
         assert [m['id'] for m in store.history_page(tid, source)['messages']] == ['1', '2', '3', '4']
         store.record_turn(tid, 't3', [('s', 7, 'user')])
         assert store.history_page(tid, source)['messages'][-1]['text'] == 'part text'
         store.begin_turn(tid, 'ingress:4')
         on_session_end(platform='hermes_app', session_id='s', turn_id='t4',
                        completed=False, failed=False, interrupted=True)
+        store.settle_ingress(tid, 'ingress:4', '4', source)
         page = store.history_page(tid, source)
         assert page['messages'][-1]['text'] == 'interrupted ask'
         assert page['turn_outcomes'] == [{'turn_id':'t4','state':'interrupted'}]

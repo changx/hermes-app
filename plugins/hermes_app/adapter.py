@@ -5,6 +5,7 @@ The transport owns no transcript; Hermes Project and SessionDB stay authoritativ
 """
 import asyncio
 import hmac
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -18,6 +19,8 @@ from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
 from .history_hooks import pre_llm_call, post_llm_call, on_session_end
+
+log = logging.getLogger(__name__)
 
 
 def _store():
@@ -252,7 +255,25 @@ class HermesAppAdapter(BasePlatformAdapter):
         if not event._gateway_accepted:
             self._store.reject_turn(ingress_id)
             raise web.HTTPConflict(text='gateway did not dispatch')
+        # handle_message returns after spawning the gateway owner. Hooks may run
+        # before its late transcript writes and delivery; keep ingress busy until
+        # that exact task finishes, so a second POST cannot enter core steer mode.
+        session_key = self._event_session_key(event)
+        owner = self._session_tasks.get(session_key)
+        if owner is None:
+            self._store.reject_turn(ingress_id)
+            raise web.HTTPConflict(text='gateway owner unavailable')
+        owner.add_done_callback(lambda _: asyncio.create_task(
+            self._settle_ingress(tid, ingress_id, event.message_id)))
         return web.json_response({'status': 'dispatched_volatile', 'durable': False}, status=202)
+
+    async def _settle_ingress(self, thread_id, ingress_id, platform_message_id):
+        try:
+            await asyncio.to_thread(self._store.settle_ingress, thread_id, ingress_id,
+                                    platform_message_id, get_hermes_home() / 'state.db')
+        except Exception:
+            log.exception('Hermes App ingress reconciliation failed: %s', ingress_id)
+            await asyncio.to_thread(self._store.mark_ingress_unknown, thread_id, ingress_id)
 
     async def _history(self, request):
         tid = request.match_info['id']

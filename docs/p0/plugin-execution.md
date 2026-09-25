@@ -1,5 +1,7 @@
 # P0 EXECUTION / PROMPTS / ASYNC（仅插件）
 
+> 历史诊断记录：下文 E02 的逐 turn prompt 方案已被 Jamie 后续要求取代，不能用于 P1 实现。当前规则是仅全新用户 Session 初始化注入一次 Description；时间/长度/idle 压缩、物理 successor、冷恢复和 prompt rebuild 后插件均不补入。以 `../p1-plan.md` 为当前需求。
+
 基线 Hermes **只读** `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，App 起点 `16b1858`。探针在 `probes/p0/plugin-execution/`；[机器结果](../../probes/p0/plugin-execution/results.json)。只复制测试插件到临时 `HERMES_HOME/plugins/`，通过**真实** `get_plugin_manager().discover_and_load()` → `PluginContext.register_platform()` → `platform_registry.create_adapter()` 加载；`BasePlatformAdapter.handle_message()` 执行真实的任务 guard / pending / send / error 分支。**模型/runner 处理器是明确的合成替身**：使用正式 `set_message_handler` 接口绑定；没有实例化真实 `GatewayRunner` 或 `AIAgent`，没有网络监听、真实客户端、工具调用、真实 cron fire 或推送商服务。不能把该替身验证解释为真实 Agent 的执行/持久性证明。不修改、不 monkeypatch Hermes 核心。
 
 ## 复现

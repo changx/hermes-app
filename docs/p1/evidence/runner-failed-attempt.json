@@ -14,7 +14,7 @@
     },
     {
       "display_kind": null,
-      "id": 4,
+      "id": 5,
       "is_failed_user": false,
       "role": "session_meta"
     },
@@ -34,10 +34,7 @@
   "failure_http_requests": 1,
   "mode": "failed",
   "plugin_page": {
-    "incomplete_turns": [
-      "ingress:d4603028f79742228a3fa6a306d5e869",
-      "20260925_032530_07216e81:20260925_032530_07216e81:1c61ac9a"
-    ],
+    "incomplete_turns": [],
     "messages": [
       {
         "id": "1",
@@ -48,9 +45,24 @@
         "id": "2",
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_FAIL"
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "Your request was not processed. Send it again if you still want me to carry it out."
       }
     ],
     "next_cursor": null,
-    "turn_outcomes": []
+    "turn_outcomes": [
+      {
+        "state": "unknown",
+        "turn_id": "20260925_035516_44b566be:20260925_035516_44b566be:6faf239e"
+      }
+    ]
   }
 }

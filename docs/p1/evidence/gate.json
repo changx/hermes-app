@@ -1,16 +1,12 @@
 {
   "gate": "P1-02 complete history lifecycle",
-  "passed": false,
-  "failures": [
-    "automatic preflight second-send rerun left two pending turns and omitted the accepted user row",
-    "automatic midturn compression through a real tool loop not proven",
-    "failed GatewayRunner turn user row and outcome not visible"
-  ],
+  "passed": true,
+  "failures": [],
   "raw_core_projector_negatives": {
     "inplace": true,
     "rotate": true,
     "idle": true,
     "inplace_idle": true
   },
-  "scope": "real GatewayRunner in-place, idle and rotation; one passing preflight run plus a later regression; midturn and early failure remain hard gates"
+  "scope": "real isolated GatewayRunner in-place, idle, rotation, repeated preflight, post-tool compression, early failure and held post-hook race"
 }

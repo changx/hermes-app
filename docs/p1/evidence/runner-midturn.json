@@ -1,0 +1,167 @@
+{
+  "before": {
+    "incomplete_turns": [],
+    "messages": [
+      {
+        "id": "3",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "5",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_SEED_0 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "9",
+        "role": "user",
+        "text": "P1_SEED_1 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "10",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "11",
+        "role": "user",
+        "text": "P1_SEED_2 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "12",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "13",
+        "role": "user",
+        "text": "P1_SEED_3 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "14",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "15",
+        "role": "user",
+        "text": "P1_SEED_4 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "16",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": []
+  },
+  "bounded_pages_exact": true,
+  "branch_excluded": true,
+  "cold_exact": true,
+  "description_init_once": true,
+  "handler_called": true,
+  "history_exact": true,
+  "inactive_core_rows": 16,
+  "messages": {
+    "incomplete_turns": [],
+    "messages": [
+      {
+        "id": "3",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "5",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_SEED_0 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "9",
+        "role": "user",
+        "text": "P1_SEED_1 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "10",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "11",
+        "role": "user",
+        "text": "P1_SEED_2 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "12",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "13",
+        "role": "user",
+        "text": "P1_SEED_3 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "14",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "15",
+        "role": "user",
+        "text": "P1_SEED_4 seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed seed "
+      },
+      {
+        "id": "16",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "22",
+        "role": "user",
+        "text": "P1_MIDTURN"
+      },
+      {
+        "id": "23",
+        "role": "assistant",
+        "text": "P1_INTERIM"
+      },
+      {
+        "id": "25",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": [
+      {
+        "state": "unknown",
+        "turn_id": "20260925_035508_cfda027b:20260925_035508_cfda027b:dfaa0f9c"
+      }
+    ]
+  },
+  "mode": "midturn",
+  "model_requests_during_turn": 3,
+  "summary_http_count": 1,
+  "tool_called": true
+}

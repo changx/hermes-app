@@ -1,0 +1,36 @@
+{
+  "mode": "failed",
+  "page": {
+    "incomplete_turns": [],
+    "messages": [
+      {
+        "id": "1",
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "id": "2",
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "id": "7",
+        "role": "user",
+        "text": "P1_FAIL"
+      },
+      {
+        "id": "8",
+        "role": "assistant",
+        "text": "Your request was not processed. Send it again if you still want me to carry it out."
+      }
+    ],
+    "next_cursor": null,
+    "turn_outcomes": [
+      {
+        "state": "unknown",
+        "turn_id": "20260925_035516_44b566be:20260925_035516_44b566be:6faf239e"
+      }
+    ]
+  },
+  "synthetic_failure_requests": 1
+}

@@ -14,9 +14,10 @@ variants = {mode: json.loads((EVIDENCE / f'runner-{mode}.json').read_text())
 raw = {mode: json.loads((EVIDENCE / f'compression-{mode}.json').read_text())
        for mode in ('inplace', 'rotate', 'idle', 'inplace_idle')}
 preflight = json.loads((EVIDENCE / 'runner-preflight.json').read_text()) if (EVIDENCE / 'runner-preflight.json').exists() else {}
-preflight_regression = json.loads((EVIDENCE / 'runner-preflight-regression.json').read_text()) if (EVIDENCE / 'runner-preflight-regression.json').exists() else {}
+preflight_repeat = json.loads((EVIDENCE / 'runner-preflight-repeat.json').read_text()) if (EVIDENCE / 'runner-preflight-repeat.json').exists() else {}
 midturn = json.loads((EVIDENCE / 'runner-midturn.json').read_text()) if (EVIDENCE / 'runner-midturn.json').exists() else {}
 failed = json.loads((EVIDENCE / 'runner-failed.json').read_text()) if (EVIDENCE / 'runner-failed.json').exists() else {}
+race = json.loads((EVIDENCE / 'runner-race.json').read_text()) if (EVIDENCE / 'runner-race.json').exists() else {}
 v = runner.get('history_validation', {})
 failures = []
 
@@ -31,6 +32,9 @@ page1 = v.get('page1', {})
 page2 = v.get('page2', {})
 branch = v.get('branch', {}).get('messages', [])
 require(runner.get('history_status') == 200, 'plugin GET did not return 200')
+require(runner.get('initial_description') is True and runner.get('second_turn_description_once') is True
+        and runner.get('channel_change_new_thread_only') is True,
+        'Channel Description was not limited to new user sessions')
 require(runner.get('compaction_model_calls', 0) > 0 and runner.get('compaction_new_active_rows', 0) > 0,
         'real compaction did not rewrite active rows')
 require(len(before) == 18 and before == compressed, 'original IDs/roles/text changed across compaction')
@@ -68,24 +72,39 @@ for mode, item in variants.items():
             f'{mode}: bounded cursor differs')
     require(not {m.get('id') for m in variant.get('branch', {}).get('messages', [])} &
             {m.get('id') for m in later}, f'{mode}: branch leaked')
-require(preflight.get('effective_threshold') == 2400 and preflight.get('summary_http_count_min',0) > 0
+require(preflight.get('effective_threshold') == 2400 and preflight.get('summary_http_count',0) > 0
+        and preflight.get('description_count_next_request',99) <= 1
         and preflight.get('inactive_core_rows',0) > 0 and preflight.get('cold_exact') is True,
         'automatic preflight compression and cold history not proven')
 require(preflight.get('after_next',{}).get('messages',[])[:len(preflight.get('before',{}).get('messages',[]))]
         == preflight.get('before',{}).get('messages',[]) and bool(preflight.get('before',{}).get('messages')),
         'preflight original refs changed')
-require(preflight_regression.get('resolved') is True,
-        'automatic preflight second-send rerun left two pending turns and omitted the accepted user row')
-require(midturn.get('tool_called') is True and midturn.get('summary_http_count',0) > 0
-        and midturn.get('history_exact') is True,
+repeat = preflight_repeat.get('runs', [])
+require(len(repeat) >= 2 and len({r.get('run_id') for r in repeat}) == len(repeat)
+        and all(r.get('summary_http_count',0) > 0 and r.get('cold_exact') is True
+                and r.get('prefix_exact') is True and r.get('settled') is True
+                and r.get('description_count_next_request',99) <= 1
+                and r.get('after_count') == r.get('before_count',0)+2 for r in repeat),
+        'repeated automatic preflight runs did not settle with exact cold original history')
+require(midturn.get('tool_called') is True and midturn.get('handler_called') is True
+        and midturn.get('summary_http_count',0) > 0 and midturn.get('inactive_core_rows',0) > 0
+        and midturn.get('history_exact') is True and midturn.get('bounded_pages_exact') is True
+        and midturn.get('cold_exact') is True and midturn.get('branch_excluded') is True
+        and midturn.get('description_init_once') is True,
         'automatic midturn compression through a real tool loop not proven')
 require(any(m.get('text') == 'P1_FAIL' and m.get('role') == 'user'
             for m in failed.get('page',{}).get('messages',[]))
-        and bool(failed.get('page',{}).get('turn_outcomes')),
+        and any(m.get('role') == 'assistant' and 'not processed' in m.get('text','')
+                for m in failed.get('page',{}).get('messages',[]))
+        and bool(failed.get('page',{}).get('turn_outcomes'))
+        and not failed.get('page',{}).get('incomplete_turns'),
         'failed GatewayRunner turn user row and outcome not visible')
+require(race.get('busy_after_post_hook') is True and race.get('second_send_status') == 409
+        and race.get('after_release_exact') is True and not race.get('after',{}).get('incomplete_turns'),
+        'fast second send entered gateway before owner task completion')
 record = {'gate':'P1-02 complete history lifecycle','passed':not failures,'failures':failures,
           'raw_core_projector_negatives':{mode:not x['canonical_visible_equal'] for mode,x in raw.items()},
-          'scope':'real GatewayRunner in-place, idle and rotation; one passing preflight run plus a later regression; midturn and early failure remain hard gates'}
+          'scope':'real isolated GatewayRunner in-place, idle, rotation, repeated preflight, post-tool compression, early failure and held post-hook race'}
 (EVIDENCE/'gate.json').write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(record,ensure_ascii=False))
 if failures:

@@ -38,6 +38,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS turns (
                     turn_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
                     state TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS ingress_links (
+                    ingress_id TEXT PRIMARY KEY REFERENCES turns(turn_id),
+                    turn_id TEXT NOT NULL UNIQUE REFERENCES turns(turn_id));
                 CREATE TABLE IF NOT EXISTS message_refs (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT,
                     thread_id TEXT NOT NULL REFERENCES threads(id),
@@ -98,11 +101,35 @@ class Store:
             if owner['thread_id'] != thread_id:
                 raise ValueError('session belongs to another thread')
             db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'pending')", (turn_id, thread_id))
+            if not turn_id.startswith('ingress:'):
+                ingress = db.execute(
+                    "SELECT turn_id FROM turns WHERE thread_id=? AND state='pending' "
+                    "AND turn_id LIKE 'ingress:%' ORDER BY rowid DESC LIMIT 1", (thread_id,)).fetchone()
+                if ingress:
+                    db.execute('INSERT OR IGNORE INTO ingress_links VALUES (?,?)',
+                               (ingress['turn_id'], turn_id))
         return thread_id
 
     def reject_turn(self, turn_id):
         with self._connect() as db:
             db.execute("UPDATE turns SET state='rejected' WHERE turn_id=? AND state='pending'", (turn_id,))
+
+    def mark_ingress_unknown(self, thread_id, ingress_id):
+        """Release a settled gateway owner whose provenance could not be reconciled."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed = db.execute("UPDATE turns SET state='unknown' WHERE turn_id=? AND thread_id=? "
+                                 "AND state='pending'", (ingress_id, thread_id)).rowcount
+            if not changed:
+                return
+            pending = db.execute("SELECT 1 FROM turns WHERE thread_id=? AND state='pending' "
+                                 "AND turn_id NOT LIKE 'ingress:%' LIMIT 1", (thread_id,)).fetchone()
+            if pending:
+                db.execute("UPDATE turns SET state='unknown' WHERE thread_id=? AND state='pending' "
+                           "AND turn_id NOT LIKE 'ingress:%'", (thread_id,))
+            else:
+                db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'unknown')",
+                           ('settled:' + ingress_id.removeprefix('ingress:'), thread_id))
 
     def turn_state(self, turn_id):
         with self._connect() as db:
@@ -120,8 +147,6 @@ class Store:
             raise ValueError('invalid turn outcome')
         with self._connect() as db:
             db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=?', (state, turn_id, thread_id))
-            db.execute("UPDATE turns SET state=? WHERE thread_id=? AND turn_id LIKE 'ingress:%' AND state='pending'",
-                       (state, thread_id))
 
     def record_turn(self, thread_id, turn_id, refs):
         """Commit the durable visible rows of one turn; a user-only turn is valid."""
@@ -144,8 +169,81 @@ class Store:
                 db.execute('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) VALUES (?,?,?,?,?)',
                            (thread_id, turn_id, session_id, row_id, role))
             db.execute("UPDATE turns SET state='complete' WHERE turn_id=?", (turn_id,))
-            db.execute("UPDATE turns SET state='complete' WHERE thread_id=? AND turn_id LIKE 'ingress:%' AND state='pending'",
-                       (thread_id,))
+
+    def settle_ingress(self, thread_id, ingress_id, platform_message_id, source_db):
+        """Reconcile an inbound turn only after its gateway owner task has finished.
+
+        The platform ID is core provenance for the user row. Bound all later rows
+        by the next inbound user, even if compaction has made originals inactive. Never
+        infer identity from content or mark an unproved execution complete.
+        """
+        from .projection import visible_text
+        with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
+            source.row_factory = sqlite3.Row
+            # Read only sessions already owned by this Thread, not arbitrary DB history.
+            with self._connect() as db:
+                sessions = [r['session_id'] for r in db.execute(
+                    'SELECT session_id FROM session_links WHERE thread_id=?', (thread_id,))]
+            if not sessions:
+                raise ValueError('thread has no sessions')
+            marks = ','.join('?' for _ in sessions)
+            anchors = source.execute(
+                f"SELECT id,session_id FROM messages WHERE session_id IN ({marks}) "
+                "AND role='user' AND platform_message_id=? ORDER BY id",
+                [*sessions, platform_message_id]).fetchall()
+            if len(anchors) != 1:
+                rows = []
+            else:
+                anchor = anchors[0]
+                rows = [dict(r) for r in source.execute(
+                    'SELECT * FROM messages WHERE session_id=? AND id>=? '
+                    'AND id < COALESCE((SELECT MIN(id) FROM messages WHERE session_id=? '
+                    "AND role='user' AND platform_message_id IS NOT NULL AND id>?), "
+                    '9223372036854775807) ORDER BY id LIMIT 201',
+                    (anchor['session_id'], anchor['id'], anchor['session_id'], anchor['id']))]
+                if len(rows) > 200:
+                    raise ValueError('turn exceeds bounded reconciliation limit')
+        visible = [r for r in rows if visible_text(r) is not None]
+        refs = [(r['session_id'], r['id'], r['role']) for r in visible]
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            ingress = db.execute('SELECT state FROM turns WHERE turn_id=? AND thread_id=?',
+                                 (ingress_id, thread_id)).fetchone()
+            if ingress is None or ingress['state'] != 'pending':
+                return
+            pending = db.execute(
+                "SELECT turn_id,state FROM turns WHERE thread_id=? AND state='pending' "
+                "AND turn_id NOT LIKE 'ingress:%' ORDER BY rowid DESC LIMIT 1",
+                (thread_id,)).fetchone()
+            matched = db.execute(
+                'SELECT t.turn_id,t.state FROM message_refs r JOIN turns t ON t.turn_id=r.turn_id '
+                'WHERE r.thread_id=? AND r.row_id=?',
+                (thread_id, refs[0][1])).fetchone() if refs else None
+            linked = db.execute(
+                'SELECT t.turn_id,t.state FROM ingress_links l JOIN turns t ON t.turn_id=l.turn_id '
+                'WHERE l.ingress_id=?', (ingress_id,)).fetchone()
+            turn = dict(linked or matched or pending) if (linked or matched or pending) else None
+            if turn is None:
+                turn_id = 'settled:' + ingress_id.removeprefix('ingress:')
+                db.execute("INSERT INTO turns VALUES (?,?,'pending')", (turn_id, thread_id))
+                turn = {'turn_id': turn_id, 'state': 'pending'}
+            old = [(r['session_id'], r['row_id'], r['role']) for r in db.execute(
+                'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq',
+                (turn['turn_id'],))]
+            if refs and refs != old:
+                # No successor ingress can start before this transaction. Preserve
+                # original row identities while repairing a partial hook snapshot.
+                db.execute('DELETE FROM message_refs WHERE turn_id=?', (turn['turn_id'],))
+                db.executemany('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
+                               'VALUES (?,?,?,?,?)', [(thread_id, turn['turn_id'], *r) for r in refs])
+            if turn['state'] == 'pending':
+                db.execute("UPDATE turns SET state='unknown' WHERE turn_id=?", (turn['turn_id'],))
+            elif not refs:
+                db.execute("UPDATE turns SET state='unknown' WHERE turn_id=?", (turn['turn_id'],))
+            db.execute("UPDATE turns SET state='unknown' WHERE thread_id=? AND state='pending' "
+                       "AND turn_id NOT LIKE 'ingress:%'", (thread_id,))
+            db.execute("UPDATE turns SET state=? WHERE turn_id=?",
+                       ('complete' if turn['state'] == 'complete' and refs else 'unknown', ingress_id))
 
     @staticmethod
     def _cursor(thread_id, seq):

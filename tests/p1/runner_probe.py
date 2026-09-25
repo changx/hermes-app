@@ -17,7 +17,7 @@ BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline'
 PLUGIN = Path(__file__).resolve().parents[2] / 'plugins' / 'hermes_app'
 HOME = Path(os.environ['HERMES_HOME'])
 COMPACT_MODE = os.environ.get('P1_COMPACT_MODE', 'inplace')
-assert COMPACT_MODE in ('inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed')
+assert COMPACT_MODE in ('inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed', 'race')
 assert str(BASE) in __import__('sys').path
 assert os.environ['HOME'] == str(HOME.parent)
 
@@ -85,8 +85,7 @@ async def main():
     from hermes_state import SessionDB
 
     shutil.copytree(PLUGIN, HOME / 'plugins' / 'hermes-app')
-    if COMPACT_MODE == 'midturn':
-        shutil.copytree(Path(__file__).with_name('synthetic_tool_plugin'), HOME/'plugins'/'p1-synthetic-tool')
+    shutil.copytree(Path(__file__).with_name('synthetic_tool_plugin'), HOME/'plugins'/'p1-synthetic-tool')
     model = ThreadingHTTPServer(('127.0.0.1', 0), Model)
     model.requests = []
     model.tool_called = False
@@ -96,14 +95,15 @@ async def main():
         'model:\n  provider: custom\n  default: p1-local\n  context_length: 65536\n'
         f'  base_url: http://127.0.0.1:{model.server_port}/v1\n'
         f'compression:\n  enabled: true\n  in_place: {str(COMPACT_MODE != "rotate").lower()}\n'
-        f'  threshold_tokens: {1500 if COMPACT_MODE == "midturn" else 2400 if COMPACT_MODE == "preflight" else 20000}\n'
+        f'  threshold_tokens: {2300 if COMPACT_MODE == "midturn" else 2400 if COMPACT_MODE == "preflight" else 20000}\n'
         '  protect_first_n: 1\n  protect_last_n: 2\n  tail_mode: legacy\n'
         f'  idle_compact_after_seconds: {1 if COMPACT_MODE == "idle" else 0}\n'
         'auxiliary:\n  title_generation:\n    enabled: false\n'
         'security:\n  tirith_enabled: false\n'
-        f'tools:\n  enabled_toolsets: {"[p1_synthetic]" if COMPACT_MODE == "midturn" else "[]"}\n'
-        '  disabled_toolsets: [terminal, execute_code, browser, web, files, automation]\n'
-        f'plugins:\n  enabled: {"[hermes-app, p1-synthetic-tool]" if COMPACT_MODE == "midturn" else "[hermes-app]"}\n'
+        f'platform_toolsets:\n  hermes_app: {"[p1_synthetic]" if COMPACT_MODE == "midturn" else "[]"}\n'
+        'tools:\n  tool_search:\n    enabled: "off"\n'
+        'agent:\n  disabled_toolsets: [terminal, execute_code, browser, web, files, automation]\n'
+        'plugins:\n  enabled: [hermes-app, p1-synthetic-tool]\n'
         'gateway:\n  multiplex_profiles: false\n  loop_watchdog: false\n'
         '  platforms:\n    hermes_app:\n'
         f"      enabled: {str(os.environ.get('P1_DISABLED') != '1').lower()}\n"
@@ -183,6 +183,48 @@ async def main():
             assert history_status == 200, history_status
             assert [(m['role'], m['text']) for m in first_history['messages']] == [
                 ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL')], first_history
+            if COMPACT_MODE == 'race':
+                async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_RACE'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                for _ in range(100):
+                    if (HOME/'race-hook-entered').exists():
+                        break
+                    await asyncio.sleep(.05)
+                assert (HOME/'race-hook-entered').exists()
+                async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                    during = await resp.json()
+                    assert resp.status == 200
+                assert [(m['role'],m['text']) for m in during['messages'][-2:]] == [
+                    ('user','P1_RACE'),('assistant','SYNTHETIC_P1_FINAL')], during
+                assert during['incomplete_turns'], during
+                async with b.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'text':'P1_FAST_SECOND'}) as resp:
+                    assert resp.status == 409, await resp.text()
+                (HOME/'race-hook-release').write_text('1')
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        settled = await resp.json()
+                        if resp.status == 200 and not settled['incomplete_turns']:
+                            break
+                    await asyncio.sleep(.05)
+                assert not settled['incomplete_turns']
+                async with a.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'text':'P1_AFTER_RACE'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        after_race = await resp.json()
+                        if resp.status == 200 and len(after_race['messages']) == 6 and not after_race['incomplete_turns']:
+                            break
+                    await asyncio.sleep(.05)
+                assert [(m['role'],m['text']) for m in after_race['messages']] == [
+                    ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL'),
+                    ('user','P1_RACE'),('assistant','SYNTHETIC_P1_FINAL'),
+                    ('user','P1_AFTER_RACE'),('assistant','SYNTHETIC_P1_FINAL')]
+                (HOME.parent/'runner-race-result.json').write_text(json.dumps({
+                    'mode':'race','busy_after_post_hook':True,'second_send_status':409,
+                    'after_release_exact':True,'during':during,'after':after_race},sort_keys=True))
+                return
             if COMPACT_MODE == 'failed':
                 async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FAIL'}) as resp:
                     assert resp.status == 202, await resp.text()
@@ -207,34 +249,90 @@ async def main():
                 (HOME.parent/'runner-failed-result.json').write_text(json.dumps(result,sort_keys=True))
                 return
             if COMPACT_MODE == 'midturn':
+                for index in range(5):
+                    seed = f'P1_SEED_{index} ' + 'seed ' * 90
+                    async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':seed}) as resp:
+                        assert resp.status == 202, await resp.text()
+                    for _ in range(100):
+                        async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                            seeded_page = await resp.json()
+                            if (resp.status == 200 and len(seeded_page['messages']) == 4+index*2
+                                    and not seeded_page['incomplete_turns']):
+                                break
+                        await asyncio.sleep(.2)
+                    assert len(seeded_page['messages']) == 4+index*2 and not seeded_page['incomplete_turns']
+                mid_before = seeded_page
                 requests_before = len(model.requests)
                 async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_MIDTURN'}) as resp:
                     assert resp.status == 202, await resp.text()
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                         mid_page = await resp.json()
-                        if resp.status == 200 and not mid_page['incomplete_turns'] and len(mid_page['messages']) >= 4:
+                        if resp.status == 200 and not mid_page['incomplete_turns'] and len(mid_page['messages']) >= 15:
                             break
                     await asyncio.sleep(.2)
+                events = [json.loads(line) for line in (HOME/'synthetic-events.jsonl').read_text().splitlines()]
                 attempt = {'mode':'midturn','tool_called':model.tool_called,
+                           'handler_called':any(e['event']=='tool_handler' for e in events),
+                           'auxiliary_tasks':[e['aux_task'] for e in events if e['event']=='pre_auxiliary_call'],
                            'request_count':len(model.requests)-requests_before,
                            'tool_result_wire_chars':[
                                len(str(m.get('content'))) for r in model.requests[requests_before:]
+                               for m in r.get('messages', []) if m.get('role') == 'tool'],
+                           'tool_result_excerpt':[
+                               str(m.get('content'))[:600] for r in model.requests[requests_before:]
                                for m in r.get('messages', []) if m.get('role') == 'tool'],
                            'visible_roles':[m['role'] for m in mid_page['messages']],
                            'visible_row_ids':[m['id'] for m in mid_page['messages']]}
                 (HOME.parent/'runner-midturn-attempt.json').write_text(json.dumps(attempt,sort_keys=True))
                 assert model.tool_called
-                assert len(model.requests)-requests_before >= 3, {
+                assert attempt['handler_called']
+                assert any('compress' in str(task).lower() for task in attempt['auxiliary_tasks']), {
                     'requests':len(model.requests)-requests_before,
                     'wire_roles_and_chars':[[(m.get('role'), len(str(m.get('content')))) for m in r.get('messages', [])]
                                             for r in model.requests[requests_before:]],
                     'page':mid_page}
-                assert [(m['role'],m['text']) for m in mid_page['messages']] == [
-                    ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL'),
+                assert len(model.requests)-requests_before >= 3
+                assert mid_page['messages'][:len(mid_before['messages'])] == mid_before['messages']
+                assert [(m['role'],m['text']) for m in mid_page['messages'][-3:]] == [
                     ('user','P1_MIDTURN'),('assistant','P1_INTERIM'),
                     ('assistant','SYNTHETIC_P1_FINAL')], mid_page
+                with sqlite3.connect(HOME/'state.db') as raw:
+                    inactive_rows = raw.execute('SELECT COUNT(*) FROM messages WHERE session_id=? AND active=0',
+                                                (one['session_id'],)).fetchone()[0]
+                assert inactive_rows > 0
+                paged, cursor = [], None
+                while True:
+                    query = '?limit=7' + (f'&after={cursor}' if cursor else '')
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages"+query) as resp:
+                        assert resp.status == 200
+                        item = await resp.json()
+                    assert len(item['messages']) <= 7
+                    paged.extend(item['messages'])
+                    cursor = item['next_cursor']
+                    if cursor is None:
+                        break
+                assert paged == mid_page['messages']
+                cold_path = HOME.parent/'cold-midturn.json'
+                cold = subprocess.run([sys.executable, '-c',
+                    'import json,sys,pathlib;sys.path.insert(0,sys.argv[1]);from hermes_app.storage import Store;'
+                    'pathlib.Path(sys.argv[5]).write_text(json.dumps(Store(sys.argv[2]).history_page(sys.argv[3],sys.argv[4],limit=100)))',
+                    str(PLUGIN.parent), str(HOME/'hermes-app'/'metadata.sqlite'), one['id'],
+                    str(HOME/'state.db'), str(cold_path)], capture_output=True, text=True, timeout=20)
+                assert cold.returncode == 0 and json.loads(cold_path.read_text()) == mid_page
+                async with b.get(root+f"/v1/threads/{two['id']}/messages?limit=100") as resp:
+                    assert resp.status == 200
+                    branch = await resp.json()
+                assert not {m['id'] for m in branch['messages']} & {m['id'] for m in mid_page['messages']}
+                assert self_description_calls(HOME) == (1, 1)
                 result = {'mode':'midturn','tool_called':model.tool_called,
+                          'handler_called':attempt['handler_called'],
+                          'summary_http_count':sum('compress' in str(t).lower() for t in attempt['auxiliary_tasks']),
+                          'history_exact':True,
+                          'inactive_core_rows':inactive_rows,'bounded_pages_exact':True,
+                          'cold_exact':True,'branch_excluded':True,
+                          'description_init_once':True,
+                          'before':mid_before,
                           'model_requests_during_turn':len(model.requests)-requests_before,
                           'messages':mid_page}
                 (HOME.parent/'runner-midturn-result.json').write_text(json.dumps(result,sort_keys=True))
@@ -252,7 +350,8 @@ async def main():
             assert json.dumps(second).count('P1_DESC_A') == 1
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
-                    if resp.status == 200 and len((await resp.json())['messages']) == 4:
+                    page = await resp.json()
+                    if resp.status == 200 and len(page['messages']) == 4 and not page['incomplete_turns']:
                         break
                 await asyncio.sleep(.2)
             async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'text':'P1_FIRST'}) as resp:
@@ -262,7 +361,8 @@ async def main():
                         ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL')]
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
-                    if resp.status == 200 and len((await resp.json())['messages']) == len(expected):
+                    page = await resp.json()
+                    if resp.status == 200 and len(page['messages']) == len(expected) and not page['incomplete_turns']:
                         break
                 await asyncio.sleep(.2)
             for index in range(6):
@@ -272,14 +372,15 @@ async def main():
                 expected.extend([('user',bulk),('assistant','SYNTHETIC_P1_FINAL')])
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
-                        if resp.status == 200 and len((await resp.json())['messages']) == len(expected):
+                        page = await resp.json()
+                        if resp.status == 200 and len(page['messages']) == len(expected) and not page['incomplete_turns']:
                             break
                     await asyncio.sleep(.2)
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                     if resp.status == 200:
                         before_page = await resp.json()
-                        if len(before_page['messages']) == len(expected):
+                        if len(before_page['messages']) == len(expected) and not before_page['incomplete_turns']:
                             break
                 await asyncio.sleep(.2)
             assert [(m['role'],m['text']) for m in before_page['messages']] == expected, before_page
@@ -320,7 +421,12 @@ async def main():
                 assert json.loads(cold_path.read_text()) == after_auto
                 next_request = next(x for x in model.requests if 'P1_AFTER_AUTO' in json.dumps(x))
                 assert json.dumps(next_request).count('P1_DESC_A') <= 1
+                events = [json.loads(line) for line in (HOME/'synthetic-events.jsonl').read_text().splitlines()]
+                summary_count = sum(e['event']=='pre_auxiliary_call' and
+                                    'compress' in str(e['aux_task']).lower() for e in events)
+                assert summary_count > 0, events
                 result = {'mode':'preflight', 'effective_threshold':effective_threshold,
+                          'summary_http_count':summary_count,
                           'summary_http_count_min':preflight_model_calls, 'before':before_page,
                           'after_next':after_auto, 'inactive_core_rows':inactive_rows,
                           'cold_exact':True,
@@ -392,7 +498,7 @@ async def main():
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                     if resp.status == 200:
                         after_page = await resp.json()
-                        if len(after_page['messages']) == len(expected)+2:
+                        if len(after_page['messages']) == len(expected)+2 and not after_page['incomplete_turns']:
                             break
                 await asyncio.sleep(.2)
             assert [m['id'] for m in after_page['messages'][:len(original_ids)]] == original_ids
@@ -412,7 +518,7 @@ async def main():
                 async with b.get(root+f"/v1/threads/{two['id']}/messages?limit=100") as resp:
                     if resp.status == 200:
                         branch_page = await resp.json()
-                        if len(branch_page['messages']) == 2:
+                        if len(branch_page['messages']) == 2 and not branch_page['incomplete_turns']:
                             break
                 await asyncio.sleep(.2)
             assert [(m['role'],m['text']) for m in branch_page['messages']] == [

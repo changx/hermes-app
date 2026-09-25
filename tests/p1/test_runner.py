@@ -10,8 +10,7 @@ BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline'
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize('mode', ['inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed'])
-def test_real_runner_loopback(mode):
+def _run_real_runner_loopback(mode):
     # A short path is required by the baseline's AF_UNIX loop heartbeat socket.
     isolated = Path(tempfile.mkdtemp(prefix='p1-', dir=os.environ['TMPDIR']))
     home = isolated / 'h'
@@ -36,12 +35,18 @@ def test_real_runner_loopback(mode):
         if mode == 'failed' and (isolated/'runner-failed-attempt.json').exists():
             (ROOT/'docs/p1/evidence/runner-failed-attempt.json').write_text(
                 json.dumps(json.loads((isolated/'runner-failed-attempt.json').read_text()),indent=2,sort_keys=True)+'\n')
+        if proc.returncode:
+            evidence = ROOT / 'docs/p1/evidence'
+            (evidence/'runner-last-failure.log').write_text(proc.stdout + '\n' + proc.stderr + '\n' + '\n'.join(
+                str(p.relative_to(home)) + '\n' + p.read_text(errors='replace')[-30000:]
+                for p in (home/'logs').glob('*.log')))
         assert proc.returncode == 0, proc.stdout[-2000:] + '\n' + proc.stderr[-5000:]
         record = json.loads((isolated/f'runner-{mode}-result.json').read_text())
         if mode == 'preflight':
-            assert record['summary_http_count_min'] > 0 and record['effective_threshold'] == 2400
+            assert record['summary_http_count'] > 0 and record['effective_threshold'] == 2400
+            record['run_id'] = isolated.name
             (ROOT/'docs/p1/evidence/runner-preflight.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
-            return
+            return record
         if mode == 'midturn':
             assert record['tool_called'] and record['model_requests_during_turn'] >= 3
             (ROOT/'docs/p1/evidence/runner-midturn.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
@@ -49,6 +54,10 @@ def test_real_runner_loopback(mode):
         if mode == 'failed':
             assert record['page']['turn_outcomes']
             (ROOT/'docs/p1/evidence/runner-failed.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
+            return
+        if mode == 'race':
+            assert record['busy_after_post_hook'] and record['second_send_status'] == 409
+            (ROOT/'docs/p1/evidence/runner-race.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
             return
         assert record['listener_closed'] and record['two_clients'] and record['initial_description']
         evidence = ROOT/'docs/p1/evidence'
@@ -58,6 +67,31 @@ def test_real_runner_loopback(mode):
     finally:
         import shutil
         shutil.rmtree(isolated)
+
+
+@pytest.mark.parametrize('mode', ['inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed', 'race'])
+def test_real_runner_loopback(mode):
+    _run_real_runner_loopback(mode)
+
+
+def test_preflight_repeated_after_settlement():
+    records = [_run_real_runner_loopback('preflight') for _ in range(2)]
+    assert len({record['run_id'] for record in records}) == 2
+    assert all(record['summary_http_count'] > 0 and record['cold_exact'] and
+               record['description_count_next_request'] <= 1 and
+               record['after_next']['messages'][:len(record['before']['messages'])] ==
+               record['before']['messages'] and not record['after_next']['incomplete_turns']
+               for record in records)
+    (ROOT/'docs/p1/evidence/runner-preflight-repeat.json').write_text(json.dumps({
+        'runs':[{'run_id':record['run_id'],'summary_http_count':record['summary_http_count'],
+                 'cold_exact':record['cold_exact'],
+                 'description_count_next_request':record['description_count_next_request'],
+                 'before_count':len(record['before']['messages']),
+                 'after_count':len(record['after_next']['messages']),
+                 'prefix_exact':record['after_next']['messages'][:len(record['before']['messages'])] ==
+                                record['before']['messages'],
+                 'settled':not record['after_next']['incomplete_turns']} for record in records]},
+        indent=2,sort_keys=True)+'\n')
 
 
 def test_disabled_platform_does_not_start_listener():

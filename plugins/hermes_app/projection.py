@@ -32,6 +32,10 @@ def visible_text(message):
     from tui_gateway.server import _history_to_messages
     value = dict(message)
     value['content'] = _content(value.get('content'))
+    if isinstance(value.get('tool_calls'), str):
+        value['tool_calls'] = json.loads(value['tool_calls'])
+    if isinstance(value.get('display_metadata'), str):
+        value['display_metadata'] = json.loads(value['display_metadata'])
     projected = _history_to_messages([value])
     if len(projected) != 1 or projected[0].get('role') != value['role']:
         return None

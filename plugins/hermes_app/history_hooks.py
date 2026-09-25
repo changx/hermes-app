@@ -80,7 +80,7 @@ def post_llm_call(**kwargs):
 
 
 def on_session_end(**kwargs):
-    """Surface failed/interrupted turns; recover a durable user row when post hook did not run."""
+    """Surface failed/interrupted turns. Adapter task settlement maps late writes."""
     if kwargs.get('platform') != 'hermes_app' or kwargs.get('completed') is True:
         return None
     turn_id, session_id = kwargs.get('turn_id'), kwargs.get('session_id')
@@ -92,18 +92,6 @@ def on_session_end(**kwargs):
         thread_id = store.bind_turn(turn_id, session_id, _compression_parent(session_id))
     if thread_id is None:
         return None
-    if store.turn_state(turn_id) == 'pending':
-        from .projection import visible_text
-        last_id = store.latest_ref_row_id(thread_id, session_id)
-        with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
-            db.row_factory = sqlite3.Row
-            rows = [dict(r) for r in db.execute(
-                "SELECT * FROM messages WHERE session_id=? AND id>? ORDER BY id LIMIT 200", (session_id, last_id))]
-        users = [i for i, row in enumerate(rows) if row['role'] == 'user' and visible_text(row) is not None]
-        if users:
-            visible = [r for r in rows[users[-1]:] if visible_text(r) is not None]
-            store.record_turn(thread_id, turn_id,
-                [(session_id, r['id'], r['role']) for r in visible])
     state = ('interrupted' if kwargs.get('interrupted') else
              'failed' if kwargs.get('failed') else 'unknown')
     store.finish_turn(thread_id, turn_id, state)

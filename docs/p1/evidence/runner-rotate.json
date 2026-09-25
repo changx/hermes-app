@@ -11,8 +11,8 @@
   "history_after_compaction_exact": true,
   "history_after_next_turn_exact": true,
   "history_original_ids": [
-    "1",
-    "2",
+    "3",
+    "4",
     "7",
     "8",
     "9",
@@ -37,12 +37,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "id": "3",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "2",
+          "id": "4",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -144,12 +144,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "id": "3",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "2",
+          "id": "4",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -241,12 +241,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "3",
+          "id": "1",
           "role": "user",
           "text": "P1_OTHER"
         },
         {
-          "id": "5",
+          "id": "2",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
@@ -258,12 +258,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "id": "3",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "2",
+          "id": "4",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -365,12 +365,12 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "id": "3",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "2",
+          "id": "4",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
@@ -462,17 +462,17 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "id": "3",
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "2",
+          "id": "4",
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF84MzExMDcxZGJhOTc0NzMzYjJhMzlhMmIiLDJd",
+      "next_cursor": "WyJ0aF8xM2RlOTlmMTIxM2M0ZWUwYjk3MDFkYzgiLDRd",
       "turn_outcomes": []
     },
     "page2": {
@@ -489,7 +489,7 @@
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF84MzExMDcxZGJhOTc0NzMzYjJhMzlhMmIiLDZd",
+      "next_cursor": "WyJ0aF8xM2RlOTlmMTIxM2M0ZWUwYjk3MDFkYzgiLDZd",
       "turn_outcomes": []
     }
   },
