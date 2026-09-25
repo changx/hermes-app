@@ -1,0 +1,190 @@
+{
+  "baseline": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "assertions_passed": 22,
+  "checks": [
+    {
+      "check": "T01_manifest_register",
+      "observed": {
+        "plugin": "p0-transport-probe",
+        "enabled": true,
+        "platform_registered": true
+      }
+    },
+    {
+      "check": "T01_factory",
+      "observed": {
+        "adapter": "TransportProbeAdapter"
+      }
+    },
+    {
+      "check": "T01_connect",
+      "observed": {
+        "connected": true
+      }
+    },
+    {
+      "check": "T02_plugin_http",
+      "observed": {
+        "status": 200,
+        "plugin": "p0-transport-probe"
+      }
+    },
+    {
+      "check": "T03_http_auth_profile",
+      "observed": {
+        "missing_wrong_foreign_spoofed_profile": [
+          401,
+          401,
+          403,
+          403
+        ]
+      }
+    },
+    {
+      "check": "T03_ws_auth_profile",
+      "observed": {
+        "missing_wrong_foreign_spoofed_profile": [
+          401,
+          401,
+          403,
+          403
+        ]
+      }
+    },
+    {
+      "check": "T04_dual_ws_fanout",
+      "observed": {
+        "post": 201,
+        "two_clients_seq": [
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "check": "T04_remaining_online",
+      "observed": {
+        "post": 201,
+        "remaining_seq": 2
+      }
+    },
+    {
+      "check": "T04_reconnect_replay",
+      "observed": {
+        "events": [
+          {
+            "seq": 2,
+            "body": "offline"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "check": "T05_upload_download",
+      "observed": {
+        "upload": 201,
+        "download": 200,
+        "body": "file"
+      }
+    },
+    {
+      "check": "T05_attachment_boundaries",
+      "observed": {
+        "size_type_traversal_dot_missing_foreign_profile_unknown": [
+          413,
+          415,
+          400,
+          400,
+          401,
+          403,
+          403,
+          404
+        ]
+      }
+    },
+    {
+      "check": "T01_disconnect",
+      "observed": {
+        "listener_closed": true,
+        "sockets": 0,
+        "files": 0
+      }
+    },
+    {
+      "check": "T02_existing_api_start",
+      "observed": {
+        "connected": true
+      }
+    },
+    {
+      "check": "T02_plugin_on_existing_listener",
+      "observed": {
+        "missing_wrong_authorized": [
+          401,
+          401,
+          200
+        ]
+      }
+    },
+    {
+      "check": "T02_T03_existing_api_auth",
+      "observed": {
+        "health_missing_wrong_ok_foreign_profile": [
+          200,
+          401,
+          401,
+          200,
+          404
+        ]
+      }
+    },
+    {
+      "check": "T05_existing_artifact_upload",
+      "observed": {
+        "missing_auth": 401,
+        "upload": 201,
+        "download_path_present": true
+      }
+    },
+    {
+      "check": "T05_existing_artifact_one_shot",
+      "observed": {
+        "download": 200,
+        "second_download": 404
+      }
+    },
+    {
+      "check": "T05_existing_artifact_type",
+      "observed": {
+        "mime_rejection": 415
+      }
+    },
+    {
+      "check": "T01_disable",
+      "observed": {
+        "enabled": false,
+        "registered": false
+      }
+    },
+    {
+      "check": "T01_reenable",
+      "observed": {
+        "registered": true
+      }
+    },
+    {
+      "check": "T03_registry_profile_isolation",
+      "observed": {
+        "foreign_profile_registered": false
+      }
+    },
+    {
+      "check": "T06_core_rpc_not_registered",
+      "observed": {
+        "rpc_error_code": -32601
+      }
+    }
+  ],
+  "temporary_home_removed": true
+}

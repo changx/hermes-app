@@ -1,0 +1,89 @@
+{
+  "mode": "after_persist",
+  "busy_submit_observation": {
+    "stage": "after_first_persist",
+    "active_tasks": 1
+  },
+  "runner": "GatewayRunner",
+  "adapter": "ProbeAdapter",
+  "handler_owner": "GatewayRunner.start -> _wire_adapter_handlers (not probe handler)",
+  "client_closed_before_model_release": true,
+  "model_request_count": 3,
+  "request_checks": {
+    "first_description": true,
+    "second_description": false,
+    "other_description": true
+  },
+  "inbound_prompt_snapshots": [
+    [
+      "synthetic-first-unique-p0",
+      "P0 Channel A description"
+    ],
+    [
+      "synthetic-second-unique-p0",
+      "P0 Channel A description"
+    ],
+    [
+      "synthetic-other-unique-p0",
+      "P0 Channel B description"
+    ]
+  ],
+  "sessions": {
+    "one": "20260925_003713_2396435f",
+    "two": "20260925_003714_1f461df8"
+  },
+  "live_history": {
+    "one": [
+      {
+        "role": "user",
+        "content": "synthetic-first-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      },
+      {
+        "role": "user",
+        "content": "synthetic-second-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      },
+      {
+        "role": "session_meta",
+        "content": null
+      }
+    ],
+    "two": [
+      {
+        "role": "user",
+        "content": "synthetic-other-unique-p0"
+      },
+      {
+        "role": "assistant",
+        "content": "SYNTHETIC_LOCAL_FINAL_P0"
+      },
+      {
+        "role": "session_meta",
+        "content": null
+      }
+    ]
+  },
+  "reconnect_history_matched": true,
+  "delivered_count": 6,
+  "cold_reload": {
+    "one_user": [
+      "synthetic-first-unique-p0",
+      "synthetic-second-unique-p0"
+    ],
+    "two_user": [
+      "synthetic-other-unique-p0"
+    ],
+    "one_final_count": 2,
+    "two_final_count": 1
+  },
+  "temporary_home_removed": true,
+  "local_model_server_stopped": true,
+  "scope": "Real GatewayRunner/AIAgent, synthetic loopback model; raw DB read, no UI/compaction/crash recovery proof"
+}

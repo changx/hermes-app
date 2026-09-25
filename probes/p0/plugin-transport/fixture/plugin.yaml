@@ -1,0 +1,4 @@
+name: p0-transport-probe
+kind: platform
+version: 0.0.1
+description: Disposable plugin-only transport boundary probe

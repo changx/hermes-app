@@ -1,0 +1,5 @@
+name: p0-execution-platform
+label: P0 Execution Fixture
+kind: platform
+version: 0.0.1
+description: Isolated local execution ingress probe; not a production platform

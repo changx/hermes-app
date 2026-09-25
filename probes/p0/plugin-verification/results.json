@@ -1,0 +1,75 @@
+{
+  "core_before": {
+    "revision": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+    "tracked_status": ""
+  },
+  "core_after": {
+    "revision": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+    "tracked_status": ""
+  },
+  "runs": [
+    {
+      "name": "transport",
+      "exit_code": 0,
+      "command": [
+        "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+        "/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-transport/run.py",
+        "/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-transport/results.json"
+      ],
+      "evidence_updated": true,
+      "temporary_home_removed": true,
+      "stdout": "",
+      "last_stderr_line": "{\"assertions_passed\": 22, \"checks\": [\"T01_manifest_register\", \"T01_factory\", \"T01_connect\", \"T02_plugin_http\", \"T03_http_auth_profile\", \"T03_ws_auth_profile\", \"T04_dual_ws_fanout\", \"T04_remaining_online\", \"T04_reconnect_replay\", \"T05_upload_download\", \"T05_attachment_boundaries\", \"T01_disconnect\", \"T02_existing_api_start\", \"T02_plugin_on_existing_listener\", \"T02_T03_existing_api_auth\", \"T05_existing_artifact_upload\", \"T05_existing_artifact_one_shot\", \"T05_existing_artifact_type\", \"T01_disable\", \"T01_reenable\", \"T03_registry_profile_isolation\", \"T06_core_rpc_not_registered\"], \"temporary_home_removed\": true}"
+    },
+    {
+      "name": "history",
+      "exit_code": 0,
+      "command": [
+        "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+        "/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-history/probe.py"
+      ],
+      "evidence_updated": true,
+      "temporary_home_removed": true,
+      "stdout": "",
+      "last_stderr_line": "PASS 19/19 plugin-history checks; evidence=/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-history/evidence.json"
+    },
+    {
+      "name": "execution",
+      "exit_code": 0,
+      "command": [
+        "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+        "/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-execution/probe.py"
+      ],
+      "evidence_updated": true,
+      "temporary_home_removed": true,
+      "stdout": "PASS E01 E02 E03 E05 E06-boundary; E04 not proven; results=/opt/projects/jamie/_worktrees/hermes-app/p0-plugin-integration/probes/p0/plugin-execution/results.json",
+      "last_stderr_line": "RuntimeError: synthetic failure"
+    },
+    {
+      "name": "regressions",
+      "exit_code": 0,
+      "command": [
+        "/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "tests/hermes_cli/test_plugin_ownership_ledger.py",
+        "tests/gateway/test_browser_control_artifacts.py"
+      ],
+      "evidence_updated": true,
+      "temporary_home_removed": true,
+      "stdout": ".......................................................                  [100%]\n55 passed in 4.63s",
+      "last_stderr_line": ""
+    }
+  ],
+  "all_commands_passed": true,
+  "all_outer_temp_homes_removed": true,
+  "observations": {
+    "transport_assertions": 22,
+    "history_checks": 19,
+    "regression_tests_passed": 55,
+    "execution_scope": "synthetic handler through real plugin adapter/approval/cron paths; NOT real GatewayRunner"
+  }
+}
