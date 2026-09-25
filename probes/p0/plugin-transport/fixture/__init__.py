@@ -1,7 +1,8 @@
 """Disposable platform plugin; not a chat backend or persistent message store.
 
-The HTTP/WS routes are owned by this adapter, NOT registered on Hermes' API/TUI
-servers. Tokens are test inputs supplied by the isolated driver, never defaults.
+The HTTP/WS fixture routes are owned by this adapter. A separate ping route
+also demonstrates the API Server native-handler seam; no TUI RPC is added.
+Tokens are test inputs supplied by the isolated driver, never defaults.
 """
 import hmac
 import re

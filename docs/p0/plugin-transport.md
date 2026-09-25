@@ -5,7 +5,7 @@
 ## 复现与输出
 
 ```bash
-cd /opt/projects/jamie/_worktrees/hermes-app/p0-plugin-transport
+cd /opt/projects/jamie/hermes-app
 env -i PATH=/usr/local/bin:/usr/bin:/bin TMPDIR="$TMPDIR" PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
   /opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline/.venv/bin/python \
   probes/p0/plugin-transport/run.py probes/p0/plugin-transport/results.json

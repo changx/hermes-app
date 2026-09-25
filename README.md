@@ -15,6 +15,7 @@
 - [架构与复用评估](docs/architecture.md)：现有 Hermes 能力、缺口、候选实现路线。
 - [开发阶段与验收](docs/development-plan.md)：实施顺序、测试矩阵、下一步。
 - [项目执行约定](AGENTS.md)：范围、安全、变更与验证规则。
+- [P0 插件限定验证](docs/p0/plugin-summary.md)：逐项证据、缺口与未验证边界；真实执行链路补充验证待复核。
 
 ## 项目跟踪
 

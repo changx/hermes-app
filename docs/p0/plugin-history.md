@@ -3,7 +3,7 @@
 基线 Hermes `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`（只读）；本 lane 起点 `16b1858f43a325acbe1b7da9afb750ea9569f8da`。执行：
 
 ```sh
-cd /opt/projects/jamie/_worktrees/hermes-app/p0-plugin-history
+cd /opt/projects/jamie/hermes-app
 sh probes/p0/plugin-history/run.sh
 ```
 

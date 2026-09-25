@@ -5,7 +5,7 @@
 ## 复现
 
 ```sh
-cd /opt/projects/jamie/_worktrees/hermes-app/p0-plugin-execution
+cd /opt/projects/jamie/hermes-app
 sandbox=$(mktemp -d "$TMPDIR/p0-execution-env-XXXXXX")
 # 执行完仅删除本命令创建的 sandbox；临时 DB/插件由脚本 TemporaryDirectory 自动清理
 set -eu
