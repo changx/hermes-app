@@ -1,0 +1,9 @@
+const path=require('node:path')
+const {getDefaultConfig}=require('expo/metro-config')
+const deps=path.join(process.env.HERMES_EXPO_DEPS || '/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/p0/close-mobile','node_modules')
+const shared=path.resolve(__dirname,'../../../packages/client')
+const config=getDefaultConfig(__dirname)
+config.watchFolders=[shared,deps]
+config.resolver.nodeModulesPaths=[deps]
+config.resolver.disableHierarchicalLookup=false
+module.exports=config
