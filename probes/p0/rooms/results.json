@@ -1,0 +1,80 @@
+{
+  "probe": "existing_hosted_rooms_storage",
+  "hermes_revision": "2f16a1aa5a35feec496949abdef7ad51aea0e7ef",
+  "execution": "actual Hermes storage functions + real temporary SQLite + fresh Python process",
+  "model_calls": 0,
+  "synthetic_data": true,
+  "checks": [
+    {
+      "name": "room_creation_idempotent",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "same_send_id_same_event",
+      "passed": true,
+      "observed": {
+        "seq": 1
+      }
+    },
+    {
+      "name": "same_send_id_different_content_rejected",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "new_send_same_text_remains_new",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "concurrent_retry_one_event",
+      "passed": true,
+      "observed": {
+        "returned_sequences": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "name": "rename_and_replay_event_agree",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "cursor_pagination_complete_and_unique",
+      "passed": true,
+      "observed": {
+        "events": 4,
+        "cursor": 4
+      }
+    },
+    {
+      "name": "new_process_replay_and_send_dedupe",
+      "passed": true,
+      "observed": {
+        "child_pid": 2824280
+      }
+    },
+    {
+      "name": "future_cursor_rejected",
+      "passed": true,
+      "observed": {}
+    },
+    {
+      "name": "stable_room_identity",
+      "passed": true,
+      "observed": {}
+    }
+  ],
+  "passed": 10,
+  "total": 10,
+  "limits": [
+    "No Agent execution, no full groups RPC or notification transport exercised by this probe.",
+    "Room events are not a complete Channel/Thread product model.",
+    "Read receipts, attachments, Description injection, indefinite history retention unverified.",
+    "Storage event dedupe does not alone prove exactly-once external tool side effects."
+  ],
+  "temporary_database_removed": true
+}

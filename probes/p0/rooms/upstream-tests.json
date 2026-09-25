@@ -1,0 +1,25 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "0,1",
+    "bash",
+    "scripts/run_tests.sh",
+    "-j",
+    "2",
+    "--file-timeout",
+    "120",
+    "tests/gateway/test_hosted_rooms.py",
+    "tests/gateway/test_hosted_rooms_read_path.py",
+    "tests/tui_gateway/test_hosted_room_service.py"
+  ],
+  "exit_code": 0,
+  "home_isolated": true,
+  "model_calls": "not requested; upstream tests use test substitutes",
+  "paths": [
+    "tests/gateway/test_hosted_rooms.py",
+    "tests/gateway/test_hosted_rooms_read_path.py",
+    "tests/tui_gateway/test_hosted_room_service.py"
+  ],
+  "log": "upstream-tests.log"
+}
