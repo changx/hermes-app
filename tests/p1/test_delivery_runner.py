@@ -98,6 +98,11 @@ def _requests(home):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+def _assert_artifact_bound(root):
+    size=sum(p.stat().st_size for p in root.rglob('*') if p.is_file())
+    assert size<=64*1024*1024,f'isolated probe exceeded 64 MiB: {size}'
+
+
 async def _scenario(root,mode):
     home=root/'h'
     proc,log,url=await _start(root,'before')
@@ -192,6 +197,7 @@ def test_real_crash_recovery(mode):
     (root/'h').mkdir()
     try:
         result=asyncio.run(_scenario(root,mode))
+        _assert_artifact_bound(root)
         EVIDENCE.mkdir(parents=True,exist_ok=True)
         (EVIDENCE/f'delivery-{mode}.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
     except BaseException:
@@ -319,6 +325,7 @@ def test_real_offline_sync_and_read():
     (root/'h').mkdir()
     try:
         result=asyncio.run(_offline_and_sync(root))
+        _assert_artifact_bound(root)
         EVIDENCE.mkdir(parents=True,exist_ok=True)
         (EVIDENCE/'delivery-offline-sync.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
     finally:
