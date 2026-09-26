@@ -871,15 +871,38 @@ class Store:
         except (ValueError, TypeError, UnicodeDecodeError, base64.binascii.Error) as exc:
             raise ValueError('invalid cursor') from exc
 
-    def history_page(self, thread_id, source_db, *, limit=50, after=None, after_ref_seq=None):
-        if not isinstance(limit, int) or not 1 <= limit <= 100:
+    @staticmethod
+    def _older_cursor(thread_id, seq):
+        payload = json.dumps(['older', thread_id, seq], separators=(',', ':')).encode()
+        return base64.urlsafe_b64encode(payload).decode().rstrip('=')
+
+    @staticmethod
+    def _parse_older_cursor(thread_id, before):
+        if not isinstance(before, str) or not 1 <= len(before) <= 256:
+            raise ValueError('invalid older cursor')
+        try:
+            value = json.loads(base64.urlsafe_b64decode(before + '=' * (-len(before) % 4)))
+            if (not isinstance(value, list) or len(value) != 3 or value[:2] != ['older', thread_id]
+                    or type(value[2]) is not int or value[2] <= 0):
+                raise ValueError
+            return value[2]
+        except (ValueError, TypeError, UnicodeDecodeError, base64.binascii.Error) as exc:
+            raise ValueError('invalid older cursor') from exc
+
+    def history_page(self, thread_id, source_db, *, limit=50, after=None, after_ref_seq=None,
+                     latest=False, before=None):
+        if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError('limit must be 1..100')
-        if after is not None and after_ref_seq is not None:
-            raise ValueError('after and after_ref_seq are exclusive')
-        if after_ref_seq is not None and (type(after_ref_seq) is not int or after_ref_seq<=0):
+        if type(latest) is not bool or (int(after is not None) + int(after_ref_seq is not None)
+                                        + int(bool(latest)) + int(before is not None)) > 1:
+            raise ValueError('history directions are exclusive')
+        if after_ref_seq is not None and (type(after_ref_seq) is not int or after_ref_seq <= 0):
             raise ValueError('invalid ref seq')
-        cursor = self._parse_cursor(thread_id, after) if after is not None else (after_ref_seq or 0)
+        backward = latest or before is not None
+        cursor = (self._parse_older_cursor(thread_id, before) if before is not None else
+                  self._parse_cursor(thread_id, after) if after is not None else (after_ref_seq or 0))
         with self._connect() as db:
+            db.execute('BEGIN')  # Keep cursor validation, page and identity on one ref snapshot.
             if cursor and not db.execute(
                     'SELECT 1 FROM message_refs WHERE thread_id=? AND seq=?', (thread_id, cursor)).fetchone():
                 raise ValueError('invalid cursor')
@@ -888,24 +911,48 @@ class Store:
             outcomes = [{'turn_id': r['turn_id'], 'state': r['state']} for r in db.execute(
                 "SELECT turn_id,state FROM turns WHERE thread_id=? AND state IN ('failed','interrupted','unknown') "
                 "AND turn_id NOT LIKE 'ingress:%' ORDER BY rowid LIMIT 20", (thread_id,))]
-            refs = db.execute('SELECT seq,session_id,row_id,role FROM message_refs '
-                              'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT ?',
-                              (thread_id, cursor, limit+1)).fetchall()
-        page, more = refs[:limit], len(refs) > limit
+            if backward:
+                if before is None:
+                    refs = db.execute('SELECT seq,session_id,row_id,role FROM message_refs '
+                                      'WHERE thread_id=? ORDER BY seq DESC LIMIT ?',
+                                      (thread_id, limit + 1)).fetchall()
+                else:
+                    refs = db.execute('SELECT seq,session_id,row_id,role FROM message_refs '
+                                      'WHERE thread_id=? AND seq<? ORDER BY seq DESC LIMIT ?',
+                                      (thread_id, cursor, limit + 1)).fetchall()
+                page = list(reversed(refs[:limit]))
+                older_cursor = self._older_cursor(thread_id, page[0]['seq']) if len(refs) > limit else None
+                # next_cursor always means forward continuation after the last returned ref.
+                newer = bool(page and db.execute('SELECT 1 FROM message_refs WHERE thread_id=? AND seq>? LIMIT 1',
+                                                 (thread_id, page[-1]['seq'])).fetchone())
+                next_cursor = self._cursor(thread_id, page[-1]['seq']) if newer else None
+            else:
+                refs = db.execute('SELECT seq,session_id,row_id,role FROM message_refs '
+                                  'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT ?',
+                                  (thread_id, cursor, limit + 1)).fetchall()
+                page = refs[:limit]
+                older_cursor = None
+                next_cursor = self._cursor(thread_id, page[-1]['seq']) if len(refs) > limit else None
+            ids = [r['row_id'] for r in page]
+            linked = {}
+            if ids:
+                for receipt in db.execute(
+                        'SELECT id,client_message_id,user_row_id FROM receipts WHERE thread_id=? AND '
+                        f'user_row_id IN ({",".join("?" for _ in ids)})', (thread_id, *ids)):
+                    row_id = receipt['user_row_id']
+                    # A legacy/corrupt duplicate link proves no unique send identity.
+                    linked[row_id] = None if row_id in linked else dict(receipt)
+            attached = {row_id: [self.attachment_view(dict(a)) for a in db.execute(
+                'SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid', (receipt['id'],))]
+                for row_id, receipt in linked.items() if receipt is not None}
         if not page:
-            return {'messages': [], 'next_cursor': None, 'incomplete_turns': pending, 'turn_outcomes': outcomes}
-        ids = [r['row_id'] for r in page]
+            return {'messages': [], 'next_cursor': None, 'older_cursor': None,
+                    'incomplete_turns': pending, 'turn_outcomes': outcomes}
         with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
             source.row_factory = sqlite3.Row
             rows = {r['id']: r for r in source.execute(
                 f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
         from .projection import visible_text
-        with self._connect() as db:
-            linked=db.execute('SELECT id,user_row_id FROM receipts WHERE thread_id=? AND '
-                f'user_row_id IN ({",".join("?" for _ in ids)})',(thread_id,*ids)).fetchall()
-            attached={r['user_row_id']:[self.attachment_view(dict(a)) for a in db.execute(
-                'SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid',(r['id'],))]
-                for r in linked}
         messages = []
         for ref in page:
             row = rows.get(ref['row_id'])
@@ -916,10 +963,15 @@ class Store:
             text = visible_text(value)
             if text is None:
                 raise MissingOriginal(f"original row {ref['row_id']} is not visible")
-            messages.append({'id': str(row['id']), 'ref_seq':ref['seq'],
-                             'role': row['role'], 'text': text,
-                             'attachments':attached.get(row['id'],[]) if row['role']=='user' else []})
-        return {'messages': messages, 'next_cursor': self._cursor(thread_id, page[-1]['seq']) if more else None,
+            message = {'id': str(row['id']), 'ref_seq': ref['seq'],
+                       'role': row['role'], 'text': text,
+                       'attachments': attached.get(row['id'], []) if row['role'] == 'user' else []}
+            if row['role'] == 'user' and linked.get(row['id']) is not None:
+                receipt = linked[row['id']]
+                message['receipt_id'] = receipt['id']
+                message['client_message_id'] = receipt['client_message_id']
+            messages.append(message)
+        return {'messages': messages, 'next_cursor': next_cursor, 'older_cursor': older_cursor,
                 'incomplete_turns': pending, 'turn_outcomes': outcomes}
 
     def search_page(self, thread_id, source_db, query, *, limit=20, after=None):

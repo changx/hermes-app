@@ -254,7 +254,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response({'protocol': 1, 'baseline': '2f16a1aa5a35feec496949abdef7ad51aea0e7ef',
             'owner': 'single', 'channels': True, 'threads': True,
             'execution_ingress': 'durable_fifo', 'durable_accept': True,
-            'history': True, 'durable_sync': True, 'attachments': True, 'approvals': True,
+            'history': True, 'history_latest': True, 'message_send_identity': True,
+            'durable_sync': True, 'attachments': True, 'approvals': True,
             'stop': True, 'search': True, 'background_delivery': True})
 
     async def _channels(self, request):
@@ -571,10 +572,14 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPNotFound()
         try:
             limit = int(request.query.get('limit', '50'))
-            after_ref=request.query.get('after_ref_seq')
+            after_ref = request.query.get('after_ref_seq')
+            latest = request.query.get('latest')
+            if latest is not None and latest != 'true':
+                raise ValueError('latest must be true')
             result = await asyncio.to_thread(self._store.history_page, tid,
                 get_hermes_home() / 'state.db', limit=limit, after=request.query.get('after'),
-                after_ref_seq=int(after_ref) if after_ref is not None else None)
+                after_ref_seq=int(after_ref) if after_ref is not None else None,
+                latest=latest == 'true', before=request.query.get('before'))
         except (ValueError, TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from exc
         except HistoryPending as exc:

@@ -119,7 +119,10 @@ def test_recover_final_after_copied_anchor_keeps_published_refs(tmp_path):
     store.recover_receipts(source)
     after=store.history_page(thread,source)['messages']
     assert [m['id'] for m in after]==['1','2','4']
-    assert after[:2]==before
+    assert [{k: v for k, v in m.items() if k not in ('receipt_id', 'client_message_id')}
+            for m in after[:2]] == before
+    assert (after[0]['receipt_id'], after[0]['client_message_id']) == (receipt['id'], 'compressed-crash')
+    assert 'receipt_id' not in after[1]
     assert store.receipt(receipt['id'])['state']=='unknown'
     assert store.sync_page()['events'][-1]['kind']=='receipt'
     store.recover_receipts(source)
