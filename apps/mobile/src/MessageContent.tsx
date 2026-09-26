@@ -1,5 +1,5 @@
-import React, { memo, useMemo } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
+import { AccessibilityInfo, Animated, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { parseMessageMarkdown } from './messageMarkdown';
 import type { Block, Inline } from './messageMarkdown';
@@ -8,33 +8,35 @@ const copy = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('复制失败', '无法写入剪贴板'));
 };
 
-function InlineText({ nodes, pending }: { nodes: Inline[]; pending: boolean }) {
+type Tone = (color: string) => { color: Animated.AnimatedInterpolation<string> };
+
+function InlineText({ nodes, tone }: { nodes: Inline[]; tone: Tone }) {
   return <>{nodes.map((node, index) => {
     const key = index;
     switch (node.kind) {
       case 'text': return <React.Fragment key={key}>{node.text}</React.Fragment>;
       case 'break': return <React.Fragment key={key}>{'\n'}</React.Fragment>;
-      case 'code': return <Text key={key} style={[styles.inlineCode, pending && styles.pendingText]}>{node.text}</Text>;
-      case 'image': return <Text key={key} style={[styles.imageLabel, pending && styles.pendingText]}>[图片：{node.text || '未命名'}]</Text>;
-      case 'em': return <Text key={key} style={styles.em}><InlineText nodes={node.children} pending={pending} /></Text>;
-      case 'strong': return <Text key={key} style={styles.strong}><InlineText nodes={node.children} pending={pending} /></Text>;
-      case 'strike': return <Text key={key} style={styles.strike}><InlineText nodes={node.children} pending={pending} /></Text>;
+      case 'code': return <Animated.Text key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</Animated.Text>;
+      case 'image': return <Animated.Text key={key} style={[styles.imageLabel, tone('#607187')]}>[图片：{node.text || '未命名'}]</Animated.Text>;
+      case 'em': return <Animated.Text key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
+      case 'strong': return <Animated.Text key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
+      case 'strike': return <Animated.Text key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
       case 'link': return node.href
-        ? <Text key={key} accessibilityRole="link" style={[styles.link, pending && styles.pendingText]}
+        ? <Animated.Text key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPress={() => { void Linking.openURL(node.href!).catch(() => Alert.alert('链接无法打开')); }}>
-            <InlineText nodes={node.children} pending={pending} />
-          </Text>
-        : <Text key={key}><InlineText nodes={node.children} pending={pending} /></Text>;
+            <InlineText nodes={node.children} tone={tone} />
+          </Animated.Text>
+        : <Animated.Text key={key}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
     }
   })}</>;
 }
 
-function RenderBlock({ block, pending }: { block: Block; pending: boolean }) {
+function RenderBlock({ block, tone }: { block: Block; tone: Tone }) {
   switch (block.kind) {
     case 'paragraph':
-      return <Text selectable style={[styles.paragraph, pending && styles.pendingText]}><InlineText nodes={block.children} pending={pending} /></Text>;
+      return <Animated.Text selectable style={[styles.paragraph, tone('#172a40')]}><InlineText nodes={block.children} tone={tone} /></Animated.Text>;
     case 'heading':
-      return <Text selectable style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : styles.hOther, pending && styles.pendingText]}><InlineText nodes={block.children} pending={pending} /></Text>;
+      return <Animated.Text selectable style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : styles.hOther, tone('#172a40')]}><InlineText nodes={block.children} tone={tone} /></Animated.Text>;
     case 'code':
       return <View style={styles.codeBox}>
         <View style={styles.codeHeader}>
@@ -44,30 +46,54 @@ function RenderBlock({ block, pending }: { block: Block; pending: boolean }) {
           </Pressable>
         </View>
         <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
-          <Text selectable style={[styles.codeText, pending && styles.pendingText]}>{block.text || ' '}</Text>
+          <Animated.Text selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</Animated.Text>
         </ScrollView>
       </View>;
     case 'quote':
-      return <View style={styles.quote}><RenderBlocks blocks={block.children} pending={pending} /></View>;
+      return <View style={styles.quote}><RenderBlocks blocks={block.children} tone={tone} /></View>;
     case 'list':
       return <View style={styles.list}>{block.items.map((item, index) =>
         <View key={index} style={styles.listRow}>
-          <Text style={[styles.bullet, pending && styles.pendingText]}>{block.ordered ? `${block.start + index}.` : '•'}</Text>
-          <View style={styles.listBody}><RenderBlocks blocks={item} pending={pending} /></View>
+          <Animated.Text style={[styles.bullet, tone('#425874')]}>{block.ordered ? `${block.start + index}.` : '•'}</Animated.Text>
+          <View style={styles.listBody}><RenderBlocks blocks={item} tone={tone} /></View>
         </View>)}</View>;
     case 'rule': return <View style={styles.rule} />;
   }
 }
 
-function RenderBlocks({ blocks, pending }: { blocks: Block[]; pending: boolean }) {
-  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} pending={pending} />)}</View>;
+function RenderBlocks({ blocks, tone }: { blocks: Block[]; tone: Tone }) {
+  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} />)}</View>;
 }
 
 /** Pure native text renderer: no HTML, WebView, or remote image requests. */
 export const MessageContent = memo(function MessageContent({ text, pending = false }: { text: string; pending?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
+  const progress = useRef(new Animated.Value(pending ? 0 : 1)).current;
+  const wasPending = useRef(pending);
+  const reducedMotion = useRef(false);
+  const currentPending = useRef(pending);
+  currentPending.current = pending;
+  useEffect(() => {
+    let alive = true;
+    const update = (value: boolean) => {
+      reducedMotion.current = value;
+      if (value) { progress.stopAnimation(); progress.setValue(currentPending.current ? 0 : 1); }
+    };
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (alive) update(value); }).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', update);
+    return () => { alive = false; sub.remove(); progress.stopAnimation(); };
+  }, [progress]);
+  useEffect(() => {
+    if (pending) { progress.stopAnimation(); progress.setValue(0); }
+    else if (wasPending.current && !reducedMotion.current) {
+      // Real acceptance starts this visual transition; it never delays sending.
+      Animated.timing(progress, { toValue: 1, duration: 240, useNativeDriver: false }).start();
+    } else progress.setValue(1);
+    wasPending.current = pending;
+  }, [pending, progress]);
+  const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
   return <View style={styles.root}>
-    <RenderBlocks blocks={parsed} pending={pending} />
+    <RenderBlocks blocks={parsed} tone={tone} />
     {!!text && <Pressable accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
       style={styles.copyMessage} onPress={() => copy(text)}><Text style={styles.copyMessageText}>复制消息</Text></Pressable>}
   </View>;
@@ -76,7 +102,7 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
 const styles = StyleSheet.create({
   root: { width: '100%', minWidth: 0 },
   blocks: { width: '100%', minWidth: 0, gap: 8 },
-  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 }, pendingText: { color: '#93a0b0' },
+  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
   heading: { color: '#172a40', fontWeight: '700', flexShrink: 1 },
   h1: { fontSize: 21, lineHeight: 28 }, h2: { fontSize: 18, lineHeight: 26 }, hOther: { fontSize: 16, lineHeight: 24 },
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },

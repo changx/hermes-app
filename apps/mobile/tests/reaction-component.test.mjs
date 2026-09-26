@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { projectTimeline } from '../src/timeline.ts';
 
-const native = { AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
+const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles } };
 for (const key of ['FlatList', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View']) native[key] = key;
 const react = {
@@ -41,11 +41,11 @@ const text = node => { const all = v => Array.isArray(v) ? v.map(all).join('') :
 const msg = { id: 'm', ref_seq: 1, role: 'user', text: 'hello', receipt_id: 'r', client_message_id: 'c' };
 const receipt = state => ({ id: 'r', thread_id: 'th', client_message_id: 'c', state, durable: true });
 const record = status => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'c', text: 'hello', status, receiptId: status === 'accepted' ? 'r' : undefined, receiptState: status === 'accepted' ? 'queued' : undefined });
-function mount(rows, receipts = [], interactions = []) {
+function mount(rows, receipts = [], interactions = [], overrides = {}) {
   const calls = [];
   const props = { threadId: 'th', rows, startRef: 1, hasOlder: false, onOlder() {}, onPosition() {}, onVisibleRef() {},
-    text: 'draft', onText() {}, onSend() {}, receipts, interactions, answers: {}, onAnswerText() {}, onAnswer: (item, choice) => calls.push(['answer', item.id, choice]),
-    onCancel: item => calls.push(['cancel', item.id]), onStop: () => calls.push(['stop']), busy: false };
+    text: 'draft', onText: value => calls.push(['text', value]), onSend: () => calls.push(['send']), receipts, interactions, answers: {}, onAnswerText() {}, onAnswer: (item, choice) => calls.push(['answer', item.id, choice]),
+    onCancel: item => calls.push(['cancel', item.id]), onStop: () => calls.push(['stop']), busy: false, ...overrides };
   const tree = expand(ChatTimeline(props, null));
   const list = named(tree, 'FlatList')[0];
   const rowTree = expand(list.props.renderItem({ item: rows[0] }));
@@ -81,14 +81,41 @@ test('pill is under corresponding user message with stable footprint; controls r
   const slot = named(h.rowTree, 'View').find(v => v.props.accessibilityLabel === '等待审批');
   assert.ok(slot); assert.equal(slot.props.style.height, 23);
   assert.equal(named(h.rowTree, 'Pressable').length, 0);
-  click(h.tree, '取消排队'); click(h.tree, '停止当前执行'); click(h.tree, '允许');
-  assert.deepEqual(h.calls, [['cancel', 'r'], ['stop'], ['answer', 'ask', '允许']]);
+  click(h.tree, '停止'); click(h.tree, '允许');
+  assert.deepEqual(h.calls, [['stop'], ['answer', 'ask', '允许']]);
+  const queued = mount(projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', receipt('queued')]])), [receipt('queued')]);
+  click(queued.rowTree, '取消排队');
+  assert.deepEqual(queued.calls, [['cancel', 'r']]);
+  assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === '停止当前执行'), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('本机发送记录')), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('收据')), false);
   const completed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', receipt('completed')]]));
   const changed = mount(completed);
   assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === '已完成').props.style.height, 23);
   assert.equal(completed[0].key, projected[0].key);
+});
+test('composer swaps send for stop only in current running thread, preserves draft and empty stop', () => {
+  const rows = projectTimeline([msg], null, 'th', undefined, true);
+  for (const draft of ['', 'keep this draft']) {
+    const h = mount(rows, [receipt('running')], [], { text: draft });
+    const buttons = named(h.tree, 'Pressable');
+    assert.equal(buttons.some(n => n.props.accessibilityLabel === '发送'), false);
+    const stop = buttons.find(n => n.props.accessibilityLabel === '停止');
+    assert.equal(stop.props.disabled, false);
+    click(h.tree, '停止');
+    assert.deepEqual(h.calls, [['stop']]);
+    assert.equal(named(h.tree, 'TextInput')[0].props.value, draft);
+  }
+  for (const state of ['queued', 'completed', 'failed', 'interrupted', 'unknown']) {
+    const h = mount(rows, [receipt(state)]);
+    click(h.tree, '发送');
+    assert.deepEqual(h.calls, [['send']]);
+    assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === '停止'), false);
+  }
+  const other = mount(rows, [{ ...receipt('running'), thread_id: 'other' }]);
+  click(other.tree, '发送');
+  const busy = mount(rows, [receipt('running')], [], { busy: true });
+  assert.equal(named(busy.tree, 'Pressable').find(n => n.props.accessibilityLabel === '停止').props.disabled, true);
 });
 test('connection surface omits URL, ID and raw status and keeps pairing choices', () => {
   const { ConnectionScreen } = load('ConnectionScreen.tsx');
