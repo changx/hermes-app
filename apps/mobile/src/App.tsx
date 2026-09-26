@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
@@ -9,6 +9,7 @@ import { nativeTransport } from './transport';
 import { DEFAULT_BASE, accepted, connection, editConnection, newSend, restoreSend, retrySend } from './send';
 import type { Connection, SendRecord } from './send';
 import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
+import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
 
 const CONFIG_KEY = 'hermes-app-connection-v1';
@@ -26,18 +27,19 @@ function Screen() {
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false), [status, setStatus] = useState('未连接'), [error, setError] = useState('');
   const [channelId, setChannelId] = useState<string | null>(null), [threadId, setThreadId] = useState<string | null>(null);
-  const [channelName, setChannelName] = useState(''), [description, setDescription] = useState(''), [threadTitle, setThreadTitle] = useState('');
   const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
   const positions = useRef(new Map<string, TimelinePosition>());
   const locatedThreads = useRef(new Set<string>());
+  const olderCursors = useRef(new Map<string, string | null>());
   const [record, setRecord] = useState<SendRecord | null>(null);
+  const pendingRecords = useRef(new Map<string, SendRecord>());
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const recordRef = useRef<SendRecord | null>(null), busyRef = useRef(false), markedRef = useRef(new Map<string, number>());
   const openingRef = useRef(0);
   const appActive = useRef(true);
-  const updateRecord = (value: SendRecord | null) => { recordRef.current = value; setRecord(value); };
+  const updateRecord = (value: SendRecord | null) => { if (value) pendingRecords.current.set(value.clientMessageId, value); else if (recordRef.current) pendingRecords.current.delete(recordRef.current.clientMessageId); recordRef.current = value; setRecord(value); };
 
   useEffect(() => {
     let mounted = true;
@@ -63,7 +65,7 @@ function Screen() {
       onError: e => { if (active) { setStatus('重连中'); setError(e instanceof ResyncRequired ? '同步游标失效，请点「重建同步」' : messageError(e)); } }
     });
     setClient(sdk); setStatus('连接中'); setLoading(true); setError('');
-    ++openingRef.current; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); markedRef.current.clear();
+    ++openingRef.current; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear(); markedRef.current.clear(); pendingRecords.current.clear(); updateRecord(null);
     (async () => {
       try {
         const stored = await SecureStore.getItemAsync(SEND_KEY);
@@ -144,9 +146,18 @@ function Screen() {
     setThreadId(id); setPageCursor(null); setHistoryBusy(true);
     const cached = locatedThreads.current.has(id);
     setLocated(cached); setStartRef(positions.current.get(id)?.startRef ?? null);
-    if (cached) { setHistoryBusy(false); return; }
+    if (cached) { setPageCursor(olderCursors.current.get(id) ?? null); setHistoryBusy(false); return; }
     try {
-      // The server only exposes forward pages. Auto-scan a strictly bounded
+      if (client.supportsLatest) {
+        const page = await client.historyWindow(id);
+        if (opening !== openingRef.current) return;
+        olderCursors.current.set(id, page.older_cursor);
+        setPageCursor(page.older_cursor); setLocated(true); locatedThreads.current.add(id);
+        client.resumeTail(id);
+        setStartRef(page.messages[0]?.ref_seq ?? null);
+        return;
+      }
+      // The older server only exposes forward pages. Auto-scan a strictly bounded
       // prefix; never present an oldest page as if it were the latest page.
       const cursor = await locateLatest(after => client.history(id, after, 100), 3, () => opening === openingRef.current);
       if (opening === openingRef.current) {
@@ -175,6 +186,21 @@ function Screen() {
         const loaded = client.messages.get(id) || [];
         setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
       }
+    } catch (e) { if (opening === openingRef.current) setError(messageError(e)); }
+    finally { if (opening === openingRef.current) setHistoryBusy(false); }
+  };
+  const loadOlder = async () => {
+    if (!client || !threadId || historyBusy) return;
+    timelineRef.current?.holdPosition();
+    if (first > 0) { setStartRef(olderStart(messages, visibleMessages[0]?.ref_seq ?? null)); return; }
+    if (!client.supportsLatest || !pageCursor) return;
+    const opening = openingRef.current, id = threadId;
+    setHistoryBusy(true);
+    try {
+      const page = await client.historyWindow(id, pageCursor);
+      if (opening !== openingRef.current) return;
+      olderCursors.current.set(id, page.older_cursor); setPageCursor(page.older_cursor);
+      setStartRef(page.messages[0]?.ref_seq ?? startRef);
     } catch (e) { if (opening === openingRef.current) setError(messageError(e)); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
@@ -216,15 +242,16 @@ function Screen() {
     await client.answerInteraction(current, choice);
   });
 
-  const channels = client ? [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
-  const threads = client ? [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived).sort((a, b) => a.title.localeCompare(b.title)) : [];
   const messages = threadId ? client?.messages.get(threadId) || [] : [];
   const first = windowStart(messages, startRef);
   const visibleMessages = located ? messages.slice(first) : [];
-  const rows = projectTimeline(visibleMessages, record, threadId || '', threadId ? client?.drafts.get(threadId) : undefined);
+  const rows = projectTimeline(visibleMessages, record, threadId || '', threadId ? client?.drafts.get(threadId) : undefined, client?.supportsSendIdentity, [...pendingRecords.current.values()]);
   const receipts = client && threadId ? [...client.receipts.values()].filter(r => r.thread_id === threadId && ['queued','running','unknown'].includes(r.state)) : [];
   const interactions = client && threadId ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
   const selected = client?.threads.get(threadId || '') as ThreadSummary | undefined;
+  useEffect(() => {
+    for (const message of messages) if (message.client_message_id) pendingRecords.current.delete(message.client_message_id);
+  }, [messages]);
   const visibleRef = (ref: number) => {
     if (!client || !threadId || !appActive.current) return;
     if (ref <= (markedRef.current.get(threadId) || 0)) return;
@@ -270,26 +297,17 @@ function Screen() {
     {threadId && client ? <>
       <View style={styles.row}><Button title="‹ 话题" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || '对话'}</Text></View>
       <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
-        startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && first > 0}
+        startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
         locatingMessage={!located ? historyBusy ? '正在定位最新消息…' : pageCursor ? '历史超过首批有界范围；服务端缺少倒序/向前游标，尚不能直接定位最新。可逐页继续查找，不会将最早消息冒充最新。' : '历史载入失败，请返回话题重试。' : undefined}
-        onLocateNext={pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
-        onOlder={() => { timelineRef.current?.holdPosition(); setStartRef(olderStart(messages, visibleMessages[0]?.ref_seq ?? null)); }}
+        onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
+        onOlder={() => { void loadOlder(); }}
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
         text={text} onText={setText} onSend={send} record={record} onRetry={retry} onAbandon={abandon}
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
         onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />
-    </> : channelId && client ? <>
-      <View style={styles.row}><Button title="‹ 频道" secondary onPress={() => setChannelId(null)} /><Text style={styles.heading}>{client.channels.get(channelId)?.name}</Text></View>
-      <Text style={styles.hint}>{client.channels.get(channelId)?.description || '此频道暂无说明'}</Text>
-      <View style={styles.row}><TextInput accessibilityLabel="新话题标题" style={[styles.input, styles.flex]} placeholder="新话题标题" value={threadTitle} onChangeText={setThreadTitle} /><Button title="创建" disabled={busy || !threadTitle.trim()} onPress={() => run(async () => { const t = await client.createThread(channelId, threadTitle.trim()); await client.getThread(t.id); setThreadTitle(''); await openThread(t.id); })} /></View>
-      <FlatList data={threads} keyExtractor={t => t.id} renderItem={({ item }) => <Pressable style={styles.listItem} onPress={() => openThread(item.id)}><Text style={styles.heading}>{item.title}</Text><Text style={styles.hint}>未读 {item.unread_count || 0} · 最近 #{item.last_ref || 0}</Text></Pressable>} ListEmptyComponent={<Text style={styles.hint}>暂无话题，可以创建一个。</Text>} />
-    </> : <>
-      <Text style={styles.heading}>频道</Text>
-      <View style={styles.create}><TextInput accessibilityLabel="频道名称" style={styles.input} placeholder="频道名称" value={channelName} onChangeText={setChannelName} /><TextInput accessibilityLabel="频道说明" multiline style={styles.input} placeholder="公共说明（仅新会话初始化时生效）" value={description} onChangeText={setDescription} /><Button title="创建频道" disabled={busy || !channelName.trim()} onPress={() => run(async () => { const c = await client?.createChannel(channelName.trim(), description); if (c) { setChannelName(''); setDescription(''); setChannelId(c.id); } })} /></View>
-      <FlatList data={channels} keyExtractor={c => c.id} renderItem={({ item }) => <Pressable style={styles.listItem} onPress={() => setChannelId(item.id)}><Text style={styles.heading}>{item.name}</Text><Text style={styles.hint} numberOfLines={2}>{item.description || '无说明'}</Text></Pressable>} ListEmptyComponent={<Text style={styles.hint}>暂无频道；若连接失败，请检查令牌和网络。</Text>} />
-    </>}
+    </> : client ? <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} /> : null}
   </KeyboardAvoidingView>;
 }
 export default function App() { return <SafeAreaProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></SafeAreaProvider>; }

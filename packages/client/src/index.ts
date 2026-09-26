@@ -6,7 +6,7 @@ export interface ThreadSummary { id: string; project_id: string; title: string; 
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
-export interface Message { id: string; ref_seq: number; role: string; text: string; attachments?: Attachment[] }
+export interface Message { id: string; ref_seq: number; role: string; text: string; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -37,7 +37,7 @@ const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str
 const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = num(x.event_id); const kind=str(x.kind); if (!event_id || !['channel','thread','message','receipt','read','interaction','attachment'].includes(kind)) throw new ProtocolError('invalid event'); return { event_id, cursor: str(x.cursor), kind, thread_id: str(x.thread_id), ref: str(x.ref), version: num(x.version) } };
 const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
+const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);
@@ -62,6 +62,8 @@ export class HermesClient {
   private versions = new Map<string, number>();
   private fetchSequence = 0;
   private entitySequence = new Map<string, number>();
+  supportsLatest = false;
+  supportsSendIdentity = false;
   readonly tailIncomplete = new Set<string>();
   private knownEmptyThreads = new Set<string>();
   constructor(private readonly options: Options) {}
@@ -83,7 +85,7 @@ export class HermesClient {
     if (response.status < 200 || response.status >= 300) throw new ProtocolError('HTTP ' + response.status + ' ' + path.split('?')[0]);
     return obj(response.body);
   }
-  async capabilities() { const x = await this.call('GET','/v1/capabilities'); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); return x }
+  async capabilities() { const x = await this.call('GET','/v1/capabilities'); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; return x }
   async listChannels(signal?: AbortSignal): Promise<Channel[]> {
     const seq = ++this.fetchSequence; const x = await this.call('GET','/v1/channels',undefined,signal);
     const channels = arr(x.channels).map(validChannel);
@@ -134,6 +136,19 @@ export class HermesClient {
     for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
     return {messages:page,next_cursor:optionalCursor(x.next_cursor),incomplete_turns:arr(x.incomplete_turns),turn_outcomes:arr(x.turn_outcomes)};
   }
+  async historyWindow(threadId: string, before?: string, limit = 30, signal?: AbortSignal) {
+    if (!this.supportsLatest) throw new ProtocolError('latest history unavailable');
+    const x = await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({latest:before?undefined:'true',before,limit}),undefined,signal);
+    const page = arr(x.messages).map(validMessage);
+    const byRef = new Map((this.messages.get(threadId)||[]).map(m=>[m.ref_seq,m]));
+    page.forEach(m=>byRef.set(m.ref_seq,m));
+    this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq));
+    if(!before && !page.length) this.knownEmptyThreads.add(threadId);
+    if(page.length) this.knownEmptyThreads.delete(threadId);
+    for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
+    this.changed();
+    return {messages:page,older_cursor:optionalCursor(x.older_cursor)};
+  }
   async historyAll(threadId: string, signal?: AbortSignal) {
     let after: string | null = null;
     do { const page=await this.history(threadId,after || undefined,100,signal); after=page.next_cursor } while(after);
@@ -145,6 +160,7 @@ export class HermesClient {
     // No known anchor: forward-only history starts at the OLDEST row. Do not
     // silently download an unbounded transcript for a background event.
     if (!last) {
+      if(this.supportsLatest) { await this.historyWindow(threadId,undefined,30,signal); return this.messages.get(threadId)||[]; }
       if(!this.knownEmptyThreads.has(threadId)) return this.messages.get(threadId)||[];
       const page=await this.history(threadId,undefined,100,signal);
       if(page.next_cursor) {

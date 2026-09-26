@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
 import { sendDescription } from './send';
-import { nearLatest, type TimelinePosition, type TimelineRow } from './timeline';
+import { followAfterUserScroll, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
 
 const stateName: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行状态不明' };
@@ -12,11 +12,11 @@ const action = (title: string, onPress: () => void, disabled = false, muted = fa
 const MessageRow = memo(function MessageRow({ row }: { row: TimelineRow }) {
   const own = row.role === 'user';
   return <View style={[styles.bubble, own && styles.own, row.optimistic && styles.pending]}>
-    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : row.role}{row.optimistic ? (row.status === 'ambiguous' ? ' · 接收待确认' : ' · 发送中') : !row.refSeq ? ' · 草稿' : ''}</Text>
+    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '状态'}{row.optimistic ? (row.status === 'ambiguous' ? ' · 接收待确认' : row.status === 'accepted' ? ' · ' + (row.receiptState ? stateName[row.receiptState] : '已接收') : ' · 发送中') : !row.refSeq ? ' · 草稿' : ''}</Text>
     <MessageContent text={row.text} />
     {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || a.id}（{a.state}）</Text>)}
   </View>;
-}, (prev, next) => prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.status === next.row.status && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.receiptState === next.row.receiptState && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(): void; holdPosition(): void }
 interface Props {
@@ -54,6 +54,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const offset = useRef(position?.offset ?? 0);
   const viewport = useRef(0), content = useRef(0), userScrolling = useRef(false);
   const restored = useRef(false);
+  const frame = useRef<number | null>(null);
+  const scheduleFollow = useCallback(() => {
+    if (frame.current !== null) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      if (following.current && !userScrolling.current) list.current?.scrollToEnd({ animated: false });
+    });
+  }, []);
+  useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); }, []);
   const callbacks = useRef({ onPosition, onVisibleRef, startRef });
   callbacks.current = { onPosition, onVisibleRef, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
@@ -83,6 +92,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         onViewableItemsChanged={viewability.current}
         onLayout={e => {
           viewport.current = e.nativeEvent.layout.height;
+          if (restored.current && following.current) scheduleFollow();
           if (!restored.current && content.current) {
             restored.current = true;
             if (following.current) list.current?.scrollToEnd({ animated: false });
@@ -95,18 +105,19 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             restored.current = true;
             if (following.current) list.current?.scrollToEnd({ animated: false });
             else list.current?.scrollToOffset({ offset: offset.current, animated: false });
-          } else if (following.current && !userScrolling.current) list.current?.scrollToEnd({ animated: false });
+          } else if (following.current && !userScrolling.current) scheduleFollow();
         }}
-        onScrollBeginDrag={() => { userScrolling.current = true; }}
+        onScrollBeginDrag={() => { userScrolling.current = true; following.current = false; setShowLatest(true); }}
         onMomentumScrollBegin={() => { userScrolling.current = true; }}
         onScrollEndDrag={() => { userScrolling.current = false; savePosition(); }}
         onMomentumScrollEnd={() => { userScrolling.current = false; savePosition(); }}
         onScroll={e => {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          const previous = offset.current;
           offset.current = Math.max(0, contentOffset.y);
           viewport.current = layoutMeasurement.height; content.current = contentSize.height;
           if (userScrolling.current) {
-            const now = nearLatest(offset.current, content.current, viewport.current);
+            const now = followAfterUserScroll(previous, offset.current, content.current, viewport.current);
             if (now !== following.current) { following.current = now; setShowLatest(!now); }
           }
           savePosition();

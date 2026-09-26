@@ -9,6 +9,26 @@ const event=(n,kind='receipt',ref='rc_1')=>({event_id:n,cursor:'c'+n,kind,thread
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}};
 const emptySync={status:200,body:{events:[],waterline:'c0',next_cursor:'c0',has_more:false}};
+test('newest window preserves sparse refs, cursor direction and authoritative send IDs',async()=>{
+  const paths=[];
+  const c=new HermesClient({...base,http:{async request(_method,path){
+    paths.push(path);
+    if(path==='/v1/capabilities') return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,message_send_identity:true}};
+    const older=path.includes('before=');
+    return {status:200,body:{messages:older?[{id:'old',ref_seq:3,role:'user',text:'same',receipt_id:'r0',client_message_id:'zero'}]:[{id:'new',ref_seq:901,role:'user',text:'same',receipt_id:'r1',client_message_id:'one'}],older_cursor:older?null:'back:901'}};
+  }}});
+  await c.capabilities(); assert.ok(c.supportsLatest); assert.ok(c.supportsSendIdentity);
+  const first=await c.historyWindow('t');
+  assert.equal(first.older_cursor,'back:901'); assert.equal(first.messages[0].client_message_id,'one');
+  await c.historyWindow('t',first.older_cursor);
+  assert.deepEqual(c.messages.get('t').map(m=>m.ref_seq),[3,901]);
+  assert.match(paths[1],/latest=true/); assert.match(paths[2],/before=back%3A901/);
+  assert.doesNotMatch(paths[2],/latest=/);
+});
+test('legacy server capabilities do not silently use new history query',async()=>{
+  const c=new HermesClient({...base,http:{async request(){return {status:200,body:{protocol:1,durable_sync:true}}}}});
+  await c.capabilities(); assert.equal(c.supportsLatest,false); await assert.rejects(c.historyWindow('t'),ProtocolError);
+});
 test('same send ID/payload is retried; separate same-text IDs remain separate',async()=>{
   const calls=[]; const c=new HermesClient({...base,http:{async request(method,path,token,body){calls.push({method,path,token,body});return {status:202,body:{receipt:{...receipt('rc_'+body.client_message_id),client_message_id:body.client_message_id}}}}}});
   const a=await c.send('th_1','device-1','hello'); const b=await c.send('th_1','device-1','hello'); const d=await c.send('th_1','device-2','hello');

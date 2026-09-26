@@ -1,15 +1,19 @@
 import type { Message } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
 
-export interface TimelineRow { key: string; role: string; text: string; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments'] }
+export interface TimelineRow { key: string; role: string; text: string; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; receiptState?: SendRecord['receiptState']; attachments?: Message['attachments'] }
 
-// A receipt proves acceptance of a send, NOT which core row will be published.
-// The wire does not expose receipt_id/client_message_id on plain history rows.
-// Never associate two rows by equal text, time, or adjacent ref numbers.
-export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string): TimelineRow[] {
-  const rows: TimelineRow[] = messages.map(m => ({ key: `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments }));
-  if (record?.threadId === threadId && (record.status === 'sending' || record.status === 'ambiguous')) {
-    rows.push({ key: `local:${record.clientMessageId}`, role: 'user', text: record.text, optimistic: true, status: record.status });
+// Only explicit server identity can reconcile a send; never match equal text.
+// Legacy servers have no such identity and retain the conservative fallback.
+export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string, supportsIdentity = false, pending: readonly SendRecord[] = []): TimelineRow[] {
+  const rows: TimelineRow[] = messages.map(m => ({ key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments }));
+  const published = new Set(messages.filter(m => m.role === 'user').map(m => m.client_message_id).filter(Boolean));
+  const local = new Map(pending.map(r => [r.clientMessageId, r]));
+  if (record) local.set(record.clientMessageId, record);
+  for (const item of local.values()) {
+    if (item.threadId !== threadId || published.has(item.clientMessageId)) continue;
+    if (item.status === 'accepted' && !supportsIdentity) continue;
+    rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, optimistic: true, status: item.status, receiptState: item.receiptState });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
   // invalidations, not token frames; do not simulate a streaming response.
@@ -34,6 +38,10 @@ export function olderStart(messages: readonly Message[], startRef: number | null
 export interface TimelinePosition { offset: number; following: boolean; startRef: number | null }
 export const nearLatest = (offset: number, contentHeight: number, viewportHeight: number): boolean =>
   contentHeight - viewportHeight - offset <= 80;
+
+export function followAfterUserScroll(previous: number, next: number, height: number, viewport: number): boolean {
+  return next >= previous && nearLatest(next, height, viewport);
+}
 
 // Forward-only API: never fetch until exhaustion without a fixed bound.
 // The caller must explicitly request each additional page after this budget.
