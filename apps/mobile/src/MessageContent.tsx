@@ -8,33 +8,33 @@ const copy = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('复制失败', '无法写入剪贴板'));
 };
 
-function InlineText({ nodes }: { nodes: Inline[] }) {
+function InlineText({ nodes, pending }: { nodes: Inline[]; pending: boolean }) {
   return <>{nodes.map((node, index) => {
     const key = index;
     switch (node.kind) {
       case 'text': return <React.Fragment key={key}>{node.text}</React.Fragment>;
       case 'break': return <React.Fragment key={key}>{'\n'}</React.Fragment>;
-      case 'code': return <Text key={key} style={styles.inlineCode}>{node.text}</Text>;
-      case 'image': return <Text key={key} style={styles.imageLabel}>[图片：{node.text || '未命名'}]</Text>;
-      case 'em': return <Text key={key} style={styles.em}><InlineText nodes={node.children} /></Text>;
-      case 'strong': return <Text key={key} style={styles.strong}><InlineText nodes={node.children} /></Text>;
-      case 'strike': return <Text key={key} style={styles.strike}><InlineText nodes={node.children} /></Text>;
+      case 'code': return <Text key={key} style={[styles.inlineCode, pending && styles.pendingText]}>{node.text}</Text>;
+      case 'image': return <Text key={key} style={[styles.imageLabel, pending && styles.pendingText]}>[图片：{node.text || '未命名'}]</Text>;
+      case 'em': return <Text key={key} style={styles.em}><InlineText nodes={node.children} pending={pending} /></Text>;
+      case 'strong': return <Text key={key} style={styles.strong}><InlineText nodes={node.children} pending={pending} /></Text>;
+      case 'strike': return <Text key={key} style={styles.strike}><InlineText nodes={node.children} pending={pending} /></Text>;
       case 'link': return node.href
-        ? <Text key={key} accessibilityRole="link" style={styles.link}
+        ? <Text key={key} accessibilityRole="link" style={[styles.link, pending && styles.pendingText]}
             onPress={() => { void Linking.openURL(node.href!).catch(() => Alert.alert('链接无法打开')); }}>
-            <InlineText nodes={node.children} />
+            <InlineText nodes={node.children} pending={pending} />
           </Text>
-        : <Text key={key}><InlineText nodes={node.children} /></Text>;
+        : <Text key={key}><InlineText nodes={node.children} pending={pending} /></Text>;
     }
   })}</>;
 }
 
-function RenderBlock({ block }: { block: Block }) {
+function RenderBlock({ block, pending }: { block: Block; pending: boolean }) {
   switch (block.kind) {
     case 'paragraph':
-      return <Text selectable style={styles.paragraph}><InlineText nodes={block.children} /></Text>;
+      return <Text selectable style={[styles.paragraph, pending && styles.pendingText]}><InlineText nodes={block.children} pending={pending} /></Text>;
     case 'heading':
-      return <Text selectable style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : styles.hOther]}><InlineText nodes={block.children} /></Text>;
+      return <Text selectable style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : styles.hOther, pending && styles.pendingText]}><InlineText nodes={block.children} pending={pending} /></Text>;
     case 'code':
       return <View style={styles.codeBox}>
         <View style={styles.codeHeader}>
@@ -44,30 +44,30 @@ function RenderBlock({ block }: { block: Block }) {
           </Pressable>
         </View>
         <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
-          <Text selectable style={styles.codeText}>{block.text || ' '}</Text>
+          <Text selectable style={[styles.codeText, pending && styles.pendingText]}>{block.text || ' '}</Text>
         </ScrollView>
       </View>;
     case 'quote':
-      return <View style={styles.quote}><RenderBlocks blocks={block.children} /></View>;
+      return <View style={styles.quote}><RenderBlocks blocks={block.children} pending={pending} /></View>;
     case 'list':
       return <View style={styles.list}>{block.items.map((item, index) =>
         <View key={index} style={styles.listRow}>
-          <Text style={styles.bullet}>{block.ordered ? `${block.start + index}.` : '•'}</Text>
-          <View style={styles.listBody}><RenderBlocks blocks={item} /></View>
+          <Text style={[styles.bullet, pending && styles.pendingText]}>{block.ordered ? `${block.start + index}.` : '•'}</Text>
+          <View style={styles.listBody}><RenderBlocks blocks={item} pending={pending} /></View>
         </View>)}</View>;
     case 'rule': return <View style={styles.rule} />;
   }
 }
 
-function RenderBlocks({ blocks }: { blocks: Block[] }) {
-  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} />)}</View>;
+function RenderBlocks({ blocks, pending }: { blocks: Block[]; pending: boolean }) {
+  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} pending={pending} />)}</View>;
 }
 
 /** Pure native text renderer: no HTML, WebView, or remote image requests. */
-export const MessageContent = memo(function MessageContent({ text }: { text: string }) {
+export const MessageContent = memo(function MessageContent({ text, pending = false }: { text: string; pending?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
   return <View style={styles.root}>
-    <RenderBlocks blocks={parsed} />
+    <RenderBlocks blocks={parsed} pending={pending} />
     {!!text && <Pressable accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
       style={styles.copyMessage} onPress={() => copy(text)}><Text style={styles.copyMessageText}>复制消息</Text></Pressable>}
   </View>;
@@ -76,7 +76,7 @@ export const MessageContent = memo(function MessageContent({ text }: { text: str
 const styles = StyleSheet.create({
   root: { width: '100%', minWidth: 0 },
   blocks: { width: '100%', minWidth: 0, gap: 8 },
-  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
+  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 }, pendingText: { color: '#93a0b0' },
   heading: { color: '#172a40', fontWeight: '700', flexShrink: 1 },
   h1: { fontSize: 21, lineHeight: 28 }, h2: { fontSize: 18, lineHeight: 26 }, hOther: { fontSize: 16, lineHeight: 24 },
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },

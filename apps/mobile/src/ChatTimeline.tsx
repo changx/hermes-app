@@ -5,22 +5,24 @@ import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKey
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
-import type { SendRecord } from './send';
-import { sendDescription } from './send';
 import { appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
 
-const stateName: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行状态不明' };
+
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
 
 const MessageRow = memo(function MessageRow({ row }: { row: TimelineRow }) {
   const own = row.role === 'user';
-  return <View style={[styles.bubble, own && styles.own, row.optimistic && styles.pending]}>
-    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '状态'}{row.optimistic ? (row.status === 'ambiguous' ? ' · 自动核对中' : row.status === 'queued' ? ' · 待发送' : row.status === 'blocked' ? ' · 发送受阻' : row.status === 'accepted' ? ' · ' + (row.receiptState ? stateName[row.receiptState] : '已接收') : ' · 提交中') : !row.refSeq ? ' · 草稿' : ''}</Text>
-    <MessageContent text={row.text} />
-    {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || a.id}（{a.state}）</Text>)}
+  return <View style={[styles.bubble, own && styles.own]}>
+    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>
+    <MessageContent text={row.text} pending={own && !!row.optimistic && row.status !== 'accepted'} />
+    {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
+    {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
+    {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
+      {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
+    </View>}
   </View>;
-}, (prev, next) => prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.receiptState === next.row.receiptState && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void }
 interface Props {
@@ -38,7 +40,7 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
-  records: SendRecord[];
+
   receipts: Receipt[];
   interactions: Interaction[];
   answers: Record<string, string>;
@@ -160,7 +162,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         // toggle it during programmatic follow/keyboard scrolling.
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
-          {props.onLocateNext && action('继续定位最新（100 条）', props.onLocateNext, props.locatingBusy, true)}</View>
+          {props.onLocateNext && action('继续查看', props.onLocateNext, props.locatingBusy, true)}</View>
           : props.hasOlder ? <View style={styles.older}>{action('查看更早消息', props.onOlder, props.busy, true)}</View> : null}
         ListEmptyComponent={props.locatingMessage ? null : <Text style={styles.empty}>暂无消息</Text>}
         onViewableItemsChanged={viewability.current}
@@ -209,21 +211,19 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       }
     }}>
     {!!props.receipts.length && <ScrollView style={styles.controls} keyboardShouldPersistTaps="handled">{props.receipts.map(r => <View key={r.id} style={styles.controlRow}>
-      <Text style={styles.controlText}>任务 · {stateName[r.state]}</Text>
+      <Text numberOfLines={1} style={styles.controlText}>{props.rows.find(row => row.receipt?.id === r.id)?.text.slice(0, 40) || '较早的消息'}</Text>
       {r.state === 'queued' && action('取消排队', () => props.onCancel(r), props.busy, true)}
-      {r.state === 'running' && action('停止', props.onStop, props.busy, true)}
+      {r.state === 'running' && action('停止当前执行', props.onStop, props.busy, true)}
     </View>)}</ScrollView>}
     {!!props.interactions.length && <ScrollView style={styles.interactions} keyboardShouldPersistTaps="handled">{props.interactions.map(i => <View key={i.id} style={styles.interaction}>
-      <Text style={styles.controlText}>{i.kind === 'approval' ? '待审批' : '待澄清'} · {i.prompt}</Text>
+      <Text style={styles.controlText}>{i.kind === 'approval' ? '请确认' : '请回答'} · {i.prompt}</Text>
       <View style={styles.controlRow}>{i.choices.map(choice => <React.Fragment key={choice}>{action(choice, () => props.onAnswer(i, choice), props.busy, true)}</React.Fragment>)}</View>
       {i.kind === 'clarify' && i.choices.length === 0 && <View style={styles.controlRow}>
-        <TextInput accessibilityLabel="澄清回答" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)} />
+        <TextInput accessibilityLabel="你的回答" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)} />
         {action('提交回答', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
       </View>}
     </View>)}</ScrollView>}
-    {!!props.records.length && <View style={styles.receipt}>
-      <Text style={styles.receiptText}>{props.records.length} 条本机发送记录 · {props.records.map(sendDescription).join('；')}</Text>
-    </View>}
+
     <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
       {action('发送', props.onSend, props.busy || !props.text.trim())}
     </View>
@@ -237,15 +237,16 @@ const styles = StyleSheet.create({
   // the keyboard controller scroll empty space and push top-aligned rows away.
   messages: { paddingVertical: 12 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
-  own: { backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 }, pending: { opacity: 0.75, borderStyle: 'dashed' },
+  own: { backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },
   byline: { color: '#50647b', fontSize: 12, fontWeight: '600', marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
+  reactionSlot: { height: 23, justifyContent: 'center', marginTop: 5 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },
   older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 }, latest: { position: 'absolute', right: 16, bottom: 12 },
   controls: { maxHeight: 108, borderTopWidth: 1, borderColor: '#e1e9f2', backgroundColor: '#f2f6fb', paddingHorizontal: 12 }, controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }, controlText: { color: '#233b56', fontSize: 13, flexShrink: 1 },
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
-  receipt: { paddingHorizontal: 14, paddingVertical: 5 }, receiptText: { color: '#607187', fontSize: 12 },
+
   composer: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }, composeInput: { flex: 1, maxHeight: 120 }
 });

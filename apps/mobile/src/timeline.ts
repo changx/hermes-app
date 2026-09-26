@@ -1,8 +1,8 @@
 import type { Interaction, Message, Receipt } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
 
-export interface Reaction { emoji: string; label: string; source: 'local' | 'agent' }
-export interface TimelineRow { key: string; role: string; text: string; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reaction?: Reaction; receipt?: Receipt }
+export interface Reaction { emoji: string; label: string; source: 'agent' }
+export interface TimelineRow { key: string; role: string; text: string; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<Receipt['state'], Reaction> = {
   queued: { emoji: '⏳', label: '排队中', source: 'agent' },
@@ -11,12 +11,6 @@ const agentState: Record<Receipt['state'], Reaction> = {
   failed: { emoji: '⚠️', label: '执行失败', source: 'agent' },
   interrupted: { emoji: '⏹', label: '已停止', source: 'agent' },
   unknown: { emoji: '⚠️', label: '结果待确认', source: 'agent' }
-};
-const localState: Record<Exclude<SendRecord['status'], 'accepted'>, Reaction> = {
-  queued: { emoji: '📱', label: '本机待发', source: 'local' },
-  sending: { emoji: '📱', label: '提交中', source: 'local' },
-  ambiguous: { emoji: '📱', label: '接收待核对', source: 'local' },
-  blocked: { emoji: '📱', label: '发送受阻', source: 'local' }
 };
 const received: Reaction = { emoji: '👀', label: '已接收', source: 'agent' };
 const terminal = (state: Receipt['state']) => !['queued', 'running'].includes(state);
@@ -39,22 +33,22 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const known = m.role === 'user' && !!m.receipt_id && !!m.client_message_id;
     const candidate = known ? receipts.get(m.receipt_id!) : undefined;
     const valid = known && (!candidate || matching(candidate, threadId, m.receipt_id!, m.client_message_id!));
-    return { key: known && valid ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
+    // Cache hydration cannot change a published row's identity or its position.
+    return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
+      ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
       ...(valid ? { reaction: statusFor(candidate, interactions), ...(candidate ? { receipt: candidate } : {}) } : {}) };
   });
   const local = new Map(pending.map(r => [r.clientMessageId, r]));
   if (record) local.set(record.clientMessageId, record);
   for (const item of local.values()) {
-    if (item.threadId !== threadId || messages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId &&
-      !!m.receipt_id && (!item.receiptId || item.receiptId === m.receipt_id) &&
-      (!receipts.has(m.receipt_id) || matching(receipts.get(m.receipt_id), threadId, m.receipt_id, item.clientMessageId)))) continue;
-    if (item.status === 'accepted' && (!supportsIdentity || item.receiptState === 'completed')) continue;
+    if (item.threadId !== threadId || messages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId)) continue;
+    if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed')) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
-    const valid = item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
-    const fallback = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true as const } : undefined;
+    const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
+    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true } : undefined;
     const receipt = valid ? candidate ?? fallback : undefined;
-    rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, optimistic: true, status: item.status,
-      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : { reaction: localState[item.status] }) });
+    rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, optimistic: true, status: item.status, reactionSlot: true,
+      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
   // invalidations, not token frames; do not simulate a streaming response.

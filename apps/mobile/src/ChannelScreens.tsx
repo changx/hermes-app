@@ -24,7 +24,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     const version = generation.current; working.current = true; setBusy(true); setError('');
     const isCurrent = () => generation.current === version;
     try { await work(isCurrent); }
-    catch (e) { if (isCurrent()) setError(e instanceof Error ? e.message : '操作失败，请重试'); }
+    catch { if (isCurrent()) setError('没有完成，请稍后再试。'); }
     finally { working.current = false; setBusy(false); }
   };
   const channel = client.channels.get(channelId || '');
@@ -36,7 +36,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     <Text style={s.heading}>{editing ? '编辑频道' : '新建频道'}</Text>
     <TextInput accessibilityLabel="频道名称" placeholder="频道名称" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
     <TextInput accessibilityLabel="频道说明" placeholder="背景、目标或约定（可选）" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
-    <Text style={s.hint}>说明用于新话题的初始上下文；修改不会重写已有对话。</Text>
+    <Text style={s.hint}>新话题会参考这段说明，已有对话不会改变。</Text>
     <View style={s.row}>
       <Action label={busy ? '保存中…' : editing ? '保存' : '创建频道'} disabled={busy || !name.trim()} onPress={() => void run(async current => {
         const patch = channelPatch(name, description);

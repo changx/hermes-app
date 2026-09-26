@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 interface Props {
-  base: string;
-  onBase(value: string): void;
+
   code: string;
   onCode(value: string): void;
   connected: boolean;
@@ -24,15 +23,11 @@ export function ConnectionScreen(props: Props) {
     <Text style={styles.brand}>Hermes App</Text>
     <Text style={styles.heading}>{props.connected ? '连接设置' : '连接你的 Hermes'}</Text>
     {!showPairing ? <>
-      <Text selectable style={styles.text}>{props.base}</Text>
-      <Text style={styles.text}>此设备已保存连接。断网或重新打开后会自动恢复。</Text>
+      <Text style={styles.text}>此设备已连接。网络中断后会自动恢复。</Text>
       <Action title="返回聊天" onPress={props.onBack} />
-      <Action title="配对其他连接" onPress={() => setReplacing(true)} secondary />
-      <Action title="移除此设备的本机连接" onPress={props.onForget} secondary />
+      <Action title="重新配对" onPress={() => setReplacing(true)} secondary />
+      <Action title="断开并忘记此连接" onPress={props.onForget} secondary />
     </> : <>
-      <Text style={styles.caption}>服务器地址</Text>
-      <TextInput accessibilityLabel="服务器地址" style={styles.input} autoCapitalize="none" autoCorrect={false}
-        keyboardType="url" value={props.base} onChangeText={props.onBase} editable={!props.busy} />
       <Text style={styles.caption}>一次性配对码</Text>
       <TextInput accessibilityLabel="一次性配对码" style={styles.input} autoCapitalize="characters" autoCorrect={false}
         value={props.code} onChangeText={props.onCode} editable={!props.busy} placeholder="输入管理员提供的配对码" />

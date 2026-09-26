@@ -17,8 +17,9 @@ import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 
-const messageError = (e: unknown) => e instanceof Error ? e.message : '操作失败';
-const networkName: Record<NetworkState, string> = { connecting: '连接中', syncing: '补齐中', online: '在线', retrying: '等待网络', suspended: '后台已暂停', blocked: '连接受阻' };
+const sendNotice = (notice: string) => notice.includes('权限') || notice.includes('消息内容')
+  ? '消息未发出，请检查连接权限或消息内容。原消息仍保留。'
+  : '消息暂时无法安全保存或确认，请保留应用数据。';
 
 function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button, secondary && styles.secondary, disabled && styles.disabled]}><Text style={[styles.buttonText, secondary && styles.secondaryText]}>{title}</Text></Pressable>;
@@ -34,12 +35,13 @@ function Screen() {
   const [client, setClient] = useState<HermesClient | null>(null);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
-  const [loading, setLoading] = useState(false), [status, setStatus] = useState('未连接'), [error, setError] = useState('');
+  const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
   const [channelId, setChannelId] = useState<string | null>(null), [threadId, setThreadId] = useState<string | null>(null);
   const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
-  const receiptHydrator = useRef(new VisibleReceiptHydrator());
+  const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
+  if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const positions = useRef(new Map<string, TimelinePosition>());
   const locatedThreads = useRef(new Set<string>());
   const olderCursors = useRef(new Map<string, string | null>());
@@ -65,7 +67,7 @@ function Screen() {
       if (pending && (!raw || JSON.parse(raw).token !== pending.config.token)) {
         setPendingPairing(pending); setBase(pending.config.baseUrl); setPairingCode(pending.code); setEditing(true);
       } else if (pending) void SecureStore.deleteItemAsync(PAIRING_KEY).catch(() => {});
-    }).catch(e => { if (mounted) setError(messageError(e)); }).finally(() => { if (mounted) setReady(true); });
+    }).catch(() => { if (mounted) setError('连接信息暂时无法读取，请保留应用数据并重新打开。'); }).finally(() => { if (mounted) setReady(true); });
     return () => { mounted = false; };
   }, []);
 
@@ -88,14 +90,14 @@ function Screen() {
     const previous = pairingTask.current;
     previous?.controller.abort();
     const promise = (previous?.promise ?? Promise.resolve()).then(() => completePairing(pendingPairing, { store: SecureStore, signal: controller.signal,
-      onStatus: value => { if (active) setPairingStatus(value); }
+      onStatus: value => { if (active) setPairingStatus(value.includes('恢复') ? '正在等待连接，会自动继续…' : '正在连接…'); }
     })).then(saved => {
       if (!active) return;
       setPairingBusy(false);
       setConfig(saved); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
       setPendingPairing(null); setPairingStatus('');
-    }).catch(e => {
-      if (active && !controller.signal.aborted) { setPairingStatus(''); setError(messageError(e)); }
+    }).catch(() => {
+      if (active && !controller.signal.aborted) { setPairingStatus(''); setError('暂时无法完成配对，请检查配对码或联系管理员。'); }
     }).finally(() => { if (active) setPairingBusy(false); });
     pairingTask.current = { controller, promise };
     return () => { active = false; controller.abort(); };
@@ -110,25 +112,25 @@ function Screen() {
       onChange: () => { if (active) { setRevision((n: number) => n + 1); box?.reconcile(); } },
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
-        setStatus(state === 'suspended' && appActive.current ? '同步暂时受阻' : networkName[state]); box?.setConnection(state);
-        if (state === 'online') { setLoading(false); setError(''); setConnectionEpoch(n => n + 1); box?.reconcile(); }
-        if (state === 'blocked') { setLoading(false); setError((previous: string) => previous ? previous + '；消息已保留，不会重复发送。' : '连接暂不可用；消息已保留，不会重复发送。'); }
+        setStatus(state); box?.setConnection(state);
+        if (state === 'online') { setLoading(false); setError(previous => previous.startsWith('暂时无法连接') ? '' : previous); setConnectionEpoch((n: number) => n + 1); box?.reconcile(); }
+        if (state === 'blocked') { setLoading(false); setError('暂时无法连接，请联系管理员；未发出的消息仍保留。'); }
       },
-      onError: (failure: Error) => { if (active) setError('连接诊断：' + connectionFailure(failure)); }
+      onError: (failure: Error) => { if (active) console.info('[connection]', connectionFailure(failure)); },
     } as ConstructorParameters<typeof HermesClient>[0]);
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;
       setRecords(items);
-      if (notice) setError(notice);
+      if (notice) setError(sendNotice(notice));
     });
     outboxRef.current = box;
-    setClient(sdk); setStatus('连接中'); setLoading(true); setError('');
+    setClient(sdk); setStatus('connecting'); setLoading(true); setError('');
     ++openingRef.current; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear(); markedRef.current.clear(); setRecords([]);
     (async () => {
       try {
         await box.start();
         if (active && appActive.current) await sdk.connect();
-      } catch (e) { if (active) { setLoading(false); setError('本机待发消息读取失败；请保留应用数据。' + messageError(e)); } }
+      } catch { if (active) { setLoading(false); setError('消息暂时无法读取，请保留应用数据并重新打开。'); } }
     })();
     return () => { active = false; ++openingRef.current; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
   }, [config]);
@@ -137,18 +139,18 @@ function Screen() {
     if (!client) return;
     const sub = AppState.addEventListener('change', state => {
       appActive.current = state === 'active';
-      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.close(); setStatus('后台已暂停'); return; }
-      setStatus('连接中');
+      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.close(); setStatus('suspended'); return; }
+      setStatus('connecting');
       client.connect().catch(() => { /* SDK retry loop owns recovery */ });
     });
     return () => sub.remove();
   }, [client]);
 
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, fallback = '操作没有完成，请稍后重试。') => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
-    try { await fn(); } catch (e) { setError(messageError(e)); }
+    try { await fn(); } catch { setError(fallback); }
     finally { busyRef.current = false; setBusy(false); }
   };
   const saveConnection = () => run(async () => {
@@ -158,7 +160,7 @@ function Screen() {
     const next = existing && existing.config.baseUrl === base.replace(/\/$/, '') && existing.code === code
       ? existing : newPairing(base, code, Platform.OS === 'ios' ? 'iPhone' : 'Android', Crypto.randomUUID(), await Crypto.getRandomBytesAsync(44));
     setPendingPairing(next); setPairingEpoch(n => n + 1);
-  });
+  }, '配对码无效，请检查后再试。');
   const forget = () => run(async () => {
     pairingTask.current?.controller.abort();
     await pairingTask.current?.promise.catch(() => {});
@@ -167,7 +169,7 @@ function Screen() {
     const old = outboxRef.current;
     if (old) { await old.stop(); await old.storage.clear(); }
     await SecureStore.deleteItemAsync(CONFIG_KEY);
-    setRecords([]); setConfig(null); setClient(null); setPairingCode(''); setEditing(false); setStatus('未连接');
+    setRecords([]); setConfig(null); setClient(null); setPairingCode(''); setEditing(false); setStatus('suspended');
   });
   const openThread = async (id: string) => {
     if (!client) return;
@@ -198,7 +200,7 @@ function Screen() {
           setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
         }
       }
-    } catch { if (opening === openingRef.current) setError('历史暂未载入，连接恢复后将自动补齐'); }
+    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const locateNext = async () => {
@@ -215,7 +217,7 @@ function Screen() {
         const loaded = client.messages.get(id) || [];
         setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
       }
-    } catch { if (opening === openingRef.current) setError('历史暂未载入，连接恢复后将自动补齐'); }
+    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const loadOlder = async () => {
@@ -230,7 +232,7 @@ function Screen() {
       if (opening !== openingRef.current) return;
       olderCursors.current.set(id, page.older_cursor); setPageCursor(page.older_cursor);
       setStartRef(page.messages[0]?.ref_seq ?? startRef);
-    } catch { if (opening === openingRef.current) setError('历史暂未载入，连接恢复后将自动补齐'); }
+    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const send = () => run(async () => {
@@ -240,7 +242,7 @@ function Screen() {
     await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID()));
     timelineRef.current?.followLatest();
     setText((old: string) => old === original ? '' : old);
-  });
+  }, '消息还没保存，未发送。请保留应用数据后重试。');
   const answer = (item: Interaction, choice: string) => run(async () => {
     if (!client) return;
     const current = await client.getInteraction(item.thread_id, item.id);
@@ -251,17 +253,16 @@ function Screen() {
   const messages = threadId ? client?.messages.get(threadId) || [] : [];
   const first = windowStart(messages, startRef);
   const visibleMessages = located ? messages.slice(first) : [];
-  const receipts = client && threadId ? [...client.receipts.values()].filter(r => r.thread_id === threadId && ['queued','running','unknown'].includes(r.state)) : [];
+  const receipts = client && threadId ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
   const interactions = client && threadId ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
   const rows = projectTimeline(visibleMessages, null, threadId || '', threadId ? client?.drafts.get(threadId) : undefined, client?.supportsSendIdentity, records, client?.receipts, interactions);
-  const threadRecords = records.filter(r => r.threadId === threadId && !rows.some(row => row.key === `local:${r.clientMessageId}`));
-  const unshownReceipts = receipts.filter(r => !rows.some(row => row.receipt?.id === r.id));
+
   const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
     .map(m => [m.receipt_id, m.client_message_id]));
   useEffect(() => {
-    if (client && threadId && located && client.connectionState === 'online') receiptHydrator.current.update(client, threadId, visibleMessages, connectionEpoch);
-    else receiptHydrator.current.cancel();
-    return () => receiptHydrator.current.cancel();
+    if (client && threadId && located && client.connectionState === 'online') receiptHydrator.current?.update(client, threadId, visibleMessages, connectionEpoch);
+    else receiptHydrator.current?.cancel();
+    return () => receiptHydrator.current?.cancel();
   }, [client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
   const selected = client?.threads.get(threadId || '') as ThreadSummary | undefined;
 
@@ -281,32 +282,31 @@ function Screen() {
     }
   }, [revision, client, threadId, located]);
   useEffect(() => {
-    if (status === '在线' && client && threadId && !located && !historyBusy && !pageCursor) void openThread(threadId);
+    if (status === 'online' && client && threadId && !located && !historyBusy && !pageCursor) void openThread(threadId);
   }, [connectionEpoch]);
 
-  if (!ready) return <View style={styles.center}><Text>正在读取安全连接…</Text></View>;
-  if (!config || editing) return <ConnectionScreen base={base} onBase={setBase} code={pairingCode} onCode={setPairingCode}
+  if (!ready) return <View style={styles.center}><Text>正在打开…</Text></View>;
+  if (!config || editing) return <ConnectionScreen code={pairingCode} onCode={setPairingCode}
     connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
     onPair={saveConnection} onBack={() => { setEditing(false); if (config) setBase(config.baseUrl); }} onForget={forget} />;
 
   return <View style={styles.flex}>
     <View style={styles.header}>
-      <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text><Text style={styles.subtitle} numberOfLines={1}>{config.baseUrl} · {status}</Text></View>
+      <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
       <Button title="连接" secondary onPress={() => setEditing(true)} />
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}
-    {loading && <Text style={styles.hint}>正在载入频道和同步状态…</Text>}
-    {records.some(r => r.receiptState === 'unknown') && <Text style={styles.hint}>有执行结果尚未确认；应用会继续核对，不会自动重新执行。</Text>}
+    {loading && <Text style={styles.hint}>正在打开…</Text>}
     {threadId && client ? <>
       <View style={styles.row}><Button title="‹ 话题" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || '对话'}</Text></View>
       <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
         startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
-        locatingMessage={!located ? historyBusy ? '正在定位最新消息…' : pageCursor ? '历史超过首批有界范围；服务端缺少倒序/向前游标，尚不能直接定位最新。可逐页继续查找，不会将最早消息冒充最新。' : '等待网络恢复后自动载入历史…' : undefined}
+        locatingMessage={!located ? historyBusy ? '正在打开对话…' : pageCursor ? '还有更多消息，继续查看最近的对话。' : '暂时无法打开，连接恢复后会自动继续。' : undefined}
         onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
         onOlder={() => { void loadOlder(); }}
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
-        text={text} onText={setText} onSend={send} records={threadRecords}
-        receipts={unshownReceipts} interactions={interactions} answers={answers}
+        text={text} onText={setText} onSend={send}
+        receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
         onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />
