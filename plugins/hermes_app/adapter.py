@@ -22,6 +22,7 @@ from hermes_constants import get_hermes_home
 from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
+from . import device_pairing
 from .history_hooks import pre_llm_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
 log = logging.getLogger(__name__)
@@ -40,8 +41,21 @@ def _initial_description(info):
 async def _authentication(request, handler):
     token = os.environ.get('HERMES_APP_TOKEN', '')
     provided = request.headers.get('Authorization', '')
-    if not token or len(token) < 32 or not hmac.compare_digest(provided, 'Bearer ' + token):
-        raise web.HTTPUnauthorized()
+    admin = bool(token and len(token) >= 32 and hmac.compare_digest(provided, 'Bearer ' + token))
+    exchange = request.method == 'POST' and request.path == '/v1/pairing/exchange'
+    if exchange:
+        # The only public route accepts a bounded JSON body, never URL credentials.
+        if provided or request.query:
+            raise web.HTTPBadRequest(text='pairing code belongs in JSON body')
+    elif request.path.startswith('/v1/pairing/'):
+        if not admin:
+            raise web.HTTPForbidden() if provided else web.HTTPUnauthorized()
+    elif not admin:
+        credential = provided[7:] if provided.startswith('Bearer ') else ''
+        pairing = request.app.get('pairing')
+        if not pairing or not await asyncio.to_thread(pairing.authenticated_device, credential):
+            raise web.HTTPUnauthorized()
+    request['auth_kind'] = 'public' if exchange else 'admin' if admin else 'device'
     if any(k in request.query for k in ('profile', 'profile_name', 'owner', 'user_id', 'hermes_home')):
         raise web.HTTPForbidden(text='profile selection is unavailable')
     return await handler(request)
@@ -72,6 +86,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._site = None
         self._sockets = set()
         self._store = _store()
+        self._pairing = device_pairing.PairingStore(self._store.path)
         self._settlement_tasks = set()
         self._queue_tasks = {}
         self._queue_wakes = {}
@@ -104,6 +119,11 @@ class HermesAppAdapter(BasePlatformAdapter):
         port = int(os.environ.get('HERMES_APP_PORT', '0'))
         app = web.Application(middlewares=[_authentication], client_max_size=12 * 1024 * 1024)
         app['adapter'] = self
+        app['pairing'] = self._pairing
+        app.router.add_post('/v1/pairing/grants', device_pairing.issue)
+        app.router.add_post('/v1/pairing/exchange', device_pairing.exchange)
+        app.router.add_get('/v1/pairing/devices', device_pairing.devices)
+        app.router.add_delete('/v1/pairing/devices/{id}', device_pairing.revoke)
         app.router.add_get('/v1/capabilities', self._capabilities)
         app.router.add_get('/v1/channels', self._channels)
         app.router.add_post('/v1/channels', self._channels)
@@ -894,11 +914,16 @@ class HermesAppAdapter(BasePlatformAdapter):
         await ws.prepare(request)
         self._sockets.add(ws)
         token=request.headers.get('Authorization','')
+        auth_kind=request['auth_kind']
+        device_id=token[14:38] if auth_kind == 'device' else None
         try:
             await ws.send_json({'type':'hello','protocol':1,'durable_sync':True})
             while not ws.closed and not self._stopping:
                 self._reconcile_interactions()
-                if not hmac.compare_digest(token,'Bearer '+os.environ.get('HERMES_APP_TOKEN','')):
+                valid = (hmac.compare_digest(token,'Bearer '+os.environ.get('HERMES_APP_TOKEN',''))
+                         if auth_kind == 'admin' else
+                         await asyncio.to_thread(self._pairing.authenticated_device, token[7:]) == device_id)
+                if not valid:
                     await ws.close(code=1008,message=b'credential revoked')
                     break
                 page=await asyncio.to_thread(self._store.sync_page,cursor=cursor,limit=100)

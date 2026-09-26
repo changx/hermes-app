@@ -1,6 +1,25 @@
 # P1-03 本地接收与同步协议
 
-状态：P1 本地集成候选，固定单 owner/profile。Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；未安装活动 profile。每个 HTTP 请求和 WebSocket 升级请求都须带 `Authorization: Bearer <token>` 请求头。凭据不进入 URL。服务端从当前 profile 选择数据库，不接受客户端的 profile/owner 参数。浏览器原生 WebSocket 不能设置任意请求头；共享客户端由支持请求头的桌面/手机 socket 工厂提供连接。
+状态：P1 本地集成候选，固定单 owner/profile。Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；未安装活动 profile。普通 HTTP 请求和 WebSocket 升级请求都须带 `Authorization: Bearer <管理员或已配对设备凭据>` 请求头；唯独配对 exchange 不带 Authorization，配对码只在 JSON 正文。凭据不进入 URL。服务端从当前 profile 选择数据库，不接受客户端的 profile/owner 参数。浏览器原生 WebSocket 不能设置任意请求头；共享客户端由支持请求头的桌面/手机 socket 工厂提供连接。
+
+## M1 本地设备配对（源码实现，未部署）
+
+固定单 owner，无新账号/OAuth/refresh 服务。旧 `HERMES_APP_TOKEN` 保留作为管理员 bootstrap，**不是供普通用户寻找、修复或输入的登录凭据**。管理员在本地受控终端使用已有环境变量调用下面的签发 API；不得把管理员令牌发给设备或把配对码、设备凭据写入 URL、日志、诊断/深链。网络入口仍只绑定 loopback，远程手机接入依赖已有安全传输/受控代理，此改动不开放监听。
+
+| 操作 | 请求 | 成功响应 | 权限 |
+|---|---|---|---|
+| 签发 | `POST /v1/pairing/grants`，JSON `{}` | `201 {"code":"XXXX-XXXX-XXXX-XXXX","expires_at":<Unix 秒>}` | 管理员 Bearer |
+| 兑换 | `POST /v1/pairing/exchange`，JSON `{"code":"XXXX-XXXX-XXXX-XXXX","device_name":"iPhone"}`，**无 Authorization** | `201 {"device_id":"<24 位小写 hex>","device_token":"ha_dev_<device_id>_<随机串>"}` | 唯一公开路由 |
+| 列表 | `GET /v1/pairing/devices` | `200 {"devices":[{"device_id":"...","device_name":"...","created_at":<Unix 秒>}]}` | 管理员 Bearer |
+| 撤销 | `DELETE /v1/pairing/devices/{device_id}` | `204` | 管理员 Bearer |
+
+正常 HTTP/WS 使用 `Authorization: Bearer <device_token>`；客户端必须安全持久保存它，重启/断线后直接恢复，不请用户修复 token。管理员 Bearer 也继续可用；设备凭据访问普通单 owner 数据路由，但签发、列表、撤销一律禁止（403）。过期、错误、已用配对码统一 400；缺少普通路由认证为 401；签发容量或兑换频率限制为 429；请求为精确字段 JSON，配对请求体至多 512 字节，不允许在 exchange URL 传码。代码一次展示、5 分钟有效、80 位随机熵，服务端仅存 SHA-256 摘要；一笔 SQLite 事务消费代码并建立 256 位随机设备凭据，仅存摘要。限 20 条活跃签发、100 个活跃设备，兑换全局 SQLite 计数每分钟至多 30 次、每小时至多 300 次，重启不清空；反向代理对公开入口另行限流。兑换响应丢失时**不返还凭据**，管理员从列表识别并撤销孤儿设备，再签新码；不能把旧码反复兑换。显式撤销使下个 HTTP 请求 401、已有 WS 在下一次认证检查关闭（最迟约 5 秒）。列表不返回 token，撤销后该设备无法自行重新配对。
+
+管理员本地签发示例（已有 `HERMES_APP_TOKEN` 环境变量，`HERMES_APP_PORT` 为实际监听端口；只在受控终端展示响应，不要开启 shell trace/HTTP body 日志）：
+
+```sh
+curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:${HERMES_APP_PORT}/v1/pairing/grants
+```
 
 ## 发送与执行
 
@@ -26,7 +45,7 @@ Channel 正文仍由 Hermes ProjectDB 管理，`GET /v1/channels` 返回当前�
 
 `GET /v1/sync?cursor=<opaque>&limit=1..200` 返回全局持久事件页：`events`、`waterline`、`next_cursor`、`has_more`。无 cursor 表示从头读。每条事件含递增 `event_id`、`cursor`、`kind`、`thread_id`、不透明或数字引用 `ref` 与 `version`。事件只含引用，客户端按需要取收据、快照或历史。cursor 绑定固定 owner/profile 元数据库路径指纹；无效、外 profile、未来或不存在的序号返回 400，必须重新取快照，绝不静默返回空数组。
 
-`WS /v1/events?cursor=<opaque>` 先发送 `hello`，再从相同持久日志发送 `{"type":"event",...}`。HTTP 和 WS 共用序号。断线以最后处理的 cursor 调用 HTTP `/v1/sync`，分页追至水位，再继续订阅。客户端按 `(kind,thread_id,ref)` 和 `version/event_id` 合并重复、乱序投递；流式 token 不写永久日志。服务端对单 socket 设 1 MiB 写缓冲和 5 秒发送超时，慢客户端断开后从 cursor 补齐；无每客户端无限事件队列。认证在升级时校验，运行时凭据轮换后旧 socket 最迟在下一次 5 秒唤醒时关闭；停用/关闭立即释放 listener、socket 和 task。
+`WS /v1/events?cursor=<opaque>` 先发送 `hello`，再从相同持久日志发送 `{"type":"event",...}`。HTTP 和 WS 共用序号。断线以最后处理的 cursor 调用 HTTP `/v1/sync`，分页追至水位，再继续订阅。客户端按 `(kind,thread_id,ref)` 和 `version/event_id` 合并重复、乱序投递；流式 token 不写永久日志。服务端对单 socket 设 1 MiB 写缓冲和 5 秒发送超时，慢客户端断开后从 cursor 补齐；无每客户端无限事件队列。认证在升级时校验，运行时管理员令牌轮换或设备凭据被撤销后旧 socket 在下一次约 5 秒唤醒时关闭；停用/关闭立即释放 listener、socket 和 task。
 
 `POST /v1/threads/{id}/read` 请求 `{"ref_seq":<已知可见引用>}`；服务端验证该 Thread 的引用，只单调前进，返回 `ref_seq` 和 `unread_count`。未读数为此引用之后真实可见消息数，而非同步事件数；变更写入 `read` 事件，多端见同一 owner 的位置。未知引用返回 400。
 
