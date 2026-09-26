@@ -198,7 +198,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     {!!props.records.length && <View style={styles.receipt}>
       <Text style={styles.receiptText}>{props.records.length} 条本机发送记录 · {props.records.map(sendDescription).join('；')}</Text>
     </View>}
-    <View style={styles.composer} onLayout={e => setComposerHeight(old => old === e.nativeEvent.layout.height ? old : e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
+    <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
       {action('发送', props.onSend, props.busy || !props.text.trim())}
     </View>
     </KeyboardStickyView>
