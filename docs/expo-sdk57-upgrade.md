@@ -34,4 +34,10 @@ Jamie 的 iPhone 实际提示：Expo Go 支持 SDK 57.0.0，项目 SDK 54 不兼
 
 证据和双平台导出保留：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/dev/expo-sdk57/`，公网结果为 `public-verification.json`。开发服务及运行目录依赖保留以供测试；隔离工作树验收后清理。
 
+## 后续真机账号检查
+
+iPhone 随后报告 Expo Go 已登录 `jamsben`、CLI 未登录。经 Jamie 授权，在 Expo 服务专用 HOME 完成浏览器登录，`expo whoami` 实测为 `jamsben`。移除 `hermes-app-expo.service` 的 `EXPO_OFFLINE=1` 并仅重启 Expo 服务；公网 iOS manifest 已确认 `extra.expoGo.username=jamsben`、runtimeVersion=`exposdk:57.0.0`。无 EAS 签名时 `extra.scopeKey` 仍可为 anonymous，不作为登录失败判据。真机界面仍待复测。
+
+官方依据：https://docs.expo.dev/troubleshooting/expo-go-sign-in-required/ 。认证保留在服务专用 HOME，不写入仓库或开发包。
+
 测试链接仍为 `exps://agent.tuly.space`，原二维码有效。手机从 Expo Go 错误页返回首页后重新打开该链接，检查是否已进入连接页面。

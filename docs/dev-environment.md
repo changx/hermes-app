@@ -1,6 +1,10 @@
 # 开发环境
 
-## 当前状态
+## 当前状态补充
+
+后续已正确持久化独立开发 Codex OAuth，并通过真实 openai-codex / gpt-6-luna 消息联调；Jamie 已在 iPhone 确认基本通讯正常。下面早期的 No Codex credentials stored 是历史阻塞，现已解除。开发部署重启持久化及 SQLite 运行时风险仍待验收，原卡 t_42490468 依赖 t_c0dc25f5，见 [P2/P3 Kanban](p2-p3-kanban.md)。
+
+## 初次开发状态（历史记录）
 
 已创建 `hermes-app-dev` profile，配置内置 `openai-codex / gpt-6-luna`，安装 P1 验收插件，并建立 `https://agent.tuly.space` 的 DNS / HTTPS / Traefik 路由。
 

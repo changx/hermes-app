@@ -55,7 +55,9 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 - 保留 Expo 服务及专用 bridge 供 Jamie 测试、主仓库 app node_modules 供构建、私有 Expo HOME 和 bundle 证据。临时工作树/重复依赖已经由 git worktree remove 清理。
 - 停用时只停 `hermes-app-expo.service` 与 `hermes-app-expo-bridge.socket/service`，移除专用 Traefik 文件；确认服务禁用后可按 exact comment/port/source 删除两条专用防火墙规则。不要动开发 Gateway 或共享入口。
 
-## 手机验收清单（SDK 54 已被真机拒绝，SDK 57 待复测）
+## 手机验收进展与清单
+
+Jamie 已在本线程确认 SDK 57 界面可打开、令牌连接成功、基本通讯正常。完整后台/断网/冷启动/双端与交互验收仍未完成，转入 [P2/P3 Kanban 计划](p2-p3-kanban.md)。当前真实 Codex 登录与 Luna 通讯已恢复，上文首次 SDK54 的 OAuth 错误仅为历史记录。
 
 1. Expo Go 扫码加载，界面无红屏，安全区与键盘不遮挡发送框。
 2. 填令牌连接，打开“手机开发测试”频道和测试话题；创建自己的新话题。
