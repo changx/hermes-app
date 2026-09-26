@@ -206,7 +206,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
 });
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, messages: { paddingVertical: 12, flexGrow: 1 },
+  flex: { flex: 1 },
+  // Keep the real content height: growing short content to the viewport makes
+  // the keyboard controller scroll empty space and push top-aligned rows away.
+  messages: { paddingVertical: 12 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   own: { backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 }, pending: { opacity: 0.75, borderStyle: 'dashed' },
   byline: { color: '#50647b', fontSize: 12, fontWeight: '600', marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },

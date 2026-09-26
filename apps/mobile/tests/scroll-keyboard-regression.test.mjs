@@ -51,8 +51,8 @@ test('flow dock needs keyboard inset without subtracting its own height', () => 
     assert.equal(content - latestOffset(content, viewport, keyboard - safeBottom), viewport - (keyboard - safeBottom));
     assert.equal(content - latestOffset(content, viewport, keyboard - safeBottom - dock), viewport - (keyboard - safeBottom) + dock);
     assert.equal(content - latestOffset(content, viewport), viewport); // hidden keyboard
-    // Flex-grow short content still scrolls by the native inset once keyboard opens.
-    assert.equal(viewport - latestOffset(viewport, viewport, keyboard - safeBottom), viewport - (keyboard - safeBottom));
+    // Natural short content consumes whitespace before any keyboard shift.
+    assert.equal(latestOffset(100, viewport, keyboard - safeBottom), 0);
   }
 });
 
