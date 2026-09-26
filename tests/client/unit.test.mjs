@@ -106,13 +106,14 @@ test('socket event triggers durable replay; duplicate frames and close do not se
   let emit,closeFrame,closed=0,connectPath,connectToken,posts=0,replays=0;
   let ready;const connected=new Promise(r=>ready=r);
   const c=new HermesClient({...base,http:{async request(method,path){if(method==='POST')posts++;
+    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true}};
     if(path.startsWith('/v1/sync')) {replays++;return {status:200,body:{events:replays===1?[]:[event(1,'receipt','rc_1')],waterline:'c1',next_cursor:replays===1?'c0':'c1',has_more:false}}}
     if(path==='/v1/receipts/rc_1')return {status:200,body:{receipt:receipt()}};
     throw new Error(path);
   }},socket:{async connect(path,token){connectPath=path;connectToken=token;ready();return {onMessage(fn){emit=fn},onClose(fn){closeFrame=fn},close(){closed++}}}}});
   c.cursor='c0';await c.connect();await connected;await new Promise(r=>setTimeout(r,0));
   assert.equal(connectPath,'/v1/events?cursor=c0');assert.equal(connectToken,'synthetic-token');
-  emit(JSON.stringify({type:'event',...event(1)}));emit(JSON.stringify({type:'event',...event(1)}));
+  emit(JSON.stringify({type:'hello',protocol:1,durable_sync:true}));emit(JSON.stringify({type:'event',...event(1)}));emit(JSON.stringify({type:'event',...event(1)}));
   for(let i=0;i<20 && c.cursor!=='c1';i++)await new Promise(r=>setTimeout(r,2));
   assert.equal(c.cursor,'c1');assert.equal(c.receipts.size,1);c.close();closeFrame();assert.ok(closed>=1);assert.equal(posts,0);
 });
@@ -131,6 +132,7 @@ test('late queued receipt response cannot replace completed state',async()=>{
 test('explicit resync after invalid cursor releases run ownership and reconnects',async()=>{
   let invalid=true,connects=0;const errors=[];
   const c=new HermesClient({...base,onError:e=>errors.push(e.name),http:{async request(_method,path){
+    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true}};
     if(path.startsWith('/v1/sync'))return invalid?{status:400,body:{}}:emptySync;
     if(path.startsWith('/v1/snapshot'))return {status:200,body:{threads:[],waterline:'c0',next_after:null}};
     if(path==='/v1/channels')return {status:200,body:{channels:[]}};
@@ -141,14 +143,14 @@ test('explicit resync after invalid cursor releases run ownership and reconnects
 });
 test('delayed old close cannot close the next connection',async()=>{
   let oldClose,connects=0,newClosed=0;
-  const c=new HermesClient({...base,http:{async request(){return emptySync}},socket:{async connect(){
+  const c=new HermesClient({...base,http:{async request(_method,path){return path==='/v1/capabilities'?{status:200,body:{protocol:1,durable_sync:true}}:emptySync}},socket:{async connect(){
     const current=++connects;return {onMessage(){},onClose(fn){if(current===1)oldClose=fn},close(){if(current===2)newClosed++}};
   }}});c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
   assert.equal(connects,2);oldClose();await tick();assert.equal(newClosed,0);c.close();
 });
 test('close during pending handshake disposes late socket without touching successor',async()=>{
   const pending=deferred();let connects=0,lateClosed=0,newClosed=0;
-  const c=new HermesClient({...base,http:{async request(){return emptySync}},socket:{connect(){
+  const c=new HermesClient({...base,http:{async request(_method,path){return path==='/v1/capabilities'?{status:200,body:{protocol:1,durable_sync:true}}:emptySync}},socket:{connect(){
     return ++connects===1?pending.promise:Promise.resolve({onMessage(){},onClose(){},close(){newClosed++}});
   }}});c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
   pending.resolve({onMessage(){},onClose(){},close(){lateClosed++}});await tick();
@@ -156,7 +158,8 @@ test('close during pending handshake disposes late socket without touching succe
 });
 test('close during pending replay cannot publish old cursor or block next connect',async()=>{
   const pending=deferred();let syncs=0,connects=0;
-  const c=new HermesClient({...base,http:{request(){
+  const c=new HermesClient({...base,http:{request(_method,path){
+    if(path==='/v1/capabilities')return Promise.resolve({status:200,body:{protocol:1,durable_sync:true}});
     return ++syncs===1?pending.promise:Promise.resolve(emptySync);
   }},socket:{async connect(){connects++;return {onMessage(){},onClose(){},close(){}}}}});
   c.cursor='c0';await c.connect();await tick();c.close();await c.connect();await tick();
@@ -188,6 +191,6 @@ test('binary upload, exact retry payload, download and deleted metadata use inje
   }});const a=await c.upload('th_1','raw.bin',bytes);assert.equal(a.state,'available');await c.send('th_1','device-1','body',[a.id]);await c.send('th_1','device-1','body',[a.id]);assert.deepEqual(calls[1].body,calls[2].body);assert.deepEqual(await c.download('th_1',a.id),bytes);await c.deleteUnattached('th_1',a.id);assert.equal((await c.getAttachment('th_1',a.id)).state,'deleted');
 });
 test('manual and connected catchUp serialize across distinct signals',async()=>{
-  const gate=deferred();let syncs=0;const c=new HermesClient({...base,http:{async request(method,path){if(path.startsWith('/v1/sync')){syncs++;if(syncs===1)return gate.promise;return {status:200,body:{events:[],waterline:'c1',next_cursor:'c1',has_more:false}}}if(path==='/v1/receipts/rc_1')return {status:200,body:{receipt:receipt()}};throw Error(path)}},socket:{async connect(){return {onMessage(){},onClose(){},close(){}}}}});
+  const gate=deferred();let syncs=0;const c=new HermesClient({...base,http:{async request(method,path){if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true}};if(path.startsWith('/v1/sync')){syncs++;if(syncs===1)return gate.promise;return {status:200,body:{events:[],waterline:'c1',next_cursor:'c1',has_more:false}}}if(path==='/v1/receipts/rc_1')return {status:200,body:{receipt:receipt()}};throw Error(path)}},socket:{async connect(){return {onMessage(){},onClose(){},close(){}}}}});
   c.cursor='c0';const manual=c.catchUp();await tick();await c.connect();await tick();assert.equal(syncs,1);gate.resolve({status:200,body:{events:[event(1)],waterline:'c1',next_cursor:'c1',has_more:false}});await manual;await tick();assert.equal(c.cursor,'c1');assert.equal(syncs,2);c.close();
 });
