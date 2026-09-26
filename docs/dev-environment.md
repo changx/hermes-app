@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+最新手机修正 `ff41a76`：前后台键盘布局、滑动收键盘与消息滚动联动，已仅更新Expo；两个Gateway和插件未变化。双平台公网包及账号检查通过，真机待验收见 [键盘修正](m1-keyboard-layout.md)。下述可靠性插件部署保持不变。
+
 2026-09-26 可靠性版已根据 Jamie“再写 AGENTS.md，更新手机 app”授权发布，运行代码 `bd0ca43`（含候选 `1389b8c`）。插件归档 SHA-256：`dad18bde21f273413926f151ab45ee858a07fa3bcc1a5e20815a65d9a396f17e`。只重启隔离开发 Gateway 与 Expo；公网 HTTP/WS、配对管理路由、历史及 iOS/Android 新 bundle 均通过，Expo 账号 `jamsben`。Jamie 主实例 PID/启动时间不变。入口仍为 `exps://agent.tuly.space`，手机重开项目加载新版。回滚与本轮证据在私有 `workspace/hermes-app/m1-reliability-verification/`；详见 [可靠性验证](m1-reliability-verification.md)。iPhone 故障矩阵仍未验收，不能据发布成功关闭首版总卡。
 
 ### 上一版 M1 发布（历史）
