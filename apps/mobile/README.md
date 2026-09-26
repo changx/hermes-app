@@ -5,19 +5,21 @@
 ## 运行与检查
 
 ```sh
-cd /opt/projects/jamie/_worktrees/hermes-app/p2-expo-first/apps/mobile
+cd /opt/projects/jamie/hermes-app/apps/mobile
 npm ci
 npm test
 npm run check
 npm run export:android
 npm run export:ios
-# 仅在获准的私有开发网络上，由负责 Metro 的人员启动：
+# 本地启动；已运行的公网测试实例由 systemd 管理，不重复启动：
 npx expo start --host localhost
 ```
 
 Expo SDK **54.0.37** / RN 0.81.5 / React 19.1.0。选择 54 而非 npm 最新的 57：截至当前 Expo 官方兼容说明，App Store 的 iOS Expo Go 停在 SDK 54；SDK 55+ 不能用 App Store 的实体 iPhone Expo Go。Android 需安装 SDK 54 匹配版本（expo.dev/go）。SecureStore、Crypto、safe-area 模块由 `npx expo install ... --npm` 选定兼容版本。参考：https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/ 。
 
 打开 App 后填 HTTPS 服务源（默认 `https://agent.tuly.space`）及个人令牌。令牌只存在本机 SecureStore，HTTP 和原生 RN WebSocket 升级都用 `Authorization` 请求头；不放入 URL、包或日志。改连接时最后发送记录按连接 ID 隔离；清除连接会删除本机连接和发送记录，不会停止服务端执行。
+
+当前测试链接：`exps://agent.tuly.space`，使用匹配 SDK 54 的 Expo Go 打开。已通过公网 manifest 与双平台 bundle 读取验证，尚待真机验收。服务器上的 `hermes-app-expo.service` 提供开发包，运行细节见 `../../docs/p2-mobile-dev.md`。更换服务器必须重新输入该服务器令牌，不会沿用旧源凭据。
 
 ## 当前可用范围
 

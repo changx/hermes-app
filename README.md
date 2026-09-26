@@ -21,6 +21,7 @@
 - [P1 第一 gate 记录](docs/p1/first-gate.md)：插件历史实现、隔离测试、已通过范围及剩余边界。
 - [P1-03 协议](docs/p1/protocol.md)与[第二 gate 记录](docs/p1/second-gate.md)：持久收据、故障恢复、同步与本地证据。
 - [P1-04 第三 gate](docs/p1/third-gate.md)、[P1-05 第四 gate](docs/p1/fourth-gate.md)与[共享客户端契约](docs/p1/client-contract.md)：交互、附件、主动投递、测试客户端与集成限制。
+- [开发环境](docs/dev-environment.md)与[P2 Expo 手机开发版](docs/p2-mobile-dev.md)：隔离后端、手机测试链接、运行方法和未完成验收。
 
 ## 项目跟踪
 
@@ -28,8 +29,8 @@
 - 初始化任务：Hermes Kanban `default / t_94cc1d1e`。
 - 需求来源：Jamie 与 Tuly 的 Discord 设计讨论，线程 `1552884015143583759`。
 - 文档建立：2026-09-24（PDT）。
-- 当前授权：P1 本地插件与共享契约实现、隔离验证；不包括活动 profile 安装、生产变更、远端建仓或发布。
+- 当前授权：P1 本地插件与共享契约实现、隔离验证；另已授权新建 `hermes-app-dev` 开发 profile、使用内置 OpenAI Codex、安装插件并以 `agent.tuly.space` 提供开发 API。开发环境验收状态见 [开发环境](docs/dev-environment.md)。不包括 Jamie 等现有 profile 变更、远端建仓或正式 App 发布。
 
 ## 下一步
 
-P1 已验收；下一步为 P2 正式客户端界面与设备验证，尚未实施。Description 仅全新逻辑会话注入一次、压缩后不补入。正式桌面/手机 UI、设备安装包与真实设备验收仍是后续工作；活动 profile 安装和发布另行授权。
+P1 已验收；P2 已实现首个 Expo 原生手机开发界面，公开测试入口已启动，尚待真实设备与模型联调完成；不代表独立安装包或 P2 全量功能完成。Description 仅全新逻辑会话注入一次、压缩后不补入。桌面 UI、设备安装包与完整真实设备验收仍是后续工作。
