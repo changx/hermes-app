@@ -6,14 +6,15 @@ import * as Crypto from 'expo-crypto';
 import { HermesClient } from '../../../packages/client/src/index';
 import type { Interaction, ThreadSummary } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
-import { DEFAULT_BASE, connection, editConnection, newSend } from './send';
+import { DEFAULT_BASE, connection, newSend } from './send';
+import { ConnectionScreen } from './ConnectionScreen';
+import { CONFIG_KEY, PAIRING_KEY, completePairing, newPairing, normalizePairingCode, restorePairing, type PendingPairing } from './pairing';
 import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
 
-const CONFIG_KEY = 'hermes-app-connection-v1';
 const messageError = (e: unknown) => e instanceof Error ? e.message : '操作失败';
 const networkName: Record<NetworkState, string> = { connecting: '连接中', syncing: '补齐中', online: '在线', retrying: '等待网络', suspended: '后台已暂停', blocked: '连接受阻' };
 
@@ -23,7 +24,11 @@ function Button({ title, onPress, disabled = false, secondary = false }: { title
 function Screen() {
   const [config, setConfig] = useState<Connection | null>(null);
   const [ready, setReady] = useState(false), [editing, setEditing] = useState(false);
-  const [base, setBase] = useState(DEFAULT_BASE), [token, setToken] = useState('');
+  const [base, setBase] = useState(DEFAULT_BASE), [pairingCode, setPairingCode] = useState('');
+  const [pendingPairing, setPendingPairing] = useState<PendingPairing | null>(null);
+  const [pairingBusy, setPairingBusy] = useState(false), [pairingStatus, setPairingStatus] = useState('');
+  const [pairingEpoch, setPairingEpoch] = useState(0);
+  const pairingTask = useRef<{ controller: AbortController; promise: Promise<unknown> } | null>(null);
   const [client, setClient] = useState<HermesClient | null>(null);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
@@ -40,11 +45,11 @@ function Screen() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const busyRef = useRef(false), markedRef = useRef(new Map<string, number>());
   const openingRef = useRef(0);
-  const appActive = useRef(true);
+  const appActive = useRef(AppState.currentState === 'active');
 
   useEffect(() => {
     let mounted = true;
-    SecureStore.getItemAsync(CONFIG_KEY).then(raw => {
+    Promise.all([SecureStore.getItemAsync(CONFIG_KEY), SecureStore.getItemAsync(PAIRING_KEY)]).then(([raw, savedPairing]) => {
       if (!mounted) return;
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
@@ -53,9 +58,45 @@ function Screen() {
         const valid = connection(c.baseUrl, c.token, c.id);
         setConfig(valid); setBase(valid.baseUrl);
       }
+      const pending = restorePairing(savedPairing);
+      if (pending && (!raw || JSON.parse(raw).token !== pending.config.token)) {
+        setPendingPairing(pending); setBase(pending.config.baseUrl); setPairingCode(pending.code); setEditing(true);
+      } else if (pending) void SecureStore.deleteItemAsync(PAIRING_KEY).catch(() => {});
     }).catch(e => { if (mounted) setError(messageError(e)); }).finally(() => { if (mounted) setReady(true); });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    let foreground = AppState.currentState === 'active';
+    const sub = AppState.addEventListener('change', state => {
+      const next = state === 'active';
+      if (!next) pairingTask.current?.controller.abort();
+      if (next && !foreground) setPairingEpoch(n => n + 1);
+      foreground = next;
+    });
+    return () => { sub.remove(); pairingTask.current?.controller.abort(); };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPairing || AppState.currentState === 'background') return;
+    let active = true;
+    const controller = new AbortController();
+    setPairingBusy(true); setError('');
+    const previous = pairingTask.current;
+    previous?.controller.abort();
+    const promise = (previous?.promise ?? Promise.resolve()).then(() => completePairing(pendingPairing, { store: SecureStore, signal: controller.signal,
+      onStatus: value => { if (active) setPairingStatus(value); }
+    })).then(saved => {
+      if (!active) return;
+      setPairingBusy(false);
+      setConfig(saved); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
+      setPendingPairing(null); setPairingStatus('');
+    }).catch(e => {
+      if (active && !controller.signal.aborted) { setPairingStatus(''); setError(messageError(e)); }
+    }).finally(() => { if (active) setPairingBusy(false); });
+    pairingTask.current = { controller, promise };
+    return () => { active = false; controller.abort(); };
+  }, [pendingPairing, pairingEpoch]);
 
   useEffect(() => {
     if (!config) { setClient(null); return; }
@@ -66,9 +107,9 @@ function Screen() {
       onChange: () => { if (active) { setRevision((n: number) => n + 1); box?.reconcile(); } },
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
-        setStatus(networkName[state]); box?.setConnection(state);
+        setStatus(state === 'suspended' && appActive.current ? '同步暂时受阻' : networkName[state]); box?.setConnection(state);
         if (state === 'online') { setLoading(false); setError(''); setConnectionEpoch(n => n + 1); box?.reconcile(); }
-        if (state === 'blocked') setError('连接权限已失效；请重新连接此设备');
+        if (state === 'blocked') { setLoading(false); setError('连接暂不可用；消息已保留，不会重复发送。'); }
       },
       onError: () => { /* transient transport faults are represented by connection state */ }
     } as ConstructorParameters<typeof HermesClient>[0]);
@@ -109,15 +150,22 @@ function Screen() {
     finally { busyRef.current = false; setBusy(false); }
   };
   const saveConnection = () => run(async () => {
-    const url = editConnection(config, base, token, Crypto.randomUUID());
-    await SecureStore.setItemAsync(CONFIG_KEY, JSON.stringify(url));
-    setConfig(url); setEditing(false); setToken('');
+    if (pairingBusy) return;
+    const code = normalizePairingCode(pairingCode);
+    const existing = restorePairing(await SecureStore.getItemAsync(PAIRING_KEY));
+    const next = existing && existing.config.baseUrl === base.replace(/\/$/, '') && existing.code === code
+      ? existing : newPairing(base, code, Platform.OS === 'ios' ? 'iPhone' : 'Android', Crypto.randomUUID(), await Crypto.getRandomBytesAsync(44));
+    setPendingPairing(next); setPairingEpoch(n => n + 1);
   });
   const forget = () => run(async () => {
+    pairingTask.current?.controller.abort();
+    await pairingTask.current?.promise.catch(() => {});
+    await SecureStore.deleteItemAsync(PAIRING_KEY);
+    setPendingPairing(null);
     const old = outboxRef.current;
     if (old) { await old.stop(); await old.storage.clear(); }
     await SecureStore.deleteItemAsync(CONFIG_KEY);
-    setRecords([]); setConfig(null); setClient(null); setToken(''); setEditing(false); setStatus('未连接');
+    setRecords([]); setConfig(null); setClient(null); setPairingCode(''); setEditing(false); setStatus('未连接');
   });
   const openThread = async (id: string) => {
     if (!client) return;
@@ -227,17 +275,9 @@ function Screen() {
   }, [connectionEpoch]);
 
   if (!ready) return <View style={styles.center}><Text>正在读取安全连接…</Text></View>;
-  if (!config || editing) return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form}>
-    <Text style={styles.brand}>Hermes App</Text><Text style={styles.subtitle}>连接你的 Hermes · 开发版</Text>
-    <Text style={styles.caption}>服务器 HTTPS 地址</Text>
-    <TextInput accessibilityLabel="服务器地址" style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={base} onChangeText={setBase} />
-    <Text style={styles.caption}>连接凭据（只保存在本机安全存储）</Text>
-    <TextInput accessibilityLabel="访问令牌" style={styles.input} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={config ? '同一服务器可留空；换服务器需重新输入' : '粘贴令牌'} value={token} onChangeText={setToken} />
-    <Button title={busy ? '保存中…' : '保存并连接'} disabled={busy} onPress={saveConnection} />
-    {config && <View style={styles.row}><Button title="取消" secondary onPress={() => setEditing(false)} /><Button title="清除本机连接" secondary onPress={forget} /></View>}
-    <Text style={styles.hint}>切换连接不会把旧连接的待发消息发送到新连接。本机凭据不会写入 URL 或应用包。</Text>
-    {!!error && <Text style={styles.error}>{error}</Text>}
-  </ScrollView>;
+  if (!config || editing) return <ConnectionScreen base={base} onBase={setBase} code={pairingCode} onCode={setPairingCode}
+    connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
+    onPair={saveConnection} onBack={() => { setEditing(false); if (config) setBase(config.baseUrl); }} onForget={forget} />;
 
   return <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.header}>

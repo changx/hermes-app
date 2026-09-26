@@ -7,6 +7,7 @@ interface Props {
   code: string;
   onCode(value: string): void;
   connected: boolean;
+  pairing?: boolean;
   busy: boolean;
   status?: string;
   error?: string;
@@ -18,7 +19,7 @@ interface Props {
 /** Pairing is an explicit first-time authorization, never a network-retry step. */
 export function ConnectionScreen(props: Props) {
   const [replacing, setReplacing] = useState(false);
-  const showPairing = !props.connected || replacing;
+  const showPairing = !props.connected || replacing || props.pairing;
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form}>
     <Text style={styles.brand}>Hermes App</Text>
     <Text style={styles.heading}>{props.connected ? '连接设置' : '连接你的 Hermes'}</Text>
@@ -37,7 +38,7 @@ export function ConnectionScreen(props: Props) {
         value={props.code} onChangeText={props.onCode} editable={!props.busy} placeholder="输入管理员提供的配对码" />
       <Text style={styles.text}>首次连接需要管理员授权。配对后，此设备会安全保存连接，日常使用无需重复输入。</Text>
       <Action title={props.busy ? '正在配对…' : '配对并连接'} disabled={props.busy || !props.code.trim()} onPress={props.onPair} />
-      {props.connected && <Action title="返回原连接" onPress={props.onBack} secondary />}
+      {props.connected && <Action title="返回原连接" onPress={props.onBack} secondary disabled={props.busy} />}
     </>}
     {!!props.status && <Text accessibilityLiveRegion="polite" style={styles.text}>{props.status}</Text>}
     {!!props.error && <Text accessibilityLiveRegion="polite" style={styles.error}>{props.error}</Text>}

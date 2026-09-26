@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {spawn, execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,readFile,rm,open,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,6 +7,10 @@ import {createRequire} from 'node:module';
 import {HermesClient} from '../../packages/client/dist/index.js';
 import {desktopTransport} from './desktop/transport.mjs';
 import {mobileTransport} from './mobile/transport.js';
+import {randomBytes, randomUUID} from 'node:crypto';
+import {MobileOutbox, OutboxStore} from '../../apps/mobile/src/outbox.ts';
+import {newSend} from '../../apps/mobile/src/send.ts';
+import {newPairing, completePairing, PAIRING_KEY} from '../../apps/mobile/src/pairing.ts';
 const root=path.resolve('.');
 const baseline=process.env.HERMES_BASELINE || '/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline';
 const scratch=process.env.TMPDIR || '/home/hermes/.hermes/profiles/jamie/cache/scratch';
@@ -31,6 +35,56 @@ async function stop(){if(proc?.exitCode===null){proc.kill('SIGTERM'); await Prom
 async function until(fn,timeout=30000){const end=Date.now()+timeout;let last;while(Date.now()<end){try {const value=await fn();if(value)return value}catch(e){last=e}await delay(100)}throw Error('condition timeout '+String(last||''))}
 class RNWebSocketShim {constructor(url,_protocols,options){this.inner=new WS(url,{headers:options.headers});this.inner.on('open',()=>this.onopen?.());this.inner.on('message',d=>this.onmessage?.({data:String(d)}));this.inner.on('close',()=>this.onclose?.());this.inner.on('error',()=>this.onerror?.())}close(){this.inner.close()}}
 let desktop,mobile;let result;
+// Real local Gateway/plugin and real SDK/outbox. Storage is an explicit SecureStore
+// contract double; network faults are injected. This is not an iPhone runtime test.
+async function verifyMobileRecovery(url, channelId) {
+  const store={data:new Map(),async getItemAsync(k){return this.data.get(k)??null},async setItemAsync(k,v){assert.match(k,/^[\w.-]+$/);this.data.set(k,v)},async deleteItemAsync(k){this.data.delete(k)}};
+  const grant=JSON.parse(execFileSync(path.join(baseline,'.venv/bin/python'),['scripts/device-pairing.py','--base',url,'grant'],{cwd:root,env:{...process.env,HERMES_APP_TOKEN:token},encoding:'utf8'}));
+  const pending=newPairing('https://synthetic-device.test',grant.code,'Synthetic mobile',randomUUID(),randomBytes(44));
+  let droppedPairAck=false;
+  const config=await completePairing(pending,{store,signal:new AbortController().signal,delayMs:1,fetcher:async(target,init)=>{
+    assert.ok(store.data.has(PAIRING_KEY));
+    const reply=await fetch(url+new URL(target).pathname,init);
+    if(target.endsWith('/exchange')&&reply.status===201&&!droppedPairAck){droppedPairAck=true;await reply.text();throw new TypeError('synthetic lost pairing ACK')}
+    return reply;
+  }});
+  assert.ok(droppedPairAck);
+  const thread=await desktop.createThread(channelId,'Synthetic network recovery');
+  let offline=true,droppedSendAck=false,posts=0;
+  const wire=desktopTransport(url);
+  const http={request:async(...args)=>{
+    if(offline)throw new TypeError('synthetic offline');
+    if(args[0]==='POST'&&args[1].endsWith('/messages'))posts++;
+    const reply=await wire.http.request(...args);
+    if(args[0]==='POST'&&args[1].endsWith('/messages')&&!droppedSendAck){droppedSendAck=true;throw new TypeError('synthetic lost send ACK')}
+    return reply;
+  }};
+  let box;const sdk=new HermesClient({...wire,http,token:()=>config.token,backoffMs:[5,10],livenessMs:100,
+    onChange:()=>box?.reconcile(),onConnectionState:s=>box?.setConnection(s)});
+  const original=newSend(config,thread.id,'SYNTHETIC_RELIABLE_SEND','mob_'+randomUUID());
+  box=new MobileOutbox(new OutboxStore(store,config),sdk,()=>{});
+  let poll;
+  try {
+    await box.start();await sdk.connect();await box.enqueue(original);
+    assert.equal(posts,0);assert.equal(box.records.length,1);
+    offline=false;
+    poll=setInterval(()=>box.reconcile(),20);
+    await until(()=>sdk.connectionState==='online');
+    await until(()=>[...sdk.receipts.values()].some(r=>r.client_message_id===original.clientMessageId&&r.state==='completed'));
+    await until(()=>box.records.length===0);
+    await sdk.historyAll(thread.id);
+    assert.equal(sdk.messages.get(thread.id).filter(m=>m.client_message_id===original.clientMessageId).length,1);
+    assert.equal(sdk.messages.get(thread.id).filter(m=>m.role==='assistant').length,1);
+    assert.ok(posts>=2&&droppedSendAck);
+    const rid=[...sdk.receipts.values()].find(r=>r.client_message_id===original.clientMessageId).id;
+    sdk.close();await box.stop();clearInterval(poll);
+    const coldSdk=new HermesClient({...wire,token:()=>config.token});
+    const coldBox=new MobileOutbox(new OutboxStore(store,config),coldSdk,()=>{});
+    try {await coldBox.start();assert.equal(coldBox.records.length,0);assert.equal((await coldSdk.getReceipt(rid)).state,'completed');}
+    finally {await coldBox.stop();coldSdk.close()}
+    return {thread_id:thread.id,pairing_ack_loss:true,offline_enqueue:true,send_ack_loss:true,single_user_message:true,single_assistant_reply:true,cold_store_recovery:true,device_runtime:false};
+  } finally {clearInterval(poll);sdk.close();await box.stop()}
+}
 try {
   const url=await start('one');
   desktop=new HermesClient({...desktopTransport(url),token:()=>token,onError:e=>{throw e}});
@@ -126,7 +180,8 @@ try {
   await desktop.catchUp();await mobile.catchUp();await desktop.history(other.id);await mobile.history(other.id);
   assert.deepEqual(desktop.messages.get(other.id),mobile.messages.get(other.id));
   assert.equal(desktop.threads.get(thread.id).read_ref,last);
-  result={baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',packaged_plugin_loader:Boolean(process.env.P1_PACKAGED_PLUGIN_DIR),channel:channel.id,threads:[thread.id,other.id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,same_instance_reconnect:true,restart_replay:true,offline_execution:true,delayed_approval_bootstrap:true,competing_answers_one_winner:true,attachment_cold_download:true,cancel_stop_search:true,latest_older_and_send_identity:true,channel_topic_edit:true,device_runtime:false};
+  const mobileRecovery=await verifyMobileRecovery(url2,channel.id);
+  result={mobile_recovery:mobileRecovery,baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',packaged_plugin_loader:Boolean(process.env.P1_PACKAGED_PLUGIN_DIR),channel:channel.id,threads:[thread.id,other.id,mobileRecovery.thread_id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,same_instance_reconnect:true,restart_replay:true,offline_execution:true,delayed_approval_bootstrap:true,competing_answers_one_winner:true,attachment_cold_download:true,cancel_stop_search:true,latest_older_and_send_identity:true,channel_topic_edit:true,device_runtime:false};
   await writeFile(path.join(evidence,'real-gateway.json'),JSON.stringify(result,null,2)+'\n');
-  console.log(JSON.stringify({ok:true,threads:2,packaged_plugin_loader:result.packaged_plugin_loader,competing_answers_one_winner:true,same_instance_reconnect:true,restart_replay:true,offline_execution:true,evidence:path.join(evidence,'real-gateway.json')}));
+  console.log(JSON.stringify({ok:true,threads:result.threads.length,mobile_recovery:mobileRecovery,packaged_plugin_loader:result.packaged_plugin_loader,competing_answers_one_winner:true,same_instance_reconnect:true,restart_replay:true,offline_execution:true,evidence:path.join(evidence,'real-gateway.json')}));
 } finally {desktop?.close();mobile?.close();await stop();if(!process.env.P105_KEEP_CHILD)await rm(home,{recursive:true,force:true})}
