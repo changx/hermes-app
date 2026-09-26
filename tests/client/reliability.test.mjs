@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HermesClient, HttpError, ProtocolError, ResyncRequired, TimeoutError, isRetryableError } from '../../packages/client/dist/index.js';
+import { HermesClient, HttpError, ProtocolError, ResyncRequired, TimeoutError, isRetryableError, connectionFailure } from '../../packages/client/dist/index.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -17,6 +17,20 @@ const fixture=(http,sockets,extra={})=>new HermesClient({http:{request:async(met
   if(path==='/v1/channels')return {status:200,body:{channels:[]}};
   return http(method,path,token,body,signal);
 }},socket:{connect:async()=>{const s=socket();sockets.push(s);return s}},token:()=> 'owner-token',backoffMs:[5,10],requestTimeoutMs:45,connectTimeoutMs:45,...extra});
+
+test('connection failures expose only category, status and allowlisted route, never native error detail',()=>{
+  const secret='secret-token?cursor=private-message';
+  assert.equal(connectionFailure(new HttpError(503,undefined,'/v1/sync?cursor='+secret)), 'HTTP 503 · /v1/sync');
+  assert.equal(connectionFailure(new HttpError(401,undefined,'/v1/receipts/'+secret)), 'HTTP 401 · /v1/receipts/:id');
+  assert.equal(connectionFailure(new HttpError(403,undefined,'/v1/unknown/'+secret)), 'HTTP 403 · API');
+  assert.equal(connectionFailure(new TimeoutError('hello timed out')), 'WebSocket 握手超时');
+  assert.equal(connectionFailure(new TimeoutError('WebSocket liveness timed out')), 'WebSocket 心跳超时');
+  assert.equal(connectionFailure(new TimeoutError('operation timed out')), 'HTTP 请求超时');
+  assert.equal(connectionFailure(new TypeError('Network request failed '+secret)), '网络传输失败');
+  assert.equal(connectionFailure(new Error('WebSocket 连接失败')), 'WebSocket 连接失败');
+  assert.equal(connectionFailure(new ProtocolError('contains '+secret)), '协议校验失败');
+  assert.equal(connectionFailure(new Error('contains '+secret)), '连接异常');
+});
 
 test('initial capabilities failure remains inside single-flight recovery, online waits for hello and durable replay',async()=>{
   let capsCalls=0,syncCalls=0,opened=0;const states=[];const gate=deferred();
