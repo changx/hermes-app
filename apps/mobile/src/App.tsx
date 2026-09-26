@@ -6,7 +6,7 @@ import * as Crypto from 'expo-crypto';
 import { HermesClient, ResyncRequired } from '../../../packages/client/src/index';
 import type { Interaction, Message, Receipt, ThreadSummary } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
-import { DEFAULT_BASE, accepted, connection, newSend, restoreSend, retrySend, sendDescription } from './send';
+import { DEFAULT_BASE, accepted, connection, editConnection, newSend, restoreSend, retrySend, sendDescription } from './send';
 import type { Connection, SendRecord } from './send';
 
 const CONFIG_KEY = 'hermes-app-connection-v1';
@@ -28,6 +28,7 @@ function Screen() {
   const [channelName, setChannelName] = useState(''), [description, setDescription] = useState(''), [threadTitle, setThreadTitle] = useState('');
   const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   const [record, setRecord] = useState<SendRecord | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const recordRef = useRef<SendRecord | null>(null), busyRef = useRef(false), markedRef = useRef('');
   const openingRef = useRef(0);
   const appActive = useRef(true);
@@ -111,7 +112,7 @@ function Screen() {
     finally { busyRef.current = false; setBusy(false); }
   };
   const saveConnection = () => run(async () => {
-    const url = connection(base, token || config?.token || '', config && base.trim() === config.baseUrl && (!token || token === config.token) ? config.id : Crypto.randomUUID());
+    const url = editConnection(config, base, token, Crypto.randomUUID());
     await SecureStore.setItemAsync(CONFIG_KEY, JSON.stringify(url));
     setConfig(url); setEditing(false); setToken('');
   });
@@ -201,7 +202,7 @@ function Screen() {
     <Text style={styles.caption}>服务器 HTTPS 地址</Text>
     <TextInput accessibilityLabel="服务器地址" style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={base} onChangeText={setBase} />
     <Text style={styles.caption}>访问令牌（只保存在本机 SecureStore）</Text>
-    <TextInput accessibilityLabel="访问令牌" style={styles.input} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={config ? '留空表示沿用已保存令牌' : '粘贴令牌'} value={token} onChangeText={setToken} />
+    <TextInput accessibilityLabel="访问令牌" style={styles.input} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={config ? '同一服务器可留空；换服务器需重新输入' : '粘贴令牌'} value={token} onChangeText={setToken} />
     <Button title={busy ? '保存中…' : '保存并连接'} disabled={busy} onPress={saveConnection} />
     {config && <View style={styles.row}><Button title="取消" secondary onPress={() => setEditing(false)} /><Button title="清除本机连接" secondary onPress={forget} /></View>}
     <Text style={styles.hint}>切换连接会清除当前界面的消息；结果不明的旧发送须在原连接处理。令牌不会写入 URL 或应用包。</Text>
@@ -232,7 +233,7 @@ function Screen() {
               {r.state === 'queued' && <Button title="取消排队" secondary disabled={busy} onPress={() => run(async () => { await client.cancelQueued(threadId, r.id); })} />}
             </View>)}
             {receipts.some(r => r.state === 'running') && <Button title="停止当前执行" secondary disabled={busy} onPress={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} />}
-            {interactions.map(i => <View key={i.id} style={styles.card}><Text style={styles.heading}>{i.kind === 'approval' ? '待审批' : '待澄清'}</Text><Text>{i.prompt}</Text><View style={styles.row}>{i.choices.map(choice => <Button key={choice} title={choice} secondary disabled={busy} onPress={() => answer(i, choice)} />)}</View></View>)}
+            {interactions.map(i => <View key={i.id} style={styles.card}><Text style={styles.heading}>{i.kind === 'approval' ? '待审批' : '待澄清'}</Text><Text>{i.prompt}</Text><View style={styles.row}>{i.choices.map(choice => <Button key={choice} title={choice} secondary disabled={busy} onPress={() => answer(i, choice)} />)}</View>{i.kind === 'clarify' && i.choices.length === 0 && <><TextInput accessibilityLabel="澄清回答" style={styles.input} value={answers[i.id] || ''} onChangeText={value => setAnswers(old => ({...old, [i.id]: value}))} /><Button title="提交回答" disabled={busy || !answers[i.id]?.trim()} onPress={() => answer(i, answers[i.id].trim())} /></>}</View>)}
           </View>}
           renderItem={({ item }: { item: Message }) => <View style={[styles.message, item.role === 'user' && styles.own]}><Text style={styles.caption}>{item.role === 'user' ? '我' : item.role === 'assistant' ? 'Hermes' : item.role} · #{item.ref_seq}</Text><Text selectable style={styles.messageText}>{item.text}</Text>{item.attachments?.map(a => <Text key={a.id} style={styles.hint}>附件：{a.name || a.id}（{a.state}）</Text>)}</View>}
           ListEmptyComponent={<Text style={styles.hint}>暂无历史消息，或正在加载。</Text>} />

@@ -26,6 +26,14 @@ export function connection(baseUrl: string, token: string, id: string): Connecti
   if (!id) throw new Error('连接标识缺失');
   return { baseUrl: normalizeBase(baseUrl), token: token.trim(), id };
 }
+export function editConnection(previous: Connection | null, base: string, token: string, newId: string): Connection {
+  const baseUrl = normalizeBase(base);
+  const sameOrigin = previous?.baseUrl === baseUrl;
+  if (!sameOrigin && !token.trim()) throw new Error('更换服务器时必须重新输入该服务器的令牌');
+  const nextToken = token.trim() || (sameOrigin ? previous!.token : '');
+  const id = sameOrigin && nextToken === previous!.token ? previous!.id : newId;
+  return connection(baseUrl, nextToken, id);
+}
 export function newSend(config: Connection, threadId: string, text: string, id: string): SendRecord {
   if (!threadId || !text.trim()) throw new Error('请输入消息');
   if (!/^mob_[a-f0-9-]{36}$/i.test(id)) throw new Error('消息标识无效');

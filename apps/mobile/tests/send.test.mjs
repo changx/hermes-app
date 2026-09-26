@@ -1,10 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BASE, accepted, connection, newSend, restoreSend, retrySend, sendDescription } from '../src/send.ts';
+import { DEFAULT_BASE, accepted, connection, editConnection, newSend, restoreSend, retrySend, sendDescription } from '../src/send.ts';
 
 const id1 = 'mob_123e4567-e89b-12d3-a456-426614174000';
 const id2 = 'mob_123e4567-e89b-12d3-a456-426614174001';
 const config = connection(DEFAULT_BASE + '/', ' secret ', 'one');
+
+test('changing origin never reuses a saved credential', () => {
+  assert.throws(() => editConnection(config, 'https://other.example', '', 'new'));
+  assert.deepEqual(editConnection(config, DEFAULT_BASE + '/', '', 'new'), config);
+  const other = editConnection(config, 'https://other.example', 'other-token', 'new');
+  assert.equal(other.token, 'other-token');
+  assert.equal(other.id, 'new');
+  assert.equal(editConnection(config, DEFAULT_BASE, 'rotated-token', 'new').id, 'new');
+});
 
 test('HTTPS origin only; no credential or path in persisted URL', () => {
   assert.equal(config.baseUrl, DEFAULT_BASE);
