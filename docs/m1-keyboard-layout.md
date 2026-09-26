@@ -1,6 +1,18 @@
 # M1 原生键盘与聊天滚动修正
 
-## 当前发布状态
+## 后续修正决策与隔离候选（未发布、iPhone 待验）
+
+Jamie 真机反馈：滚到最底后跳回中段，向下拖拽收键盘触发太晚且不跟手。源代码证据：RN 0.86 `FlatList.scrollToEnd` 根据末项近似测量而不是原生实际内容总高度；当前组件在布局、内容改变和拖动/惯性结束时调用它，并把程序动画的 momentum 当作手势。键盘方面当前 dock 仅由 JS 的 willChangeFrame + 布局动画驱动，无法保证逐帧跟手；“触发太晚”具体设备触发链尚未复现，不能冒充已确定根因。
+
+选用 SDK 57 锁定的 `react-native-keyboard-controller@1.21.9`，按 Expo 推荐版本安装对应 Reanimated/Worklets；先检查该**准确版本**导出和 iOS 原生手势实现，不依赖最新文档里该版本不存在的 API。消息保留虚拟化 FlatList；聊天区使用原生手势区域（与 composer `nativeID` 绑定、测量 composer 高度作为手势 offset）和原生驱动的键盘 dock；频道表单保留避让，页眉始终固定。仅一个 inset 所有者，安全区不重复叠加；不再用 JS 键盘帧/定时器近似模拟逐帧手势。列表末尾定位用原生 ScrollView `scrollToEnd` 基于实际内容总高度（可用时含原生 contentInset），备用才用实际测得 content 高度与 viewport 算 offset，不用 FlatList 的末项估算；只有真实拖动更新阅读/跟随状态，弹性回弹及程序动画不算用户滚动，拖动结束不自动校正；前插历史维持阅读锚点。明确保留减少动态效果、前后台恢复与主动发送/回到最新。
+
+验收门槛：确定性生产 helper 测试覆盖末项估算偏差、回弹、程序 momentum、上翻、键盘尺寸变化加末尾消息、历史前插；移动端 TS、单测、双平台 Expo 导出及 Expo 依赖版本检查通过。导出仅证明 bundle，不证明 iPhone 上原生手势、键盘候选栏和前后台体验；真机正反拖拽和长消息跳跃须另行验收。
+
+隔离候选实际实现：1.21.9 包**确实导出** `KeyboardProvider`、`KeyboardGestureArea`、`KeyboardChatScrollView`、`KeyboardStickyView`、`KeyboardAvoidingView` 与 `useKeyboardHandler`；iOS `KeyboardGestureAreaManager.mm` 将 `textInputNativeID`/offset 关联到 `KeyboardOffsetProvider`，其 Swift extender 为匹配输入框增添不可见 accessory 高度，解决拖拽入口在 composer 下方时触发滞后的候选路径（尚待设备确认）。FlatList 的 `renderScrollComponent` 注入 `KeyboardChatScrollView`，采用 `keyboardLiftBehavior="whenAtEnd"`、原生 contentInset 管理及测量 dock + 底部 safe-area offset；整个 controls + composer 放在 `KeyboardStickyView`，避免交互区被键盘遮挡。频道表单独用 controller 的 `KeyboardAvoidingView behavior="height" automaticOffset`；不对聊天列表同时套第二层 KAV。原生键盘事件只在开始/结束时阻止 JS 将键盘驱动的 scroll 误认为读者拖动，不用 JS 帧更新布局。RN 0.86 `RCTScrollView.m` 的 `scrollToEnd` 命令按 `contentSize - bounds + contentInset.bottom` 定位；Android 命令走 native manager。保留 FlatList 虚拟化与恒定可见项锚点；删旧 `KeyboardDock`/`keyboardLayout` 及旧坐标测试。
+
+验证：`npm run check`、`npm test`（57/57）、`npm run export:ios`、`npm run export:android`、`npx expo install --check` 与 `npx expo-doctor`（21/21）均通过；锁定版本 keyboard-controller 1.21.9 / reanimated 4.5.1 / worklets 0.10.1，Expo SDK57 文档注明键盘控制器 1.21.9 Included in Expo Go。尚未在 iPhone 上验证原生组件真实可用、长消息跳跃、短列表正反拖拽、中英九宫格、前后台与频道表单；旧版已发布状态如下属于历史，不代表本候选已部署。新增的网络等待/补齐中故障由主控独立调查，本分支未修改 SDK、transport、outbox、连接生命周期或服务。
+
+## 先前版本的发布状态（历史）
 
 已按 Jamie 授权发布手机测试入口，代码 `ff41a76`（主体修正 `d4d455d`，主控补齐频道表单的单一键盘避让）。主控独立执行57项手机测试、TypeScript及双平台导出通过；表单补齐后再次TypeScript通过，发布后双平台真实bundle打包/下载通过，并检查存在新键盘/滚动实现。Expo启动期间首次公网检查502，随后重试通过。
 

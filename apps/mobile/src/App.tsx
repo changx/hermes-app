@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { HermesClient } from '../../../packages/client/src/index';
@@ -12,7 +13,6 @@ import { CONFIG_KEY, PAIRING_KEY, completePairing, newPairing, normalizePairingC
 import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
-import { KeyboardDock } from './KeyboardDock';
 import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
 
@@ -289,7 +289,7 @@ function Screen() {
     {records.some(r => r.receiptState === 'unknown') && <Text style={styles.hint}>有执行结果尚未确认；应用会继续核对，不会自动重新执行。</Text>}
     {threadId && client ? <>
       <View style={styles.row}><Button title="‹ 话题" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || '对话'}</Text></View>
-      <KeyboardDock>{keyboardMoving => <ChatTimeline key={threadId} ref={timelineRef} keyboardMoving={keyboardMoving} threadId={threadId} rows={rows}
+      <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
         startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
         locatingMessage={!located ? historyBusy ? '正在定位最新消息…' : pageCursor ? '历史超过首批有界范围；服务端缺少倒序/向前游标，尚不能直接定位最新。可逐页继续查找，不会将最早消息冒充最新。' : '等待网络恢复后自动载入历史…' : undefined}
         onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
@@ -299,11 +299,13 @@ function Screen() {
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
-        onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />}</KeyboardDock>
-    </> : client ? <KeyboardDock>{() => <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />}</KeyboardDock> : null}
+        onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />
+    </> : client ? <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+      <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />
+    </KeyboardAvoidingView> : null}
   </View>;
 }
-export default function App() { return <SafeAreaProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></SafeAreaProvider>; }
+export default function App() { return <SafeAreaProvider><KeyboardProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></KeyboardProvider></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f8fafc' }, flex: { flex: 1 }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' },

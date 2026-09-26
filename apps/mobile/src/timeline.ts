@@ -39,16 +39,47 @@ export interface TimelinePosition { offset: number; following: boolean; startRef
 export const nearLatest = (offset: number, contentHeight: number, viewportHeight: number): boolean =>
   contentHeight - viewportHeight - offset <= 80;
 
-export function followAfterUserScroll(previous: number, next: number, height: number, viewport: number): boolean {
-  return next >= previous && nearLatest(next, height, viewport);
+// A bottom overscroll and its rebound are still at the end. Only a real drag
+// beyond the threshold leaves follow mode; a swipe back down can rejoin it.
+export function followAfterUserScroll(previous: number, next: number, height: number, viewport: number, following = true): boolean {
+  // UIKit's bottom bounce can return from beyond the maximum offset without
+  // being an upward reading gesture. Once inside the content, any upward drag
+  // intentionally releases follow (even before crossing the 80pt threshold).
+  if (next === previous) return following;
+  if (next < previous && previous > latestOffset(height, viewport) && next >= latestOffset(height, viewport)) return following;
+  return next > previous && nearLatest(next, height, viewport);
 }
 
-// Keyboard resizing can generate scroll events without a reader gesture moving
-// away from the bottom. Keep the current mode until geometry settles.
-export function followDuringDrag(following: boolean, previous: number, next: number, previousHeight: number, height: number, previousViewport: number, viewport: number): boolean {
-  if (previousHeight !== height || previousViewport !== viewport) return following;
-  return followAfterUserScroll(previous, next, height, viewport);
+// Programmatic scroll/momentum and keyboard/viewport corrections are not reader gestures.
+export function followDuringDrag(following: boolean, previous: number, next: number, previousHeight: number, height: number, previousViewport: number, viewport: number, fromGesture = true, previousInset = 0, inset = 0): boolean {
+  if (!fromGesture || previousHeight !== height || previousViewport !== viewport || previousInset !== inset) return following;
+  return followAfterUserScroll(previous, next, height, viewport, following);
 }
+
+export interface NativeScrollEnd { scrollToEnd(options: { animated: boolean }): void }
+export interface ExactScrollList {
+  getScrollResponder(): unknown;
+  scrollToOffset(options: { offset: number; animated: boolean }): void;
+}
+
+export const latestOffset = (contentHeight: number, viewportHeight: number): number =>
+  Math.max(0, contentHeight - viewportHeight);
+
+// FlatList.scrollToEnd uses an estimated last-cell frame on heterogeneous rows.
+// The underlying ScrollView dispatches the native scrollToEnd command against its
+// actual content extent (including its keyboard-controlled native contentInset).
+// Fallback only to measured content geometry, never to last-cell estimates.
+export function scrollToExactEnd(list: ExactScrollList | null, contentHeight: number, viewportHeight: number, animated: boolean): boolean {
+  if (!list) return false;
+  const scroll = list.getScrollResponder() as NativeScrollEnd | null | undefined;
+  if (scroll?.scrollToEnd) { scroll.scrollToEnd({ animated }); return true; }
+  if (!contentHeight || !viewportHeight) return false;
+  list.scrollToOffset({ offset: latestOffset(contentHeight, viewportHeight), animated });
+  return true;
+}
+
+export const shouldFollowContentChange = (following: boolean, dragging: boolean, previous: number, next: number): boolean =>
+  following && !dragging && next > 0 && previous !== next;
 
 export function appendedAtEnd(previous: readonly string[], next: readonly string[]): boolean {
   return previous.length > 0 && next.length > previous.length && previous.every((key, index) => next[index] === key);
