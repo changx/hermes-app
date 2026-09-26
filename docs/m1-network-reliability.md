@@ -26,13 +26,17 @@ Jamie 明确要求通信恢复尽可能不打扰用户，不把技术判断交�
 
 最小实现从R1启动，沿用共享HermesClient、现有插件及原生存储。R2/R3补实际缺口，不另建通用通信平台，不修改Hermes核心。开发部署单独依据授权，当前未进行服务变更。
 
-## 当前代码证据与缺口
+## 实现状态
 
-- `apps/mobile/src/send.ts`：已有同ID原文手动重试及进程退出后将sending恢复为ambiguous；不能据此声称自动重试完整。
-- `apps/mobile/src/App.tsx`：初始capabilities/catchUp失败进入catch后，不启动SDK连接循环；回前台catchUp失败也不会进入connect。网络恢复不能仅依靠这些入口自行保证。
-- `packages/client/src/index.ts`：已有WS退避及catchUp，但connect启动后台循环即返回，不能把它作为连接成功证据；半开检测、超时、错误分类及退避重置边界需要专项测试。
-- `App.tsx`：SecureStore的SEND_KEY只保存一条SendRecord；内存pendingRecords不等同持久队列，早先已接收但尚未结束的记录可能不再拥有独立本地恢复记录。按最小需求补齐，不假定需要无限离线队列。
-- 已验证的最新历史窗口与用户消息receipt_id/client_message_id映射继续作为合并依据；禁止按相同正文去重。
+候选代码已在 `jamie/m1-reliable-integrate` 集成，本地回归与隔离真实 Gateway 联调通过；尚未部署到现有手机入口，也未通过iPhone故障验收。详见 [本轮验证报告](m1-reliability-verification.md)。
+
+- `packages/client/src/index.ts`：初连/回前台进入统一恢复循环；HTTP、握手和hello超时；ping/pong与定期持久补齐；单连接尝试取消边界、事件突发合并及退避抖动。仅hello及补齐完成才显示online。
+- `apps/mobile/src/outbox.ts`：按连接隔离、最多24条持久待发记录；原文先分块保存再发送，SecureStore键满足原生规则；同话题按持久顺序提交，同ID安全重试；跨话题可继续发送；已接收收据独立轮询，已确认终态安全回收，不因最新历史窗口遗漏旧消息而永久占满。
+- `apps/mobile/src/App.tsx`：接入SDK状态与前后台恢复，移除必需的重试/放弃/重建同步路径；自动补齐不代表原生键盘/阅读定位已验收。
+- `pairing.ts`、`ConnectionScreen.tsx` 与插件 `device_pairing.py`：初次使用一次性管理员授权配对；手机先安全保存随机设备凭据再兑换，响应丢失自动核对；服务器只保存哈希，过期码及已撤销设备不可恢复授权；现有开发连接继续兼容。
+- `scripts/device-pairing.py` 提供管理员签发/列举/撤销操作，普通用户不负责查找或修复凭据。
+- 当前服务端同步事件不做自动裁剪，正常旧游标与重启后游标仍可用。SDK对明确 `410 cursor_expired` 提供自动恢复并经故障注入测试；当前插件不会发该响应，因此不能写成服务端实际裁剪后的端到端通过。400畸形、跨身份及未来游标仍拒绝，不为“无感”静默忽略。
+- 继续以权威receipt_id/client_message_id关联消息，禁止按正文猜身份；执行unknown只核对、不自动重新执行。
 
 ## 必测故障窗口与预期
 
