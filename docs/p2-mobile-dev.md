@@ -27,11 +27,11 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 
 ## 实际交付与验证（2026-09-26）
 
-测试链接：`exps://agent.tuly.space`。使用匹配 SDK 54 的 Expo Go；iOS App Store 可用版本的依据：https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/ 。Android 可从 https://expo.dev/go 选择 SDK 54。普通 HTTPS 根页面是 Expo manifest 入口，不是 Web 聊天界面。
+测试链接：`exps://agent.tuly.space`。当前已改为 SDK 57，匹配 Jamie 的 iPhone 实际 Expo Go SDK 57 runtime；首次交付 SDK 54 被真机拒绝，旧文档的 App Store 版本说明不能替代实际设备证据。升级与复验见 [SDK 57 兼容修复](expo-sdk57-upgrade.md)。普通 HTTPS 根页面是 Expo manifest 入口，不是 Web 聊天界面。
 
 手机首次打开填默认服务器地址及开发 profile `.env` 的 `HERMES_APP_TOKEN`；它与 OpenAI OAuth 登录不同。令牌不得贴到群聊或放入链接。更换服务器须重新输入对应令牌，已新增跨源不复用凭据的回归测试。
 
-主控实际执行：
+首次 SDK 54 交付的历史检查（以下版本、依赖审计与 OAuth 阻塞为当时结果；当前 SDK 升级结果见上述修复记录）：
 
 - 移动端 6 项 Node 测试通过；TypeScript check 与 Expo dependency check 通过。
 - Android、iOS Metro export 均完成；这不是 APK/IPA 或手机运行证明。
@@ -47,7 +47,7 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 
 ## 运行、网络限制与回退
 
-- `hermes-app-expo.service`：工作目录 `/opt/projects/jamie/hermes-app/apps/mobile`，Expo 54，`EXPO_PACKAGER_PROXY_URL=https://agent.tuly.space`。`--no-dev --minify` + CI，无远程调试或自动热更新；修改后重启此服务可重新加载。
+- `hermes-app-expo.service`：工作目录 `/opt/projects/jamie/hermes-app/apps/mobile`，Expo 57，`EXPO_PACKAGER_PROXY_URL=https://agent.tuly.space`。`--no-dev --minify` + CI，无远程调试或自动热更新；修改后重启此服务可重新加载。
 - `hermes-app-expo-bridge.socket/service`：`172.31.0.1:18081` → `127.0.0.1:8081`。
 - Traefik 配置 `/opt/projects/jamie/ovh01-ingress/dynamic/hermes-app-expo.yaml` 仅开放 manifest、status、bundle 与 assets；`/v1` 仍由原插件处理。`/open`、inspector 不会转发 Metro（实测返回原 API 401）。
 - Expo 54 的 `--localhost` 只改变广告地址，实测仍监听所有接口。因此在 IPv4/IPv6 INPUT 中为 8081 加了仅允许 loopback 的专用规则，comment=`hermes-app-expo-dev`；服务 ExecStartPre 幂等确保规则先存在再启动。实测公网源地址直连 8081 被拒绝，HTTPS `/status` 正常。不改其他端口规则。
@@ -55,7 +55,7 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 - 保留 Expo 服务及专用 bridge 供 Jamie 测试、主仓库 app node_modules 供构建、私有 Expo HOME 和 bundle 证据。临时工作树/重复依赖已经由 git worktree remove 清理。
 - 停用时只停 `hermes-app-expo.service` 与 `hermes-app-expo-bridge.socket/service`，移除专用 Traefik 文件；确认服务禁用后可按 exact comment/port/source 删除两条专用防火墙规则。不要动开发 Gateway 或共享入口。
 
-## 手机验收清单（未测）
+## 手机验收清单（SDK 54 已被真机拒绝，SDK 57 待复测）
 
 1. Expo Go 扫码加载，界面无红屏，安全区与键盘不遮挡发送框。
 2. 填令牌连接，打开“手机开发测试”频道和测试话题；创建自己的新话题。

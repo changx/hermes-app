@@ -11,15 +11,15 @@
     "export:ios": "expo export --platform ios --output-dir dist/ios --no-bytecode --max-workers 2"
   },
   "dependencies": {
-    "expo": "54.0.37",
-    "expo-crypto": "~15.0.9",
-    "expo-secure-store": "~15.0.8",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-safe-area-context": "~5.6.0"
+    "expo": "57.0.25",
+    "expo-crypto": "~57.0.3",
+    "expo-secure-store": "~57.0.4",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0"
   },
   "devDependencies": {
-    "@types/react": "~19.1.10",
-    "typescript": "~5.9.2"
+    "@types/react": "~19.2.4",
+    "typescript": "~6.0.3"
   }
 }
