@@ -2,7 +2,11 @@
 
 Jamie 在本轮明确要求“改完直接上”。已发布已完成并经过主控检查的候选 `ef42eb5` 到既有 `exps://agent.tuly.space`，不等待整套真机手感验收。
 
-## 实际结果
+## 后续修正已发布
+
+当前手机代码 `1acaf11`，包含几何修正 `aa7fdf7`（来源 `0037740`）：输入栏高度不再重复扣除，底部跟随包含键盘 inset。随后 Jamie 报 `Cannot read property 'layout' of null`，主控用原生产 callback + 延迟state updater/释放nativeEvent序列复现：composer 的函数式setState在稍后读取已释放事件。改为回调当下读取数值交给setState；新增执行实际callback的回归测试。60项手机测试与TypeScript通过，双平台公网新版包及Expo账号检查通过；仅Expo重启，两个Gateway和插件未变。证据：私有 `workspace/hermes-app/m1-keyboard-inset-verification/`。网络循环仍独立调查，不把本修正当作网络故障解决。
+
+## 实际结果（首轮原生版）
 
 - 主控独立执行57项手机测试、TypeScript、iOS/Android导出通过；发布目录安装锁定依赖后再次TypeScript通过。
 - Expo57匹配依赖：keyboard-controller 1.21.9、Reanimated 4.5.1、Worklets 0.10.1。
