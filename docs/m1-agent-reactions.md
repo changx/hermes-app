@@ -34,6 +34,12 @@ Jamie确认借鉴Discord reaction，主要用于表达Agent真实状态，不做
 - 操作区以关联消息摘要区分取消/停止目标，不展示内部 ID；必要审批说明保留原文。
 - 连接错误类别只通过开发侧 console.info 输出既有脱敏摘要，不显示在 App；没有远程遥测或新增普通用户诊断入口。
 
+## 开发发布
+
+已按 Jamie「改完直接上」授权发布 `dc5a20ebd09d1debf2a497034a8513272ef894d8`，仅重启 `hermes-app-expo.service`。公网 iOS/Android manifest、账号与精确 launchAsset 均检查通过，包含 reaction、灰色待发送文字和原有动画修正，旧发送汇总/诊断界面文案不存在。两个 Gateway 的 PID/启动时间、开发插件哈希保持不变；回滚基线 `58980ea`，入口仍为 `exps://agent.tuly.space`。
+
+发布证据：私有 `workspace/hermes-app/m1-reactions-verification/release-verification.json`。主控临时导出包核对后删除，保留验证日志、发布脚本与回滚记录；已合并隔离工作树在交付时清理。iPhone 实际视觉和交互待 Jamie 验收，卡片留 review。
+
 ## 验收
 
 主控已独立检查改动并复跑手机测试 **87/87**、TypeScript、iOS/Android Expo 导出及 `git diff --check`，均通过。覆盖六种真实状态、审批/终态优先级、同文不同消息、跨话题与身份不匹配、冷历史有界读取/取消/重连重试、灰色正文到接收后实色、固定 reaction 位置、取消/停止/审批回调；既有键盘、短列表与消息滚动动画测试一并通过。静态检查当前手机 JSX 界面文案，没有保留同步/收据/诊断/内部 ID/服务器地址等界面元素；用户与 Agent 的消息正文、必要操作审批内容不受此限制。
