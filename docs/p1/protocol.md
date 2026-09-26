@@ -9,11 +9,11 @@
 | 操作 | 请求 | 成功响应 | 权限 |
 |---|---|---|---|
 | 签发 | `POST /v1/pairing/grants`，JSON `{}` | `201 {"code":"XXXX-XXXX-XXXX-XXXX","expires_at":<Unix 秒>}` | 管理员 Bearer |
-| 兑换 | `POST /v1/pairing/exchange`，JSON `{"code":"XXXX-XXXX-XXXX-XXXX","device_name":"iPhone"}`，**无 Authorization** | `201 {"device_id":"<24 位小写 hex>","device_token":"ha_dev_<device_id>_<随机串>"}` | 唯一公开路由 |
+| 兑换 | `POST /v1/pairing/exchange`，JSON `{"code":"XXXX-XXXX-XXXX-XXXX","device_name":"iPhone","device_token":"ha_dev_<24位小写hex>_<43位base64url>"}`，**无 Authorization** | `201 {"device_id":"<24 位小写 hex>"}` | 唯一公开路由 |
 | 列表 | `GET /v1/pairing/devices` | `200 {"devices":[{"device_id":"...","device_name":"...","created_at":<Unix 秒>}]}` | 管理员 Bearer |
 | 撤销 | `DELETE /v1/pairing/devices/{device_id}` | `204` | 管理员 Bearer |
 
-正常 HTTP/WS 使用 `Authorization: Bearer <device_token>`；客户端必须安全持久保存它，重启/断线后直接恢复，不请用户修复 token。管理员 Bearer 也继续可用；设备凭据访问普通单 owner 数据路由，但签发、列表、撤销一律禁止（403）。过期、错误、已用配对码统一 400；缺少普通路由认证为 401；签发容量或兑换频率限制为 429；请求为精确字段 JSON，配对请求体至多 512 字节，不允许在 exchange URL 传码。代码一次展示、5 分钟有效、80 位随机熵，服务端仅存 SHA-256 摘要；一笔 SQLite 事务消费代码并建立 256 位随机设备凭据，仅存摘要。限 20 条活跃签发、100 个活跃设备，兑换全局 SQLite 计数每分钟至多 30 次、每小时至多 300 次，重启不清空；反向代理对公开入口另行限流。兑换响应丢失时**不返还凭据**，管理员从列表识别并撤销孤儿设备，再签新码；不能把旧码反复兑换。显式撤销使下个 HTTP 请求 401、已有 WS 在下一次认证检查关闭（最迟约 5 秒）。列表不返回 token，撤销后该设备无法自行重新配对。
+正常 HTTP/WS 使用 `Authorization: Bearer <device_token>`；管理员 Bearer 也继续可用；设备凭据访问普通单 owner 数据路由，但签发、列表、撤销一律禁止（403）。客户端生成 12 个随机字节编码为 24 位小写 hex `device_id`，另生成 32 个随机字节编码为无填充的 43 位 canonical base64url，拼成 `ha_dev_<device_id>_<随机串>`。客户端在发网络请求**之前持久保存** token、配对码与设备名称。兑换请求 JSON 必须且只能包含 `code,device_name,device_token`，服务端校验 token，存绑定 ID 和 SHA-256 凭据摘要，不返回 token。错误或过期配对码统一 400；缺少普通路由认证为 401；签发容量、设备容量或兑换频率限制为 429 并附 `Retry-After` 秒数；配对请求体至多 512 字节，完整读至 EOF（5 秒绝对超时，408），不允许在 exchange URL 传码。代码一次展示、5 分钟有效、80 位随机熵，服务端仅存 SHA-256 摘要；一笔 SQLite 事务绑定代码与设备。未兑换签发至多 20 条，活跃设备至多 100 个，兑换全局 SQLite 计数每分钟至多 30 次、每小时至多 300 次，重启不清空；反向代理对公开入口另行限流。同一码及同一 token 在原始到期前重复兑换返回同一 `device_id`，不同 token 被拒绝；原始过期时间不延长。撤销后保留绑定直至原始到期，旧码不能复活设备。响应丢失后客户端先以保存的候选 token 调用 `/v1/capabilities`：认证成功直接完成配对（过期后亦然），认证失败且码尚有效时可用相同码与相同 token 重试；码已过期则需要新码。显式撤销使下个 HTTP 请求 401、已有 WS 在下一次认证检查关闭（最迟约 5 秒）。列表不返回 token，撤销后该设备无法自行重新配对。
 
 管理员本地签发示例（已有 `HERMES_APP_TOKEN` 环境变量，`HERMES_APP_PORT` 为实际监听端口；只在受控终端展示响应，不要开启 shell trace/HTTP body 日志）：
 
