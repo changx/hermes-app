@@ -43,6 +43,17 @@ export function followAfterUserScroll(previous: number, next: number, height: nu
   return next >= previous && nearLatest(next, height, viewport);
 }
 
+// Keyboard resizing can generate scroll events without a reader gesture moving
+// away from the bottom. Keep the current mode until geometry settles.
+export function followDuringDrag(following: boolean, previous: number, next: number, previousHeight: number, height: number, previousViewport: number, viewport: number): boolean {
+  if (previousHeight !== height || previousViewport !== viewport) return following;
+  return followAfterUserScroll(previous, next, height, viewport);
+}
+
+export function appendedAtEnd(previous: readonly string[], next: readonly string[]): boolean {
+  return previous.length > 0 && next.length > previous.length && previous.every((key, index) => next[index] === key);
+}
+
 // Forward-only API: never fetch until exhaustion without a fixed bound.
 // The caller must explicitly request each additional page after this budget.
 export async function locateLatest(

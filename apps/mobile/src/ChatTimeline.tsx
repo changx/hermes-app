@@ -1,9 +1,9 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, FlatList, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
 import { sendDescription } from './send';
-import { followAfterUserScroll, type TimelinePosition, type TimelineRow } from './timeline';
+import { appendedAtEnd, followDuringDrag, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
 
 const stateName: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行状态不明' };
@@ -18,8 +18,9 @@ const MessageRow = memo(function MessageRow({ row }: { row: TimelineRow }) {
   </View>;
 }, (prev, next) => prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.receiptState === next.row.receiptState && prev.row.attachments === next.row.attachments);
 
-export interface ChatTimelineHandle { followLatest(): void; holdPosition(): void }
+export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void }
 interface Props {
+  keyboardMoving: boolean;
   threadId: string;
   rows: TimelineRow[];
   startRef: number | null;
@@ -51,22 +52,44 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const [showLatest, setShowLatest] = useState(!following.current);
   const offset = useRef(position?.offset ?? 0);
   const viewport = useRef(0), content = useRef(0), userScrolling = useRef(false);
+  const scrollGeometry = useRef<{ height: number; viewport: number } | null>(null);
   const restored = useRef(false);
+  const reducedMotion = useRef(false);
+  const keyboardMoving = useRef(props.keyboardMoving);
+  keyboardMoving.current = props.keyboardMoving;
+  const previousKeys = useRef<string[]>([]);
+  const appended = useRef(false);
+  const nextKeys = rows.map(row => row.key);
+  if (nextKeys.length !== previousKeys.current.length || nextKeys.some((key, i) => key !== previousKeys.current[i])) {
+    appended.current = appendedAtEnd(previousKeys.current, nextKeys);
+    previousKeys.current = nextKeys;
+  }
   const frame = useRef<number | null>(null);
-  const scheduleFollow = useCallback(() => {
+  const followAnimation = useRef(false);
+  const scheduleFollow = useCallback((animate = false) => {
+    // A viewport/keyboard adjustment wins over a pending animated append.
+    if (!animate) followAnimation.current = false;
+    else if (frame.current === null) followAnimation.current = true;
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      if (following.current && !userScrolling.current) list.current?.scrollToEnd({ animated: false });
+      const animated = followAnimation.current && !reducedMotion.current && !keyboardMoving.current && !Keyboard.isVisible();
+      followAnimation.current = false;
+      if (following.current && !userScrolling.current) list.current?.scrollToEnd({ animated });
     });
   }, []);
-  useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); }, []);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) reducedMotion.current = value; }).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
+    return () => { mounted = false; sub.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
+  }, []);
   const callbacks = useRef({ onPosition, onVisibleRef, startRef });
   callbacks.current = { onPosition, onVisibleRef, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
-  const followLatest = useCallback(() => {
+  const followLatest = useCallback((animate = true) => {
     following.current = true; setShowLatest(false);
-    list.current?.scrollToEnd({ animated: true }); savePosition();
+    list.current?.scrollToEnd({ animated: animate && !reducedMotion.current && !keyboardMoving.current }); savePosition();
   }, [savePosition]);
   useImperativeHandle(ref, () => ({ followLatest, holdPosition() { following.current = false; setShowLatest(true); savePosition(); } }), [followLatest, savePosition]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
@@ -78,11 +101,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   });
   return <View style={styles.flex}>
     <View style={styles.flex}>
-      <FlatList ref={list} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} />}
-        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive"
+      <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} />}
+        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         initialNumToRender={14} maxToRenderPerBatch={10} windowSize={7} updateCellsBatchingPeriod={60}
-        // Keeps the first visible message anchored when earlier cached refs are revealed.
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        // Anchor prepends only when reading older messages; bottom following is owned below.
+        maintainVisibleContentPosition={!following.current ? { minIndexForVisible: 0 } : undefined}
         ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
           {props.onLocateNext && action('继续定位最新（100 条）', props.onLocateNext, props.locatingBusy, true)}</View>
           : props.hasOlder ? <View style={styles.older}>{action('查看更早消息', props.onOlder, props.busy, true)}</View> : null}
@@ -103,24 +126,26 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             restored.current = true;
             if (following.current) list.current?.scrollToEnd({ animated: false });
             else list.current?.scrollToOffset({ offset: offset.current, animated: false });
-          } else if (following.current && !userScrolling.current) scheduleFollow();
+          } else if (following.current && !userScrolling.current) scheduleFollow(appended.current);
+          appended.current = false;
         }}
-        onScrollBeginDrag={() => { userScrolling.current = true; following.current = false; setShowLatest(true); }}
+        onScrollBeginDrag={() => { userScrolling.current = true; }}
         onMomentumScrollBegin={() => { userScrolling.current = true; }}
-        onScrollEndDrag={() => { userScrolling.current = false; savePosition(); }}
-        onMomentumScrollEnd={() => { userScrolling.current = false; savePosition(); }}
+        onScrollEndDrag={() => { userScrolling.current = false; if (following.current) scheduleFollow(); savePosition(); }}
+        onMomentumScrollEnd={() => { userScrolling.current = false; if (following.current) scheduleFollow(); savePosition(); }}
         onScroll={e => {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-          const previous = offset.current;
+          const previous = offset.current, priorGeometry = scrollGeometry.current;
           offset.current = Math.max(0, contentOffset.y);
           viewport.current = layoutMeasurement.height; content.current = contentSize.height;
-          if (userScrolling.current) {
-            const now = followAfterUserScroll(previous, offset.current, content.current, viewport.current);
+          scrollGeometry.current = { height: contentSize.height, viewport: layoutMeasurement.height };
+          if (userScrolling.current && priorGeometry) {
+            const now = followDuringDrag(following.current, previous, offset.current, priorGeometry.height, content.current, priorGeometry.viewport, viewport.current);
             if (now !== following.current) { following.current = now; setShowLatest(!now); }
           }
           savePosition();
-        }} scrollEventThrottle={80} />
-      {showLatest && <View style={styles.latest}>{action('回到最新 ↓', followLatest)}</View>}
+        }} scrollEventThrottle={16} />
+      {showLatest && <View style={styles.latest}>{action('回到最新 ↓', () => followLatest())}</View>}
     </View>
     {!!props.receipts.length && <ScrollView style={styles.controls} keyboardShouldPersistTaps="handled">{props.receipts.map(r => <View key={r.id} style={styles.controlRow}>
       <Text style={styles.controlText}>任务 · {stateName[r.state]}</Text>
