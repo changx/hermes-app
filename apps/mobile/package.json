@@ -1,0 +1,25 @@
+{
+  "name": "hermes-app-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "export:android": "expo export --platform android --output-dir dist/android --no-bytecode --max-workers 2",
+    "export:ios": "expo export --platform ios --output-dir dist/ios --no-bytecode --max-workers 2"
+  },
+  "dependencies": {
+    "expo": "54.0.37",
+    "expo-crypto": "~15.0.9",
+    "expo-secure-store": "~15.0.8",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
+  }
+}

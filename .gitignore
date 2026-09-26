@@ -17,4 +17,6 @@ __pycache__/
 dist/
 build/
 coverage/
+.expo/
+.expo-shared/
 .DS_Store
