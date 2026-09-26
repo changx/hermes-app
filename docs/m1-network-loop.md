@@ -2,6 +2,12 @@
 
 范围：仅候选 worktree 的共享 SDK、原生 transport、outbox 与极窄的 App 连接状态；不改运行中的 Expo/Gateway/队列，不关闭网络验收卡。首版标准见 [网络可靠性](m1-network-reliability.md)。
 
+## 开发发布结果
+
+已按当前“改完直接上”授权发布代码 `839eb80`（来源 `308e0b8`），并保留此前原生键盘、几何修正和layout事件崩溃热修。集成目录主控检查：client 21+17项、mobile 62项、TypeScript通过。双平台公网manifest及实际新bundle确认通过，只重启Expo，两个Gateway和插件文件哈希不变。使用当前源码SDK/native transport的35秒公网只读探针收到真实增量事件并完成周期补齐，初次握手后保持online，无再次syncing、无错误；不等同于iPhone路径验收。
+
+证据：私有 `workspace/hermes-app/m1-network-loop-verification/` 下 `release-checks.log`、`release-verification.json`、`probe-public.json`；旧版本和服务指纹保留于 `before.json`。手机若再次等待网络，顶部脱敏诊断可区分具体错误。原iPhone retrying原因仍待现场证据，不宣称所有网络故障已解决。
+
 ## 已知证据与未知
 
 - Jamie 的 iPhone 报告“等待网络 / retrying”和“补齐中 / syncing”反复切换，不能发送；这是真机症状，但尚无手机侧脱敏错误类别、HTTP 状态/路由、WS hello/关闭时序及相应 bundle 版本的记录。不能归因于用户网络。
