@@ -127,8 +127,7 @@ function Screen() {
         if (active && appActive.current) await sdk.connect();
       } catch (e) { if (active) { setLoading(false); setError('本机待发消息读取失败；请保留应用数据。' + messageError(e)); } }
     })();
-    const receiptPoll = setInterval(() => { if (active && appActive.current) box?.reconcile(); }, 12000);
-    return () => { active = false; clearInterval(receiptPoll); ++openingRef.current; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
+    return () => { active = false; ++openingRef.current; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
   }, [config]);
 
   useEffect(() => {

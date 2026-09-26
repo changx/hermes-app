@@ -10,14 +10,19 @@ export const LEGACY_SEND_KEY = 'hermes-app-last-send-v1';
 const SLOTS = 24;
 const CHUNK_BYTES = 768;
 const MAX_BYTES = 65536;
-const MAX_CHUNKS = Math.ceil(MAX_BYTES / CHUNK_BYTES);
+// A code point may leave up to three bytes unused at a chunk boundary.
+const MAX_CHUNKS = Math.ceil(MAX_BYTES / (CHUNK_BYTES - 3));
 const FINAL = new Set(['completed', 'failed', 'interrupted']);
+const receiptStage = (state?: Receipt['state']) => state === 'queued' ? 0 : state === 'running' ? 1 : state ? 2 : -1;
 export class OutboxLimitError extends Error {}
 export class OutboxIdentityError extends Error {}
 
-type Stored = Omit<SendRecord, 'text' | 'status'> & { version: 1; status: SendRecord['status'] | 'preparing' | 'discarding'; chunks: number; hash: number; attempts: number; nextAttemptAt: number };
-type Entry = { slot: number; record: SendRecord; attempts: number; nextAttemptAt: number };
-const prefix = (id: string, slot: number) => `hermes-outbox-v1:${id}:${slot}`;
+type Stored = Omit<SendRecord, 'text' | 'status'> & { version: 2; status: SendRecord['status'] | 'preparing' | 'discarding'; chunks: number; hash: number; order: number; attempts: number; nextAttemptAt: number };
+type Entry = { slot: number; order: number; record: SendRecord; attempts: number; nextAttemptAt: number };
+// SecureStore permits only [A-Za-z0-9._-]. Connection IDs are UUIDs today;
+// encode the full identity so even an unexpected future ID cannot break keys.
+const safeId = (id: string) => Array.from(id, c => c.codePointAt(0)!.toString(16).padStart(6, '0')).join('');
+const prefix = (id: string, slot: number) => `hermes-outbox-v2.${safeId(id)}.${slot}`;
 const bytes = (part: string) => {
   let n = 0;
   for (const c of part) { const x = c.codePointAt(0)!; n += x <= 0x7f ? 1 : x <= 0x7ff ? 2 : x <= 0xffff ? 3 : 4; }
@@ -54,7 +59,7 @@ export class OutboxStore {
     this.lock = result.catch(() => {});
     return result;
   }
-  get records(): SendRecord[] { return [...this.entries.values()].sort((a, b) => a.slot - b.slot).map(e => e.record); }
+  get records(): SendRecord[] { return [...this.entries.values()].sort((a, b) => a.order - b.order).map(e => e.record); }
   async idle() { await this.lock; }
   async load(): Promise<SendRecord[]> {
     return this.serialize(async () => {
@@ -64,17 +69,18 @@ export class OutboxStore {
         if (!raw) continue;
         let meta: Stored;
         try { meta = JSON.parse(raw) as Stored; } catch { throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`); }
-        if (meta.version === 1 && (meta.status === 'preparing' || meta.status === 'discarding') && Number.isInteger(meta.chunks) && meta.chunks > 0 && meta.chunks <= MAX_CHUNKS) {
-          for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}:part:${i}`);
+        if (meta.version === 2 && (meta.status === 'preparing' || meta.status === 'discarding') && Number.isInteger(meta.chunks) && meta.chunks > 0 && meta.chunks <= MAX_CHUNKS) {
+          for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
           await this.store.deleteItemAsync(key);
           continue;
         }
-        if (meta.version !== 1 || meta.connectionId !== this.config.id || !validState(meta.status) ||
-            !Number.isInteger(meta.chunks) || meta.chunks < 1 || meta.chunks > MAX_CHUNKS || !Number.isInteger(meta.hash))
+        if (meta.version !== 2 || meta.connectionId !== this.config.id || !validState(meta.status) ||
+            !Number.isInteger(meta.chunks) || meta.chunks < 1 || meta.chunks > MAX_CHUNKS || !Number.isInteger(meta.hash) ||
+            !Number.isSafeInteger(meta.order) || meta.order < 1 || [...this.entries.values()].some(e => e.order === meta.order))
           throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`);
         const chunks: string[] = [];
         for (let i = 0; i < meta.chunks; i++) {
-          const chunk = await this.store.getItemAsync(`${key}:part:${i}`);
+          const chunk = await this.store.getItemAsync(`${key}.part.${i}`);
           if (chunk === null || bytes(chunk) > CHUNK_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
           chunks.push(chunk);
         }
@@ -85,7 +91,7 @@ export class OutboxStore {
           status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, text
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('本机待发记录身份冲突');
-        this.entries.set(restored.clientMessageId, { slot, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
+        this.entries.set(restored.clientMessageId, { slot, order: meta.order, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
       }
       const legacy = await this.store.getItemAsync(LEGACY_SEND_KEY);
       if (legacy) {
@@ -103,14 +109,16 @@ export class OutboxStore {
     const slot = Array.from({ length: SLOTS }, (_, n) => n).find(n => !occupied.has(n));
     if (slot === undefined) throw new OutboxLimitError('本机待发消息已满（24 条）；请等待自动恢复后再发送');
     const key = prefix(this.config.id, slot), parts = pieces(record.text);
+    const order = Math.max(0, ...[...this.entries.values()].map(e => e.order)) + 1;
+    if (!Number.isSafeInteger(order)) throw new OutboxLimitError('本机待发顺序已达上限');
     // A preparatory marker makes interrupted chunk writes discoverable for cleanup;
     // only the final metadata value commits a send before network I/O.
-    await this.store.setItemAsync(key, JSON.stringify({ version: 1, status: 'preparing', chunks: parts.length }));
-    for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}:part:${i}`, parts[i]);
-    const meta: Stored = { ...record, text: undefined, version: 1, chunks: parts.length, hash: hash(record.text), attempts: 0, nextAttemptAt: 0 } as Stored;
+    await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'preparing', chunks: parts.length }));
+    for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
+    const meta: Stored = { ...record, text: undefined, version: 2, chunks: parts.length, hash: hash(record.text), order, attempts: 0, nextAttemptAt: 0 } as Stored;
     delete (meta as Partial<SendRecord>).text;
     await this.store.setItemAsync(key, JSON.stringify(meta));
-    this.entries.set(record.clientMessageId, { slot, record, attempts: 0, nextAttemptAt: 0 });
+    this.entries.set(record.clientMessageId, { slot, order, record, attempts: 0, nextAttemptAt: 0 });
   }
   async enqueue(record: SendRecord): Promise<void> { return this.serialize(() => this.insert(record)); }
   async update(record: SendRecord, attempts?: number, nextAttemptAt?: number): Promise<void> {
@@ -118,7 +126,7 @@ export class OutboxStore {
       const entry = this.entries.get(record.clientMessageId);
       if (!entry || entry.record.text !== record.text || entry.record.threadId !== record.threadId || record.connectionId !== this.config.id)
         throw new Error('待发消息身份或原文变化');
-      const meta: Stored = { ...record, text: undefined, version: 1, chunks: pieces(record.text).length, hash: hash(record.text), attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt } as Stored;
+      const meta: Stored = { ...record, text: undefined, version: 2, chunks: pieces(record.text).length, hash: hash(record.text), order: entry.order, attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt } as Stored;
       delete (meta as Partial<SendRecord>).text;
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));
       this.entries.set(record.clientMessageId, { ...entry, record, attempts: meta.attempts, nextAttemptAt: meta.nextAttemptAt });
@@ -129,8 +137,8 @@ export class OutboxStore {
       const entry = this.entries.get(id);
       if (!entry || entry.record.status !== 'accepted' || !FINAL.has(entry.record.receiptState || '')) return;
       const key = prefix(this.config.id, entry.slot), count = pieces(entry.record.text).length;
-      await this.store.setItemAsync(key, JSON.stringify({ version: 1, status: 'discarding', chunks: count }));
-      for (let i = 0; i < count; i++) await this.store.deleteItemAsync(`${key}:part:${i}`);
+      await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'discarding', chunks: count }));
+      for (let i = 0; i < count; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
       await this.store.deleteItemAsync(key);
       this.entries.delete(id);
     });
@@ -141,8 +149,8 @@ export class OutboxStore {
         const key = prefix(this.config.id, slot), raw = await this.store.getItemAsync(key);
         if (!raw) continue;
         const meta = JSON.parse(raw) as Stored;
-        await this.store.setItemAsync(key, JSON.stringify({ version: 1, status: 'discarding', chunks: meta.chunks }));
-        for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}:part:${i}`);
+        await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'discarding', chunks: meta.chunks }));
+        for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
         await this.store.deleteItemAsync(key);
       }
       this.entries.clear();
@@ -154,7 +162,7 @@ export class OutboxStore {
 }
 
 export type NetworkState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
-export type OutboxDeps = Pick<HermesClient, 'send' | 'getReceipt' | 'historyTail' | 'messages' | 'receipts'>;
+export type OutboxDeps = Pick<HermesClient, 'send' | 'getReceipt' | 'historyTail' | 'messages' | 'receipts' | 'supportsLatest'>;
 export function retryable(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const status = (error as Error & { status?: number }).status;
@@ -174,6 +182,7 @@ export class MobileOutbox {
   private busy = new Set<string>();
   private controllers = new Map<string, AbortController>();
   private checkedAt = new Map<string, number>();
+  private noticed = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
   private tasks = new Set<Promise<void>>();
@@ -182,9 +191,10 @@ export class MobileOutbox {
   private changed: (records: SendRecord[], notice?: string) => void;
   private clock: () => number;
   private random: () => number;
+  private pollMs: number;
   constructor(storage: OutboxStore, sdk: OutboxDeps, changed: (records: SendRecord[], notice?: string) => void,
-    clock = () => Date.now(), random = Math.random) {
-    this.storage = storage; this.sdk = sdk; this.changed = changed; this.clock = clock; this.random = random;
+    clock = () => Date.now(), random = Math.random, pollMs = 12000) {
+    this.storage = storage; this.sdk = sdk; this.changed = changed; this.clock = clock; this.random = random; this.pollMs = pollMs;
   }
   get records() { return this.storage.records; }
   private emit(notice?: string) { if (this.alive) this.changed(this.records, notice); }
@@ -214,24 +224,36 @@ export class MobileOutbox {
     for (const record of this.records) {
       if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId)) continue;
       const cached = this.sdk.receipts.get(record.receiptId);
-      if (cached && cached.state !== record.receiptState) this.launch(record.clientMessageId, () => this.recordReceipt(record, cached));
-      else if (!FINAL.has(record.receiptState || '') && this.clock() - (this.checkedAt.get(record.clientMessageId) ?? -Infinity) >= 12000) {
+      if (cached && receiptStage(cached.state) > receiptStage(record.receiptState))
+        this.launch(record.clientMessageId, () => this.recordReceipt(record, cached));
+      else if (FINAL.has(record.receiptState || '') && this.sdk.messages.get(record.threadId)?.some((m: Message) => m.role === 'user' && m.client_message_id === record.clientMessageId))
+        this.launch(record.clientMessageId, () => this.confirmHistory(record));
+      else if (this.clock() - (this.checkedAt.get(record.clientMessageId) ?? -Infinity) >= this.pollMs) {
         this.checkedAt.set(record.clientMessageId, this.clock());
         this.launch(record.clientMessageId, () => this.checkReceipt(record));
       }
-      else this.confirmHistory(record);
     }
   }
-  private confirmHistory(record: SendRecord) {
+  private async confirmHistory(record: SendRecord, authoritative = false, synced = false) {
     const found = this.sdk.messages.get(record.threadId)?.some((m: Message) => m.role === 'user' && m.client_message_id === record.clientMessageId);
-    if (found && FINAL.has(record.receiptState || '') && !this.busy.has(record.clientMessageId))
-      this.launch(record.clientMessageId, async () => { await this.storage.removeConfirmed(record.clientMessageId); this.emit(); });
+    if (FINAL.has(record.receiptState || '') && (found || authoritative && synced)) {
+      // No content matching: an explicit final receipt plus a successful tail
+      // sync is sufficient even when the bounded latest window omits this ID.
+      // Do not treat the old SDK's empty/unanchored tail no-op as a sync.
+      try { await this.storage.removeConfirmed(record.clientMessageId); }
+      catch { this.storageFault = true; this.emit('本机已确认记录清理失败；请保留应用数据'); return; }
+      this.checkedAt.delete(record.clientMessageId);
+      this.noticed.delete(record.clientMessageId);
+      this.emit();
+    }
   }
   private launch(id: string, work: () => Promise<void>) {
     if (!this.alive || this.busy.has(id)) return;
     this.busy.add(id);
     const task = work().catch(e => {
-      this.emit(retryable(e) ? undefined : '收据暂无法核对；记录已保留，新消息不受影响');
+      if (!this.alive || this.storageFault || retryable(e) || this.noticed.has(id)) return;
+      this.noticed.add(id);
+      this.emit('收据暂无法核对；记录已保留，新消息不受影响');
     })
       .finally(() => { this.busy.delete(id); this.tasks.delete(task); if (this.alive) this.wake(); });
     this.tasks.add(task);
@@ -240,12 +262,23 @@ export class MobileOutbox {
     if (!this.alive || !this.online || this.storageFault) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.reconcile();
     let soonest = Infinity;
+    const pendingThreads = new Set<string>();
     for (const record of this.records) {
       const entry = this.storage.entry(record.clientMessageId)!;
       if (record.status === 'queued' || record.status === 'ambiguous' || record.status === 'sending') {
-        if (entry.nextAttemptAt <= this.clock()) this.launch(record.clientMessageId, () => this.submit(record));
-        else soonest = Math.min(soonest, entry.nextAttemptAt);
+        // Only the oldest unresolved submission in a thread may advance. An
+        // ambiguous earlier send retains its place throughout backoff/restart.
+        if (pendingThreads.has(record.threadId)) continue;
+        pendingThreads.add(record.threadId);
+        if (!this.busy.has(record.clientMessageId)) {
+          if (entry.nextAttemptAt <= this.clock()) this.launch(record.clientMessageId, () => this.submit(record));
+          else soonest = Math.min(soonest, entry.nextAttemptAt);
+        }
+      } else if (record.status === 'accepted' && record.receiptId && !this.busy.has(record.clientMessageId)) {
+        const nextCheck = (this.checkedAt.get(record.clientMessageId) ?? -Infinity) + this.pollMs;
+        if (nextCheck > this.clock()) soonest = Math.min(soonest, nextCheck);
       }
     }
     if (soonest < Infinity) this.timer = setTimeout(() => { this.timer = null; this.wake(); }, Math.max(1, soonest - this.clock()));
@@ -274,7 +307,7 @@ export class MobileOutbox {
       const entry = this.storage.entry(record.clientMessageId);
       // A successful receipt may be in memory although its metadata write failed.
       // Never replace that proof with an ambiguous retry.
-      if (entry?.record.status === 'accepted') { this.emit('消息已接收，但本机状态保存或补齐失败'); return; }
+      if (entry?.record.status === 'accepted') return;
       if (retryable(e)) {
         const attempts = (entry?.attempts || 0) + 1;
         try { await this.storage.update({ ...record, status: 'ambiguous' }, attempts, this.clock() + delayFor(attempts, e, this.random)); this.emit(); }
@@ -285,26 +318,40 @@ export class MobileOutbox {
       }
     } finally { this.controllers.delete(record.clientMessageId); }
   }
-  private async recordReceipt(record: SendRecord, receipt: Receipt) {
+  private async recordReceipt(record: SendRecord, receipt: Receipt, authoritative = false) {
     if (!this.alive) return;
+    const gen = this.generation;
     const next = accepted(record, receipt);
     try { await this.storage.update(next); }
     catch { this.storageFault = true; this.emit('本机收据保存失败；记录已保留，请保留应用数据'); return; }
-    if (!this.alive) return;
+    if (!this.alive || gen !== this.generation) return;
     this.emit();
-    if (FINAL.has(next.receiptState || '')) await this.refreshHistory(next);
+    if (FINAL.has(next.receiptState || '')) await this.refreshHistory(next, authoritative);
   }
   private async checkReceipt(record: SendRecord) {
     if (!record.receiptId) return;
     const gen = this.generation, abort = new AbortController(); this.controllers.set(record.clientMessageId, abort);
     try {
       const receipt = await this.sdk.getReceipt(record.receiptId, abort.signal);
-      if (this.alive && gen === this.generation) await this.recordReceipt(record, receipt);
+      if (this.alive && gen === this.generation) {
+        if (receipt.id !== record.receiptId) throw new OutboxIdentityError('收据身份不匹配');
+        const verified = accepted(record, receipt); // id alone is not the message identity
+        this.noticed.delete(record.clientMessageId);
+        // Even unchanged final receipts need another history sync after a
+        // transient failure (or after a cold restart with an empty cache).
+        if (receipt.state === record.receiptState && FINAL.has(receipt.state)) await this.refreshHistory(verified, true);
+        else if (receiptStage(receipt.state) >= receiptStage(record.receiptState)) await this.recordReceipt(record, receipt, true);
+      }
     } finally { this.controllers.delete(record.clientMessageId); }
   }
-  private async refreshHistory(record: SendRecord) {
-    try { await this.sdk.historyTail(record.threadId); } catch { /* SDK reconnect recovers tails. */ }
-    if (this.alive) this.confirmHistory(record);
+  private async refreshHistory(record: SendRecord, authoritative = false) {
+    const gen = this.generation;
+    // In the older forward-only SDK, an unanchored tail returns without I/O.
+    const canSync = this.sdk.supportsLatest || !!this.sdk.messages.get(record.threadId)?.at(-1)?.ref_seq;
+    let synced = false;
+    try { await this.sdk.historyTail(record.threadId); synced = canSync; }
+    catch { /* A timer retries receipt + history; SDK also recovers its tails. */ }
+    if (this.alive && gen === this.generation) await this.confirmHistory(record, authoritative, synced);
   }
   /** Poll only accepted records. Unknown is never resubmitted as a new execution. */
   async stop() {
