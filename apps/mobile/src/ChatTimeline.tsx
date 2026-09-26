@@ -12,7 +12,7 @@ const action = (title: string, onPress: () => void, disabled = false, muted = fa
 const MessageRow = memo(function MessageRow({ row }: { row: TimelineRow }) {
   const own = row.role === 'user';
   return <View style={[styles.bubble, own && styles.own, row.optimistic && styles.pending]}>
-    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '状态'}{row.optimistic ? (row.status === 'ambiguous' ? ' · 接收待确认' : row.status === 'accepted' ? ' · ' + (row.receiptState ? stateName[row.receiptState] : '已接收') : ' · 发送中') : !row.refSeq ? ' · 草稿' : ''}</Text>
+    <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '状态'}{row.optimistic ? (row.status === 'ambiguous' ? ' · 自动核对中' : row.status === 'queued' ? ' · 待发送' : row.status === 'blocked' ? ' · 发送受阻' : row.status === 'accepted' ? ' · ' + (row.receiptState ? stateName[row.receiptState] : '已接收') : ' · 提交中') : !row.refSeq ? ' · 草稿' : ''}</Text>
     <MessageContent text={row.text} />
     {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || a.id}（{a.state}）</Text>)}
   </View>;
@@ -34,9 +34,7 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
-  record: SendRecord | null;
-  onRetry(): void;
-  onAbandon(): void;
+  records: SendRecord[];
   receipts: Receipt[];
   interactions: Interaction[];
   answers: Record<string, string>;
@@ -137,12 +135,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         {action('提交回答', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
       </View>}
     </View>)}</ScrollView>}
-    {props.record?.threadId === props.threadId && <View style={styles.receipt}>
-      <Text style={styles.receiptText}>{sendDescription(props.record)}</Text>
-      {props.record.status === 'ambiguous' && <View style={styles.controlRow}>{action('原样重试', props.onRetry, props.busy)}{action('放弃旧消息重试权', props.onAbandon, props.busy, true)}</View>}
+    {!!props.records.length && <View style={styles.receipt}>
+      <Text style={styles.receiptText}>{props.records.length} 条本机发送记录 · {props.records.map(sendDescription).join('；')}</Text>
     </View>}
     <View style={styles.composer}><TextInput accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
-      {action('发送', props.onSend, props.busy || !props.text.trim() || props.record?.status === 'ambiguous')}
+      {action('发送', props.onSend, props.busy || !props.text.trim())}
     </View>
   </View>;
 });

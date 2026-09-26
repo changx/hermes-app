@@ -2,7 +2,7 @@ import type { Receipt } from '../../../packages/client/src/index';
 
 export const DEFAULT_BASE = 'https://agent.tuly.space';
 export interface Connection { baseUrl: string; token: string; id: string }
-export type SendState = 'sending' | 'ambiguous' | 'accepted';
+export type SendState = 'queued' | 'sending' | 'ambiguous' | 'accepted' | 'blocked';
 export interface SendRecord {
   connectionId: string;
   threadId: string;
@@ -54,12 +54,12 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   const r = value as Partial<SendRecord>;
   if (r.connectionId !== config.id) return null;
   if (typeof r.threadId !== 'string' || typeof r.clientMessageId !== 'string' || typeof r.text !== 'string' || !r.text.trim() ||
-      !/^mob_[a-f0-9-]{36}$/i.test(r.clientMessageId) || !['sending','ambiguous','accepted'].includes(r.status || '')) throw new Error('待发送记录损坏');
+      !/^mob_[a-f0-9-]{36}$/i.test(r.clientMessageId) || !['queued','sending','ambiguous','accepted','blocked'].includes(r.status || '')) throw new Error('待发送记录损坏');
   if (r.status === 'accepted' && typeof r.receiptId !== 'string') throw new Error('收据记录损坏');
   // A process may have died after dispatch but before storing the response.
   return { ...r, status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;
 }
 export function sendDescription(record: SendRecord): string {
-  const states: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行状态不明（请人工确认）' };
-  return record.status === 'sending' ? '提交中，尚未确认接收' : record.status === 'ambiguous' ? '接收结果不明；仅可用原 ID 和原文重试' : `已持久接收 · ${record.receiptState ? states[record.receiptState] : '查询中'}`;
+  const states: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行结果待核对（不会自动重跑）' };
+  return record.status === 'queued' ? '已保存在本机 · 等待连接' : record.status === 'sending' ? '提交中' : record.status === 'ambiguous' ? '正在自动核对接收状态' : record.status === 'blocked' ? '发送受阻 · 记录已保留' : `已接收 · ${record.receiptState ? states[record.receiptState] : '查询中'}`;
 }

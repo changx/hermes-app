@@ -30,7 +30,7 @@ test('ambiguous send survives restart and retry preserves exact ID, thread and b
   assert.equal(restored?.status, 'ambiguous');
   const retry = retrySend(config, restored);
   assert.deepEqual([retry.threadId, retry.clientMessageId, retry.text], ['th_1', id1, ' 你好\n ']);
-  assert.match(sendDescription(restored), /原 ID 和原文/);
+  assert.match(sendDescription(restored), /自动核对/);
   assert.throws(() => retrySend(connection(DEFAULT_BASE, 'other', 'two'), restored));
   assert.equal(restoreSend(JSON.stringify(original), connection(DEFAULT_BASE, 'other', 'two')), null);
 });
