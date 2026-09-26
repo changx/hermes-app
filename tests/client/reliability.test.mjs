@@ -82,6 +82,50 @@ test('rapid close/resume ignores old callbacks and never marks online before new
   assert.notEqual(c.connectionState,'online');sockets[1].emit(hello);await until(()=>c.connectionState==='online');c.close();
 });
 
+test('socket close aborts replay; late HTTP and receipt callbacks cannot mutate a successor',async()=>{
+  const sockets=[],oldSync=deferred(),oldReceipt=deferred();let syncs=0,receiptCalls=0;
+  const event={event_id:1,cursor:'c1',kind:'receipt',thread_id:'th',ref:'r1',version:1};
+  const page={status:200,body:{events:[event],waterline:'c1',next_cursor:'c1',has_more:false}};
+  const c=fixture((_m,p)=>{
+    if(p.startsWith('/v1/sync'))return ++syncs===2?oldSync.promise:[4,5].includes(syncs)?page:empty;
+    if(p==='/v1/receipts/r1')return ++receiptCalls===1?oldReceipt.promise:{status:200,body:{receipt:{id:'r1',client_message_id:'current',thread_id:'th',state:'completed',durable:true}}};
+    throw Error(p);
+  },sockets,{requestTimeoutMs:200});
+  c.cursor='c0';await c.connect();
+  try {
+    await until(()=>sockets.length===1);await until(()=>syncs===2);
+    sockets[0].drop();await until(()=>sockets.length===2);
+    await until(()=>receiptCalls===1);
+    sockets[1].drop();await until(()=>sockets.length===3);
+    await until(()=>c.receipts.get('r1')?.state==='completed');
+    oldSync.resolve(page);
+    oldReceipt.resolve({status:200,body:{receipt:{id:'r1',client_message_id:'stale',thread_id:'th',state:'queued',durable:true}}});
+    await tick();
+    assert.equal(c.receipts.get('r1').client_message_id,'current');
+    assert.equal(c.cursor,'c1');assert.equal(c.lastEventId,1);
+  } finally {c.close()}
+});
+
+test('burst frames and periodic liveness coalesce into one in-flight plus one dirty replay',async()=>{
+  let syncs=0;const first=deferred(),second=deferred(),sockets=[];
+  const c=fixture((_m,p)=>{
+    if(p.startsWith('/v1/sync'))return ++syncs===2?first.promise:syncs===3?second.promise:empty;
+    throw Error(p);
+  },sockets,{livenessMs:15,requestTimeoutMs:200});
+  c.cursor='c0';await c.connect();
+  try {
+    await until(()=>syncs===2);
+    const frame=JSON.stringify({type:'event',event_id:1,cursor:'c1',kind:'receipt',thread_id:'th',ref:'r1',version:1});
+    for(let i=0;i<500;i++)sockets[0].emit(frame);
+    await pause(30);assert.equal(syncs,2);assert.equal(c.connectionState,'syncing');
+    first.resolve(empty);await until(()=>syncs===3);
+    for(let i=0;i<500;i++)sockets[0].emit(frame);
+    assert.equal(syncs,3);
+    second.resolve(empty);await until(()=>c.connectionState==='online');
+    assert.equal(syncs,4);assert.deepEqual(sockets[0].sent,['ping']);
+  }finally{c.close()}
+});
+
 test('HTTP, WS opening and hello timeouts are bounded even with abort-insensitive adapters',async()=>{
   let attempts=0,lateClosed=0;const late=deferred(),sockets=[];
   const c=fixture((_m,p)=>p.startsWith('/v1/sync')?empty:Promise.reject(Error(p)),sockets,{connectTimeoutMs:15,backoffMs:[5],socket:{connect:async()=>{attempts++;if(attempts===1)return late.promise;const s=socket(false);sockets.push(s);return s}}});
@@ -127,6 +171,71 @@ test('only explicitly identified expired sync cursor auto-resyncs; 400/foreign/f
   const x=fixture(()=>({status:400,body:'invalid sync cursor'}),[]);x.cursor='foreign';await assert.rejects(x.catchUp(),ResyncRequired);assert.equal(x.cursor,'foreign');
 });
 
+test('recognized expiry during live replay resyncs even after bootstrap recovery',async()=>{
+  const sockets=[];let snapshots=0,syncs=0;
+  const expiry={status:410,body:{code:'cursor_expired'}};
+  const c=fixture(()=>{throw Error('unreachable')},sockets,{http:{request:async(_m,p)=>{
+    if(p==='/v1/capabilities')return caps;
+    if(p.startsWith('/v1/snapshot')){snapshots++;return snap}
+    if(p==='/v1/channels')return {status:200,body:{channels:[]}};
+    if(p.startsWith('/v1/sync'))return [1,4].includes(++syncs)?expiry:empty;
+    throw Error(p);
+  }}});
+  c.cursor='expired';c.receipts.set('obsolete',{id:'obsolete',client_message_id:'old',thread_id:'th',state:'queued',durable:true});
+  await c.connect();
+  try {
+    await until(()=>sockets.length===1);await until(()=>c.connectionState==='online');
+    sockets[0].emit(JSON.stringify({type:'event',event_id:1,cursor:'ignored',kind:'receipt',thread_id:'th',ref:'r1',version:1}));
+    await until(()=>sockets.length===2);await until(()=>c.connectionState==='online');
+    assert.equal(snapshots,2);assert.equal(c.receipts.size,0);assert.equal(c.cursor,'c0');
+  }finally{c.close()}
+});
+
+test('a confirmed pong rearms recovery for a later genuine expiry',async()=>{
+  const sockets=[];let syncs=0,snapshots=0;
+  const expired={status:410,body:{code:'cursor_expired'}};
+  const c=fixture(()=>{throw Error('unreachable')},sockets,{livenessMs:15,http:{request:async(_m,p)=>{
+    if(p==='/v1/capabilities')return caps;
+    if(p.startsWith('/v1/snapshot')){snapshots++;return snap}
+    if(p==='/v1/channels')return {status:200,body:{channels:[]}};
+    if(p.startsWith('/v1/sync'))return [1,5].includes(++syncs)?expired:empty;
+    throw Error(p);
+  }}});
+  c.cursor='c0';await c.connect();try {
+    await until(()=>sockets.length===1);await until(()=>c.connectionState==='online');
+    await until(()=>sockets[0].sent.length===1);sockets[0].emit('pong');
+    sockets[0].emit(JSON.stringify({type:'event',event_id:1,cursor:'ignored',kind:'receipt',thread_id:'th',ref:'r1',version:1}));
+    await until(()=>sockets.length===2);await until(()=>c.connectionState==='online');
+    assert.equal(snapshots,2);assert.equal(syncs,7);
+  }finally{c.close()}
+});
+
+test('repeated bad expiry stops resetting; 400 during live still refuses to rewind',async()=>{
+  let snapshots=0,syncs=0;const sockets=[];
+  const expiry={status:410,body:{code:'cursor_expired'}};
+  const c=fixture(()=>expiry,sockets,{http:{request:async(_m,p)=>{
+    if(p==='/v1/capabilities')return caps;
+    if(p.startsWith('/v1/snapshot')){snapshots++;return snap}
+    if(p==='/v1/channels')return {status:200,body:{channels:[]}};
+    if(p.startsWith('/v1/sync')){syncs++;return expiry}
+    throw Error(p);
+  }}});
+  c.cursor='old';await c.connect();try {await until(()=>c.connectionState==='suspended');assert.equal(snapshots,2);assert.equal(syncs,3);assert.equal(sockets.length,0)}finally{c.close()}
+
+  let resets=0,requests=0;const liveSockets=[];const live=fixture(()=>{throw Error('unreachable')},liveSockets,{http:{request:async(_m,p)=>{
+    if(p==='/v1/capabilities')return caps;
+    if(p.startsWith('/v1/snapshot')){resets++;return snap}
+    if(p.startsWith('/v1/sync'))return ++requests===3?{status:400,body:{code:'invalid_cursor'}}:empty;
+    throw Error(p);
+  }}});
+  live.cursor='c0';await live.connect();try {
+    await until(()=>live.connectionState==='online');
+    liveSockets[0].emit(JSON.stringify({type:'event',event_id:1,cursor:'ignored',kind:'receipt',thread_id:'th',ref:'r1',version:1}));
+    await until(()=>live.connectionState==='suspended');
+    assert.equal(resets,0);assert.equal(requests,3);assert.equal(live.cursor,'c0');
+  }finally{live.close()}
+});
+
 test('idle durable replay repairs a missed message into latest history with exact send identity',async()=>{
   let syncs=0,history=0;const sockets=[];
   const c=fixture((_method,path)=>{
@@ -144,6 +253,31 @@ test('fifth send argument aborts the same-ID request without automatic resubmiss
   await until(()=>writes===1);controller.abort();await assert.rejects(pending,/aborted/);
   gate.resolve({status:202,body:{receipt:{id:'r1',client_message_id:'same-id',thread_id:'th',state:'queued',durable:true}}});await tick();
   assert.equal(writes,1);assert.equal(c.receipts.size,0);
+});
+
+test('resync clears stale receipts and sequence fences while preserving receipt identity',async()=>{
+  const staleThread=deferred(),staleReceipt=deferred();let threadCalls=0,receiptCalls=0,conflict=false;
+  const summary={id:'th',project_id:'p',title:'snapshot',archived:0,last_ref:0,read_ref:0,unread_count:0};
+  const fresh={id:'r1',client_message_id:'original',thread_id:'th',state:'running',durable:true};
+  const c=fixture(()=>{throw Error('unreachable')},[],{http:{request:async(_m,p)=>{
+    if(p.startsWith('/v1/snapshot'))return {status:200,body:{threads:[{...summary,active_receipts:[fresh]}],waterline:'c0',next_after:null}};
+    if(p==='/v1/channels')return {status:200,body:{channels:[]}};
+    if(p.startsWith('/v1/sync'))return empty;
+    if(p==='/v1/threads/th')return ++threadCalls===1?staleThread.promise:{status:200,body:{thread:{id:'th',project_id:'p',title:'fresh',archived:0}}};
+    if(p==='/v1/receipts/r1')return ++receiptCalls===1?staleReceipt.promise:{status:200,body:{receipt:{...fresh,client_message_id:conflict?'forged':'original',state:'completed'}}};
+    throw Error(p);
+  }}});
+  c.cursor='c0';c.receipts.set('obsolete',{id:'obsolete',client_message_id:'old',thread_id:'th',state:'queued',durable:true});
+  const oldThread=c.getThread('th');const oldReceipt=c.getReceipt('r1');await until(()=>threadCalls===1&&receiptCalls===1);
+  await c.resync();assert.equal(c.receipts.has('obsolete'),false);
+  await c.getThread('th');await c.getReceipt('r1');
+  staleThread.resolve({status:200,body:{thread:{id:'th',project_id:'p',title:'stale',archived:0}}});
+  staleReceipt.resolve({status:200,body:{receipt:{...fresh,state:'queued'}}});
+  await Promise.all([oldThread,oldReceipt]);
+  assert.equal(c.threads.get('th').title,'fresh');assert.equal(c.receipts.get('r1').state,'completed');
+  conflict=true;await c.resync();
+  await assert.rejects(c.getReceipt('r1'),e=>e instanceof ProtocolError && /identity/.test(e.message));
+  assert.equal(c.receipts.get('r1').client_message_id,'original');
 });
 
 test('credential changes cannot reuse cached identity or reconnect under a new bearer',async()=>{

@@ -77,6 +77,7 @@ export class HermesClient {
   readonly channels = new Map<string, Channel>();
   readonly threads = new Map<string, ThreadSummary>();
   readonly receipts = new Map<string, Receipt>();
+  private receiptIdentity = new Map<string, string>();
   readonly interactions = new Map<string, Interaction>();
   readonly attachments = new Map<string, Attachment>();
   readonly messages = new Map<string, Message[]>();
@@ -90,6 +91,7 @@ export class HermesClient {
   private versions = new Map<string, number>();
   private fetchSequence = 0;
   private entitySequence = new Map<string, number>();
+  private projectionEpoch = 0;
   private _connectionState: ConnectionState = 'suspended';
   get connectionState(): ConnectionState { return this._connectionState }
   private capabilitiesReady = false;
@@ -110,6 +112,9 @@ export class HermesClient {
   }
   private storeReceipt(receipt: Receipt) {
     const previous=this.receipts.get(receipt.id);
+    const identity=JSON.stringify([receipt.thread_id,receipt.client_message_id]);
+    if (this.receiptIdentity.has(receipt.id) && this.receiptIdentity.get(receipt.id)!==identity) throw new ProtocolError('receipt identity mismatch');
+    this.receiptIdentity.set(receipt.id,identity);
     const stage=(state: ReceiptState) => state==='queued'?0:state==='running'?1:2;
     if (!previous || stage(receipt.state)>stage(previous.state) || previous.state===receipt.state) {
       this.receipts.set(receipt.id,receipt); this.changed();
@@ -129,9 +134,9 @@ export class HermesClient {
   }
   async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.capabilitiesReady=true; return x }
   async listChannels(signal?: AbortSignal): Promise<Channel[]> {
-    const seq = ++this.fetchSequence; const x = await this.call('GET','/v1/channels',undefined,signal);
+    const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/channels',undefined,signal);
     const channels = arr(x.channels).map(validChannel);
-    if (seq >= (this.entitySequence.get('channels') || 0)) { this.channels.clear(); channels.forEach(c => this.channels.set(c.id,c)); this.entitySequence.set('channels',seq); this.changed() }
+    if (epoch===this.projectionEpoch && seq >= (this.entitySequence.get('channels') || 0)) { this.channels.clear(); channels.forEach(c => this.channels.set(c.id,c)); this.entitySequence.set('channels',seq); this.changed() }
     return channels;
   }
   async createChannel(name: string, description = ''): Promise<Channel> { const x = await this.call('POST','/v1/channels',{name,description}); const c = validChannel(x.channel); this.channels.set(c.id,c); this.changed(); return c }
@@ -140,9 +145,9 @@ export class HermesClient {
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }
   async createThread(channelId: string, title: string): Promise<Thread> { const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title}); return validThread(x.thread) }
   async getThread(id: string, rank = this.lastEventId, signal?: AbortSignal): Promise<Thread> {
-    const seq = ++this.fetchSequence; const x = await this.call('GET','/v1/threads/'+idPath(id),undefined,signal); const thread = validThread(x.thread);
+    const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/threads/'+idPath(id),undefined,signal); const thread = validThread(x.thread);
     const key = 'thread:'+id;
-    if (rank >= (this.versions.get(key) || 0) && seq >= (this.entitySequence.get(key) || 0)) {
+    if (epoch===this.projectionEpoch && rank >= (this.versions.get(key) || 0) && seq >= (this.entitySequence.get(key) || 0)) {
       const old = this.threads.get(id); this.threads.set(id,{...old,...thread,last_ref:old?.last_ref || 0,read_ref:old?.read_ref || 0,unread_count:old?.unread_count || 0});
       this.versions.set(key,rank); this.entitySequence.set(key,seq); this.changed();
     }
@@ -153,12 +158,14 @@ export class HermesClient {
   async send(threadId: string, clientMessageId: string, text: string, attachments: string[] = [], signal?: AbortSignal): Promise<Receipt> {
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || !text.trim()) throw new ProtocolError('invalid send');
     if(attachments.length>8 || new Set(attachments).size!==attachments.length || attachments.some(a=>!a.startsWith('att_'))) throw new ProtocolError('invalid attachments');
+    const epoch=this.projectionEpoch;
     const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/messages',{client_message_id:clientMessageId,text,...(attachments.length?{attachments:[...attachments]}:{})},signal);
     const r = validReceipt(x.receipt);
     if (r.thread_id !== threadId || r.client_message_id !== clientMessageId) throw new ProtocolError('receipt identity mismatch');
+    if(epoch!==this.projectionEpoch)return r;
     this.storeReceipt(r); return this.receipts.get(r.id)!;
   }
-  async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); this.storeReceipt(r); return this.receipts.get(id)! }
+  async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const epoch=this.projectionEpoch; const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); if(epoch!==this.projectionEpoch)return r; this.storeReceipt(r); return this.receipts.get(id)! }
   async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
   async answerInteraction(item:Interaction,choice:string):Promise<void> {const x=await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/interactions/'+idPath(item.id)+'/answer',{choice,receipt_id:item.receipt_id,generation:item.generation});if(x.state!=='settled'||x.request_id!==item.id)throw new ProtocolError('answer not settled');this.interactions.delete(item.id);this.changed()}
   async stop(threadId:string):Promise<boolean> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/stop',{});return x.stopped===true}
@@ -241,10 +248,12 @@ export class HermesClient {
   }
   async markRead(threadId: string, visibleRef: number) { num(visibleRef); const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/read',{ref_seq:visibleRef}); const ref=num(x.ref_seq); const old=this.threads.get(threadId); if (old && ref>=old.read_ref) { old.read_ref=ref; old.unread_count=num(x.unread_count); this.changed() } return ref }
   async snapshot(signal?: AbortSignal): Promise<void> {
+    const epoch=this.projectionEpoch;
     let after: string|null=null; let earliest: string|null=null; const pages: ThreadSummary[]=[];
     do { const x=await this.call('GET','/v1/snapshot'+query({after,limit:100}),undefined,signal); if (earliest===null) earliest=str(x.waterline); pages.push(...arr(x.threads).map(validSummary)); after=optionalCursor(x.next_after) } while(after);
+    if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
     await this.listChannels(signal);
-    if (signal?.aborted) throw new Error('aborted');
+    if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
     for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) this.threads.set(t.id,t); for(const r of t.active_receipts||[])this.storeReceipt(r);for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
     this.cursor=earliest; this.lastEventId=0; this.changed();
   }
@@ -280,7 +289,7 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
   /** Starts one recovery loop; resolves immediately, not as a readiness signal. */
   async connect(): Promise<void> {
     if (this.controller) return;
@@ -289,23 +298,29 @@ export class HermesClient {
   }
   /** Optional fast path after foreground/network changes; ordinary recovery needs no click. */
   async retryNow(): Promise<void> { this.close(); await this.connect() }
-  private async live(socket: Socket, gen: number, signal: AbortSignal, stable: () => void): Promise<void> {
+  private async live(socket: Socket, gen: number, attempt: AbortController, stable: () => void): Promise<void> {
+    const signal=attempt.signal;
     await new Promise<void>((resolve,reject) => {
-      let done=false, hello=false, awaitingPong=false, pendingReplays=0;
-      const life=new AbortController();
+      let done=false, hello=false, awaitingPong=false, dirty=false, replayJob: Promise<void> | null=null;
       let helloTimer: ReturnType<typeof setTimeout> | undefined;
       const active=()=>!done && !signal.aborted && gen===this.generation;
       const finish=(error?: unknown) => {
-        if(done)return; done=true; clearTimeout(helloTimer); life.abort(); signal.removeEventListener('abort',abort);
+        if(done)return; done=true; clearTimeout(helloTimer); signal.removeEventListener('abort',abort); attempt.abort();
         if(error)reject(error);else resolve();
       };
       const abort=()=>finish();
-      const replayNow=()=>{
-        pendingReplays++;this.state('syncing');
-        void this.catchUp(signal).then(()=>{
-          pendingReplays--;
-          if(active() && pendingReplays===0)this.state('online');
-        },finish);
+      const replayNow=(): Promise<void> => {
+        if(!active())return Promise.resolve();
+        dirty=true;this.state('syncing');
+        if(!replayJob) replayJob=Promise.resolve().then(async()=>{
+          try {
+            // Frames and periodic checks share one replay owner. A burst only
+            // requests one extra pass, rather than queuing a pass per frame.
+            while(dirty && active()) {dirty=false;await this.catchUp(signal)}
+          } catch(e) {finish(e)}
+          finally {replayJob=null;if(active())this.state('online')}
+        });
+        return replayJob;
       };
       signal.addEventListener('abort',abort,{once:true});
       helloTimer=setTimeout(()=>finish(new TimeoutError('hello timed out')),timeout(this.options.connectTimeoutMs,10000));
@@ -313,7 +328,7 @@ export class HermesClient {
       socket.onMessage(data => {
         if(!active())return;
         try {
-          if(data==='pong') { if(!hello)throw new ProtocolError('pong before hello'); awaitingPong=false; return }
+          if(data==='pong') { if(!hello)throw new ProtocolError('pong before hello'); if(awaitingPong)stable(); awaitingPong=false; return }
           const x=obj(JSON.parse(data));
           if(x.type==='hello') {
             if(hello || x.protocol!==1 || x.durable_sync!==true)throw new ProtocolError('invalid hello');
@@ -331,47 +346,52 @@ export class HermesClient {
       void (async()=>{
         const interval=timeout(this.options.livenessMs,30000);
         while(active()) {
-          try { await wait(interval,life.signal) } catch { break }
+          try { await wait(interval,signal) } catch { break }
           if(!active())break;
           if(!hello)continue;
           if(socket.send && awaitingPong) {finish(new TimeoutError('WebSocket liveness timed out'));break}
           try {
             // Durable replay repairs missed frames even if the TCP socket is half-open.
-            pendingReplays++;this.state('syncing'); await this.catchUp(signal);pendingReplays--;
+            await replayNow();
             if(!active())break;
             if(socket.send) {awaitingPong=true;socket.send('ping')}
             else { // Adapters without ping support rotate the socket periodically.
               stable();finish();break;
             }
-            stable();if(pendingReplays===0)this.state('online');
           } catch(e) {finish(e);break}
         }
       })();
     });
   }
   private async run(gen: number, controller: AbortController) {
-    const signal=controller.signal; let attempt=0, recoveredExpired=false;
+    const signal=controller.signal; let attempt=0, expiryResets=0, resetPending=false;
     const delays=this.options.backoffMs?.length ? this.options.backoffMs : [200,500,1000,2000,5000];
     try { while(!signal.aborted && gen===this.generation) {
       let socket: Socket | null=null, failure: unknown=null;
+      const owner=new AbortController();
+      const abort=()=>owner.abort();signal.addEventListener('abort',abort,{once:true});
+      if(signal.aborted)owner.abort();
+      const attemptSignal=owner.signal;
       try {
         this.state(attempt ? 'retrying' : 'connecting');
-        if(!this.capabilitiesReady)await this.capabilities(signal);
+        if(!this.capabilitiesReady)await this.capabilities(attemptSignal);
         this.state('syncing');
-        try { await this.catchUp(signal) }
-        catch(e) {
-          if(!(e instanceof ExpiredCursor) || recoveredExpired)throw e;
-          recoveredExpired=true; await this.resync(signal);
-        }
-        if(signal.aborted || gen!==this.generation)break;
+        if(resetPending) {resetPending=false;await this.resync(attemptSignal)}
+        else await this.catchUp(attemptSignal);
+        if(attemptSignal.aborted || gen!==this.generation)break;
         const cursor=this.cursor; if(!cursor)throw new ProtocolError('missing cursor');
-        const opened=await bounded(s=>this.options.socket.connect('/v1/events'+query({cursor}),this.token(),s),timeout(this.options.connectTimeoutMs,10000),signal,s=>s.close());
-        if(signal.aborted || gen!==this.generation) {opened.close();break}
+        const opened=await bounded(s=>this.options.socket.connect('/v1/events'+query({cursor}),this.token(),s),timeout(this.options.connectTimeoutMs,10000),attemptSignal,s=>s.close());
+        if(attemptSignal.aborted || gen!==this.generation) {opened.close();break}
         socket=opened; this.socket=socket;
-        await this.live(socket,gen,signal,()=>{attempt=0});
+        await this.live(socket,gen,owner,()=>{attempt=0;expiryResets=0});
       } catch(e) {failure=e}
-      finally {socket?.close();if(this.socket===socket)this.socket=null}
+      finally {owner.abort();signal.removeEventListener('abort',abort);socket?.close();if(this.socket===socket)this.socket=null}
       if(signal.aborted || gen!==this.generation)break;
+      if(failure instanceof ExpiredCursor && expiryResets<2) {
+        // A 410 is authoritative, but a broken server must not reset forever.
+        // Successful liveness clears the budget for future genuine expiries.
+        expiryResets++;resetPending=true;continue;
+      }
       if(failure) {
         const error=failure instanceof Error ? failure : new Error(String(failure));
         this.options.onError?.(error);
