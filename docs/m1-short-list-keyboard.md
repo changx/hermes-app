@@ -15,3 +15,8 @@ Jamie 在 iPhone 上反馈：只有一两条消息时打开键盘，消息被顶
 实际先 RED 后 GREEN：旧 style 下短列表与临界内容两项失败（不应上滚却上滚、临界内容过度上滚）；取消 flexGrow 后三项全部通过。全手机测试65/65、TypeScript、iOS与Android Metro导出、git diff --check通过。首次全测试因新worktree尚无SDK dist而失败，先从同版本SDK源码构建再运行通过；不将环境缺失冒充产品失败或忽略。无新增依赖。
 
 该回归测试执行真实生产 style 和锁定库 helper，但内容测量按 flexGrow 规则建模，不是 Yoga/原生渲染或 iPhone 手势验收。
+
+## 开发入口已更新
+
+代码 `ba48c60` 已发布到 `exps://agent.tuly.space`，仅更新并重启 Expo；双平台公网 manifest/实际 launchAsset 下载、包内自然高度 style、既有网络修正及 Expo 账号核验通过。两个 Gateway 的 PID/启动时间与插件哈希未变。回滚起点 `2e48596`，证据与验证脚本保存在私有 `workspace/hermes-app/m1-short-list-keyboard-verification/`。初次 bundle 内容断言误假定无空白的 minify 格式，检查真实包后改为允许空白并通过，不曾用假结果替代检查。Kanban `t_7eb46948` 保持 review；请在仅一两条消息的频道弹出/收起键盘并切前后台，再检查长列表阅读位置。
+
