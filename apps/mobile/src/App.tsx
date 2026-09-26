@@ -4,7 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { HermesClient } from '../../../packages/client/src/index';
+import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
 import type { Interaction, ThreadSummary } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
@@ -110,9 +110,9 @@ function Screen() {
         if (!active) return;
         setStatus(state === 'suspended' && appActive.current ? '同步暂时受阻' : networkName[state]); box?.setConnection(state);
         if (state === 'online') { setLoading(false); setError(''); setConnectionEpoch(n => n + 1); box?.reconcile(); }
-        if (state === 'blocked') { setLoading(false); setError('连接暂不可用；消息已保留，不会重复发送。'); }
+        if (state === 'blocked') { setLoading(false); setError((previous: string) => previous ? previous + '；消息已保留，不会重复发送。' : '连接暂不可用；消息已保留，不会重复发送。'); }
       },
-      onError: () => { /* transient transport faults are represented by connection state */ }
+      onError: (failure: Error) => { if (active) setError('连接诊断：' + connectionFailure(failure)); }
     } as ConstructorParameters<typeof HermesClient>[0]);
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;

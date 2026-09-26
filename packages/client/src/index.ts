@@ -18,10 +18,34 @@ export interface Options { http: HttpTransport; socket: SocketFactory; token: ()
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 export class ResyncRequired extends ProtocolError { constructor(message: string) { super(message); this.name = 'ResyncRequired' } }
 export class ExpiredCursor extends ResyncRequired { constructor() { super('expired sync cursor'); this.name = 'ExpiredCursor' } }
+const diagnosticRoute = (path: string): string => {
+  const clean=path.split('?')[0];
+  if(['/v1/capabilities','/v1/snapshot','/v1/sync'].includes(clean))return clean;
+  if(/^\/v1\/receipts\/[^/]+$/.test(clean))return '/v1/receipts/:id';
+  if(/^\/v1\/threads\/[^/]+\/messages$/.test(clean))return '/v1/threads/:id/messages';
+  if(/^\/v1\/threads\/[^/]+\/read$/.test(clean))return '/v1/threads/:id/read';
+  return 'API';
+};
 export class HttpError extends ProtocolError {
-  constructor(readonly status: number, readonly retryAfterMs?: number, path = '') { super('HTTP ' + status + (path ? ' ' + path : '')); this.name = 'HttpError' }
+  readonly route: string;
+  constructor(readonly status: number, readonly retryAfterMs?: number, path = '') {
+    super('HTTP ' + status + (path ? ' ' + path : '')); this.name = 'HttpError'; this.route=diagnosticRoute(path);
+  }
 }
 export class TimeoutError extends Error { constructor(message: string) { super(message); this.name = 'TimeoutError' } }
+/** Safe, ephemeral UI diagnostic. Never include native error text, URLs, IDs or response bodies. */
+export function connectionFailure(error: unknown): string {
+  if(error instanceof HttpError)return `HTTP ${error.status} · ${error.route}`;
+  if(error instanceof TimeoutError) {
+    if(error.message==='hello timed out')return 'WebSocket 握手超时';
+    if(error.message==='WebSocket liveness timed out')return 'WebSocket 心跳超时';
+    return 'HTTP 请求超时';
+  }
+  if(error instanceof ProtocolError)return '协议校验失败';
+  if(error instanceof TypeError)return '网络传输失败';
+  if(error instanceof Error && error.message==='WebSocket 连接失败')return 'WebSocket 连接失败';
+  return '连接异常';
+}
 export const isRetryableError = (error: unknown): boolean => error instanceof HttpError ? error.status === 429 || error.status >= 500 : error instanceof TimeoutError || (!(error instanceof ProtocolError) && !(error instanceof SyntaxError) && error instanceof Error && error.message !== 'aborted');
 const obj = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ProtocolError('invalid object'); return v as Record<string, unknown> };
 const str = (v: unknown): string => { if (typeof v !== 'string') throw new ProtocolError('invalid string'); return v };
@@ -301,7 +325,7 @@ export class HermesClient {
   private async live(socket: Socket, gen: number, attempt: AbortController, stable: () => void): Promise<void> {
     const signal=attempt.signal;
     await new Promise<void>((resolve,reject) => {
-      let done=false, hello=false, awaitingPong=false, dirty=false, replayJob: Promise<void> | null=null;
+      let done=false, hello=false, onlineReady=false, awaitingPong=false, dirty=false, replayJob: Promise<void> | null=null;
       let helloTimer: ReturnType<typeof setTimeout> | undefined;
       const active=()=>!done && !signal.aborted && gen===this.generation;
       const finish=(error?: unknown) => {
@@ -311,14 +335,18 @@ export class HermesClient {
       const abort=()=>finish();
       const replayNow=(): Promise<void> => {
         if(!active())return Promise.resolve();
-        dirty=true;this.state('syncing');
+        dirty=true;
+        // Initial hello/catch-up gates online. Once established, a healthy
+        // socket stays usable while durable events/read receipts replay.
+        if(!onlineReady)this.state('syncing');
         if(!replayJob) replayJob=Promise.resolve().then(async()=>{
           try {
             // Frames and periodic checks share one replay owner. A burst only
             // requests one extra pass, rather than queuing a pass per frame.
             while(dirty && active()) {dirty=false;await this.catchUp(signal)}
+            if(active()) {onlineReady=true;this.state('online')}
           } catch(e) {finish(e)}
-          finally {replayJob=null;if(active())this.state('online')}
+          finally {replayJob=null}
         });
         return replayJob;
       };
