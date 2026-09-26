@@ -12,3 +12,9 @@
 执行按钮切换、停止不受空正文限制、草稿保留、消息取消回调、待发/确认/历史颜色和动画测试；完整手机测试、TypeScript、双平台导出以及精确公网 bundle 验证。只更新 Expo 开发入口，不改 Gateway 或插件。真机效果由 Jamie 测试。
 
 本地验证：手机测试 91/91、TypeScript、iOS/Android 导出及 diff 检查通过。证据位于私有 `workspace/hermes-app/composer-tests.log`、`composer-ios.log`、`composer-android.log`。hook 测试执行生产颜色过渡逻辑，确认只在 pending→confirmed 时启动 240ms 过渡，重复渲染不重播，减少动态效果时直接换色；不等于 iPhone 视觉验收。
+
+## 开发发布结果
+
+已发布 `714a55ea22a78a11c2415708158dbe2836a34b86`，仅重启 Expo 服务。公网 iOS/Android manifest 及其精确 launchAsset 均返回新版本：旧停止工具条不存在，颜色过渡和此前滚动修正均存在。两套 Gateway 的 PID/启动时间及开发插件指纹未变。验证证据：私有 `workspace/hermes-app/composer-verification/release-verification.json`；回滚基线 `b662b63`。
+
+启动后首次请求短暂 502，服务就绪后验证通过；验证脚本最初匹配压缩形式的颜色时长，实际返回带空格的 JS，核对实际片段后修正匹配并验证双平台通过。iPhone 的可见颜色及操作手感仍待真机反馈。
