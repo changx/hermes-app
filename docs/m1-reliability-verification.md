@@ -1,6 +1,18 @@
 # M1 网络可靠性候选版验证
 
-## 结论与范围
+## 开发发布结果（当前）
+
+2026-09-26，用户明确授权重新写入 AGENTS.md 并更新手机 App。发布代码 `bd0ca43`（含候选 `1389b8c`），main 已快进；AGENTS.md 增补用户无需处理令牌、设备配对及开发发布隔离约定。
+
+- 仅开发 Gateway 和 Expo 在 10:20:10 PDT 重启；Jamie 主实例 PID `3919154`、启动时间 `07:37:51 PDT` 未变。
+- 发布目录再次执行手机 TypeScript 与全部52项手机测试通过；部署插件8个文件逐一与验收归档匹配。
+- 公网认证 HTTP 与 WS hello、未认证401、历史分页/身份、配对管理接口通过；发布前3个话题与历史保留。
+- iOS/Android 公网 manifest 与实际 launchAsset 下载通过，SDK57，Expo账号 `jamsben`；包内包含新配对代码。iOS SHA-256 `0bcebb71c3a2d504accc3a52c09785b642e7f1a7b8a20f58cafc51c3666536ba`，Android `91e64767f20e832793d7883e9c9668bce7cd28c3e298ce1b5c7b1655fbba2657`。
+- 入口 `exps://agent.tuly.space`；已有设备连接继续兼容。iPhone切网/后台/强杀等故障实测仍未完成，本次不关闭首版总卡。
+- 发布卡 `t_0ead0059`；证据目录下 `release-apply.log`、`release-verification.json`、`release-assets.json`。`rollback-pre-reliability/` 保留旧插件、原main提交、数据库一致性备份、历史快照与主实例身份，不提交真实数据。
+- 回滚须单独授权：先停对应开发服务，恢复记录的代码与插件再启动并验证。不要盲目恢复旧数据库覆盖发布后的消息；本次数据库变更为增量配对表。
+
+## 候选阶段结论与范围（发布前记录）
 
 代码候选 `baa277d`，分支 `jamie/m1-reliable-integrate`。主控集成并独立执行全部下列检查，通过本地自动化和隔离真实 Gateway 联调。**未部署、未完成iPhone验收、不是首版全量完成。** 运行目录仍为 `/opt/projects/jamie/hermes-app`；保留该目录，不将合入main视为无副作用操作，因为Expo正在从中提供测试包。
 

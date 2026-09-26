@@ -2,6 +2,10 @@
 
 ## 当前状态补充
 
+2026-09-26 可靠性版已根据 Jamie“再写 AGENTS.md，更新手机 app”授权发布，运行代码 `bd0ca43`（含候选 `1389b8c`）。插件归档 SHA-256：`dad18bde21f273413926f151ab45ee858a07fa3bcc1a5e20815a65d9a396f17e`。只重启隔离开发 Gateway 与 Expo；公网 HTTP/WS、配对管理路由、历史及 iOS/Android 新 bundle 均通过，Expo 账号 `jamsben`。Jamie 主实例 PID/启动时间不变。入口仍为 `exps://agent.tuly.space`，手机重开项目加载新版。回滚与本轮证据在私有 `workspace/hermes-app/m1-reliability-verification/`；详见 [可靠性验证](m1-reliability-verification.md)。iPhone 故障矩阵仍未验收，不能据发布成功关闭首版总卡。
+
+### 上一版 M1 发布（历史）
+
 M1 已获授权部署，当前开发插件归档 SHA-256 为 `1c726ac8177ee7eadb1ff33e56e91026ef0cbfbcfeeed787be20bc5280b36a40`。Expo 开发入口已更新，账号 `jamsben`、SDK 57；开发 Gateway 与 Expo 服务已重启并通过公网接口及 iOS bundle 检查，Jamie 主实例未重启。发布验收与真机待验收项见 [M1 验证](m1-verification.md)，回滚和证据保留于私有 `workspace/hermes-app/m1-verification/`。AGENTS.md 已成功更新；下方初次搭建中的旧状态仅作历史记录。
 
 后续已正确持久化独立开发 Codex OAuth，并通过真实 openai-codex / gpt-6-luna 消息联调；Jamie 已在 iPhone 确认基本通讯正常。下面早期的 No Codex credentials stored 是历史阻塞，现已解除。开发部署重启持久化及 SQLite 运行时风险仍待验收，原卡 t_42490468 依赖 t_c0dc25f5，见 [P2/P3 Kanban](p2-p3-kanban.md)。
