@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+M1 已获授权部署，当前开发插件归档 SHA-256 为 `1c726ac8177ee7eadb1ff33e56e91026ef0cbfbcfeeed787be20bc5280b36a40`。Expo 开发入口已更新，账号 `jamsben`、SDK 57；开发 Gateway 与 Expo 服务已重启并通过公网接口及 iOS bundle 检查，Jamie 主实例未重启。发布验收与真机待验收项见 [M1 验证](m1-verification.md)，回滚和证据保留于私有 `workspace/hermes-app/m1-verification/`。AGENTS.md 已成功更新；下方初次搭建中的旧状态仅作历史记录。
+
 后续已正确持久化独立开发 Codex OAuth，并通过真实 openai-codex / gpt-6-luna 消息联调；Jamie 已在 iPhone 确认基本通讯正常。下面早期的 No Codex credentials stored 是历史阻塞，现已解除。开发部署重启持久化及 SQLite 运行时风险仍待验收，原卡 t_42490468 依赖 t_c0dc25f5，见 [P2/P3 Kanban](p2-p3-kanban.md)。
 
 ## 初次开发状态（历史记录）
