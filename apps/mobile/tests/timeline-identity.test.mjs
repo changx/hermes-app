@@ -14,6 +14,9 @@ test('same text separate sends and pending queued messages retain separate ident
   assert.deepEqual(rows.map(x=>x.key),['local:one','local:two']);
   assert.equal(projectTimeline([],record,'foreign',undefined,true,[other]).length,0);
 });
+test('cold restart does not resurrect completed local send outside latest page', () => {
+  assert.equal(projectTimeline([], {...record,receiptState:'completed'}, 't', undefined, true).length,0);
+});
 test('manual upward movement releases follow even inside bottom threshold', () => {
   assert.equal(followAfterUserScroll(500,495,1000,500),false);
   assert.equal(followAfterUserScroll(490,500,1000,500),true);

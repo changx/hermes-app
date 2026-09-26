@@ -41,8 +41,12 @@ try {
   const channel=await desktop.createChannel('P105 synthetic channel','Synthetic description');
   assert.ok((await desktop.listChannels()).some(c=>c.id===channel.id));
   assert.ok((await mobile.listChannels()).some(c=>c.id===channel.id));
+  await desktop.updateChannel(channel.id,{name:'M1 channel edited',description:'Updated new-thread context'});
+  assert.equal((await mobile.listChannels()).find(c=>c.id===channel.id).description,'Updated new-thread context');
   const thread=await desktop.createThread(channel.id,'P105 first');
   const other=await mobile.createThread(channel.id,'P105 second');
+  await desktop.updateThread(thread.id,{title:'M1 topic edited'});
+  assert.equal((await mobile.getThread(thread.id)).title,'M1 topic edited');
   await desktop.snapshot(); await mobile.snapshot();
   await desktop.connect(); await mobile.connect();
   await until(()=>desktop.socket && mobile.socket);
@@ -53,6 +57,14 @@ try {
   await until(async()=>['completed','failed','interrupted','unknown'].includes((await mobile.getReceipt(accepted.id)).state));
   assert.equal((await desktop.getReceipt(accepted.id)).state,'completed');
   await until(async()=>{await mobile.catchUp();await mobile.history(thread.id);return mobile.messages.get(thread.id)?.some(m=>m.role==='assistant' && m.text.includes('SYNTHETIC_P1_FINAL'))});
+  const latest=await mobile.historyWindow(thread.id,undefined,1);
+  assert.equal(latest.messages.length,1);
+  assert.equal(latest.messages[0].role,'assistant');
+  assert.ok(latest.older_cursor);
+  const older=await mobile.historyWindow(thread.id,latest.older_cursor,1);
+  assert.equal(older.messages[0].receipt_id,accepted.id);
+  assert.equal(older.messages[0].client_message_id,cid);
+  assert.equal(older.messages[0].role,'user');
   const approval=await desktop.send(thread.id,'approval-cold-1','P1_APPROVAL');
   await until(async()=>{await desktop.catchUp();return [...desktop.interactions.values()].find(i=>i.receipt_id===approval.id&&i.state==='pending')});
   const lateMobile=new HermesClient({...mobileTransport(url,RNWebSocketShim,fetch),token:()=>token});
@@ -114,7 +126,7 @@ try {
   await desktop.catchUp();await mobile.catchUp();await desktop.history(other.id);await mobile.history(other.id);
   assert.deepEqual(desktop.messages.get(other.id),mobile.messages.get(other.id));
   assert.equal(desktop.threads.get(thread.id).read_ref,last);
-  result={baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',packaged_plugin_loader:Boolean(process.env.P1_PACKAGED_PLUGIN_DIR),channel:channel.id,threads:[thread.id,other.id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,same_instance_reconnect:true,restart_replay:true,offline_execution:true,delayed_approval_bootstrap:true,competing_answers_one_winner:true,attachment_cold_download:true,cancel_stop_search:true,device_runtime:false};
+  result={baseline:'2f16a1aa5a35feec496949abdef7ad51aea0e7ef',desktop_client:'Node HTTP + ws',mobile_client:'React Native transport shape with Node ws shim',packaged_plugin_loader:Boolean(process.env.P1_PACKAGED_PLUGIN_DIR),channel:channel.id,threads:[thread.id,other.id],duplicate_receipt:accepted.id,second_receipt:second.id,states:['completed','completed'],first_history:before,second_history:mobile.messages.get(other.id),read_ref:last,same_instance_reconnect:true,restart_replay:true,offline_execution:true,delayed_approval_bootstrap:true,competing_answers_one_winner:true,attachment_cold_download:true,cancel_stop_search:true,latest_older_and_send_identity:true,channel_topic_edit:true,device_runtime:false};
   await writeFile(path.join(evidence,'real-gateway.json'),JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify({ok:true,threads:2,packaged_plugin_loader:result.packaged_plugin_loader,competing_answers_one_winner:true,same_instance_reconnect:true,restart_replay:true,offline_execution:true,evidence:path.join(evidence,'real-gateway.json')}));
 } finally {desktop?.close();mobile?.close();await stop();if(!process.env.P105_KEEP_CHILD)await rm(home,{recursive:true,force:true})}

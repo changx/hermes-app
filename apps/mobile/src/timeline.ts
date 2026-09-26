@@ -12,7 +12,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
   if (record) local.set(record.clientMessageId, record);
   for (const item of local.values()) {
     if (item.threadId !== threadId || published.has(item.clientMessageId)) continue;
-    if (item.status === 'accepted' && !supportsIdentity) continue;
+    if (item.status === 'accepted' && (!supportsIdentity || item.receiptState === 'completed')) continue;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, optimistic: true, status: item.status, receiptState: item.receiptState });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
