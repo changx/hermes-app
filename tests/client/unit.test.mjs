@@ -51,6 +51,37 @@ test('history de-duplicates refs, read advances monotonically, invalid data fail
   await c.markRead('th_1',3);await c.markRead('th_1',2);assert.equal(c.threads.get('th_1').read_ref,3);
   const bad=new HermesClient({...base,http:{async request(){return {status:200,body:{messages:'bad',next_cursor:null}}}}});await assert.rejects(bad.history('th_1'),ProtocolError);
 });
+test('background message catch-up never walks unbounded forward history',async()=>{
+  const paths=[];let more=true;
+  const c=new HermesClient({...base,http:{async request(_method,path){
+    paths.push(path);
+    const index=paths.length;
+    return {status:200,body:{messages:[{id:String(index+1),ref_seq:index+1,role:'assistant',text:'x'}],next_cursor:more?'opaque-'+index:null,incomplete_turns:[],turn_outcomes:[]}};
+  }}});
+  assert.deepEqual(await c.historyTail('th_1'),[]);
+  assert.equal(paths.length,0);
+  c.messages.set('th_1',[{id:'1',ref_seq:1,role:'user',text:'start'}]);
+  await assert.rejects(c.historyTail('th_1'),ProtocolError);
+  assert.equal(paths.length,3);
+  assert.match(paths[0],/after_ref_seq=1/);
+  assert.match(paths[1],/after=opaque-1/);
+  assert.ok(c.tailIncomplete.has('th_1'));
+  await assert.rejects(c.historyTail('th_1'),ProtocolError);
+  assert.equal(paths.length,3);
+  c.resumeTail('th_1');more=false;
+  await c.historyTail('th_1');
+  assert.equal(paths.length,4);
+});
+test('explicitly observed empty thread can receive its first live message',async()=>{
+  let published=false;let calls=0;
+  const c=new HermesClient({...base,http:{async request(){calls++;
+    return {status:200,body:{messages:published?[{id:'first',ref_seq:7,role:'user',text:'hi'}]:[],next_cursor:null,incomplete_turns:[],turn_outcomes:[]}};
+  }}});
+  await c.history('th_1');published=true;
+  await c.historyTail('th_1');
+  assert.equal(c.messages.get('th_1')[0].ref_seq,7);
+  assert.equal(calls,2);
+});
 test('socket event triggers durable replay; duplicate frames and close do not send or stop execution',async()=>{
   let emit,closeFrame,closed=0,connectPath,connectToken,posts=0,replays=0;
   let ready;const connected=new Promise(r=>ready=r);

@@ -62,6 +62,8 @@ export class HermesClient {
   private versions = new Map<string, number>();
   private fetchSequence = 0;
   private entitySequence = new Map<string, number>();
+  readonly tailIncomplete = new Set<string>();
+  private knownEmptyThreads = new Set<string>();
   constructor(private readonly options: Options) {}
   private changed() { this.options.onChange?.() }
   private storeReceipt(receipt: Receipt) {
@@ -125,6 +127,8 @@ export class HermesClient {
   async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number) {
     const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,limit}),undefined,signal);
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
+    if(!page.length && !existing.length && after===undefined && afterRefSeq===undefined && x.next_cursor===null) this.knownEmptyThreads.add(threadId);
+    if(page.length) this.knownEmptyThreads.delete(threadId);
     const byRef=new Map(existing.map(m=>[m.ref_seq,m])); page.forEach(m=>byRef.set(m.ref_seq,m));
     this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq)); this.changed();
     for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
@@ -135,7 +139,33 @@ export class HermesClient {
     do { const page=await this.history(threadId,after || undefined,100,signal); after=page.next_cursor } while(after);
     return this.messages.get(threadId) || [];
   }
-  async historyTail(threadId:string,signal?:AbortSignal) {const last=this.messages.get(threadId)?.at(-1)?.ref_seq;let page=await this.history(threadId,undefined,100,signal,last);while(page.next_cursor)page=await this.history(threadId,page.next_cursor,100,signal);return this.messages.get(threadId)||[]}
+  async historyTail(threadId:string,signal?:AbortSignal) {
+    if(this.tailIncomplete.has(threadId)) throw new ProtocolError('message catch-up paused; locate latest in thread');
+    const last=this.messages.get(threadId)?.at(-1)?.ref_seq;
+    // No known anchor: forward-only history starts at the OLDEST row. Do not
+    // silently download an unbounded transcript for a background event.
+    if (!last) {
+      if(!this.knownEmptyThreads.has(threadId)) return this.messages.get(threadId)||[];
+      const page=await this.history(threadId,undefined,100,signal);
+      if(page.next_cursor) {
+        this.tailIncomplete.add(threadId); this.changed();
+        throw new ProtocolError('message catch-up exceeds empty-thread page; locate latest in thread');
+      }
+      return this.messages.get(threadId)||[];
+    }
+    let cursor: string | null=null;
+    for(let i=0;i<3;i++) {
+      const page=await this.history(threadId,cursor??undefined,100,signal,cursor?undefined:last);
+      cursor=page.next_cursor;
+      if(!cursor) return this.messages.get(threadId)||[];
+    }
+    // Keep the event unacknowledged so reconnect can retry after explicit
+    // user-driven history location; never silently claim a complete tail.
+    this.tailIncomplete.add(threadId); this.changed();
+    throw new ProtocolError('message catch-up exceeds 300 refs; locate latest in thread');
+  }
+  /** Only after an explicit complete forward history traversal by the caller. */
+  resumeTail(threadId:string) { if(this.tailIncomplete.delete(threadId)) this.changed() }
   private async refreshSummaries(rank: number, signal?: AbortSignal) {
     let after: string | null = null;
     do {
@@ -192,7 +222,7 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal) { this.cursor=null; this.lastEventId=0; this.versions.clear(); this.threads.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
   async connect(): Promise<void> { if (this.controller) return; const controller=new AbortController(); this.controller=controller; const gen=++this.generation; void this.run(gen,controller) }
   private async run(gen: number, controller: AbortController) { const signal=controller.signal; let attempt=0; const delays=this.options.backoffMs||[200,500,1000,2000,5000];
     try { while(!signal.aborted && gen===this.generation) { let socket: Socket | null=null; try {
