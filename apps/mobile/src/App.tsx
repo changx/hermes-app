@@ -15,6 +15,7 @@ import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
 import { KeyboardDock } from './KeyboardDock';
 import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
+import { VisibleReceiptHydrator } from './receiptHydration';
 
 const messageError = (e: unknown) => e instanceof Error ? e.message : '操作失败';
 const networkName: Record<NetworkState, string> = { connecting: '连接中', syncing: '补齐中', online: '在线', retrying: '等待网络', suspended: '后台已暂停', blocked: '连接受阻' };
@@ -38,6 +39,7 @@ function Screen() {
   const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
+  const receiptHydrator = useRef(new VisibleReceiptHydrator());
   const positions = useRef(new Map<string, TimelinePosition>());
   const locatedThreads = useRef(new Set<string>());
   const olderCursors = useRef(new Map<string, string | null>());
@@ -249,10 +251,18 @@ function Screen() {
   const messages = threadId ? client?.messages.get(threadId) || [] : [];
   const first = windowStart(messages, startRef);
   const visibleMessages = located ? messages.slice(first) : [];
-  const rows = projectTimeline(visibleMessages, null, threadId || '', threadId ? client?.drafts.get(threadId) : undefined, client?.supportsSendIdentity, records);
-  const threadRecords = records.filter(r => r.threadId === threadId);
   const receipts = client && threadId ? [...client.receipts.values()].filter(r => r.thread_id === threadId && ['queued','running','unknown'].includes(r.state)) : [];
   const interactions = client && threadId ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
+  const rows = projectTimeline(visibleMessages, null, threadId || '', threadId ? client?.drafts.get(threadId) : undefined, client?.supportsSendIdentity, records, client?.receipts, interactions);
+  const threadRecords = records.filter(r => r.threadId === threadId && !rows.some(row => row.key === `local:${r.clientMessageId}`));
+  const unshownReceipts = receipts.filter(r => !rows.some(row => row.receipt?.id === r.id));
+  const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
+    .map(m => [m.receipt_id, m.client_message_id]));
+  useEffect(() => {
+    if (client && threadId && located && client.connectionState === 'online') receiptHydrator.current.update(client, threadId, visibleMessages, connectionEpoch);
+    else receiptHydrator.current.cancel();
+    return () => receiptHydrator.current.cancel();
+  }, [client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
   const selected = client?.threads.get(threadId || '') as ThreadSummary | undefined;
 
   const visibleRef = (ref: number) => {
@@ -296,7 +306,7 @@ function Screen() {
         onOlder={() => { void loadOlder(); }}
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
         text={text} onText={setText} onSend={send} records={threadRecords}
-        receipts={receipts} interactions={interactions} answers={answers}
+        receipts={unshownReceipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
         onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />}</KeyboardDock>
