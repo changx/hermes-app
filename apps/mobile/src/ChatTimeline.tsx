@@ -1,5 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, FlatList, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
@@ -67,12 +67,6 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const viewport = useRef(0), content = useRef(0), dragging = useRef(false), gestureMomentum = useRef(false), momentumEligible = useRef(false);
   const keyboardMoving = useRef(false);
   const nativeMoving = useSharedValue(false);
-  const setKeyboardMoving = useCallback((moving: boolean) => { keyboardMoving.current = moving; }, []);
-  useKeyboardHandler({
-    onStart: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
-    onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
-    onEnd: () => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); }
-  }, [setKeyboardMoving]);
   const scrollGeometry = useRef<ScrollGeometry | null>(null);
   const restored = useRef(false);
   const reducedMotion = useRef(false);
@@ -85,27 +79,46 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   }
   const frame = useRef<number | null>(null);
   const followAnimation = useRef(false);
+  const pendingFollow = useRef(false);
+  const animatingFollow = useRef(false);
   const scheduleFollow = useCallback((animate = false) => {
-    // A viewport/keyboard adjustment wins over a pending animated append.
-    if (!animate) followAnimation.current = false;
-    else if (frame.current === null) followAnimation.current = true;
+    // Geometry corrections must not turn a queued/ongoing append into a jump.
+    if (animate) followAnimation.current = true;
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      const animated = followAnimation.current && !reducedMotion.current && !keyboardMoving.current && !Keyboard.isVisible();
+      if (!following.current || dragging.current || gestureMomentum.current || momentumEligible.current) {
+        pendingFollow.current = false;
+        followAnimation.current = false;
+        return;
+      }
+      if (keyboardMoving.current) { pendingFollow.current = true; return; }
+      pendingFollow.current = false;
+      const animated = (followAnimation.current || animatingFollow.current) && !reducedMotion.current;
       followAnimation.current = false;
-      if (following.current && !dragging.current && !gestureMomentum.current && !momentumEligible.current) {
-        momentumEligible.current = false;
-        scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current);
+      if (scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current)) {
+        animatingFollow.current = animated;
       }
     });
   }, []);
+  const setKeyboardMoving = useCallback((moving: boolean) => {
+    keyboardMoving.current = moving;
+    if (!moving && pendingFollow.current) scheduleFollow();
+  }, [scheduleFollow]);
+  useKeyboardHandler({
+    onStart: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
+    onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
+    onEnd: () => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); }
+  }, [setKeyboardMoving]);
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) reducedMotion.current = value; }).catch(() => {});
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
     const app = AppState.addEventListener('change', state => {
-      if (state !== 'active') { keyboardMoving.current = false; nativeMoving.value = false; }
+      if (state !== 'active') {
+        keyboardMoving.current = false; nativeMoving.value = false;
+        pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+      }
     });
     return () => { mounted = false; sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
@@ -116,9 +129,20 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
-    scrollToExactEnd(list.current, content.current, viewport.current, animate && !reducedMotion.current && !keyboardMoving.current && !Keyboard.isVisible(), scrollGeometry.current?.inset ?? reportedInset.current); savePosition();
-  }, [savePosition]);
-  useImperativeHandle(ref, () => ({ followLatest, holdPosition() { following.current = false; setShowLatest(true); savePosition(); } }), [followLatest, savePosition]);
+    if (!animate) { followAnimation.current = false; animatingFollow.current = false; }
+    if (keyboardMoving.current) scheduleFollow(animate);
+    else {
+      const animated = animate && !reducedMotion.current;
+      if (scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current)) {
+        animatingFollow.current = animated;
+      }
+    }
+    savePosition();
+  }, [savePosition, scheduleFollow]);
+  useImperativeHandle(ref, () => ({ followLatest, holdPosition() {
+    following.current = false; pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+    setShowLatest(true); savePosition();
+  } }), [followLatest, savePosition]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
   const visible = useRef({ onVisibleRef });
   visible.current.onVisibleRef = onVisibleRef;
@@ -155,13 +179,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             restored.current = true;
             if (following.current) scheduleFollow();
             else list.current?.scrollToOffset({ offset: offset.current, animated: false });
-          } else if (shouldFollowContentChange(following.current, dragging.current || gestureMomentum.current || momentumEligible.current || keyboardMoving.current, previous, height)) scheduleFollow(appended.current);
+          } else if (!dragging.current && !gestureMomentum.current && !momentumEligible.current
+            && (shouldFollowContentChange(following.current, false, previous, height) || following.current && appended.current && height > 0)
+            && (!keyboardMoving.current || appended.current)) scheduleFollow(appended.current);
           appended.current = false;
         }}
-        onScrollBeginDrag={() => { dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; }}
+        onScrollBeginDrag={() => { dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; followAnimation.current = false; pendingFollow.current = false; }}
         onMomentumScrollBegin={() => { gestureMomentum.current = momentumEligible.current; momentumEligible.current = false; }}
         onScrollEndDrag={e => { dragging.current = false; momentumEligible.current = Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01; savePosition(); }}
-        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
+        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; savePosition(); }}
         onScroll={e => {
           const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
             (dragging.current || gestureMomentum.current) && !keyboardMoving.current, reportedInset.current);
@@ -179,7 +205,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         const hadDock = dockHeight.current > 0;
         dockHeight.current = height;
         // A growing composer/controls shrinks the flex list; only follow if already at latest.
-        if (hadDock && restored.current && following.current) scheduleFollow();
+        if (hadDock && restored.current && following.current && !keyboardMoving.current) scheduleFollow();
       }
     }}>
     {!!props.receipts.length && <ScrollView style={styles.controls} keyboardShouldPersistTaps="handled">{props.receipts.map(r => <View key={r.id} style={styles.controlRow}>

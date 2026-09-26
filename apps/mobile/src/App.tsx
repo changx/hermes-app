@@ -236,7 +236,7 @@ function Screen() {
     if (!config || !threadId || !box || box.storage.connectionId !== config.id) return;
     const original = text;
     await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID()));
-    timelineRef.current?.followLatest(false);
+    timelineRef.current?.followLatest();
     setText((old: string) => old === original ? '' : old);
   });
   const answer = (item: Interaction, choice: string) => run(async () => {
