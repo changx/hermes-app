@@ -5,12 +5,16 @@ type InlineKind = 'em' | 'strong' | 'strike' | 'link';
 export type Inline =
   | { kind: 'text' | 'code'; text: string }
   | { kind: 'image'; text: string; src: string | null }
+  | { kind: 'video'; text: string; src: string | null }
+  | { kind: 'math'; text: string }
   | { kind: 'break' }
   | { kind: InlineKind; children: Inline[]; href?: string | null };
 export type TableCell = { align: 'left' | 'center' | 'right' | null; children: Inline[] };
 export type Block =
   | { kind: 'paragraph' | 'heading'; children: Inline[]; level?: number }
   | { kind: 'code'; text: string; language: string }
+  | { kind: 'diagram' | 'math'; text: string }
+  | { kind: 'video'; text: string; src: string }
   | { kind: 'quote'; children: Block[] }
   | { kind: 'list'; ordered: boolean; start: number; items: Block[][]; checks: (boolean | null)[] }
   | { kind: 'table'; header: TableCell[]; rows: TableCell[][] }
@@ -19,6 +23,54 @@ export type Block =
 // markdown-it handles CommonMark and its built-in GFM tables/strikethrough.
 // HTML remains inert; linkify covers bare URLs but the URL gate still applies.
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+
+// Delimiters are recognized here; KaTeX (not this tokenizer) interprets math.
+markdown.inline.ruler.before('escape', 'message_math', (state, silent) => {
+  const start = state.pos;
+  if (state.src[start] !== '$' || state.src[start + 1] === '$' || /\s/.test(state.src[start + 1] || '')) return false;
+  let end = start + 1;
+  while (end < state.posMax) {
+    if (state.src[end] === '\\') { end += 2; continue; }
+    if (state.src[end] === '\n' || state.src[end] === '`') return false;
+    if (state.src[end] === '$' && state.src[end - 1] !== '$' && !/\s/.test(state.src[end - 1])) break;
+    end++;
+  }
+  if (end >= state.posMax || (state.src[end + 1] && /\d/.test(state.src[end + 1]))) return false;
+  if (!silent) state.push('message_math', '', 0).content = state.src.slice(start + 1, end);
+  state.pos = end + 1;
+  return true;
+});
+
+markdown.block.ruler.before('fence', 'message_display_math', (state, start, end, silent) => {
+  const first = state.src.slice(state.bMarks[start] + state.tShift[start], state.eMarks[start]);
+  if (!first.startsWith('$$')) return false;
+  let close = start;
+  let last = first;
+  let delimiter = first.indexOf('$$', 2);
+  while (delimiter < 0 && ++close < end) {
+    last = state.src.slice(state.bMarks[close] + state.tShift[close], state.eMarks[close]);
+    delimiter = last.indexOf('$$');
+  }
+  if (delimiter < 0) return false;
+  if (silent) return true;
+  const lines = [first.slice(2, close === start ? delimiter : undefined)];
+  for (let line = start + 1; line < close; line++) {
+    lines.push(state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]));
+  }
+  if (close !== start) lines.push(last.slice(0, delimiter));
+  state.push('message_display_math', '', 0).content = lines.join('\n').trim();
+  // A closing delimiter may share its line with ordinary prose. Keep that prose.
+  const remainder = last.slice(delimiter + 2).trim();
+  if (remainder) {
+    state.push('paragraph_open', 'p', 1);
+    const inline = state.push('inline', '', 0);
+    inline.content = remainder;
+    inline.children = [];
+    state.push('paragraph_close', 'p', -1);
+  }
+  state.line = close + 1;
+  return true;
+});
 
 /** Only web URLs may be opened or loaded; reject userinfo and controls. */
 export function safeLinkUrl(href: string): string | null {
@@ -30,6 +82,15 @@ export function safeLinkUrl(href: string): string | null {
   } catch {
     return null;
   }
+}
+
+function safeMediaUrl(href: string): string | null {
+  return href.length <= 2048 ? safeLinkUrl(href) : null;
+}
+
+export function isVideoUrl(href: string): boolean {
+  try { return /\.(mp4|m4v|mov|webm)$/i.test(new URL(href).pathname); }
+  catch { return false; }
 }
 
 function inlineNodes(tokens: Token[]): Inline[] {
@@ -47,7 +108,10 @@ function inlineNodes(tokens: Token[]): Inline[] {
     } else if (token.type === 'softbreak' || token.type === 'hardbreak') {
       current.push({ kind: 'break' });
     } else if (token.type === 'image') {
-      current.push({ kind: 'image', text: token.content, src: safeLinkUrl(token.attrGet('src') || '') });
+      const src = safeMediaUrl(token.attrGet('src') || '');
+      current.push({ kind: src && isVideoUrl(src) ? 'video' : 'image', text: token.content, src });
+    } else if (token.type === 'message_math') {
+      current.push({ kind: 'math', text: token.content });
     } else if (token.type === 'code_inline') {
       current.push({ kind: 'code', text: token.content });
     } else if (token.content) {
@@ -96,14 +160,21 @@ function blocks(tokens: Token[], cursor: { index: number }, end?: string): Block
     if (token.type === end) break;
     if (token.type === 'paragraph_open' || token.type === 'heading_open') {
       const inline = tokens[cursor.index++];
-      result.push({ kind: token.type === 'heading_open' ? 'heading' : 'paragraph',
+      const video = token.type === 'paragraph_open' && inline?.type === 'inline'
+        ? /^<video src="([^"<>]+)" controls><\/video>$/i.exec(inline.content.trim()) : null;
+      const videoSrc = video ? safeMediaUrl(video[1]) : null;
+      if (videoSrc && isVideoUrl(videoSrc)) result.push({ kind: 'video', text: '视频', src: videoSrc });
+      else result.push({ kind: token.type === 'heading_open' ? 'heading' : 'paragraph',
         level: token.type === 'heading_open' ? Number(token.tag.slice(1)) : undefined,
         children: inline?.type === 'inline' ? inlineNodes(inline.children || []) : [] });
       cursor.index++; // matching paragraph_close / heading_close
     } else if (token.type === 'inline') {
       result.push({ kind: 'paragraph', children: inlineNodes(token.children || []) });
     } else if (token.type === 'fence' || token.type === 'code_block') {
-      result.push({ kind: 'code', text: token.content, language: token.info.trim().split(/\s+/)[0].slice(0, 32) });
+      const language = token.info.trim().split(/\s+/)[0].slice(0, 32);
+      result.push(language.toLowerCase() === 'mermaid' ? { kind: 'diagram', text: token.content } : { kind: 'code', text: token.content, language });
+    } else if (token.type === 'message_display_math') {
+      result.push({ kind: 'math', text: token.content });
     } else if (token.type === 'blockquote_open') {
       result.push({ kind: 'quote', children: blocks(tokens, cursor, 'blockquote_close') });
     } else if (token.type === 'table_open') {

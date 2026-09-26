@@ -102,6 +102,35 @@ test('task list checkbox applies only to genuine list-item prefixes, including n
   assert.equal(list.items[2][0].children[0].text, '[x] entity');
 });
 
+test('video URLs, strict HTML video and media safety keep text around inline clips', () => {
+  const [line, html] = parseMessageMarkdown('before ![clip](https://example.com/a.MP4?q=1) after\n\n<video src="https://example.com/b.webm" controls></video>');
+  assert.deepEqual(line.children.map(x => x.kind), ['text', 'video', 'text']);
+  assert.equal(line.children[1].src, 'https://example.com/a.MP4?q=1');
+  assert.deepEqual(line.children.filter(x => x.kind === 'text').map(x => x.text), ['before ', ' after']);
+  assert.equal(html.kind, 'video');
+  assert.equal(html.src, 'https://example.com/b.webm');
+  assert.equal(parseMessageMarkdown('<video src="https://u@example.com/b.mp4" controls></video>')[0].kind, 'paragraph');
+  assert.equal(parseMessageMarkdown('<video src="https://example.com/b.mp4" autoplay></video>')[0].kind, 'paragraph');
+  assert.equal(parseMessageMarkdown('![bad](https://u@example.com/b.mp4)')[0].children[0].src, null);
+  assert.equal(parseMessageMarkdown(`![long](https://example.com/${'x'.repeat(2100)}.mp4)`)[0].children[0].src, null);
+});
+
+test('math delimiters preserve trailing prose, escapes, currency and code; Mermaid only in fence', () => {
+  const parsed = parseMessageMarkdown('$$x^2$$ after **bold**\n\n$$\na+b\n$$ and more\n\nstart $a+b$ end\\n\\$5 and $10 `x $z$`');
+  assert.deepEqual(parsed.slice(0, 4).map(x => x.kind), ['math', 'paragraph', 'math', 'paragraph']);
+  assert.equal(parsed[0].text, 'x^2');
+  assert.equal(parsed[1].children[0].text, 'after ');
+  assert.equal(parsed[1].children[1].kind, 'strong');
+  assert.equal(parsed[2].text, 'a+b');
+  assert.equal(parsed[3].children[0].text, 'and more');
+  assert.deepEqual(parsed[4].children.map(x => x.kind), ['text', 'math', 'text', 'code']);
+  assert.equal(parsed[4].children[1].text, 'a+b');
+  assert.equal(parseMessageMarkdown('$$unterminated')[0].kind, 'paragraph');
+  assert.equal(parseMessageMarkdown('```mermaid\ngraph LR\nA-->B\n```')[0].kind, 'diagram');
+  assert.equal(parseMessageMarkdown('```js\n$z$\n```')[0].kind, 'code');
+});
+
+
 test('long unbroken text and many incremental parses remain intact', () => {
   const long = 'x'.repeat(10000);
   assert.equal(parseMessageMarkdown(long)[0].children[0].text, long);

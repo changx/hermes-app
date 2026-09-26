@@ -20,7 +20,9 @@ const modules = {
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
   './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown: text => [{ kind: 'paragraph', children: [{ kind: 'text', text }] }] },
-  'expo-clipboard': { setStringAsync: async () => {} }
+  'expo-clipboard': { setStringAsync: async () => {} },
+  'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
+  'react-native-webview': { default: 'WebView' }, './markdownWeb': { renderMarkdownHtml: () => '' }
 };
 const load = file => { const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'),

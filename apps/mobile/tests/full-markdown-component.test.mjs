@@ -2,45 +2,84 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
 function mount(text) {
-  let imageStatus;
-  const copied = [], opened = [];
+  const copied = [], opened = [], players = [], paused = [];
+  const hooks = new Map(), playerBySrc = new Map();
+  const appListeners = new Set();
+  let scope, index, visited;
+  const slot = initial => {
+    const cells = hooks.get(scope) || [];
+    hooks.set(scope, cells);
+    const at = index++;
+    return cells[at] ??= { value: initial };
+  };
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     Fragment: Symbol('fragment'), memo: f => f, useMemo: f => f(),
-    useRef: initial => ({ current: initial }), useEffect: () => {},
-    useState: initial => [imageStatus ??= initial, next => { imageStatus = next; }],
+    useRef: initial => { const cell = slot(initial); return { get current() { return cell.value; }, set current(value) { cell.value = value; } }; },
+    useState: initial => { const cell = slot(initial); return [cell.value, next => { cell.value = typeof next === 'function' ? next(cell.value) : next; }]; },
+    useEffect: (fn, deps) => {
+      const cell = slot(null);
+      if (!cell.deps || deps.some((value, i) => value !== cell.deps[i])) {
+        cell.cleanup?.(); cell.cleanup = fn(); cell.deps = deps;
+      }
+    },
   };
   const native = {
     Animated: { Text: 'Animated.Text', Value: class {
       interpolate(config) { return config; }
       setValue() {} stopAnimation() {}
     }, timing: () => ({ start() {} }) },
-    AccessibilityInfo: {}, StyleSheet: { create: value => value },
+    AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
+    AppState: { addEventListener: (_, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } },
+    StyleSheet: { create: value => value },
     Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView',
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
   const modules = { react: { ...react, default: react }, 'react-native': native,
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
+    'expo-video': { VideoView: 'VideoView', useVideoPlayer: (src, setup) => {
+      if (playerBySrc.has(src)) return playerBySrc.get(src);
+      const player = { src, pause: () => paused.push(src), addListener: (_, listener) => {
+        player.status = listener; return { remove: () => { player.status = null; } };
+      } }; setup(player); players.push(player); playerBySrc.set(src, player); return player;
+    } },
+    'react-native-webview': 'WebView',
+    './markdownWeb': { renderMarkdownHtml: (kind, source, display) => `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}` },
     './messageMarkdown': { parseMessageMarkdown } };
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/MessageContent.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
-  }).outputText, { module: output, exports: output.exports, require: name => modules[name] });
-  const expand = element => {
-    if (Array.isArray(element)) return element.flatMap(expand);
+  }).outputText, { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; } });
+  const expand = (element, path = 'root') => {
+    if (Array.isArray(element)) return element.flatMap((item, i) => expand(item, `${path}.${i}`));
     if (element === null || element === undefined || typeof element !== 'object') return [];
-    if (typeof element.type === 'function') return expand(element.type(element.props));
-    return [{ ...element, children: expand(element.props?.children) }];
+    if (typeof element.type === 'function') {
+      const previous = scope;
+      scope = `${path}:${element.type.name}`; index = 0; visited.add(scope);
+      const rendered = element.type(element.props);
+      scope = previous;
+      return expand(rendered, path);
+    }
+    return [{ ...element, children: expand(element.props?.children, `${path}.children`) }];
   };
   const walk = nodes => nodes.flatMap(node => [node, ...walk(node.children)]);
-  const render = () => expand(output.exports.MessageContent({ text }));
-  return { render, walk, copied, opened };
+  const render = () => {
+    visited = new Set();
+    const tree = expand({ type: output.exports.MessageContent, props: { text } });
+    for (const [path, cells] of hooks) if (!visited.has(path)) {
+      cells.forEach(cell => cell.cleanup?.()); hooks.delete(path);
+    }
+    return tree;
+  };
+  return { render, walk, copied, opened, players, paused, background: () => appListeners.forEach(listener => listener('background')),
+    unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
 }
 
 function findStyle(tree, predicate) {
@@ -89,41 +128,129 @@ test('headings have distinct native sizes and an image inside a link sits outsid
   const linked = mount('[before ![alt](https://example.com/x.png) after](https://example.com)');
   const nodes = linked.walk(linked.render());
   assert.equal(nodes.filter(n => n.props.accessibilityRole === 'link').length, 2);
-  assert.equal(nodes.filter(n => n.props.accessibilityLabel === '加载图片：alt').length, 1);
+  assert.equal(nodes.filter(n => n.props.accessibilityLabel === '图片加载中：alt').length, 1);
 });
 
-test('mixed inline image requires tap, keeps geometry on loading/error; unsafe image stays inert', () => {
+test('video remains a fixed preview until tap, then native controls pause on background and unmount', () => {
+  const h = mount('before ![clip](https://example.com/a.mp4) after');
+  let tree = h.render(), nodes = h.walk(tree);
+  assert.equal(nodes.filter(n => n.type === 'VideoView').length, 0);
+  assert.equal(h.players.length, 0, 'no eager player or remote request');
+  const play = nodes.find(n => n.props.accessibilityLabel === '播放视频：clip');
+  assert.equal(nodes.find(n => n.props.style?.maxWidth === 280 && n.props.style?.backgroundColor === '#162132').props.style.height, 168);
+  play.props.onPress();
+  nodes = h.walk(h.render());
+  const view = nodes.find(n => n.type === 'VideoView');
+  assert.equal(view.props.nativeControls, true);
+  assert.equal(h.players[0].src, 'https://example.com/a.mp4');
+  assert.equal(h.players[0].loop, false);
+  assert.equal(typeof h.players[0].play, 'undefined', 'component never starts playback');
+  h.background();
+  assert.ok(h.paused.length >= 2, 'setup and background pause');
+  h.players[0].status({ status: 'error' });
+  nodes = h.walk(h.render());
+  assert.equal(nodes.filter(n => n.type === 'VideoView').length, 0);
+  assert.ok(nodes.some(n => n.props.accessibilityLabel === '视频加载失败，点按重试：clip'));
+  assert.equal(h.players[0].status, null, 'listener cleaned on error');
+  h.unmount();
+  const bad = mount('![unsafe](https://u@example.com/a.mp4)');
+  assert.equal(bad.walk(bad.render()).filter(n => n.type === 'VideoView').length, 0);
+});
+
+test('display math and Mermaid use isolated bounded native WebViews; oversized content falls back', () => {
+  const h = mount('before $x^2$ after\n\n$$x^2$$ tail\n\n```mermaid\nflowchart LR\n甲-->乙\n```');
+  const nodes = h.walk(h.render());
+  const views = nodes.filter(n => n.type === 'WebView');
+  assert.equal(views.length, 3);
+  assert.ok(views[0].props.source.html.includes('math:"x^2"'));
+  assert.ok(views[0].props.source.html.endsWith('display=false'));
+  assert.ok(views[1].props.source.html.endsWith('display=true'));
+  assert.ok(views[2].props.source.html.includes('diagram:"flowchart LR\\n甲-->乙\\n"'));
+  for (const view of views) {
+    assert.deepEqual(Array.from(view.props.originWhitelist), ['*'], 'all URLs reach our veto instead of WebView external Linking fallback');
+    assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'https://example.com' }), false);
+    assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'file:///etc/passwd' }), false);
+    assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'about:blank' }), true);
+    for (const prop of ['allowFileAccess', 'allowFileAccessFromFileURLs', 'allowUniversalAccessFromFileURLs', 'domStorageEnabled', 'sharedCookiesEnabled', 'thirdPartyCookiesEnabled', 'javaScriptCanOpenWindowsAutomatically', 'setSupportMultipleWindows']) assert.equal(view.props[prop], false, prop);
+    assert.equal(view.props.onMessage, undefined);
+    assert.equal(view.props.style.height, '100%');
+  }
+  assert.ok(nodes.some(n => n.type === 'View' && n.props.style?.height === 72), 'inline math has a compact stable frame');
+  views[0].props.onError();
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 2);
+  const huge = mount(`$$${'x'.repeat(4100)}$$`);
+  assert.equal(huge.walk(huge.render()).filter(n => n.type === 'WebView').length, 0);
+  assert.equal(huge.walk(huge.render()).find(n => n.type === 'ScrollView').props.style.height, 220);
+});
+
+
+test('installed WebView navigation wrapper never opens external apps with actual renderer props', async () => {
+  const h = mount('$$x$$');
+  const props = h.walk(h.render()).find(n => n.type === 'WebView').props;
+  const output = { exports: {} }, attempted = [], decisions = [];
+  const require = createRequire(import.meta.url);
+  const source = readFileSync(new URL('../node_modules/react-native-webview/src/WebViewShared.tsx', import.meta.url), 'utf8');
+  runInNewContext(ts.transpileModule(source + '\nexport { createOnShouldStartLoadWithRequest };', {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
+  }).outputText, { module: output, exports: output.exports, require: name => {
+    if (name === 'escape-string-regexp') return require(name);
+    if (name === 'react-native') return { Linking: { canOpenURL: async url => { attempted.push(url); return true; }, openURL: async url => attempted.push(url) } };
+    return {};
+  } });
+  const handler = output.exports.createOnShouldStartLoadWithRequest((allowed, url) => decisions.push([url, allowed]), props.originWhitelist, props.onShouldStartLoadWithRequest);
+  for (const url of ['about:blank', 'https://example.com', 'file:///private/test', 'javascript:alert(1)', 'mailto:someone@example.com']) handler({ nativeEvent: { url, lockIdentifier: 1 } });
+  await Promise.resolve();
+  assert.deepEqual(attempted, []);
+  assert.deepEqual(decisions.map(item => item[1]), [true, false, false, false, false]);
+});
+
+test('formula budget is shared across inline, nested list, table and display content without losing text', () => {
+  const h = mount('**before $a$ after**\n\n- nested $b$\n\n| math |\n|---|\n| $c$ |\n\n$$d$$\n\n```mermaid\nflowchart LR\nA-->B\n```');
+  const tree = h.render(), nodes = h.walk(tree);
+  assert.equal(nodes.filter(n => n.type === 'WebView').length, 3);
+  const text = nodes.filter(n => n.type === 'Text').flatMap(n => n.props.children).join(' ');
+  assert.match(text, /d/);
+  assert.match(text, /flowchart LR/);
+  assert.equal(nodes.filter(n => n.type === 'Animated.Text' && n.props.style?.fontWeight === '700').length, 2);
+  const nested = (entries, inText = false) => entries.forEach(n => {
+    assert.equal(inText && ['View', 'WebView', 'ScrollView'].includes(n.type), false);
+    nested(n.children, inText || n.type === 'Text' || n.type === 'Animated.Text');
+  });
+  nested(tree);
+});
+
+test('mixed inline image loads automatically, keeps geometry on loading/error/retry; unsafe image stays inert', () => {
   const text = 'before **strong ![cat](https://example.com/cat.png) after**';
   const h = mount(text);
   let tree = h.render(), nodes = h.walk(tree);
-  const button = nodes.find(n => n.props.accessibilityLabel === '加载图片：cat');
-  assert.equal(nodes.filter(n => n.type === 'Image').length, 0);
-  assert.equal(button.props.style.height, 168);
-  assert.equal(button.props.style.maxWidth, 280);
-  assert.equal(button.props.style.width, '100%');
+  const frame = nodes.find(n => n.props.accessibilityLabel === '图片加载中：cat');
+  assert.equal(nodes.filter(n => n.type === 'Image').length, 1);
+  assert.equal(frame.props.style.height, 168);
+  assert.equal(frame.props.style.maxWidth, 280);
+  assert.equal(frame.props.style.width, '100%');
   assert.equal(nodes.filter(n => n.type === 'Animated.Text' && n.props.style?.fontWeight === '700').length, 2);
   const checkNesting = (entries, insideText = false) => {
     for (const n of entries) {
-      assert.equal(insideText && ['View', 'Pressable', 'Image'].includes(n.type), false, 'no native View/Image inside Text');
+      assert.equal(insideText && ['View', 'Pressable', 'Image', 'VideoView', 'WebView'].includes(n.type), false, 'no native media inside Text');
       checkNesting(n.children, insideText || n.type === 'Text' || n.type === 'Animated.Text');
     }
   };
   checkNesting(tree);
-  button.props.onPress();
-  tree = h.render(); nodes = h.walk(tree);
   const image = nodes.find(n => n.type === 'Image');
   assert.equal(image.props.source.uri, 'https://example.com/cat.png');
-  assert.equal(nodes.find(n => n.props.accessibilityLabel === '图片加载中：cat').props.style.height, 168);
-  checkNesting(tree);
   image.props.onError();
-  nodes = h.walk(h.render());
+  tree = h.render(); nodes = h.walk(tree);
   assert.equal(nodes.filter(n => n.type === 'Image').length, 0);
-  assert.equal(nodes.find(n => n.props.accessibilityLabel?.startsWith('图片加载失败')).props.style.height, 168);
-  nodes.find(n => n.props.accessibilityLabel?.startsWith('图片加载失败')).props.onPress();
-  h.walk(h.render()).find(n => n.type === 'Image').props.onLoad();
+  const retry = nodes.find(n => n.props.accessibilityLabel?.startsWith('图片加载失败'));
+  assert.equal(retry.props.style.height, 168);
+  retry.props.onPress();
+  nodes = h.walk(h.render());
+  assert.equal(nodes.find(n => n.type === 'Image').props.key, 1);
+  nodes.find(n => n.type === 'Image').props.onLoad();
   nodes = h.walk(h.render());
   assert.equal(nodes.find(n => n.type === 'Image').props.accessibilityLabel, 'cat');
   assert.equal(nodes.find(n => n.props.accessibilityLabel === '图片：cat').props.style.height, 168);
+  checkNesting(tree);
   const bad = mount('![unsafe](https://u@example.com/i.png)');
   const badNodes = bad.walk(bad.render());
   const fallback = badNodes.find(n => n.props.accessibilityLabel === '图片不可用：unsafe');

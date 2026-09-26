@@ -39,6 +39,8 @@ function mount(initialPending, reduced = false) {
     StyleSheet: { create: x => x }, Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView'
   };
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
+    'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
+    'react-native-webview': { default: 'WebView' }, './markdownWeb': { renderMarkdownHtml: () => '' },
     './messageMarkdown': { parseMessageMarkdown: text => [{ kind: 'paragraph', children: [{ kind: 'text', text }] }] } };
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/MessageContent.tsx', import.meta.url), 'utf8'), {
