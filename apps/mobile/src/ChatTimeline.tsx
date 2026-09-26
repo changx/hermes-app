@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
 import { sendDescription } from './send';
-import { appendedAtEnd, followDuringDrag, scrollToExactEnd, shouldFollowContentChange, type TimelinePosition, type TimelineRow } from './timeline';
+import { appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
 
 const stateName: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行状态不明' };
@@ -51,13 +51,15 @@ interface Props {
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, startRef, position, onPosition, onVisibleRef } = props;
   const { bottom } = useSafeAreaInsets();
-  const [dockHeight, setDockHeight] = useState(0);
+  const dockHeight = useRef(0);
   const [composerHeight, setComposerHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
+  const reportedInset = useRef(0);
+  const onContentInsetChange = useCallback((insets: { bottom: number }) => { reportedInset.current = insets.bottom; }, []);
   const renderScrollComponent = useCallback((scrollProps: ScrollViewProps) =>
     <KeyboardChatScrollView {...scrollProps} automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
-      offset={bottom + dockHeight} keyboardLiftBehavior="whenAtEnd" />,
-  [bottom, dockHeight]);
+      offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
+  [bottom, onContentInsetChange]);
   const list = useRef<FlatList<TimelineRow>>(null);
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
@@ -71,7 +73,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
     onEnd: () => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); }
   }, [setKeyboardMoving]);
-  const scrollGeometry = useRef<{ height: number; viewport: number; inset: number } | null>(null);
+  const scrollGeometry = useRef<ScrollGeometry | null>(null);
   const restored = useRef(false);
   const reducedMotion = useRef(false);
   const previousKeys = useRef<string[]>([]);
@@ -94,7 +96,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       followAnimation.current = false;
       if (following.current && !dragging.current && !gestureMomentum.current && !momentumEligible.current) {
         momentumEligible.current = false;
-        scrollToExactEnd(list.current, content.current, viewport.current, animated);
+        scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current);
       }
     });
   }, []);
@@ -114,7 +116,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
-    scrollToExactEnd(list.current, content.current, viewport.current, animate && !reducedMotion.current && !keyboardMoving.current && !Keyboard.isVisible()); savePosition();
+    scrollToExactEnd(list.current, content.current, viewport.current, animate && !reducedMotion.current && !keyboardMoving.current && !Keyboard.isVisible(), scrollGeometry.current?.inset ?? reportedInset.current); savePosition();
   }, [savePosition]);
   useImperativeHandle(ref, () => ({ followLatest, holdPosition() { following.current = false; setShowLatest(true); savePosition(); } }), [followLatest, savePosition]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
@@ -161,21 +163,25 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         onScrollEndDrag={e => { dragging.current = false; momentumEligible.current = Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01; savePosition(); }}
         onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
         onScroll={e => {
-          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-          const previous = offset.current, priorGeometry = scrollGeometry.current;
-          offset.current = Math.max(0, contentOffset.y);
-          viewport.current = layoutMeasurement.height; content.current = contentSize.height;
-          const inset = e.nativeEvent.contentInset?.bottom ?? 0;
-          scrollGeometry.current = { height: contentSize.height, viewport: layoutMeasurement.height, inset };
-          if (priorGeometry) {
-            const now = followDuringDrag(following.current, previous, offset.current, priorGeometry.height, content.current, priorGeometry.viewport, viewport.current, (dragging.current || gestureMomentum.current) && !keyboardMoving.current, priorGeometry.inset, inset);
-            if (now !== following.current) { following.current = now; setShowLatest(!now); }
-          }
+          const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
+            (dragging.current || gestureMomentum.current) && !keyboardMoving.current, reportedInset.current);
+          offset.current = state.offset;
+          viewport.current = state.geometry.viewport; content.current = state.geometry.height;
+          scrollGeometry.current = state.geometry;
+          if (state.following !== following.current) { following.current = state.following; setShowLatest(!state.following); }
           savePosition();
         }} scrollEventThrottle={16} />
       {showLatest && <View style={styles.latest}>{action('回到最新 ↓', () => followLatest())}</View>}
     </View>
-    <KeyboardStickyView offset={{ opened: bottom }} onLayout={e => setDockHeight(old => old === e.nativeEvent.layout.height ? old : e.nativeEvent.layout.height)}>
+    <KeyboardStickyView offset={{ opened: bottom }} onLayout={e => {
+      const height = e.nativeEvent.layout.height;
+      if (dockHeight.current !== height) {
+        const hadDock = dockHeight.current > 0;
+        dockHeight.current = height;
+        // A growing composer/controls shrinks the flex list; only follow if already at latest.
+        if (hadDock && restored.current && following.current) scheduleFollow();
+      }
+    }}>
     {!!props.receipts.length && <ScrollView style={styles.controls} keyboardShouldPersistTaps="handled">{props.receipts.map(r => <View key={r.id} style={styles.controlRow}>
       <Text style={styles.controlText}>任务 · {stateName[r.state]}</Text>
       {r.state === 'queued' && action('取消排队', () => props.onCancel(r), props.busy, true)}
