@@ -17,6 +17,7 @@
 - 已核实 13.16.1 的 `style` 传给内部原生 WebView，包装 View 单独由 `containerStyle` 控制；改为外层明确 100% 宽高、内部 flex 填充。iOS `loadHTMLString` 默认 base 为 `about:blank`，原导航允许值无误。该修正消除尺寸歧义，**尚无 Yoga/WKWebView 真机复现证据证明这就是本次空白根因**。
 - 渲染异常或 Mermaid 返回无 SVG 内容时，预置脚本只发固定失败状态，原生组件切换为可选择原文；没有命令桥或凭据传递。避免脚本失败后仅留下空白。
 - 主控末轮验证：112/112 手机测试、TypeScript、iOS/Android Expo 导出及 Chromium 9/9 通过；布局回归先失败（Agent 仍 flex-start 气泡）后通过。证据为私有 `markdown-verification/followup-*` 和 `layout-red.log`/`layout-green.log`。Linux WebKit 启动因缺 `libevent-2.1.so.7` 被阻，未声称 WKWebView 或真机通过。
+- 已发布候选 `499d14c` 到隔离 Expo：公网 iOS/Android manifest 与实际 bundle 已验证包含 `agentMessage`、`renderWebContainer` 和失败回退；首次重启后探测短暂 502，随后复验通过。两个 Gateway 的 PID/启动时间及开发插件哈希不变，证据 `followup-release-before.json`、`followup-release-verification.json`；回滚基线 `09ddfa2`。Mermaid 手机问题仍待 Jamie 确认，不以该发布关闭真机验收。
 
 ## 验收
 
