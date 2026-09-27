@@ -110,7 +110,7 @@ class Store:
         if not isinstance(client_message_id, str) or not 1 <= len(client_message_id) <= 128 or not all(
                 c.isascii() and (c.isalnum() or c in '-_.:') for c in client_message_id):
             raise ValueError('invalid client_message_id')
-        if not isinstance(text, str) or not text.strip() or len(text.encode()) > 16000:
+        if not isinstance(text, str) or (not text.strip() and not attachment_ids) or len(text.encode()) > 16000:
             raise ValueError('invalid text')
         if not isinstance(attachment_ids, (list, tuple)) or len(attachment_ids) > 8 or any(
                 not isinstance(item, str) or not item.startswith('att_') for item in attachment_ids):

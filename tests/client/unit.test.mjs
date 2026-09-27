@@ -228,6 +228,15 @@ test('binary upload, exact retry payload, download and deleted metadata use inje
     async request(method,path,token,body){calls.push({method,path,token,body});if(method==='POST')return {status:202,body:{receipt:receipt()}};if(method==='DELETE')return {status:200,body:{deleted:true}};return {status:200,body:{attachment:{id:'att_1',thread_id:'th_1',state:'deleted'}}}}
   }});const a=await c.upload('th_1','raw.bin',bytes);assert.equal(a.state,'available');await c.send('th_1','device-1','body',[a.id]);await c.send('th_1','device-1','body',[a.id]);assert.deepEqual(calls[1].body,calls[2].body);assert.deepEqual(await c.download('th_1',a.id),bytes);await c.deleteUnattached('th_1',a.id);assert.equal((await c.getAttachment('th_1',a.id)).state,'deleted');
 });
+test('attachment-only send keeps exact IDs and empty text; empty payload is rejected',async()=>{
+  const calls=[];const c=new HermesClient({...base,http:{async request(method,path,token,body){calls.push(body);return {status:202,body:{receipt:receipt()}}}}});
+  const attachments=['att_first','att_second'];
+  await c.send('th_1','device-1','',attachments);
+  attachments.reverse();
+  assert.deepEqual(calls[0],{client_message_id:'device-1',text:'',attachments:['att_first','att_second']});
+  await assert.rejects(c.send('th_1','device-2',''),ProtocolError);
+  await assert.rejects(c.send('th_1','device-2','',['att_first','att_first']),ProtocolError);
+});
 test('manual and connected catchUp serialize across distinct signals',async()=>{
   const gate=deferred();let syncs=0;const c=new HermesClient({...base,http:{async request(method,path){if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true}};if(path.startsWith('/v1/sync')){syncs++;if(syncs===1)return gate.promise;return {status:200,body:{events:[],waterline:'c1',next_cursor:'c1',has_more:false}}}if(path==='/v1/receipts/rc_1')return {status:200,body:{receipt:receipt()}};throw Error(path)}},socket:{async connect(){return {onMessage(){},onClose(){},close(){}}}}});
   c.cursor='c0';const manual=c.catchUp();await tick();await c.connect();await tick();assert.equal(syncs,1);gate.resolve({status:200,body:{events:[event(1)],waterline:'c1',next_cursor:'c1',has_more:false}});await manual;await tick();assert.equal(c.cursor,'c1');assert.equal(syncs,2);c.close();

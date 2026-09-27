@@ -108,6 +108,31 @@ function doubleTapArticle(h) {
   }
 }
 
+test('fullscreen article keeps native selectable text and blocks entry gestures without capturing selection', () => {
+  const h = mount('# 标题\n\n正文 **重点**\n\n| A | B |\n|---|---|\n|值|内容|', { canExpand: true });
+  doubleTapArticle(h);
+  const nodes = h.walk(h.render());
+  const modal = nodes.find(n => n.type === 'Modal');
+  assert.equal(modal.props.visible, true);
+  const content = h.walk(modal.children);
+  const paragraphs = content.filter(n => n.type === 'Animated.Text' && n.props.selectable);
+  assert.ok(paragraphs.length >= 5);
+  assert.ok(content.some(n => n.type === 'ScrollView' && n.props.keyboardShouldPersistTaps === 'always'));
+  const root = content.find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.onTouchStart);
+  let stopped = false;
+  root.props.onTouchStart({ stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true);
+  assert.equal(root.props.onStartShouldSetResponder, undefined);
+  assert.equal(root.props.onTouchEnd, undefined);
+  const timelineRoot = nodes.find(n => n.type === 'View' && n.props.onTouchEnd);
+  const event = { nativeEvent: { target: 42, pageX: 80, pageY: 100, touches: [] } };
+  timelineRoot.props.onTouchStart(event); timelineRoot.props.onTouchEnd(event);
+  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, true);
+  modal.props.onRequestClose();
+  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
+  h.unmount();
+});
+
 test('public tool summaries persist in article mode, never interpret command details as Markdown', () => {
   const toolCalls = [{ id: 'c1', name: 'terminal', label: '运行命令', detail: '[literal](https://example.com) && printf "**text**"' }];
   const h = mount('先检查 **项目**。', { canExpand: true, toolCalls });

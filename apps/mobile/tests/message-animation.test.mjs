@@ -239,7 +239,7 @@ test('App send invokes the production animated follow handle after enqueue', asy
   runInNewContext(ts.transpileModule(snippet + '\nexports.send = send;', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
     { exports: send.exports, run: callback => callback(), outboxRef: { current: { storage: { connectionId: 'conn' }, enqueue: async record => { enqueued.push(record); } } },
       config: { id: 'conn' }, threadId: 'th', text: 'hello', newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
-      timelineRef: h.ref, setText: fn => fn('hello') });
+      timelineRef: h.ref, setText: fn => fn('hello'), attachmentsBusy: false, draftAttachments: [], composerScope: 'conn:th', currentComposer: { current: 'conn:th' }, setAttachmentDraft() {}, setAttachmentClearKey() {} });
   await send.exports.send();
   assert.equal(enqueued.length, 1);
   assert.deepEqual(h.calls, [{ animated: true }]);

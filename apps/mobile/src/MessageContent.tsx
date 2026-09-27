@@ -299,7 +299,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
     return typeof target === 'number' && Number.isFinite(pageX) && Number.isFinite(pageY) && (!touches || touches.length <= 1)
       ? { target, x: pageX, y: pageY, at: Date.now() } : null;
   };
-  const touchStart = (event: GestureResponderEvent) => { gesture.current.start = point(event) || undefined; };
+  const touchStart = (event: GestureResponderEvent) => { if (!target) gesture.current.start = point(event) || undefined; };
   const touchMove = (event: GestureResponderEvent) => {
     const start = gesture.current.start, now = point(event);
     if (!start || !now || Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) gesture.current = {};
@@ -307,7 +307,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
   const touchEnd = (event: GestureResponderEvent) => {
     const start = gesture.current.start, now = point(event), previous = gesture.current.tap;
     gesture.current = {};
-    if (!canExpand || !start || !now || now.target !== start.target || now.at - start.at > 250 ||
+    if (target || !canExpand || !start || !now || now.target !== start.target || now.at - start.at > 250 ||
       Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) return;
     if (previous && previous.target === now.target && now.at - previous.at <= 350 &&
       Math.abs(previous.x - now.x) <= 24 && Math.abs(previous.y - now.y) <= 24) setTarget({ kind: 'message' });
@@ -341,7 +341,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
     <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} suspended={!!target} />
     <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
     <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
-      {target && <View style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
+      {target && <View onTouchStart={stopTouch} style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>{target.kind === 'message' ? '消息' : target.kind === 'table' ? '表格' : '图表'}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="关闭全屏查看" hitSlop={12} onPress={() => setTarget(null)}>
@@ -349,12 +349,12 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
           </Pressable>
         </View>
         {target.kind === 'message'
-          ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
+          ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
               <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} />
               <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
             </ScrollView>
           : target.kind === 'table' && target.block.kind === 'table'
-            ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
+            ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
                 <MarkdownTable block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreen />
               </ScrollView>
             : target.block.kind === 'diagram'

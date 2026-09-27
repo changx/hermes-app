@@ -12,7 +12,7 @@ import { messageNeedsViewport } from './messageMarkdown';
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
 
-const MessageRow = memo(function MessageRow({ row, onCancel, busy }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode }) {
   const own = row.role === 'user';
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
@@ -20,14 +20,14 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy }: { row: Time
     {!row.continuation && <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
-    {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
+    {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
       {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="取消排队" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>取消</Text></Pressable>}
     </View>}
   </View>;
   return own ? <View style={styles.userMessageRow}>{content}</View> : content;
-}, (prev, next) => prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void }
 interface Props {
@@ -45,6 +45,11 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
+  composerAccessory?: React.ReactNode;
+  typingIndicator?: React.ReactNode;
+  attachmentCount?: number;
+  attachmentsBusy?: boolean;
+  renderAttachments?: (row: TimelineRow) => React.ReactNode;
 
   receipts: Receipt[];
   interactions: Interaction[];
@@ -167,7 +172,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   });
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <View style={styles.flex}>
-      <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} />}
+      <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
         renderScrollComponent={renderScrollComponent}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         initialNumToRender={14} maxToRenderPerBatch={10} windowSize={7} updateCellsBatchingPeriod={60}
@@ -232,13 +237,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </View>}
     </View>)}</ScrollView>}
 
+    {props.typingIndicator}
+    {props.composerAccessory}
     <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
       {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>}
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running')
         ? action('停止', props.onStop, props.busy)
-        : action('发送', props.onSend, props.busy || !props.text.trim())}
+        : action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}
     </View>
     </KeyboardStickyView>
   </KeyboardGestureArea>;

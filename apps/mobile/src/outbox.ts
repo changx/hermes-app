@@ -1,5 +1,5 @@
 import type { HermesClient, Message, Receipt } from '../../../packages/client/src/index';
-import { accepted, restoreSend, type Connection, type SendRecord } from './send.ts';
+import { accepted, restoreSend, validSendContent, type Connection, type SendRecord } from './send.ts';
 
 export interface KeyValueStore {
   getItemAsync(key: string): Promise<string | null>;
@@ -17,8 +17,8 @@ const receiptStage = (state?: Receipt['state']) => state === 'queued' ? 0 : stat
 export class OutboxLimitError extends Error {}
 export class OutboxIdentityError extends Error {}
 
-type Stored = Omit<SendRecord, 'text' | 'status'> & { version: 2; status: SendRecord['status'] | 'preparing' | 'discarding'; chunks: number; hash: number; order: number; attempts: number; nextAttemptAt: number };
-type Entry = { slot: number; order: number; record: SendRecord; attempts: number; nextAttemptAt: number };
+type Stored = Omit<SendRecord, 'text' | 'attachments' | 'status'> & { version: 2 | 3; status: SendRecord['status'] | 'preparing' | 'discarding'; chunks: number; hash: number; order: number; attempts: number; nextAttemptAt: number };
+type Entry = { slot: number; order: number; version: 2 | 3; record: SendRecord; attempts: number; nextAttemptAt: number };
 // SecureStore permits only [A-Za-z0-9._-]. Connection IDs are UUIDs today;
 // encode the full identity so even an unexpected future ID cannot break keys.
 const safeId = (id: string) => Array.from(id, c => c.codePointAt(0)!.toString(16).padStart(6, '0')).join('');
@@ -45,6 +45,9 @@ function hash(text: string): number {
   return value >>> 0;
 }
 const validState = (s: unknown) => ['queued', 'sending', 'ambiguous', 'accepted', 'blocked'].includes(String(s));
+const payload = (record: SendRecord) => JSON.stringify({ text: record.text, attachments: record.attachments ?? [] });
+const copy = (record: SendRecord): SendRecord => ({ ...record, ...(record.attachments ? { attachments: record.attachments.map(a => ({ ...a })) } : {}) });
+const sameAttachments = (a: SendRecord, b: SendRecord) => JSON.stringify(a.attachments ?? []) === JSON.stringify(b.attachments ?? []);
 
 /** Fixed slots avoid a fragile shared index; a record is committed only by its small metadata key. */
 export class OutboxStore {
@@ -59,7 +62,7 @@ export class OutboxStore {
     this.lock = result.catch(() => {});
     return result;
   }
-  get records(): SendRecord[] { return [...this.entries.values()].sort((a, b) => a.order - b.order).map(e => e.record); }
+  get records(): SendRecord[] { return [...this.entries.values()].sort((a, b) => a.order - b.order).map(e => copy(e.record)); }
   async idle() { await this.lock; }
   async load(): Promise<SendRecord[]> {
     return this.serialize(async () => {
@@ -69,12 +72,13 @@ export class OutboxStore {
         if (!raw) continue;
         let meta: Stored;
         try { meta = JSON.parse(raw) as Stored; } catch { throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`); }
-        if (meta.version === 2 && (meta.status === 'preparing' || meta.status === 'discarding') && Number.isInteger(meta.chunks) && meta.chunks > 0 && meta.chunks <= MAX_CHUNKS) {
+        if ((meta.version === 2 || meta.version === 3) && (meta.status === 'preparing' || meta.status === 'discarding') && Number.isInteger(meta.chunks) && meta.chunks > 0 && meta.chunks <= MAX_CHUNKS) {
           for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
           await this.store.deleteItemAsync(key);
           continue;
         }
-        if (meta.version !== 2 || meta.connectionId !== this.config.id || !validState(meta.status) ||
+        if ((meta.version !== 2 && meta.version !== 3) || meta.connectionId !== this.config.id || !validState(meta.status) ||
+            'attachments' in meta || 'text' in meta ||
             !Number.isInteger(meta.chunks) || meta.chunks < 1 || meta.chunks > MAX_CHUNKS || !Number.isInteger(meta.hash) ||
             !Number.isSafeInteger(meta.order) || meta.order < 1 || [...this.entries.values()].some(e => e.order === meta.order))
           throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`);
@@ -84,14 +88,24 @@ export class OutboxStore {
           if (chunk === null || bytes(chunk) > CHUNK_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
           chunks.push(chunk);
         }
-        const text = chunks.join('');
-        if (hash(text) !== meta.hash || bytes(text) > MAX_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+        const data = chunks.join('');
+        if (hash(data) !== meta.hash || bytes(data) > MAX_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+        let text: string, attachments: SendRecord['attachments'];
+        if (meta.version === 2) { text = data; attachments = undefined; }
+        else {
+          let decoded: unknown;
+          try { decoded = JSON.parse(data); } catch { throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`); }
+          if (!decoded || typeof decoded !== 'object' || !Array.isArray((decoded as { attachments?: unknown }).attachments))
+            throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+          text = (decoded as { text: string }).text;
+          attachments = (decoded as { attachments: SendRecord['attachments'] }).attachments;
+        }
         const restored = restoreSend(JSON.stringify({
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
-          status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, text
+          status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, text, attachments
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('本机待发记录身份冲突');
-        this.entries.set(restored.clientMessageId, { slot, order: meta.order, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
+        this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
       }
       const legacy = await this.store.getItemAsync(LEGACY_SEND_KEY);
       if (legacy) {
@@ -108,36 +122,47 @@ export class OutboxStore {
     const occupied = new Set([...this.entries.values()].map(e => e.slot));
     const slot = Array.from({ length: SLOTS }, (_, n) => n).find(n => !occupied.has(n));
     if (slot === undefined) throw new OutboxLimitError('本机待发消息已满（24 条）；请等待自动恢复后再发送');
-    const key = prefix(this.config.id, slot), parts = pieces(record.text);
+    const verified = validSendContent(record.threadId, record.text, record.attachments);
+    const saved = copy({ ...record, ...(verified.length ? { attachments: verified } : { attachments: undefined }) });
+    // Keep the v2 text-only layout and its full 64 KiB budget; v3 stores
+    // attachment descriptors beside text in chunked data, never in metadata.
+    const version = verified.length ? 3 : 2;
+    const data = version === 2 ? saved.text : payload(saved);
+    const key = prefix(this.config.id, slot), parts = pieces(data);
     const order = Math.max(0, ...[...this.entries.values()].map(e => e.order)) + 1;
     if (!Number.isSafeInteger(order)) throw new OutboxLimitError('本机待发顺序已达上限');
     // A preparatory marker makes interrupted chunk writes discoverable for cleanup;
     // only the final metadata value commits a send before network I/O.
-    await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'preparing', chunks: parts.length }));
+    await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
     for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
-    const meta: Stored = { ...record, text: undefined, version: 2, chunks: parts.length, hash: hash(record.text), order, attempts: 0, nextAttemptAt: 0 } as Stored;
-    delete (meta as Partial<SendRecord>).text;
+    const meta: Stored = { connectionId: saved.connectionId, threadId: saved.threadId, clientMessageId: saved.clientMessageId,
+      status: saved.status, receiptId: saved.receiptId, receiptState: saved.receiptState,
+      version, chunks: parts.length, hash: hash(data), order, attempts: 0, nextAttemptAt: 0 };
     await this.store.setItemAsync(key, JSON.stringify(meta));
-    this.entries.set(record.clientMessageId, { slot, order, record, attempts: 0, nextAttemptAt: 0 });
+    this.entries.set(record.clientMessageId, { slot, order, version, record: saved, attempts: 0, nextAttemptAt: 0 });
   }
   async enqueue(record: SendRecord): Promise<void> { return this.serialize(() => this.insert(record)); }
   async update(record: SendRecord, attempts?: number, nextAttemptAt?: number): Promise<void> {
     return this.serialize(async () => {
       const entry = this.entries.get(record.clientMessageId);
-      if (!entry || entry.record.text !== record.text || entry.record.threadId !== record.threadId || record.connectionId !== this.config.id)
+      if (!entry || entry.record.text !== record.text || entry.record.threadId !== record.threadId ||
+          !sameAttachments(entry.record, record) || record.connectionId !== this.config.id)
         throw new Error('待发消息身份或原文变化');
-      const meta: Stored = { ...record, text: undefined, version: 2, chunks: pieces(record.text).length, hash: hash(record.text), order: entry.order, attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt } as Stored;
-      delete (meta as Partial<SendRecord>).text;
+      const data = entry.version === 2 ? entry.record.text : payload(entry.record);
+      const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
+        status: record.status, receiptId: record.receiptId, receiptState: record.receiptState,
+        version: entry.version, chunks: pieces(data).length, hash: hash(data), order: entry.order,
+        attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt };
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));
-      this.entries.set(record.clientMessageId, { ...entry, record, attempts: meta.attempts, nextAttemptAt: meta.nextAttemptAt });
+      this.entries.set(record.clientMessageId, { ...entry, record: copy(record), attempts: meta.attempts, nextAttemptAt: meta.nextAttemptAt });
     });
   }
   async removeConfirmed(id: string): Promise<void> {
     return this.serialize(async () => {
       const entry = this.entries.get(id);
       if (!entry || entry.record.status !== 'accepted' || !FINAL.has(entry.record.receiptState || '')) return;
-      const key = prefix(this.config.id, entry.slot), count = pieces(entry.record.text).length;
-      await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'discarding', chunks: count }));
+      const key = prefix(this.config.id, entry.slot), count = pieces(entry.version === 2 ? entry.record.text : payload(entry.record)).length;
+      await this.store.setItemAsync(key, JSON.stringify({ version: entry.version, status: 'discarding', chunks: count }));
       for (let i = 0; i < count; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
       await this.store.deleteItemAsync(key);
       this.entries.delete(id);
@@ -149,7 +174,7 @@ export class OutboxStore {
         const key = prefix(this.config.id, slot), raw = await this.store.getItemAsync(key);
         if (!raw) continue;
         const meta = JSON.parse(raw) as Stored;
-        await this.store.setItemAsync(key, JSON.stringify({ version: 2, status: 'discarding', chunks: meta.chunks }));
+        await this.store.setItemAsync(key, JSON.stringify({ version: meta.version, status: 'discarding', chunks: meta.chunks }));
         for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
         await this.store.deleteItemAsync(key);
       }
@@ -294,7 +319,7 @@ export class MobileOutbox {
       if (!this.alive || !this.online || gen !== this.generation) return;
       this.emit();
       // Fifth argument is the SDK's optional AbortSignal (fourth is attachments).
-      const receipt = await (this.sdk.send as (thread: string, id: string, text: string, attachments: string[], signal: AbortSignal) => Promise<Receipt>)(record.threadId, record.clientMessageId, record.text, [], abort.signal);
+      const receipt = await this.sdk.send(record.threadId, record.clientMessageId, record.text, (record.attachments ?? []).map(a => a.id), abort.signal);
       if (!this.alive || gen !== this.generation) return;
       const next = accepted(record, receipt);
       try { await this.storage.update(next, 0, 0); }

@@ -1,0 +1,194 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
+import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, uploadedInOrder } from '../src/attachmentHelpers.ts';
+
+const flush = async () => { await new Promise(resolve => setImmediate(resolve)); };
+const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+function harness({ platform = 'ios', nativePaste = true } = {}) {
+  const disks = new Map([['file://a', Uint8Array.from([1, 2])], ['file://b', Uint8Array.from([3, 4])]]);
+  const removed = [], uploads = [], downloads = [], deletions = [], notices = [];
+  let imagePick = async () => ({ canceled: true }), documentPick = async () => ({ canceled: true }), clipboardRead = async () => null;
+  let hook = 0, effects = [], props, component, mounted = false;
+  const cells = [], effectCells = [];
+  const react = {
+    createElement: (type, p, ...children) => ({ type, props: { ...p, children } }),
+    useState(initial) { const at = hook++; if (!(at in cells)) cells[at] = initial; return [cells[at], next => { cells[at] = typeof next === 'function' ? next(cells[at]) : next; }]; },
+    useRef(initial) { const at = hook++; if (!(at in cells)) cells[at] = { current: initial }; return cells[at]; },
+    useEffect(fn, deps) {
+      const at = hook++;
+      const old = effectCells[at];
+      if (!old || !deps || deps.some((d, i) => d !== old.deps[i])) effects.push(() => { old?.cleanup?.(); effectCells[at] = { deps, cleanup: fn() }; });
+    }
+  };
+  const native = { Platform: { OS: platform }, StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 390, height: 844 }) };
+  for (const type of ['Image', 'Modal', 'Pressable', 'ScrollView', 'Text', 'View']) native[type] = type;
+  class File {
+    constructor(...parts) { this.uri = parts.at(-1).startsWith('file:') ? parts.at(-1) : `file://${parts.at(-1)}`; }
+    get exists() { return disks.has(this.uri); }
+    get size() { return disks.get(this.uri)?.length ?? 0; }
+    create() { if (this.exists) throw new Error('already exists'); disks.set(this.uri, new Uint8Array()); }
+    write(value) { disks.set(this.uri, value); }
+    async bytes() { if (!this.exists) throw new Error('not found'); return disks.get(this.uri); }
+    async text() { return new TextDecoder().decode(await this.bytes()); }
+    delete() { removed.push(this.uri); disks.delete(this.uri); }
+  }
+  const modules = {
+    react: { ...react, default: react }, 'react-native': native,
+    'expo-image-picker': { launchImageLibraryAsync: (...args) => imagePick(...args) },
+    'expo-document-picker': { getDocumentAsync: (...args) => documentPick(...args) },
+    'expo-clipboard': { isPasteButtonAvailable: nativePaste, ClipboardPasteButton: 'ClipboardPasteButton', getImageAsync: (...args) => clipboardRead(...args) },
+    'expo-file-system': { File, Paths: { cache: 'file://cache/' } },
+    'base64-js': { toByteArray: text => Uint8Array.from(Buffer.from(text, 'base64')) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 20, bottom: 10 }) },
+    './attachmentHelpers': { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, uploadedInOrder, readableText: (mime, name) => mime?.startsWith('text/') || name?.endsWith('.txt') }
+  };
+  const out = { exports: {} };
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText,
+    { module: out, exports: out.exports, require: key => { assert.ok(key in modules, key); return modules[key]; }, AbortController, Uint8Array, Date, Math, Buffer, console, Promise });
+  const client = {
+    upload: (thread, name, bytes, signal) => { uploads.push({ thread, name, bytes, signal }); return Promise.resolve({ id: `att_${uploads.length}`, thread_id: thread, name, mime: name.endsWith('png') ? 'image/png' : 'text/plain', size: bytes.length, state: 'available', receipt_id: null }); },
+    download: (thread, id, signal) => { downloads.push({ thread, id, signal }); return Promise.resolve(Uint8Array.from([7, 8])); },
+    deleteUnattached: (thread, id) => { deletions.push([thread, id]); return Promise.resolve(); }
+  };
+  function expand(node) {
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (node === null || typeof node !== 'object') return [];
+    if (typeof node.type === 'function') return expand(node.type(node.props));
+    return [node, ...expand(node.props.children)];
+  }
+  function render(nextProps) {
+    if (nextProps) props = nextProps;
+    hook = 0; effects = [];
+    const nodes = expand(component(props));
+    for (const effect of effects) effect();
+    mounted = true;
+    return nodes;
+  }
+  const start = (kind, overrides = {}) => { component = out.exports[kind]; props = { client, threadId: 'th', attachments: [], clearKey: 0, onChange: (a, b) => notices.push([a.map(x => x.id), b]), ...overrides }; return render(); };
+  const press = (label, nodes = render()) => {
+    const button = nodes.find(x => x.props.accessibilityLabel === label);
+    assert.ok(button, `missing ${label}`); assert.notEqual(button.props.disabled, true, `${label} disabled`); button.props.onPress();
+  };
+  const unmount = () => { if (!mounted) return; for (const cell of effectCells) cell?.cleanup?.(); mounted = false; };
+  return { start, render, press, unmount, client, disks, uploads, downloads, deletions, removed, notices,
+    setImages(fn) { imagePick = fn; }, setFiles(fn) { documentPick = fn; }, setClipboard(fn) { clipboardRead = fn; } };
+}
+
+test('selection helpers cap count and actual size without accepting unknown bytes', () => {
+  const src = Array.from({ length: 10 }, (_, i) => ({ uri: 'file://a', name: `f${i}.txt`, size: 1 }));
+  const selected = chooseAttachments(2, src);
+  assert.equal(selected.accepted.length, 6); assert.match(selected.error, /最多/);
+  assert.equal(chooseAttachments(0, [{ uri: 'file://a', name: 'too.txt', size: MAX_ATTACHMENT_BYTES + 1 }]).accepted.length, 0);
+  assert.equal(chooseAttachments(0, [{ uri: 'file://a', name: 'unknown.txt' }]).accepted.length, 0);
+  assert.equal(chooseAttachments(0, [{ uri: 'file://a', name: 'a/b.txt', size: 1 }]).accepted[0].name, 'a_b.txt');
+});
+
+test('picker cancel, multiple upload, failed retry, explicit removal and clear ownership', async () => {
+  const h = harness();
+  h.start('AttachmentComposer');
+  h.press('添加文件'); await flush();
+  assert.equal(h.uploads.length, 0);
+  h.setFiles(async opts => { assert.equal(opts.multiple, true); assert.equal(opts.copyToCacheDirectory, true); return { canceled: false, assets: [{ uri: 'file://a', name: 'a.txt', size: 2 }, { uri: 'file://b', name: 'b.txt', size: 2 }] }; });
+  h.press('添加文件'); await flush(); h.render();
+  assert.equal(JSON.stringify(h.notices.at(-1)), JSON.stringify([['att_1', 'att_2'], false]));
+  h.press('移除：a.txt'); await flush(); h.render();
+  assert.deepEqual(h.deletions, [['th', 'att_1']]);
+  assert.equal(JSON.stringify(h.notices.at(-1)), JSON.stringify([['att_2'], false]));
+  h.render({ client: h.client, threadId: 'th', clearKey: 1, onChange: (a, b) => h.notices.push([a.map(x => x.id), b]) });
+  h.unmount();
+  assert.deepEqual(h.deletions, [['th', 'att_1']], 'clear/unmount must not delete a submitted upload');
+});
+
+test('picker failure stays visible and busy until retry succeeds; server bytes are checked', async () => {
+  const h = harness();
+  let fail = true;
+  h.client.upload = async (...args) => { h.uploads.push(args); if (fail) throw new Error('offline'); return { id: 'att_ok', thread_id: 'th', name: 'a.txt', mime: 'text/plain', size: 2, state: 'available' }; };
+  h.setFiles(async () => ({ canceled: false, assets: [{ uri: 'file://a', name: 'a.txt', size: 2 }] }));
+  h.start('AttachmentComposer'); h.press('添加文件'); await flush();
+  assert.equal(JSON.stringify(h.notices.at(-1)), JSON.stringify([[], true]));
+  assert.ok(h.render().some(x => x.props.accessibilityLabel === '重试：a.txt'));
+  fail = false; h.press('重试：a.txt'); await flush();
+  assert.equal(JSON.stringify(h.notices.at(-1)), JSON.stringify([['att_ok'], false]));
+  h.unmount();
+  const invalid = harness(); invalid.disks.set('file://a', new Uint8Array(MAX_ATTACHMENT_BYTES + 1));
+  invalid.setFiles(async () => ({ canceled: false, assets: [{ uri: 'file://a', name: 'large.txt', size: 1 }] }));
+  invalid.start('AttachmentComposer'); invalid.press('添加文件'); await flush();
+  assert.equal(invalid.uploads.length, 0); assert.equal(JSON.stringify(invalid.notices.at(-1)), JSON.stringify([[], true])); invalid.unmount();
+});
+
+test('native iOS paste writes owned cache bytes, opens fullscreen, cleans only local cache', async () => {
+  const h = harness(); h.start('AttachmentComposer');
+  const paste = h.render().find(x => x.type === 'ClipboardPasteButton');
+  assert.equal(JSON.stringify(paste.props.acceptedContentTypes), JSON.stringify(['image']));
+  paste.props.onPress({ type: 'image', data: 'data:image/png;base64,AQID' }); await flush();
+  assert.equal(h.uploads[0].bytes.length, 3);
+  h.press('查看图片：pasted-image.png');
+  let nodes = h.render();
+  assert.equal(nodes.find(x => x.type === 'Modal').props.visible, true);
+  assert.equal(nodes.find(x => x.type === 'ScrollView' && x.props.minimumZoomScale === 1).props.maximumZoomScale, 4);
+  h.press('关闭图片', nodes);
+  assert.equal(h.render().find(x => x.type === 'Modal').props.visible, false);
+  h.unmount();
+  assert.equal(h.removed.length, 1); assert.equal(h.deletions.length, 0);
+});
+
+test('Android fallback reads clipboard only after explicit press', async () => {
+  const h = harness({ platform: 'android', nativePaste: false });
+  let reads = 0; h.setClipboard(async () => { reads++; return { data: 'data:image/png;base64,AQID' }; });
+  h.start('AttachmentComposer'); assert.equal(reads, 0);
+  h.press('粘贴图片'); await flush(); assert.equal(reads, 1); assert.equal(h.uploads.length, 1); h.unmount();
+});
+
+test('history lazily fetches only mounted images through SDK, retries error and cleans cache', async () => {
+  const h = harness();
+  const attachments = [{ id: 'att_i', name: 'x.png', mime: 'image/png', size: 2, state: 'available' }, { id: 'att_t', name: 'note.txt', mime: 'text/plain', size: 2, state: 'available' }, { id: 'att_missing', name: 'gone.png', mime: 'image/png', state: 'missing' }];
+  h.start('MessageAttachments', { attachments }); await flush();
+  assert.deepEqual(h.downloads.map(x => x.id), ['att_i']);
+  let nodes = h.render();
+  assert.ok(nodes.some(x => x.type === 'Image' && x.props.source.uri.startsWith('file://')));
+  h.press('查看附件：x.png', nodes);
+  assert.equal(h.render().find(x => x.type === 'Modal').props.visible, true);
+  h.press('查看附件：note.txt'); await flush();
+  h.press('查看附件：note.txt');
+  assert.equal(h.render().filter(x => x.type === 'Modal').at(-1).props.visible, true);
+  h.unmount();
+  assert.equal(h.removed.length, 2); assert.equal(h.deletions.length, 0);
+
+});
+
+test('late picker result after clear is ignored without deleting uploaded IDs', async () => {
+  const h = harness(); const pending = deferred();
+  h.setImages(() => pending.promise); h.start('AttachmentComposer'); h.press('添加图片');
+  h.render({ client: h.client, threadId: 'other', clearKey: 1, onChange: (a, b) => h.notices.push([a.map(x => x.id), b]) });
+  pending.resolve({ canceled: false, assets: [{ uri: 'file://a', fileName: 'x.png', fileSize: 2, mimeType: 'image/png' }] });
+  await flush(); assert.equal(h.uploads.length, 0); h.unmount();
+});
+
+test('production picker trims to eight and retains a visible limit notice', async () => {
+  const h = harness();
+  h.setImages(async options => {
+    assert.equal(options.allowsMultipleSelection, true);
+    return { canceled: false, assets: Array.from({ length: 10 }, (_, i) => ({ uri: 'file://a', fileName: `x${i}.png`, fileSize: 2, mimeType: 'image/png' })) };
+  });
+  h.start('AttachmentComposer'); h.press('添加图片'); await flush();
+  assert.equal(h.uploads.length, 8);
+  assert.ok(h.render().some(x => x.props.accessibilityRole === 'alert'));
+  assert.equal(h.render().find(x => x.props.accessibilityLabel === '添加图片').props.disabled, true);
+  h.unmount();
+});
+
+test('history download failures remain retryable and pending work aborts on unmount', async () => {
+  const h = harness();
+  const pending = deferred(); let calls = 0;
+  h.client.download = (thread, id, signal) => { h.downloads.push({ thread, id, signal }); return ++calls === 1 ? Promise.reject(new Error('offline')) : pending.promise; };
+  const attachments = [{ id: 'att_i', name: 'x.png', mime: 'image/png', size: 2, state: 'available' }];
+  h.start('MessageAttachments', { attachments }); await flush();
+  assert.ok(h.render().some(x => x.props.accessibilityRole === 'button' && x.props.accessibilityLabel === '查看附件：x.png'));
+  assert.equal(h.render().find(x => x.type === 'Text' && x.props.children.includes('加载失败，点按重试')) !== undefined, true);
+  h.press('查看附件：x.png'); await flush(); assert.equal(h.downloads.length, 2);
+  h.unmount(); assert.equal(h.downloads[1].signal.aborted, true);
+  pending.resolve(Uint8Array.from([7, 8])); await flush(); assert.equal(h.disks.size, 2, 'late download must not write cache');
+});

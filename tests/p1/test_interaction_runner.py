@@ -217,6 +217,28 @@ async def _scenario(root):
             requests=[json.loads(line) for line in (home/'model-requests.jsonl').read_text().splitlines()]
             assert any(uploaded in item['latest'] for item in requests),requests[-3:]
             evidence['agent_saw_attachment_path']=True
+            # Real runner must also process a user turn containing only files.
+            async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'attachment-only synthetic content',
+                              headers={'X-File-Name':'%E4%B8%AD%E6%96%87%20%E9%99%84%E4%BB%B6.txt','X-File-Name-Encoding':'percent-utf8'}) as response:
+                assert response.status==201,await response.text()
+                metadata=(await response.json())['attachment']
+                assert metadata['name']=='中文 附件.txt'
+                only=metadata['id']
+            only_receipt=await _send(a,url,tid,'','files-only',[only])
+            await _receipt(a,url,only_receipt)
+            assert await _send(a,url,tid,'','files-only',[only])==only_receipt
+            requests=[json.loads(line) for line in (home/'model-requests.jsonl').read_text().splitlines()]
+            assert any(only in item['latest'] for item in requests)
+            code,history=await _json(a,'GET',url+f'/v1/threads/{tid}/messages?limit=100')
+            assert code==200
+            only_rows=[m for m in history['messages'] if m.get('receipt_id')==only_receipt and m['role']=='user']
+            assert len(only_rows)==1,only_rows
+            assert [item['id'] for item in only_rows[0]['attachments']]==[only]
+            evidence['attachment_only_history']=True
+            for invalid_name in ('%2e%2e%2fsecret.txt','%FF.txt','bad%XX.txt','name%0A.txt'):
+                async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'invalid filename',
+                                  headers={'X-File-Name':invalid_name,'X-File-Name-Encoding':'percent-utf8'}) as response:
+                    assert response.status==400
             async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'garbage',
                               headers={'X-File-Name':'loose.txt'}) as response:
                 loose=(await response.json())['attachment']['id']

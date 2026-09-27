@@ -1,4 +1,4 @@
-import type { Receipt } from '../../../packages/client/src/index';
+import type { Attachment, Receipt } from '../../../packages/client/src/index';
 
 export const DEFAULT_BASE = 'https://agent.tuly.space';
 export interface Connection { baseUrl: string; token: string; id: string }
@@ -8,6 +8,7 @@ export interface SendRecord {
   threadId: string;
   clientMessageId: string;
   text: string;
+  attachments?: Attachment[];
   status: SendState;
   receiptId?: string;
   receiptState?: Receipt['state'];
@@ -34,10 +35,25 @@ export function editConnection(previous: Connection | null, base: string, token:
   const id = sameOrigin && nextToken === previous!.token ? previous!.id : newId;
   return connection(baseUrl, nextToken, id);
 }
-export function newSend(config: Connection, threadId: string, text: string, id: string): SendRecord {
-  if (!threadId || !text.trim()) throw new Error('请输入消息');
+export function validSendContent(threadId: string, text: string, attachments: readonly Attachment[] = []): Attachment[] {
+  if (!threadId || typeof text !== 'string' || !Array.isArray(attachments) || attachments.length > 8 ||
+      (!text.trim() && !attachments.length)) throw new Error('请输入消息或添加附件（最多 8 个）');
+  const seen = new Set<string>();
+  return attachments.map(a => {
+    if (!a || typeof a !== 'object' || typeof a.id !== 'string' || !/^att_[A-Za-z0-9_-]+$/.test(a.id) ||
+        seen.has(a.id) || a.thread_id !== threadId || a.state !== 'available' || a.receipt_id != null ||
+        typeof a.name !== 'string' || !a.name.length || a.name.length > 180 || a.name === '.' || a.name === '..' ||
+        /[/\\\x00\r\n]/.test(a.name) || !Number.isSafeInteger(a.size) || a.size! <= 0 || a.size! > 10 * 1024 * 1024 ||
+        typeof a.mime !== 'string' || !a.mime.length)
+      throw new Error('附件无效或不属于当前话题');
+    seen.add(a.id);
+    return { ...a };
+  });
+}
+export function newSend(config: Connection, threadId: string, text: string, id: string, attachments: Attachment[] = []): SendRecord {
+  const verified = validSendContent(threadId, text, attachments);
   if (!/^mob_[a-f0-9-]{36}$/i.test(id)) throw new Error('消息标识无效');
-  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending' };
+  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending', ...(verified.length ? { attachments: verified } : {}) };
 }
 export function retrySend(config: Connection, record: SendRecord): SendRecord {
   if (record.connectionId !== config.id || record.status !== 'ambiguous' || record.receiptId) throw new Error('这条消息不能原样重试');
@@ -53,11 +69,14 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   if (!value || typeof value !== 'object') throw new Error('待发送记录损坏');
   const r = value as Partial<SendRecord>;
   if (r.connectionId !== config.id) return null;
-  if (typeof r.threadId !== 'string' || typeof r.clientMessageId !== 'string' || typeof r.text !== 'string' || !r.text.trim() ||
+  if (typeof r.threadId !== 'string' || typeof r.clientMessageId !== 'string' || typeof r.text !== 'string' ||
       !/^mob_[a-f0-9-]{36}$/i.test(r.clientMessageId) || !['queued','sending','ambiguous','accepted','blocked'].includes(r.status || '')) throw new Error('待发送记录损坏');
+  let attachments: Attachment[];
+  try { attachments = validSendContent(r.threadId, r.text, r.attachments); }
+  catch { throw new Error('待发送记录损坏'); }
   if (r.status === 'accepted' && typeof r.receiptId !== 'string') throw new Error('收据记录损坏');
   // A process may have died after dispatch but before storing the response.
-  return { ...r, status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;
+  return { ...r, ...(attachments.length ? { attachments } : { attachments: undefined }), status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;
 }
 export function sendDescription(record: SendRecord): string {
   const states: Record<Receipt['state'], string> = { queued: '排队中', running: '执行中', completed: '已完成', failed: '失败', interrupted: '已停止', unknown: '执行结果待核对（不会自动重跑）' };

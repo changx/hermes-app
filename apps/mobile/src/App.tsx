@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
-import type { Interaction, ThreadSummary } from '../../../packages/client/src/index';
+import type { Attachment, Interaction, ThreadSummary } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
 import { ConnectionScreen } from './ConnectionScreen';
@@ -16,6 +16,9 @@ import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
+import { AttachmentComposer, MessageAttachments } from './Attachments';
+import { isAgentTyping, TypingIndicator } from './TypingIndicator';
+import type { TimelineRow } from './timeline';
 
 const sendNotice = (notice: string) => notice.includes('权限') || notice.includes('消息内容')
   ? '消息未发出，请检查连接权限或消息内容。原消息仍保留。'
@@ -38,6 +41,18 @@ function Screen() {
   const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
   const [channelId, setChannelId] = useState<string | null>(null), [threadId, setThreadId] = useState<string | null>(null);
   const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
+  const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
+  const [attachmentClearKey, setAttachmentClearKey] = useState(0);
+  const composerScope = `${config?.id || ''}:${threadId || ''}`;
+  const currentComposer = useRef(composerScope);
+  currentComposer.current = composerScope;
+  const onAttachmentsChange = useCallback((items: Attachment[], uploading: boolean) => {
+    if (currentComposer.current === composerScope) setAttachmentDraft({ scope: composerScope, items, busy: uploading });
+  }, [composerScope]);
+  const draftAttachments = attachmentDraft.scope === composerScope ? attachmentDraft.items : [];
+  const attachmentsBusy = attachmentDraft.scope === composerScope && attachmentDraft.busy;
+  const renderAttachments = useCallback((row: TimelineRow) => client && threadId && row.attachments?.length
+    ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
@@ -238,10 +253,15 @@ function Screen() {
   const send = () => run(async () => {
     const box = outboxRef.current;
     if (!config || !threadId || !box || box.storage.connectionId !== config.id) return;
-    const original = text;
-    await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID()));
-    timelineRef.current?.followLatest();
-    setText((old: string) => old === original ? '' : old);
+    if (attachmentsBusy) return;
+    const original = text, scope = composerScope;
+    await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID(), draftAttachments));
+    if (currentComposer.current === scope) {
+      timelineRef.current?.followLatest();
+      setText((old: string) => old === original ? '' : old);
+      setAttachmentDraft({ scope, items: [], busy: false });
+      setAttachmentClearKey(value => value + 1);
+    }
   }, '消息还没保存，未发送。请保留应用数据后重试。');
   const answer = (item: Interaction, choice: string) => run(async () => {
     if (!client) return;
@@ -306,6 +326,9 @@ function Screen() {
         onOlder={() => { void loadOlder(); }}
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
         text={text} onText={setText} onSend={send}
+        attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
+        typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} />}
+        composerAccessory={<AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} clearKey={attachmentClearKey} disabled={busy} />}
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}

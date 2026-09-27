@@ -1,0 +1,42 @@
+import type { Attachment } from '../../../packages/client/src/index';
+
+// The adapter caps bodies at 10 MiB, requires nonempty bytes and a filename <=180 chars.
+export const MAX_ATTACHMENTS = 8;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export type PickedAttachment = { uri?: string; name: string; mime?: string | null; size?: number; data?: Uint8Array };
+export type DraftAttachment = { key: number; source: PickedAttachment; status: 'uploading' | 'ready' | 'failed'; attachment?: Attachment; error?: string };
+
+export function safeFilename(name: string, mime?: string | null): string {
+  const fallback = mime === 'image/jpeg' ? 'image.jpg' : mime === 'image/png' ? 'image.png' : 'attachment';
+  const value = (name || fallback).replace(/[\\/\r\n\0]/g, '_').trim();
+  return value && value !== '.' && value !== '..' ? value.slice(0, 180) : fallback;
+}
+export function isImage(mime?: string | null, name?: string): boolean {
+  // The adapter determines MIME by filename, not picker-supplied metadata.
+  return /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(name || '') && (!mime || mime.startsWith('image/'));
+}
+export function chooseAttachments(existing: number, incoming: PickedAttachment[]): { accepted: PickedAttachment[]; error?: string } {
+  const room = Math.max(0, MAX_ATTACHMENTS - existing);
+  const accepted: PickedAttachment[] = [];
+  let error: string | undefined;
+  for (const source of incoming) {
+    if (accepted.length >= room) { error = '最多添加 8 个附件。'; break; }
+    const name = safeFilename(source.name, source.mime);
+    const size = source.data?.byteLength ?? source.size;
+    if (!name || !source.uri && !source.data || !Number.isFinite(size) || !size || size < 0 || size > MAX_ATTACHMENT_BYTES) {
+      error = '部分文件为空、无法读取或超过 10 MB，请重新选择。';
+      continue;
+    }
+    accepted.push({ ...source, name, size });
+  }
+  return { accepted, error };
+}
+export function uploadedInOrder(items: DraftAttachment[]): Attachment[] {
+  return items.filter(item => item.status === 'ready' && item.attachment?.state === 'available').map(item => item.attachment!);
+}
+export function draftBusy(items: DraftAttachment[]): boolean {
+  return items.some(item => item.status !== 'ready');
+}
+export function readableText(mime?: string, name?: string): boolean {
+  return mime?.startsWith('text/') === true || /\.(txt|md|csv|json|log)$/i.test(name || '');
+}

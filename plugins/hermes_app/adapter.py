@@ -12,7 +12,7 @@ import re
 import stat
 import uuid
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from aiohttp import web, WSMsgType
 from gateway.config import Platform
@@ -780,6 +780,14 @@ class HermesAppAdapter(BasePlatformAdapter):
         if thread['archived']:
             raise web.HTTPConflict(text='thread archived')
         raw_name=request.headers.get('X-File-Name','attachment')
+        encoding=request.headers.get('X-File-Name-Encoding')
+        if encoding:
+            if encoding != 'percent-utf8' or re.search(r'%(?![0-9A-Fa-f]{2})',raw_name):
+                raise web.HTTPBadRequest(text='invalid filename encoding')
+            try:
+                raw_name=unquote(raw_name,encoding='utf-8',errors='strict')
+            except UnicodeError as exc:
+                raise web.HTTPBadRequest(text='invalid filename encoding') from exc
         if not isinstance(raw_name,str) or not 1<=len(raw_name)<=180 or any(
                 c in raw_name for c in ('/','\\','\x00','\r','\n')) or raw_name in ('.','..'):
             raise web.HTTPBadRequest(text='invalid filename')

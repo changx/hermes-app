@@ -48,7 +48,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
     const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true } : undefined;
     const receipt = valid ? candidate ?? fallback : undefined;
-    rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, optimistic: true, status: item.status, reactionSlot: true,
+    rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are

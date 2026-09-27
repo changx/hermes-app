@@ -57,6 +57,26 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
+test('composer accepts ready attachments without text and blocks incomplete uploads; accessories remain in dock', () => {
+  const rows = projectTimeline([msg], null, 'th', undefined, true);
+  const accessory = { type: 'AttachmentComposer', props: {} }, indicator = { type: 'TypingIndicator', props: {} };
+  const preview = row => ({ type: 'AttachmentPreview', props: { attachmentIds: row.attachments?.map(a => a.id) } });
+  rows[0].attachments = [{ id: 'att_a', state: 'available' }];
+  const ready = mount(rows, [], [], { text: '', attachmentCount: 2, composerAccessory: accessory, typingIndicator: indicator, renderAttachments: preview });
+  const send = named(ready.tree, 'Pressable').find(n => n.props.accessibilityLabel === '发送');
+  assert.equal(send.props.disabled, false); send.props.onPress();
+  assert.deepEqual(ready.calls, [['send']]);
+  assert.equal(named(ready.rowTree, 'AttachmentPreview').length, 1);
+  const dock = named(ready.tree, 'KeyboardStickyView')[0];
+  const dockChildren = expand(dock.props.children);
+  assert.ok(dockChildren.some(n => n.type === 'AttachmentComposer'));
+  assert.ok(dockChildren.findIndex(n => n.type === 'TypingIndicator') < dockChildren.findIndex(n => n.type === 'TextInput'));
+  for (const overrides of [{ attachmentsBusy: true, attachmentCount: 1 }, { attachmentCount: 0 }, { busy: true, attachmentCount: 1 }]) {
+    const h = mount(rows, [], [], { text: '', ...overrides });
+    assert.equal(named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === '发送').props.disabled, true);
+  }
+});
+
 test('assistant fills available width without a bubble; user bubble remains unchanged', () => {
   const rowStyle = role => {
     const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);

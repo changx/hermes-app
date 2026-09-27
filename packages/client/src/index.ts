@@ -195,7 +195,7 @@ export class HermesClient {
   async updateThread(id: string, patch: {title?: string; archived?: boolean}): Promise<Thread> { const x = await this.call('PATCH','/v1/threads/'+idPath(id),patch); const t = validThread(x.thread); await this.getThread(id); return t }
   async archiveThread(id: string): Promise<Thread> { const x = await this.call('DELETE','/v1/threads/'+idPath(id)); const t=validThread(x.thread); await this.getThread(id); return t }
   async send(threadId: string, clientMessageId: string, text: string, attachments: string[] = [], signal?: AbortSignal): Promise<Receipt> {
-    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || !text.trim()) throw new ProtocolError('invalid send');
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || (!text.trim() && !attachments.length)) throw new ProtocolError('invalid send');
     if(attachments.length>8 || new Set(attachments).size!==attachments.length || attachments.some(a=>!a.startsWith('att_'))) throw new ProtocolError('invalid attachments');
     const epoch=this.projectionEpoch;
     const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/messages',{client_message_id:clientMessageId,text,...(attachments.length?{attachments:[...attachments]}:{})},signal);
