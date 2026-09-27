@@ -331,7 +331,7 @@ test('accepted history failure retries without events, including unchanged final
   await recovered.box.stop();
 });
 
-test('polling nonretryable receipt failures gives one notice; cleanup storage fault stops polling', async () => {
+test('polling nonretryable receipt failures gives one notice; cleanup failure retries with a bound', async () => {
   const seed = make(); await seed.box.start(); await seed.box.enqueue(draft(180));
   await seed.box.storage.update({ ...seed.box.records[0], status: 'accepted', receiptId: receipt(draft(180)).id, receiptState: 'completed' });
   await seed.box.stop();
@@ -349,9 +349,102 @@ test('polling nonretryable receipt failures gives one notice; cleanup storage fa
   await fault.box.start(); fault.box.setConnection('online'); await flush();
   const reads = cleanup.queries.length;
   await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(cleanup.queries.length, reads);
+  assert.ok(cleanup.queries.length < reads + 10); // no tight loop under persistent failure
   assert.equal(fault.notices.length, 1);
-  await fault.box.stop(); seed.store.fail = null;
+  seed.store.fail = null;
+  await new Promise(resolve => setTimeout(resolve, 30)); await flush();
+  assert.equal(fault.box.records.length, 0);
+  await fault.box.stop();
+});
+
+test('cold interrupted receipt clears by exact ID while following queued send advances', async () => {
+  const store = new Store(), seed = make(store);
+  await seed.box.start(); await seed.box.enqueue(draft(230)); await seed.box.enqueue(draft(231));
+  await seed.box.storage.update({ ...seed.box.records[0], status: 'accepted', receiptId: receipt(draft(230)).id, receiptState: 'running' });
+  await seed.box.stop();
+  const client = sdk(async (thread, clientId) => receipt({ threadId: thread, clientMessageId: clientId }, 'queued'));
+  client.getReceipt = async rid => {
+    client.queries.push(rid);
+    const earlier = rid === receipt(draft(230)).id;
+    return receipt(draft(earlier ? 230 : 231), earlier ? 'interrupted' : 'queued');
+  };
+  client.historyTail = async () => { client.messages.set('thread', [{ role: 'user', client_message_id: id(230) }]); return []; };
+  const revived = make(store, client);
+  await revived.box.start(); revived.box.setConnection('online'); await flush();
+  assert.deepEqual(client.sends.map(args => args[1]), [id(231)]);
+  assert.deepEqual(revived.box.records.map(r => r.clientMessageId), [id(231)]);
+  assert.equal(revived.box.records[0].status, 'accepted');
+  await revived.box.stop();
+});
+
+test('SDK onChange during send and history does not reenter submission or duplicate IDs', async () => {
+  const gate = deferred();
+  const client = sdk(async (thread, clientId) => {
+    const r = receipt({ threadId: thread, clientMessageId: clientId }, 'completed');
+    client.receipts.set(r.id, r);
+    box.reconcile(); // SDK fires onChange before its send Promise resolves
+    if (clientId === id(220)) await gate.promise;
+    return r;
+  });
+  client.historyTail = async () => { box.reconcile(); return []; };
+  const store = new Store();
+  const { box } = make(store, client);
+  await box.start();
+  await box.enqueue(draft(220)); await box.enqueue(draft(221));
+  box.setConnection('online'); await flush();
+  assert.deepEqual(client.sends.map(args => args[1]), [id(220)]);
+  gate.resolve(); await flush();
+  assert.deepEqual(client.sends.map(args => args[1]), [id(220), id(221)]);
+  assert.equal(box.records.length, 0); // authoritative final receipt + latest history sync
+  assert.equal([...store.data.keys()].filter(key => key.startsWith('hermes-outbox-v2')).length, 0);
+  await box.stop();
+});
+
+test('durably accepted predecessor releases queued follower before stalled history catch-up', async () => {
+  const gate = deferred(), store = new Store();
+  const client = sdk(async (thread, clientId) => receipt({ threadId: thread, clientMessageId: clientId }, 'queued'));
+  client.historyTail = async () => gate.promise;
+  const { box } = make(store, client);
+  await box.start();
+  await box.enqueue(draft(210)); await box.enqueue(draft(211));
+  box.setConnection('online'); await flush();
+  assert.equal(box.records[0].status, 'accepted');
+  assert.deepEqual(client.sends.map(args => args[1]), [id(210), id(211)]);
+  gate.resolve([]); await flush();
+  assert.deepEqual(client.sends.map(args => args[1]), [id(210), id(211)]);
+  await box.stop();
+});
+
+test('one transient confirmed-record cleanup failure does not starve the next same-thread send', async () => {
+  const store = new Store();
+  const client = sdk(async (thread, clientId) => receipt({ threadId: thread, clientMessageId: clientId }, 'completed'));
+  client.getReceipt = async rid => { client.queries.push(rid); return receipt({ threadId: 'thread', clientMessageId: rid.slice('receipt-'.length) }, 'completed'); };
+  client.historyTail = async () => {
+    client.messages.set('thread', client.sends.map(args => ({ role: 'user', client_message_id: args[1] })));
+    return client.messages.get('thread');
+  };
+  const { box, notices } = make(store, client, config, () => Date.now(), 15);
+  await box.start();
+  await box.enqueue(draft(200));
+  let failed = false;
+  store.fail = (verb, key) => {
+    if (verb !== 'delete' || !key.endsWith('.part.0') || failed) return false;
+    failed = true;
+    return true;
+  };
+  box.setConnection('online');
+  await flush();
+  assert.equal(failed, true);
+  assert.ok(notices.some(text => text.includes('清理失败')));
+  await box.enqueue(draft(201)); await flush();
+  assert.deepEqual(client.sends.map(args => args[1]), [id(200), id(201)]);
+  await new Promise(resolve => setTimeout(resolve, 45)); await flush();
+  assert.equal(box.records.length, 0);
+  assert.equal([...store.data.keys()].filter(key => key.startsWith('hermes-outbox-v2')).length, 0);
+  await box.stop();
+  const resumed = make(store); await resumed.box.start();
+  assert.equal(resumed.box.records.length, 0);
+  await resumed.box.stop();
 });
 
 test('stale cached receipt cannot regress terminal state; wrong authoritative identity cannot clean it', async () => {
