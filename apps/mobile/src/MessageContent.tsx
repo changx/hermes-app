@@ -154,12 +154,14 @@ function OfflineRenderer({ kind, source, enabled, display = true }: { kind: 'mat
   return <View style={display ? styles.renderFrame : styles.inlineRenderFrame}>
     {/* Route every URL to our deny-by-default callback; WebView sends URLs outside its whitelist to Linking. */}
     <WebView source={{ html }} originWhitelist={['*']} onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
+      onMessage={event => { if (event.nativeEvent.data === 'render-failed') setFailed(true); }}
       onError={() => setFailed(true)} onHttpError={() => setFailed(true)}
       onContentProcessDidTerminate={() => setFailed(true)} onRenderProcessGone={() => setFailed(true)} renderError={() => <View />}
       javaScriptEnabled domStorageEnabled={false} allowFileAccess={false} allowFileAccessFromFileURLs={false}
       allowUniversalAccessFromFileURLs={false} mixedContentMode="never" setSupportMultipleWindows={false}
       javaScriptCanOpenWindowsAutomatically={false} cacheEnabled={false} incognito
-      sharedCookiesEnabled={false} thirdPartyCookiesEnabled={false} scrollEnabled style={styles.renderWeb} />
+      sharedCookiesEnabled={false} thirdPartyCookiesEnabled={false} scrollEnabled
+      containerStyle={styles.renderWebContainer} style={styles.renderWeb} />
   </View>;
 }
 
@@ -277,10 +279,12 @@ const styles = StyleSheet.create({
   videoFrame: { width: '100%', maxWidth: 280, height: 168, borderRadius: 8, backgroundColor: '#162132', overflow: 'hidden' },
   video: { width: '100%', height: '100%' },
   videoStart: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  renderFrame: { width: '100%', height: 220, borderWidth: 1, borderRadius: 8, borderColor: '#d6e0ed', overflow: 'hidden' },
-  inlineRenderFrame: { width: '100%', height: 72, overflow: 'hidden' },
+  renderFrame: { width: '100%', minWidth: 0, height: 220, borderWidth: 1, borderRadius: 8, borderColor: '#d6e0ed', overflow: 'hidden' },
+  inlineRenderFrame: { width: '100%', minWidth: 0, height: 72, overflow: 'hidden' },
   inlineRenderFallback: { width: '100%', height: 72 },
-  renderWeb: { width: '100%', height: '100%', backgroundColor: 'transparent' },
+  // WebView's style reaches its inner native view, not its flex:1 wrapper.
+  renderWebContainer: { width: '100%', height: '100%', flex: 0 },
+  renderWeb: { flex: 1, backgroundColor: 'transparent' },
   renderFallback: { width: '100%', height: 220, borderWidth: 1, borderColor: '#d6e0ed', borderRadius: 8, padding: 8 },
   quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },
   list: { gap: 5, minWidth: 0 },

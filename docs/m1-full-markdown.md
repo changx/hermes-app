@@ -9,6 +9,15 @@
 - `$…$` 行内公式由本地 KaTeX 渲染为段落中的独立短公式区域，保留前后文字和格式（首版不保证与文字同一基线）；每条消息最多挂载三个公式/图表 WebView，超出时保留可读原文以限制内存；`$$…$$` 独立公式由本地打包 KaTeX 渲染；` ```mermaid ` 围栏由本地打包 Mermaid 渲染（securityLevel strict）。仅将对应数学/图表数据注入隔离 WebView 内预置渲染模板，CSP 禁止远程资源、网络连接及站外导航，不开放任意网页或消息桥命令。失败保留源内容。公式/图表占据固定 220 高区域且内部滚动；超限公式/图表回退可滚动原文。不声称支持任意 LaTeX 插件或 Mermaid 自定义外部资源。
 - 任务清单只在列表项开头识别，普通段落字面的 `[x]` 不变成控件；勾选框只读，不能改变原始消息。代码和表格在消息宽度内水平滚动；不改时间线、键盘、网络或后端。已有发送中浅灰→确认实色的 240ms 颜色过渡及减少动态效果规则保持不变。
 
+## 手机反馈修正：Mermaid 与消息外层布局
+
+- Jamie 在已发布开发版报告 Mermaid 不显示；之前 Chromium 通过不足以证明 iPhone 正常。本轮检查真实 WebView 包装器、原生加载策略及布局尺寸，只有可复现证据才能作为原因；iPhone 实测仍单列。
+- Agent 回复去掉外层气泡、背景和边框，不再限制为 90% 或保留气泡内边距，左右仅保留消息列表的 14 点边距并伸展到可用宽度；用户消息仍沿用原气泡、颜色、对齐和内边距。代码、表格、引用块自身的样式保留。
+- 不改通信、键盘、滚动跟随或消息身份。针对生产消息行断言两类样式，公式/图表继续本地执行和导航隔离；手机测试、TS、双端导出和公网新资源检查后直接更新隔离 Expo，不动 Gateway。真实手机显示不以自动测试代验收。
+- 已核实 13.16.1 的 `style` 传给内部原生 WebView，包装 View 单独由 `containerStyle` 控制；改为外层明确 100% 宽高、内部 flex 填充。iOS `loadHTMLString` 默认 base 为 `about:blank`，原导航允许值无误。该修正消除尺寸歧义，**尚无 Yoga/WKWebView 真机复现证据证明这就是本次空白根因**。
+- 渲染异常或 Mermaid 返回无 SVG 内容时，预置脚本只发固定失败状态，原生组件切换为可选择原文；没有命令桥或凭据传递。避免脚本失败后仅留下空白。
+- 主控末轮验证：112/112 手机测试、TypeScript、iOS/Android Expo 导出及 Chromium 9/9 通过；布局回归先失败（Agent 仍 flex-start 气泡）后通过。证据为私有 `markdown-verification/followup-*` 和 `layout-red.log`/`layout-green.log`。Linux WebKit 启动因缺 `libevent-2.1.so.7` 被阻，未声称 WKWebView 或真机通过。
+
 ## 验收
 
 1. 用真实解析函数验证上述各类语法，包括转义竖线、空/混排单元格、嵌套列表任务误判、引用/链接安全和不完整输入。
@@ -18,7 +27,7 @@
 ## 本轮实现与验证（隔离分支）
 
 - 生产解析器与 `MessageContent` 接线：安全图片自动加载并在固定 280×168 框内失败重试；视频同尺寸，点击后才挂载 `expo-video`，系统控制条播放，后台/卸载暂停；display KaTeX 和 Mermaid 分别在隔离 WebView 内渲染。行内 `$…$` 已接入 KaTeX 非 display 模式，放在独立 72 高区域，前后文字和嵌套格式保留；首版不与原生文字同一基线。全消息最多三个 WebView（含列表、表格中的公式），超出保留原文。`$$` 关闭定界符之后的普通文字保留，代码/转义美元符不误判。
-- WebView 模板为 UTF-8 HTML；CSP `default-src 'none'`、脚本 nonce、仅 data 字体、禁止网络连接及图片；导航回调仅允许 `about:blank`，禁用文件访问/弹窗/cookie/DOM 存储，无 `onMessage` 桥。`originWhitelist=['*']` 让全部请求进入拒绝回调：已检查并测试 13.16.1 实际包装器，窄名单反而会先调用外部 `Linking.openURL`。KaTeX `trust:false`、Mermaid strict 配置；公式最多 4096 字符、图表最多 6000 字符及 100 edges，超限、WebView 错误或进程被回收时退回定高可滚动原文。未做 iPhone 上的播放器/长图表滚动验收。
+- WebView 模板为 UTF-8 HTML；CSP `default-src 'none'`、脚本 nonce、仅 data 字体、禁止网络连接及图片；导航回调仅允许 `about:blank`，禁用文件访问/弹窗/cookie/DOM 存储；手机反馈修正后，`onMessage` 仅接受固定 `render-failed` 状态以切换原文，无命令、导航或认证数据传输。`originWhitelist=['*']` 让全部请求进入拒绝回调：已检查并测试 13.16.1 实际包装器，窄名单反而会先调用外部 `Linking.openURL`。KaTeX `trust:false`、Mermaid strict 配置；公式最多 4096 字符、图表最多 6000 字符及 100 edges，超限、WebView 错误或进程被回收时退回定高可滚动原文。未做 iPhone 上的播放器/长图表滚动验收。
 - `apps/mobile` 的 `postinstall` 在干净 `npm ci` 自动生成忽略提交的 `src/markdownRenderer.generated.ts`；用 esbuild 从已安装 Mermaid 模块入口重打包，拒绝预制 `mermaid.min.js`，确保实际离线脚本使用 lockfile 的 lodash-es 4.18.1（原 lockfile 4.17.23 的 HIGH 已消除）。`npm audit` 仍报 10 个既有 moderate，未做广泛依赖升级。
 - 阶段验证：子代理 `npm ci` postinstall、TypeScript、105 项测试通过；主控接入行内公式后 106 项测试、TypeScript、双平台 Expo 导出和版本检查通过。实际 Chromium 9 项通过，覆盖独立/行内公式、中文流程图/时序图、无效输入回退、脚本注入、图表链接、公式 trust 边界；没有远程请求。最终导航回归及发布记录见下节，阶段结果不冒充末轮结果。
 

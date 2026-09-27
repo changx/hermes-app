@@ -172,17 +172,41 @@ test('display math and Mermaid use isolated bounded native WebViews; oversized c
     assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'file:///etc/passwd' }), false);
     assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'about:blank' }), true);
     for (const prop of ['allowFileAccess', 'allowFileAccessFromFileURLs', 'allowUniversalAccessFromFileURLs', 'domStorageEnabled', 'sharedCookiesEnabled', 'thirdPartyCookiesEnabled', 'javaScriptCanOpenWindowsAutomatically', 'setSupportMultipleWindows']) assert.equal(view.props[prop], false, prop);
-    assert.equal(view.props.onMessage, undefined);
-    assert.equal(view.props.style.height, '100%');
+    assert.equal(view.props.containerStyle.width, '100%');
+    assert.equal(view.props.containerStyle.height, '100%');
+    assert.equal(view.props.containerStyle.flex, 0, 'override WebView outer flex wrapper, not just inner native style');
+    assert.equal(view.props.style.flex, 1);
   }
   assert.ok(nodes.some(n => n.type === 'View' && n.props.style?.height === 72), 'inline math has a compact stable frame');
-  views[0].props.onError();
+  views[0].props.onMessage({ nativeEvent: { data: 'render-ready' } });
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 3);
+  views[0].props.onMessage({ nativeEvent: { data: 'render-failed' } });
   assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 2);
+  const failedDiagram = h.walk(h.render()).filter(n => n.type === 'WebView').at(-1);
+  failedDiagram.props.onContentProcessDidTerminate();
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 1);
   const huge = mount(`$$${'x'.repeat(4100)}$$`);
   assert.equal(huge.walk(huge.render()).filter(n => n.type === 'WebView').length, 0);
   assert.equal(huge.walk(huge.render()).find(n => n.type === 'ScrollView').props.style.height, 220);
 });
 
+
+test('Mermaid script failure retains selectable source as native content', () => {
+  const source = 'flowchart LR\n甲-->乙';
+  const h = mount(`\`\`\`mermaid\n${source}\n\`\`\``);
+  const view = h.walk(h.render()).find(n => n.type === 'WebView');
+  view.props.onMessage({ nativeEvent: { data: 'render-failed' } });
+  const nodes = h.walk(h.render());
+  assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
+  const fallback = nodes.find(n => n.type === 'ScrollView');
+  assert.equal(fallback.props.style.height, 220);
+  assert.equal(fallback.children.find(n => n.type === 'Text').props.selectable, true);
+  for (const callback of ['onError', 'onHttpError', 'onRenderProcessGone']) {
+    const next = mount(`\`\`\`mermaid\n${source}\n\`\`\``);
+    next.walk(next.render()).find(n => n.type === 'WebView').props[callback]();
+    assert.equal(next.walk(next.render()).filter(n => n.type === 'WebView').length, 0, callback);
+  }
+});
 
 test('installed WebView navigation wrapper never opens external apps with actual renderer props', async () => {
   const h = mount('$$x$$');

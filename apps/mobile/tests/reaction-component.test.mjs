@@ -55,6 +55,31 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
+test('assistant fills available width without a bubble; user bubble remains unchanged', () => {
+  const rowStyle = role => {
+    const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);
+    const style = named(mount(rows).rowTree, 'View')[0].props.style;
+    return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  };
+  const agent = rowStyle('assistant');
+  assert.equal(agent.alignSelf, 'stretch');
+  assert.equal(agent.marginHorizontal, 14);
+  assert.equal(agent.maxWidth, undefined);
+  assert.equal(agent.padding, undefined);
+  assert.equal(agent.borderWidth, undefined);
+  assert.equal(agent.backgroundColor, undefined);
+  assert.equal(agent.borderRadius, undefined);
+  const user = rowStyle('user');
+  assert.equal(user.alignSelf, 'flex-end');
+  assert.equal(user.maxWidth, '90%');
+  assert.equal(user.padding, 13);
+  assert.equal(user.backgroundColor, '#e6f0ff');
+  assert.equal(user.borderColor, '#d0e2fb');
+  assert.equal(user.borderWidth, 1);
+  assert.equal(user.borderRadius, 16);
+  assert.equal(user.borderTopRightRadius, 4);
+});
+
 test('real message component renders legible gray text until accepted, then normal even while queued', () => {
   const phases = ['queued', 'sending', 'ambiguous', 'blocked', 'accepted'];
   for (const phase of phases) {

@@ -13,7 +13,7 @@ const action = (title: string, onPress: () => void, disabled = false, muted = fa
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean }) {
   const own = row.role === 'user';
-  return <View style={[styles.bubble, own && styles.own]}>
+  return <View style={own ? [styles.bubble, styles.own] : row.role === 'assistant' ? styles.agentMessage : styles.bubble}>
     <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>
     <MessageContent text={row.text} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
@@ -234,6 +234,7 @@ const styles = StyleSheet.create({
   // Keep the real content height: growing short content to the viewport makes
   // the keyboard controller scroll empty space and push top-aligned rows away.
   messages: { paddingVertical: 12 },
+  agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   own: { backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },
   byline: { color: '#50647b', fontSize: 12, fontWeight: '600', marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },

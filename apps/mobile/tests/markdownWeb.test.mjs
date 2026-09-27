@@ -48,5 +48,26 @@ test('oversized source returns inert text without engines or executable tags', (
   assert.ok(html.includes('&lt;script&gt;bad&lt;/script&gt;'));
   assert.equal(html.includes('<script nonce='), false);
   assert.equal(html.includes('/* local mermaid */'), false);
-  assert.ok(html.includes('default-src \'none\''));
+  assert.ok(html.includes("default-src 'none'"));
+});
+
+test('production Mermaid draw script rejects an empty diagram and reports only failure status', async () => {
+  async function render(svg) {
+    const html = renderMarkdownHtml('diagram', 'flowchart LR\nA-->B');
+    const script = [...html.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)].at(-1)[1];
+    const events = [];
+    const element = { innerHTML: '', textContent: '', querySelector: selector => selector === 'svg' && element.innerHTML.includes('<svg') ? {} : null };
+    const context = { document: { getElementById: () => element },
+      mermaid: { initialize: () => {}, render: async () => ({ svg }) },
+      window: { ReactNativeWebView: { postMessage: data => events.push(data) } } };
+    runInNewContext(script, context);
+    await new Promise(setImmediate);
+    return { element, events };
+  }
+  const good = await render('<svg></svg>');
+  assert.equal(good.element.innerHTML, '<svg></svg>');
+  assert.deepEqual(good.events, []);
+  const blank = await render('');
+  assert.equal(blank.element.textContent, '暂时无法显示：flowchart LR\nA-->B');
+  assert.deepEqual(blank.events, ['render-failed']);
 });
