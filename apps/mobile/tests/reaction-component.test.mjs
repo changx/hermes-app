@@ -59,7 +59,7 @@ const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(
 
 test('composer accepts ready attachments without text and blocks incomplete uploads; accessories remain in dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
-  const accessory = { type: 'AttachmentComposer', props: {} }, indicator = { type: 'TypingIndicator', props: {} };
+  const accessory = controls => ({ type: 'AttachmentComposer', props: { children: controls } }), indicator = { type: 'TypingIndicator', props: {} };
   const preview = row => ({ type: 'AttachmentPreview', props: { attachmentIds: row.attachments?.map(a => a.id) } });
   rows[0].attachments = [{ id: 'att_a', state: 'available' }];
   const ready = mount(rows, [], [], { text: '', attachmentCount: 2, composerAccessory: accessory, typingIndicator: indicator, renderAttachments: preview });
@@ -258,7 +258,7 @@ test('latest-message action lives in composer flow and never covers message cont
   assert.ok(latest);
   assert.equal(latest.props.style.position, undefined);
   const composer = named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
-  assert.ok(composer.props.children.flat(Infinity).includes(latest));
+  assert.ok(expand(composer.props.children).includes(latest));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === '回到最新 ↓'), false);
 });
 

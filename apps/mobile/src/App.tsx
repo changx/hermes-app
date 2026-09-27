@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
@@ -18,6 +18,7 @@ import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePo
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { AttachmentComposer, MessageAttachments } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
+import { AgentSettings, useAgentName } from './AgentSettings';
 import type { TimelineRow } from './timeline';
 
 const sendNotice = (notice: string) => notice.includes('权限') || notice.includes('消息内容')
@@ -29,6 +30,8 @@ function Button({ title, onPress, disabled = false, secondary = false }: { title
 }
 function Screen() {
   const [config, setConfig] = useState<Connection | null>(null);
+  const agentName = useAgentName(config?.id ?? null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [ready, setReady] = useState(false), [editing, setEditing] = useState(false);
   const [base, setBase] = useState(DEFAULT_BASE), [pairingCode, setPairingCode] = useState('');
   const [pendingPairing, setPendingPairing] = useState<PendingPairing | null>(null);
@@ -314,6 +317,7 @@ function Screen() {
     <View style={styles.header}>
       <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
       <Button title="连接" secondary onPress={() => setEditing(true)} />
+      <Button title="Agent 设置" secondary onPress={() => setSettingsOpen(true)} />
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}
     {loading && <Text style={styles.hint}>正在打开…</Text>}
@@ -327,8 +331,8 @@ function Screen() {
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
         text={text} onText={setText} onSend={send}
         attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
-        typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} />}
-        composerAccessory={<AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} />}
+        typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
+        composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
@@ -336,6 +340,13 @@ function Screen() {
     </> : client ? <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
       <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />
     </KeyboardAvoidingView> : null}
+    {settingsOpen && <Modal animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setSettingsOpen(false)}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+        <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => setSettingsOpen(false)} />
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>}
   </View>;
 }
 export default function App() { return <SafeAreaProvider><KeyboardProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></KeyboardProvider></SafeAreaProvider>; }

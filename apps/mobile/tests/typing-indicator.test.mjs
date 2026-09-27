@@ -28,9 +28,20 @@ function harness() {
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/TypingIndicator.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText, { module: out, exports: out.exports, require: name => name === 'react' ? { ...react, default: react } : native });
-  return { ...out.exports, animations, listeners, render(active) { index = 0; const tree = out.exports.TypingIndicator({ active }); effects.splice(0).forEach(f => f()); return tree; },
+  return { ...out.exports, animations, listeners, render(active, name) { index = 0; const tree = out.exports.TypingIndicator({ active, name }); effects.splice(0).forEach(f => f()); return tree; },
     unmount() { cells.forEach(c => c.cleanup?.()); } };
 }
+
+test('running label uses configured name or Agent, matching visible and accessible text', () => {
+  const h = harness();
+  for (const [name, expected] of [[undefined, 'Agent is running'], ['', 'Agent is running'], ['   ', 'Agent is running'], [' Tuly ', 'Tuly is running'], ['小助手', '小助手 is running']]) {
+    const tree = h.render(true, name);
+    assert.equal(tree.props.accessibilityLabel, expected);
+    assert.equal(tree.props.children[1].props.children[0], expected);
+    assert.equal(tree.props.children[1].props.numberOfLines, 1);
+  }
+  assert.equal(h.render(false, 'Tuly'), null); h.unmount();
+});
 
 test('typing derives only from online, current-thread running work, excluding pending interactions', () => {
   const { isAgentTyping } = harness();
@@ -47,7 +58,7 @@ test('native three-dot scale animation stops on background, reduced motion, inac
   const h = harness();
   let tree = h.render(true);
   assert.equal(tree.props.pointerEvents, 'none');
-  assert.equal(tree.props.accessibilityLabel, 'Hermes 正在输入');
+  assert.equal(tree.props.accessibilityLabel, 'Agent is running');
   const dots = tree.props.children[0].props.children[0];
   assert.equal(dots.length, 3);
   await Promise.resolve(); h.render(true);

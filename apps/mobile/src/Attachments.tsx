@@ -19,8 +19,8 @@ function Action({ label, title = label, onPress, disabled = false }: { label: st
 }
 
 /** Only ready, server-returned Attachment metadata reaches onChange. Failed selections remain visible; busy is true until removed/retried. */
-export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, disabled = false }: {
-  client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; disabled?: boolean;
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, disabled = false }: {
+  client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; disabled?: boolean;
 }) {
   const [items, setItems] = useState<DraftAttachment[]>([]);
   const [notice, setNotice] = useState('');
@@ -167,21 +167,15 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     update(itemsRef.current.map(entry => entry.key === key ? { ...entry, status: 'uploading', error: undefined } : entry));
     void upload(key, item.source, epoch.current);
   };
-  return <View style={styles.root}>
-    <View style={styles.controls}>
-      <Pressable accessibilityRole="button" accessibilityLabel="添加附件" accessibilityState={{ expanded: menuOpen }}
-        disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
-        <Text style={styles.addText}>{menuOpen ? '×' : '＋'}</Text>
-      </Pressable>
-      {menuOpen && <View style={styles.controls}>
+  return <View style={styles.composerRoot}>
+      {menuOpen && <View style={[styles.controls, styles.menu]}>
         <Action label="选择文件" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
         <Action label="系统相册" onPress={() => { setMenuOpen(false); void images(); }} disabled={disabled || items.length >= 8} />
         <Action label="拍照" onPress={() => { setMenuOpen(false); void camera(); }} disabled={disabled || items.length >= 8} />
         <Action label="粘贴" onPress={() => { setMenuOpen(false); void pasteOnDemand(); }} disabled={disabled} />
       </View>}
-    </View>
     {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}
-    <ScrollView horizontal keyboardShouldPersistTaps="always" style={styles.draftStrip}>
+    {!!items.length && <ScrollView horizontal keyboardShouldPersistTaps="always" style={styles.draftStrip}>
     {items.map(item => <View key={item.key} style={[styles.tile, styles.draftTile]}>
       {isImage(item.source.mime, item.source.name) && item.source.uri && <Pressable accessibilityRole="button" accessibilityLabel={`查看图片：${item.source.name}`} onPress={() => setPreview(item.source.uri!)}>
         <Image source={{ uri: item.source.uri }} style={styles.thumb} />
@@ -192,7 +186,14 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       </View>
       {item.status === 'failed' && <Action label={`重试：${item.source.name}`} title="重试" onPress={() => retry(item.key)} disabled={disabled} />}
       <Action label={`移除：${item.source.name}`} title="×" onPress={() => remove(item.key)} disabled={disabled} />
-    </View>)}</ScrollView>
+    </View>)}</ScrollView>}
+    <View style={styles.composerRow} onLayout={event => onComposerHeight?.(event.nativeEvent.layout.height)}>
+      <Pressable accessibilityRole="button" accessibilityLabel="添加附件" accessibilityState={{ expanded: menuOpen }}
+        disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
+        <Text style={styles.addText}>{menuOpen ? '×' : '＋'}</Text>
+      </Pressable>
+      {children}
+    </View>
     <ImageModal uri={preview} onClose={() => setPreview(null)} />
   </View>;
 }
@@ -300,6 +301,9 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
 }
 
 const styles = StyleSheet.create({
+  composerRoot: { backgroundColor: '#fff' },
+  menu: { paddingHorizontal: 10, paddingVertical: 6 },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderTopWidth: 1, borderColor: '#e2e8f0' },
   draftStrip: { maxHeight: 112 }, draftTile: { width: 250, marginRight: 6 },
   root: { marginVertical: 4 }, controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   action: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, backgroundColor: '#e6f0ff' }, actionText: { color: '#215ca7', fontSize: 12 }, disabled: { opacity: 0.45 },

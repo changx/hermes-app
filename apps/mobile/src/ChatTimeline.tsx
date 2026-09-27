@@ -45,7 +45,7 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
-  composerAccessory?: React.ReactNode;
+  composerAccessory?: (controls: React.ReactNode, onHeight: (height: number) => void) => React.ReactNode;
   typingIndicator?: React.ReactNode;
   attachmentCount?: number;
   attachmentsBusy?: boolean;
@@ -176,6 +176,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
+  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
+        <Text style={styles.latestText}>↓</Text>
+      </Pressable>}
+      {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running')
+        ? action('停止', props.onStop, props.busy)
+        : action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <View style={styles.flex}>
       <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
@@ -244,15 +251,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     </View>)}</ScrollView>}
 
     {props.typingIndicator}
-    {props.composerAccessory}
-    <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
-      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
-        <Text style={styles.latestText}>↓</Text>
-      </Pressable>}
-      {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running')
-        ? action('停止', props.onStop, props.busy)
-        : action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}
-    </View>
+    {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
+      : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
     </KeyboardStickyView>
   </KeyboardGestureArea>;
 });

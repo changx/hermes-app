@@ -8,7 +8,7 @@ export function isAgentTyping(threadId: string, receipts: readonly Receipt[], in
 }
 
 /** Only mounted for authoritative active work, never simulated stream progress. */
-export function TypingIndicator({ active }: { active: boolean }) {
+export function TypingIndicator({ active, name = '' }: { active: boolean; name?: string }) {
   const dots = useRef([new Animated.Value(0.6), new Animated.Value(0.6), new Animated.Value(0.6)]).current;
   const [reduced, setReduced] = useState(true);
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
@@ -30,15 +30,16 @@ export function TypingIndicator({ active }: { active: boolean }) {
     return () => { loop.stop(); dots.forEach(dot => { dot.stopAnimation(); dot.setValue(0.6); }); };
   }, [active, reduced, foreground, dots]);
   if (!active || !foreground) return null;
-  return <View style={styles.status} accessibilityLabel="Hermes 正在输入" accessibilityLiveRegion="polite" pointerEvents="none">
+  const label = `${name.trim() || 'Agent'} is running`;
+  return <View style={styles.status} accessibilityLabel={label} accessibilityLiveRegion="polite" pointerEvents="none">
     <View style={styles.dots} accessible={false}>{dots.map((scale, index) =>
       <Animated.View key={index} style={[styles.dot, { transform: [{ scale }] }]} />)}</View>
-    <Text style={styles.text}>hermes is typing...</Text>
+    <Text style={styles.text} numberOfLines={1}>{label}</Text>
   </View>;
 }
 const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 25 },
   dots: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 24 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#748296' },
-  text: { color: '#607187', fontSize: 12 },
+  text: { color: '#607187', fontSize: 12, flexShrink: 1 },
 });

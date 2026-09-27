@@ -84,6 +84,23 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
     setImages(fn) { imagePick = fn; }, setFiles(fn) { documentPick = fn; }, setClipboard(fn) { clipboardRead = fn; } };
 }
 
+test('plus shares the input row while menu and previews remain above it', async () => {
+  const h = harness(); let height;
+  const input = { type: 'TextInput', props: { accessibilityLabel: '消息内容' } };
+  const nodes = h.start('AttachmentComposer', { children: input, onComposerHeight: value => { height = value; } });
+  const row = nodes.find(x => x.type === 'View' && x.props.style?.alignItems === 'flex-end');
+  assert.equal(row.props.style.flexDirection, 'row');
+  const children = row.props.children.flat(Infinity);
+  assert.equal(children[0].props.accessibilityLabel, '添加附件'); assert.equal(children[1], input);
+  row.props.onLayout({ nativeEvent: { layout: { height: 60 } } }); assert.equal(height, 60);
+  h.setImages(async () => ({ canceled: false, assets: [{ uri: 'file://a', fileName: 'x.png', fileSize: 2, mimeType: 'image/png' }] }));
+  h.press('系统相册'); await flush();
+  h.press('添加附件'); let opened = h.render();
+  assert.ok(opened.findIndex(x => x.props.accessibilityLabel === '系统相册') < opened.findIndex(x => x.props.accessibilityLabel === '添加附件'));
+  assert.ok(opened.findIndex(x => x.props.accessibilityLabel === '查看图片：x.png') < opened.findIndex(x => x.props.accessibilityLabel === '添加附件'));
+  h.press('添加附件'); h.render(); assert.equal(h.uploads.length, 1); assert.deepEqual(h.deletions, []); h.unmount();
+});
+
 test('selection helpers cap count and actual size without accepting unknown bytes', () => {
   const src = Array.from({ length: 10 }, (_, i) => ({ uri: 'file://a', name: `f${i}.txt`, size: 1 }));
   const selected = chooseAttachments(2, src);
