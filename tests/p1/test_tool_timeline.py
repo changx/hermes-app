@@ -65,7 +65,8 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         during = store.history_page(tid, home/'state.db')
         assert [(m['id'],m['text']) for m in during['messages']] == [
             (str(user),'请查资料'), (str(interim),'先查资料。'), (str(tool_only),'')]
-        assert during['messages'][2]['tool_calls'] == [{'id':'c3','name':'search_files','label':'搜索文件'}]
+        assert during['messages'][2]['tool_calls'] == [
+            {'id':'c3','name':'search_files','label':'搜索文件','detail':'pattern=secret'}]
         final = core.append_message('s','assistant','已完成。',finish_reason='stop')
         post_llm_call(platform='hermes_app',session_id='s',turn_id='turn-one',conversation_history=[
             {'role':'user','content':'请查资料','_row_id':user},
