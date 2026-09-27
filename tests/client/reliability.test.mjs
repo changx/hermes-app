@@ -23,13 +23,13 @@ test('connection failures expose only category, status and allowlisted route, ne
   assert.equal(connectionFailure(new HttpError(503,undefined,'/v1/sync?cursor='+secret)), 'HTTP 503 · /v1/sync');
   assert.equal(connectionFailure(new HttpError(401,undefined,'/v1/receipts/'+secret)), 'HTTP 401 · /v1/receipts/:id');
   assert.equal(connectionFailure(new HttpError(403,undefined,'/v1/unknown/'+secret)), 'HTTP 403 · API');
-  assert.equal(connectionFailure(new TimeoutError('hello timed out')), 'WebSocket 握手超时');
-  assert.equal(connectionFailure(new TimeoutError('WebSocket liveness timed out')), 'WebSocket 心跳超时');
-  assert.equal(connectionFailure(new TimeoutError('operation timed out')), 'HTTP 请求超时');
-  assert.equal(connectionFailure(new TypeError('Network request failed '+secret)), '网络传输失败');
-  assert.equal(connectionFailure(new Error('WebSocket 连接失败')), 'WebSocket 连接失败');
-  assert.equal(connectionFailure(new ProtocolError('contains '+secret)), '协议校验失败');
-  assert.equal(connectionFailure(new Error('contains '+secret)), '连接异常');
+  assert.equal(connectionFailure(new TimeoutError('hello timed out')), 'WebSocket handshake timed out');
+  assert.equal(connectionFailure(new TimeoutError('WebSocket liveness timed out')), 'WebSocket liveness timed out');
+  assert.equal(connectionFailure(new TimeoutError('operation timed out')), 'HTTP request timed out');
+  assert.equal(connectionFailure(new TypeError('Network request failed '+secret)), 'Network transport failed');
+  assert.equal(connectionFailure(new Error('WebSocket connection failed')), 'WebSocket connection failed');
+  assert.equal(connectionFailure(new ProtocolError('contains '+secret)), 'Protocol validation failed');
+  assert.equal(connectionFailure(new Error('contains '+secret)), 'Connection error');
 });
 
 test('initial capabilities failure remains inside single-flight recovery, online waits for hello and durable replay',async()=>{

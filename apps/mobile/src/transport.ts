@@ -16,7 +16,7 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REPLY_BYTES = 65536;
 const authorization = (token: string) => ({ Authorization: 'Bearer ' + token });
 const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
-  if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error('附件大小必须在 1 字节至 10 MiB 之间');
+  if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error('Attachments must be between 1 byte and 10 MiB.');
   // React Native's fetch bridge supports ArrayBuffer, not every Uint8Array view.
   return bytes.slice().buffer as ArrayBuffer;
 };
@@ -34,14 +34,14 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
   return {
     http: { request,
       async upload(path, token, name, bytes, signal) {
-        if (!name || name.length > 180 || name === '.' || name === '..' || /[/\\\x00\r\n]/.test(name)) throw new Error('附件名称无效');
+        if (!name || name.length > 180 || name === '.' || name === '..' || /[/\\\x00\r\n]/.test(name)) throw new Error('Invalid attachment name.');
         const response = await fetch(base + path, { method: 'POST', headers: {
           ...authorization(token), 'X-File-Name': encodeURIComponent(name), 'X-File-Name-Encoding': 'percent-utf8', 'Content-Type': 'application/octet-stream'
         }, body: binaryBody(bytes), signal });
         const length = response.headers.get('content-length');
-        if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_REPLY_BYTES)) throw new Error('附件响应超过安全上限');
+        if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_REPLY_BYTES)) throw new Error('The attachment response is too large.');
         const raw = await response.text();
-        if (raw.length > MAX_REPLY_BYTES / 4) throw new Error('附件响应超过安全上限');
+        if (raw.length > MAX_REPLY_BYTES / 4) throw new Error('The attachment response is too large.');
         const delay = retryAfterMs(response.headers.get('retry-after'));
         return { status: response.status, body: raw && response.headers.get('content-type')?.includes('json') ? JSON.parse(raw) : raw || null,
           ...(delay === undefined ? {} : { retryAfterMs: delay }) };
@@ -52,9 +52,9 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
         const length = response.headers.get('content-length');
         // The adapter always supplies Content-Length. Refuse an unbounded response
         // before RN's arrayBuffer() allocates it, then enforce the actual size.
-        if (length === null || !/^\d+$/.test(length) || Number(length) > MAX_ATTACHMENT_BYTES) throw new Error('附件下载超过安全上限');
+        if (length === null || !/^\d+$/.test(length) || Number(length) > MAX_ATTACHMENT_BYTES) throw new Error('The attachment is too large to download.');
         const data = new Uint8Array(await response.arrayBuffer());
-        if (data.byteLength > MAX_ATTACHMENT_BYTES || data.byteLength !== Number(length)) throw new Error('附件下载不完整或超过安全上限');
+        if (data.byteLength > MAX_ATTACHMENT_BYTES || data.byteLength !== Number(length)) throw new Error('The attachment download is incomplete or too large.');
         return { status: response.status, body: data };
       }
     },
@@ -64,7 +64,7 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
         const ws = new (WebSocket as NativeSocketCtor)(base.replace(/^http/, 'ws') + path, undefined, { headers: { Authorization: 'Bearer ' + token } });
         let settled = false, listener: ((data: string) => void) | null = null, closeListener: (() => void) | null = null, closed = false;
         const pending: string[] = [];
-        const fail = () => { if (!settled) { settled = true; signal.removeEventListener('abort', abort); ws.close(); reject(new Error('WebSocket 连接失败')); } };
+        const fail = () => { if (!settled) { settled = true; signal.removeEventListener('abort', abort); ws.close(); reject(new Error('WebSocket connection failed')); } };
         const abort = () => { fail(); };
         signal.addEventListener('abort', abort, { once: true });
         ws.onmessage = event => { if (closed) return; if (listener) listener(String(event.data)); else if (pending.length<32) pending.push(String(event.data)); else ws.close(); };

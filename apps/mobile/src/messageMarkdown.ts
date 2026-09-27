@@ -181,7 +181,7 @@ function blocks(tokens: Token[], cursor: { index: number }, end?: string): Block
       const video = token.type === 'paragraph_open' && inline?.type === 'inline'
         ? /^<video src="([^"<>]+)" controls><\/video>$/i.exec(inline.content.trim()) : null;
       const videoSrc = video ? safeMediaUrl(video[1]) : null;
-      if (videoSrc && isVideoUrl(videoSrc)) result.push({ kind: 'video', text: '视频', src: videoSrc });
+      if (videoSrc && isVideoUrl(videoSrc)) result.push({ kind: 'video', text: 'Video', src: videoSrc });
       else result.push({ kind: token.type === 'heading_open' ? 'heading' : 'paragraph',
         level: token.type === 'heading_open' ? Number(token.tag.slice(1)) : undefined,
         children: inline?.type === 'inline' ? inlineNodes(inline.children || []) : [] });

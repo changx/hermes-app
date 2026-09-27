@@ -20,11 +20,11 @@ export function chooseAttachments(existing: number, incoming: PickedAttachment[]
   const accepted: PickedAttachment[] = [];
   let error: string | undefined;
   for (const source of incoming) {
-    if (accepted.length >= room) { error = '最多添加 8 个附件。'; break; }
+    if (accepted.length >= room) { error = 'You can add up to 8 attachments.'; break; }
     const name = safeFilename(source.name, source.mime);
     const size = source.data?.byteLength ?? source.size;
     if (!name || !source.uri && !source.data || !Number.isFinite(size) || !size || size < 0 || size > MAX_ATTACHMENT_BYTES) {
-      error = '部分文件为空、无法读取或超过 10 MB，请重新选择。';
+      error = 'Some files are empty, unreadable, or over 10 MB. Please select them again.';
       continue;
     }
     accepted.push({ ...source, name, size });

@@ -30,9 +30,12 @@ test('article serializes complete semantic blocks, selectable adjacent inline pr
   assert.equal(page.expansions.length, 2);
   assert.equal(page.expansions[0].kind, 'table');
   assert.equal(page.expansions[1].kind, 'diagram');
+  assert.match(html, /aria-label="View table fullscreen">⤢ View table fullscreen/);
+  assert.match(html, /aria-label="View diagram fullscreen">⤢ View diagram fullscreen/);
+  assert.match(html, /aria-label="Completed"/);
   assert.equal(page.expansions[0].block.rows[0][1].children[0].kind, 'strong');
   assert.match(html, /\.table-scroll\{overflow-x:auto/);
-  assert.match(html, /暂时无法显示：/);
+  assert.match(html, /Could not render: /);
 });
 
 test('HTML injection is escaped; URLs gated; tools serialize only safe labels/detail', () => {
@@ -69,7 +72,7 @@ test('one WebView bounds engine initialization and retains original source on ov
   const html = render(`$a$ $b$ $c$ $d$\n\n\`\`\`mermaid\n${'X'.repeat(6001)}\n\`\`\``).html;
   assert.equal((html.match(/data-render="math"/g) || []).length, 3);
   assert.match(html, /<span class="fallback">\$d\$<\/span>/);
-  assert.match(html, /内容过长，显示原文/);
+  assert.match(html, /Content too long; showing the original/);
   assert.equal(html.includes('window.mermaid'), false);
   assert.equal(html.includes('window.katex'), true);
 });

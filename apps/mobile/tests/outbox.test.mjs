@@ -142,7 +142,7 @@ test('bounded capacity is explicit and storage failures never dispatch or silent
   const store = new Store(), client = sdk(); const { box } = make(store, client);
   await box.start();
   for (let n = 10; n < 34; n++) await box.enqueue(draft(n));
-  await assert.rejects(box.enqueue(draft(34)), /已满/);
+  await assert.rejects(box.enqueue(draft(34)), /24 messages waiting/);
   assert.equal(box.records.length, 24);
   assert.equal(box.records[0].text, 'text-10');
   await box.stop();
@@ -187,7 +187,7 @@ test('accepted metadata write failure cannot create an automatic re-execution lo
   store.fail = (verb, key) => verb === 'set' && key.includes('hermes-outbox-v2') && !key.includes('.part.') && store.data.get(key)?.includes('"status":"sending"') && fail;
   box.setConnection('online'); await flush();
   assert.equal(client.sends.length, 1);
-  assert.ok(notices.some(x => x.includes('接收')));
+  assert.ok(notices.some(x => x.includes('received')));
   box.setConnection('retrying'); box.setConnection('online'); await flush();
   assert.equal(client.sends.length, 1);
   fail = false; await box.stop();
@@ -222,8 +222,8 @@ test('corrupt committed chunk prevents loading and cannot be overwritten by new 
   const chunkKey = [...store.data.keys()].find(key => key.includes('.part.'));
   store.data.set(chunkKey, 'tampered');
   const resumed = make(store);
-  await assert.rejects(resumed.box.start(), /不完整/);
-  await assert.rejects(resumed.box.enqueue(draft(71)), /本机待发状态异常/);
+  await assert.rejects(resumed.box.start(), /incomplete/);
+  await assert.rejects(resumed.box.enqueue(draft(71)), /Sending is paused/);
   assert.equal(store.data.get(chunkKey), 'tampered');
   await resumed.box.stop();
 });
@@ -464,7 +464,7 @@ test('one transient confirmed-record cleanup failure does not starve the next sa
   box.setConnection('online');
   await flush();
   assert.equal(failed, true);
-  assert.ok(notices.some(text => text.includes('清理失败')));
+  assert.ok(notices.some(text => text.includes('could not be cleared')));
   await box.enqueue(draft(201)); await flush();
   assert.deepEqual(client.sends.map(args => args[1]), [id(200), id(201)]);
   await new Promise(resolve => setTimeout(resolve, 45)); await flush();

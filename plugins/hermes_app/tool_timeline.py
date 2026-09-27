@@ -15,10 +15,10 @@ _UNSAFE_COMMAND = re.compile(
     r'|\s(?:-H|-u|-p|--header|--data|--data-raw|--user|--password|--cookie)(?:\s|=)'
     r'|(?:^|\s)(?:export|env|set|printenv)\b|\b\.env\b)')
 _LABELS = {
-    'read_file': '阅读文件', 'search_files': '搜索文件', 'web_search': '搜索网页',
-    'web_extract': '阅读网页', 'browser_exec': '浏览网页', 'terminal': '运行命令',
-    'execute_code': '运行代码', 'patch': '修改文件', 'write_file': '写入文件',
-    'parallel': '并行执行工具', 'multi_tool_use.parallel': '并行执行工具',
+    'read_file': 'Read file', 'search_files': 'Search files', 'web_search': 'Search web',
+    'web_extract': 'Read webpage', 'browser_exec': 'Browse web', 'terminal': 'Run command',
+    'execute_code': 'Run code', 'patch': 'Edit file', 'write_file': 'Write file',
+    'parallel': 'Run tools in parallel', 'multi_tool_use.parallel': 'Run tools in parallel',
 }
 _TERMINAL = frozenset({'terminal', 'functions.terminal'})
 _SENSITIVE_KEY = re.compile(
@@ -125,7 +125,7 @@ def _search_label(arguments):
         return None
     if not isinstance(clean, str) or clean == REDACTION_UNAVAILABLE or clean != query:
         return None
-    label = '搜索网页：' + ' '.join(clean.split())
+    label = 'Search web: ' + ' '.join(clean.split())
     return _short(label, 240)
 
 
@@ -276,5 +276,5 @@ def public_tool_calls(message):
         result.append(record)
     if valid_count > 128:
         result[-1] = {'id': result[-1]['id'], 'name': result[-1]['name'],
-                      'label': f'此项及另外 {valid_count - 128} 项工具调用未逐项展示'}
+                      'label': f'This and {valid_count - 128} more tool calls are not shown individually'}
     return result

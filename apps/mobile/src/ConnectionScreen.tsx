@@ -21,19 +21,19 @@ export function ConnectionScreen(props: Props) {
   const showPairing = !props.connected || replacing || props.pairing;
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form}>
     <Text style={styles.brand}>Hermes App</Text>
-    <Text style={styles.heading}>{props.connected ? '连接设置' : '连接你的 Hermes'}</Text>
+    <Text style={styles.heading}>{props.connected ? 'Connection settings' : 'Connect to Hermes'}</Text>
     {!showPairing ? <>
-      <Text style={styles.text}>此设备已连接。网络中断后会自动恢复。</Text>
-      <Action title="返回聊天" onPress={props.onBack} />
-      <Action title="重新配对" onPress={() => setReplacing(true)} secondary />
-      <Action title="断开并忘记此连接" onPress={props.onForget} secondary />
+      <Text style={styles.text}>This device is connected. It will reconnect automatically if the network drops.</Text>
+      <Action title="Back to chat" onPress={props.onBack} />
+      <Action title="Pair again" onPress={() => setReplacing(true)} secondary />
+      <Action title="Disconnect and forget this connection" onPress={props.onForget} secondary />
     </> : <>
-      <Text style={styles.caption}>一次性配对码</Text>
-      <TextInput accessibilityLabel="一次性配对码" style={styles.input} autoCapitalize="characters" autoCorrect={false}
-        value={props.code} onChangeText={props.onCode} editable={!props.busy} placeholder="输入管理员提供的配对码" />
-      <Text style={styles.text}>首次连接需要管理员授权。配对后，此设备会安全保存连接，日常使用无需重复输入。</Text>
-      <Action title={props.busy ? '正在配对…' : '配对并连接'} disabled={props.busy || !props.code.trim()} onPress={props.onPair} />
-      {props.connected && <Action title="返回原连接" onPress={props.onBack} secondary disabled={props.busy} />}
+      <Text style={styles.caption}>One-time pairing code</Text>
+      <TextInput accessibilityLabel="One-time pairing code" style={styles.input} autoCapitalize="characters" autoCorrect={false}
+        value={props.code} onChangeText={props.onCode} editable={!props.busy} placeholder="Enter the code from your admin" />
+      <Text style={styles.text}>Your admin must approve your first connection. This device securely saves it, so you won't need to enter the code again.</Text>
+      <Action title={props.busy ? 'Pairing…' : 'Pair and connect'} disabled={props.busy || !props.code.trim()} onPress={props.onPair} />
+      {props.connected && <Action title="Back to previous connection" onPress={props.onBack} secondary disabled={props.busy} />}
     </>}
     {!!props.status && <Text accessibilityLiveRegion="polite" style={styles.text}>{props.status}</Text>}
     {!!props.error && <Text accessibilityLiveRegion="polite" style={styles.error}>{props.error}</Text>}

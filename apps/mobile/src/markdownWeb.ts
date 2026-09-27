@@ -63,9 +63,9 @@ export function renderMarkdownHtml(kind: 'math' | 'diagram', source: string, dis
     (kind === 'diagram' ? `html,body{height:100%;overflow:hidden}#diagram-stage{position:absolute;inset:46px 0 0;overflow:auto;touch-action:pan-x pan-y;overscroll-behavior:contain}` +
       `#content{width:max-content;min-width:0}#content svg{display:block}#zoom-controls{position:absolute;top:4px;right:4px;z-index:10;display:flex;gap:4px}` +
       `#zoom-controls button{background:#fff;color:#172a40;border:1px solid #9ab2d2;border-radius:6px;min-width:38px;min-height:38px;font:15px system-ui}` : '') +
-    css + `</style></head><body>` + (kind === 'diagram' ? `<div id="zoom-controls"><button id="zoom-in" aria-label="放大">放大</button><button id="zoom-out" aria-label="缩小">缩小</button><button id="zoom-reset" aria-label="重置">重置</button></div><div id="diagram-stage"><div id="content"></div></div>` : `<div id="content"></div>`) +
+    css + `</style></head><body>` + (kind === 'diagram' ? `<div id="zoom-controls"><button id="zoom-in" aria-label="Zoom in">Zoom in</button><button id="zoom-out" aria-label="Zoom out">Zoom out</button><button id="zoom-reset" aria-label="Reset zoom">Reset zoom</button></div><div id="diagram-stage"><div id="content"></div></div>` : `<div id="content"></div>`) +
     `<script nonce="${nonce}">${engine}</script><script nonce="${nonce}">(async()=>{try{${draw}` +
     `if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage('render-ready');}catch(e){` +
-    `const el=document.getElementById('content');el.textContent='暂时无法显示：'+${data};` +
+    `const el=document.getElementById('content');el.textContent='Could not render: '+${data};` +
     `if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage('render-failed');}})();</script></body></html>`;
 }

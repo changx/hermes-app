@@ -84,7 +84,7 @@ test('native-like fetch failure retries; new hello gates foreground recovery', a
     sdk=new HermesClient({...nativeTransport(config.baseUrl),token:()=>config.token,backoffMs:[5],connectTimeoutMs:100,
       onError:error=>failures.push(connectionFailure(error)),onConnectionState:state=>states.push(state)});
     sdk.cursor='c0';await sdk.connect();await until(()=>sockets.length===1);
-    assert.deepEqual(failures,['网络传输失败']);
+    assert.deepEqual(failures,['Network transport failed']);
     assert.notEqual(sdk.connectionState,'online');
     sockets[0].emit(hello);await until(()=>sdk.connectionState==='online');
     sdk.close();await sdk.connect();await until(()=>sockets.length===2);

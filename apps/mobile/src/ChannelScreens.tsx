@@ -24,7 +24,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     const version = generation.current; working.current = true; setBusy(true); setError('');
     const isCurrent = () => generation.current === version;
     try { await work(isCurrent); }
-    catch { if (isCurrent()) setError('没有完成，请稍后再试。'); }
+    catch { if (isCurrent()) setError('Could not complete that action. Try again later.'); }
     finally { working.current = false; setBusy(false); }
   };
   const channel = client.channels.get(channelId || '');
@@ -33,39 +33,39 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const startEdit = () => { if (!channel) return; setName(channel.name); setDescription(channel.description || ''); setEditing(true); setCreating(false); setError(''); };
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
   const channelForm = (editing || creating) && <View style={s.form}>
-    <Text style={s.heading}>{editing ? '编辑频道' : '新建频道'}</Text>
-    <TextInput accessibilityLabel="频道名称" placeholder="频道名称" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
-    <TextInput accessibilityLabel="频道说明" placeholder="背景、目标或约定（可选）" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
-    <Text style={s.hint}>新话题会参考这段说明，已有对话不会改变。</Text>
+    <Text style={s.heading}>{editing ? 'Edit channel' : 'New channel'}</Text>
+    <TextInput accessibilityLabel="Channel name" placeholder="Channel name" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
+    <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
+    <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
     <View style={s.row}>
-      <Action label={busy ? '保存中…' : editing ? '保存' : '创建频道'} disabled={busy || !name.trim()} onPress={() => void run(async current => {
+      <Action label={busy ? 'Saving…' : editing ? 'Save' : 'Create channel'} disabled={busy || !name.trim()} onPress={() => void run(async current => {
         const patch = channelPatch(name, description);
         if (editing && channelId) { await client.updateChannel(channelId, patch); if (current()) setEditing(false); }
         else { const made = await client.createChannel(patch.name, patch.description); if (current()) { setCreating(false); onChannel(made.id); } }
       })} />
-      <Action label="取消" secondary disabled={busy} onPress={() => { setCreating(false); setEditing(false); }} />
+      <Action label="Cancel" secondary disabled={busy} onPress={() => { setCreating(false); setEditing(false); }} />
     </View>
   </View>;
   return <View style={s.fill}>
     <View style={s.top}>
-      {channelId && <Action label="‹ 频道" secondary disabled={busy} onPress={() => onChannel(null)} />}
-      <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || '频道' : '频道'}</Text>
-      <Action label={channelId ? '编辑' : '新建'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
+      {channelId && <Action label="‹ Channels" secondary disabled={busy} onPress={() => onChannel(null)} />}
+      <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || 'Channel' : 'Channels'}</Text>
+      <Action label={channelId ? 'Edit' : 'New'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
     </View>
-    {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>正在保存…</Text></View>}
+    {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelId ? <FlatList keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id} contentContainerStyle={s.list}
       ListHeaderComponent={<>
         {channelForm}
         {!!channel?.description && !editing && <Text selectable style={s.summary}>{channel.description}</Text>}
-        <View style={s.form}><Text style={s.heading}>新话题</Text><View style={s.row}><TextInput accessibilityLabel="新话题标题" placeholder="想聊什么？" value={title} onChangeText={setTitle} style={[s.input, s.fill]} editable={!busy} maxLength={200} /><Action label="创建" disabled={busy || !title.trim()} onPress={() => void run(async current => { const made = await client.createThread(channelId, threadPatch(title).title); await client.getThread(made.id); if (current()) { setTitle(''); onThread(made.id); } })} /></View></View>
+        <View style={s.form}><Text style={s.heading}>New topic</Text><View style={s.row}><TextInput accessibilityLabel="New topic title" placeholder="What would you like to discuss?" value={title} onChangeText={setTitle} style={[s.input, s.fill]} editable={!busy} maxLength={200} /><Action label="Create" disabled={busy || !title.trim()} onPress={() => void run(async current => { const made = await client.createThread(channelId, threadPatch(title).title); await client.getThread(made.id); if (current()) { setTitle(''); onThread(made.id); } })} /></View></View>
       </>}
       renderItem={({ item }) => <View style={s.card}>
-        {renaming === item.id ? <><TextInput accessibilityLabel="话题新名称" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="保存" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="取消" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><Text style={s.hint}>{item.unread_count ? `${item.unread_count} 条未读` : '打开对话'}</Text></Pressable><Action label="改名" secondary disabled={busy} onPress={() => rename(item)} /></View>}
+        {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><Text style={s.hint}>{item.unread_count ? `${item.unread_count} unread` : 'Open conversation'}</Text></Pressable><Action label="Rename" secondary disabled={busy} onPress={() => rename(item)} /></View>}
       </View>}
-      ListEmptyComponent={<Text style={s.empty}>还没有话题。创建一个，开始讨论。</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={s.list} ListHeaderComponent={channelForm || null}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text><Text numberOfLines={2} style={s.hint}>{item.description || '项目或长期讨论空间'}</Text></Pressable>}
-      ListEmptyComponent={<Text style={s.empty}>创建一个频道，把相关话题放在一起。</Text>} />}
+      ListEmptyComponent={<Text style={s.empty}>No topics yet. Create one to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={s.list} ListHeaderComponent={channelForm || null}
+      renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text><Text numberOfLines={2} style={s.hint}>{item.description || 'A space for a project or ongoing conversations'}</Text></Pressable>}
+      ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
   </View>;
 }
 const s = StyleSheet.create({

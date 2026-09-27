@@ -29,7 +29,7 @@ test('attachment-only durable retry preserves descriptor order and ids across co
   assert.ok(!meta[0].includes('照片') && !meta[0].includes('attachments'));
   assert.equal(first.records[0].attachments[0].name, '照片1.png');
   first.records[0].attachments[0].name = 'mutated again';
-  await assert.rejects(first.update({ ...first.records[0], attachments: [attachment(2), attachment(1)] }), /身份或原文变化/);
+  await assert.rejects(first.update({ ...first.records[0], attachments: [attachment(2), attachment(1)] }), /The saved message identity or text has changed\./);
   const sdk = remote(), revived = new MobileOutbox(new OutboxStore(store, config), sdk, () => {}, () => Date.now(), () => 0);
   await revived.start(); assert.deepEqual(revived.records[0].attachments.map(a => a.id), [attachment(1).id, attachment(2).id]);
   revived.setConnection('online'); await flush(); assert.equal(revived.records[0].status, 'ambiguous');
@@ -114,6 +114,6 @@ test('binary adapter enforces upload/download limits and retains Retry-After', a
     assert.equal(reply.retryAfterMs,3000); assert.equal(seen.signal,undefined);
     await assert.rejects(http.upload('/path',config.token,'x',new Uint8Array(10485761)),/10 MiB/);
     globalThis.fetch = async () => ({status:200,headers:{get:()=>String(10485761)},arrayBuffer:async()=>{throw Error('must not allocate');}});
-    await assert.rejects(http.download('/path',config.token),/安全上限/);
+    await assert.rejects(http.download('/path',config.token),/The attachment is too large to download\./);
   } finally {globalThis.fetch = original;}
 });

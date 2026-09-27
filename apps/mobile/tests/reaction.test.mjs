@@ -11,7 +11,7 @@ const receipt = (id, clientId, state, thread = 'th') => ({ id, client_message_id
 const record = (status, receiptState) => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'a', receiptId: status === 'accepted' ? 'ra' : undefined, receiptState, text: 'same', status });
 const rows = (messages, recs = [], cache = new Map(), interactions = []) => projectTimeline(messages, null, 'th', undefined, true, recs, cache, interactions);
 
-for (const [processing, label, emoji] of [['running', '处理中', '👀'], ['completed', '已完成', '✅'], ['failed', '处理失败', '❌'], ['unknown', '结果待确认', '⚠️']]) {
+for (const [processing, label, emoji] of [['running', 'Working', '👀'], ['completed', 'Completed', '✅'], ['failed', 'Failed', '❌'], ['unknown', 'Outcome unknown', '⚠️']]) {
   test(`exact user callback projects ${processing} without inventing a separate message`, () => {
     const result = rows([message('a', 'ra'), { id: 'bot', ref_seq: 2, role: 'assistant', text: 'answer' }], [], new Map([['ra', { ...receipt('ra', 'a', 'unknown'), processing }]]));
     assert.equal(result.length, 2);
@@ -34,14 +34,14 @@ test('receipt lifecycle, handoff and followup admission never imply callback; ca
 test('pending approval and clarification override only nonterminal matching receipt', () => {
   const approval = { state: 'pending', kind: 'approval', id: 'a', receipt_id: 'ra', thread_id: 'th' };
   const clarify = { ...approval, kind: 'clarify' };
-  for (const [kind, label] of [[approval, '等待审批'], [clarify, '等待回答']]) {
+  for (const [kind, label] of [[approval, 'Awaiting approval'], [clarify, 'Awaiting your answer']]) {
     assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'running' }]]), [kind])[0].reaction.label, label);
   }
   for (const state of ['completed', 'failed', 'interrupted', 'unknown']) {
-    assert.notEqual(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', state), processing: 'completed' }]]), [approval])[0].reaction?.label, '等待审批');
+    assert.notEqual(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', state), processing: 'completed' }]]), [approval])[0].reaction?.label, 'Awaiting approval');
   }
-  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'running' }]]), [{ ...approval, receipt_id: 'rb' }])[0].reaction.label, '处理中');
-  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'completed' }]]), [approval])[0].reaction.label, '已完成');
+  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'running' }]]), [{ ...approval, receipt_id: 'rb' }])[0].reaction.label, 'Working');
+  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'completed' }]]), [approval])[0].reaction.label, 'Completed');
 });
 test('same text, cross thread, foreign client and receipt mismatch never borrow a reaction or shift key', () => {
   const msgs = [message('a', 'ra'), message('b', 'rb', 2), { id: 'old', ref_seq: 3, role: 'user', text: 'same' }];

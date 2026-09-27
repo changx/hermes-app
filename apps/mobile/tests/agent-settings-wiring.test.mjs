@@ -35,7 +35,7 @@ test('settings opens over existing chat, names running indicator, and closes by 
   assert.equal(chat.props.text, 'draft');
   assert.equal(chat.props.typingIndicator.props.name, 'Tuly');
   assert.ok(!nodes.some(n => n.type === 'Modal'));
-  nodes.find(n => n.type === 'Button' && n.props.title === 'Agent 设置').props.onPress();
+  nodes.find(n => n.type === 'Button' && n.props.title === 'Agent settings').props.onPress();
   nodes = h.render();
   const modal = nodes.find(n => n.type === 'Modal');
   assert.equal(modal.props.presentationStyle, 'fullScreen');

@@ -94,7 +94,7 @@ test('cold read failure can retry without overwriting saved name', async () => {
   h.setGet(async () => { if (failed) throw Error('locked'); return 'restored'; });
   let state = await view(h, 'x'); assert.equal(state.ready, false);
   let tree = h.form({ ...props(state, () => {}), onRetry: state.reload });
-  h.button(tree, '重试读取').props.onPress();
+  h.button(tree, 'Retry loading').props.onPress();
   failed = false; state = await view(h, 'x');
   assert.equal(state.name, 'restored'); assert.equal(state.ready, true);
   assert.equal(state.error, ''); assert.equal(h.writes.length, 0);
@@ -107,20 +107,20 @@ test('saving guard and failure preserve name; form draft remains editable and cl
   assert.equal(h.field(tree).props.maxLength, 80);
   assert.equal(h.field(tree).props.placeholder, 'Agent');
   assert.equal(h.field(tree).props.value, '');
-  assert.match(JSON.stringify(tree), /只影响此设备当前连接/);
+  assert.match(JSON.stringify(tree), /Only changes how the Agent appears on this device/);
   h.field(tree).props.onChangeText('draft');
   h.setPut(() => gate.promise);
   tree = h.form(props(h.render('x'), () => close++));
-  h.button(tree, '保存').props.onPress();
+  h.button(tree, 'Save').props.onPress();
   await tick();
   assert.equal(h.render('x').saving, true);
-  h.button(tree, '保存').props.onPress();
+  h.button(tree, 'Save').props.onPress();
   assert.equal(h.writes.length, 1);
   gate.reject(new Error('storage full')); await tick();
-  state = h.render('x'); assert.equal(state.name, 'Agent'); assert.match(state.error, /保存失败/);
+  state = h.render('x'); assert.equal(state.name, 'Agent'); assert.match(state.error, /Could not save the name/);
   tree = h.form(props(state, () => close++)); assert.equal(h.field(tree).props.value, 'draft'); assert.equal(close, 0);
   h.setPut(async (key, value) => h.store.set(key, value));
-  h.button(tree, '保存').props.onPress(); await tick();
+  h.button(tree, 'Save').props.onPress(); await tick();
   assert.equal(h.render('x').name, 'draft'); assert.equal(close, 1);
 });
 
@@ -128,8 +128,8 @@ test('cancel makes no write; loaded name populates form unless user already type
   const h = harness(); const gate = deferred(); h.setGet(() => gate.promise);
   let state = h.render('x'); let closed = 0;
   let tree = h.form(props(state, () => closed++));
-  assert.equal(h.button(tree, '保存').props.disabled, true);
-  h.button(tree, '关闭').props.onPress(); assert.equal(closed, 1); assert.equal(h.writes.length, 0);
+  assert.equal(h.button(tree, 'Save').props.disabled, true);
+  h.button(tree, 'Close').props.onPress(); assert.equal(closed, 1); assert.equal(h.writes.length, 0);
   gate.resolve('persisted'); await tick();
   state = h.render('x'); tree = h.form(props(state, () => closed++));
   // State updates from effects appear after the next render.
@@ -139,10 +139,10 @@ test('cancel makes no write; loaded name populates form unless user already type
 
 test('cold read failure visible with manual override; late read never replaces edit', async () => {
   const h = harness(); h.setGet(async () => { throw Error('locked'); });
-  let state = await view(h, 'x'); assert.equal(state.ready, false); assert.match(state.error, /无法读取/);
-  let tree = h.form(props(state, () => {})); assert.equal(h.button(tree, '保存').props.disabled, true);
+  let state = await view(h, 'x'); assert.equal(state.ready, false); assert.match(state.error, /Could not read the display name/);
+  let tree = h.form(props(state, () => {})); assert.equal(h.button(tree, 'Save').props.disabled, true);
   h.field(tree).props.onChangeText('manual'); tree = h.form(props(state, () => {}));
-  assert.equal(h.button(tree, '保存').props.disabled, false);
+  assert.equal(h.button(tree, 'Save').props.disabled, false);
   assert.equal(await state.save('manual'), true); assert.equal(h.render('x').name, 'manual');
   const delayed = harness(), gate = deferred(); delayed.setGet(() => gate.promise);
   delayed.render('a'); assert.equal(await delayed.render('a').save('new'), true);
@@ -176,10 +176,10 @@ test('late save from a closed form never closes a newly opened form', async () =
   const state = await view(h, 'a'); let closes = 0;
   let tree = h.form(props(state, () => closes++));
   h.field(tree).props.onChangeText('Alice');
-  tree = h.form(props(state, () => closes++)); h.button(tree, '保存').props.onPress();
+  tree = h.form(props(state, () => closes++)); h.button(tree, 'Save').props.onPress();
   h.unmountForm();
   const reopened = h.form(props(h.render('a'), () => closes++));
-  assert.equal(h.button(reopened, '保存').props.disabled, true);
+  assert.equal(h.button(reopened, 'Save').props.disabled, true);
   gate.resolve(); await tick();
   assert.equal(closes, 0); assert.equal(h.render('a').name, 'Alice');
 });
@@ -200,7 +200,7 @@ test('scope switch masks name immediately and ignores old read/write callbacks',
   const a = await view(other, 'a'); let closed = 0;
   const tree = other.form(props(a, () => closed++));
   other.field(tree).props.onChangeText('Alice');
-  other.button(other.form(props(a, () => closed++)), '保存').props.onPress();
+  other.button(other.form(props(a, () => closed++)), 'Save').props.onPress();
   await tick();
   assert.equal(other.render('b', false).name, 'Agent');
   assert.equal((await view(other, 'b')).name, 'Agent');

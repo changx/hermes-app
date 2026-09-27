@@ -51,8 +51,8 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         assert [m['id'] for m in first['messages']] == [str(user), str(interim)]
         assert first['messages'][1]['text'] == '先查资料。'
         assert first['messages'][1]['tool_calls'] == [
-            {'id':'c1','name':'web_search','label':'搜索网页：Sensor Tower API'},
-            {'id':'c2','name':'terminal','label':'运行命令','detail':'uv run pytest -q'}]
+            {'id':'c1','name':'web_search','label':'Search web: Sensor Tower API'},
+            {'id':'c2','name':'terminal','label':'Run command','detail':'uv run pytest -q'}]
         assert 'query' not in json.dumps(first, ensure_ascii=False)  # no raw argument object
         assert 'not public' not in json.dumps(first, ensure_ascii=False)
         pre_tool_call(turn_id='turn-one', session_id='s', tool_call_id='c2')
@@ -66,7 +66,7 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         assert [(m['id'],m['text']) for m in during['messages']] == [
             (str(user),'请查资料'), (str(interim),'先查资料。'), (str(tool_only),'')]
         assert during['messages'][2]['tool_calls'] == [
-            {'id':'c3','name':'search_files','label':'搜索文件','detail':'pattern=secret'}]
+            {'id':'c3','name':'search_files','label':'Search files','detail':'pattern=secret'}]
         final = core.append_message('s','assistant','已完成。',finish_reason='stop')
         post_llm_call(platform='hermes_app',session_id='s',turn_id='turn-one',conversation_history=[
             {'role':'user','content':'请查资料','_row_id':user},
@@ -78,7 +78,7 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         assert page['messages'][-1]['text'] == '已完成。'
         assert store.history_page(tid, home/'state.db',after_ref_seq=during['messages'][-1]['ref_seq'])['messages'] == [page['messages'][-1]]
         assert [m['id'] for m in store.history_page(tid,home/'state.db',latest=True,limit=2)['messages']] == list(map(str,[tool_only,final]))
-        assert store.search_page(tid,home/'state.db','搜索文件')['messages'] == [
+        assert store.search_page(tid,home/'state.db','Search files')['messages'] == [
             {k:page['messages'][2][k] for k in ('id','ref_seq','role','text','tool_calls')}]
         # Re-read from a fresh Store after a reconnect; do not infer missing older refs.
         assert Store(store.path).history_page(tid,home/'state.db')['messages'] == page['messages']
@@ -127,18 +127,18 @@ def test_command_privacy_unknown_parallel_and_overflow(monkeypatch):
         assert 'detail' not in projected[0], command[:55]
     assert public_tool_calls({'tool_calls':[call('p','multi_tool_use.parallel',{'tool_uses':[
         {'recipient_name':'terminal','parameters':{'command':secret}}]})]}) == [
-            {'id':'p','name':'multi_tool_use.parallel','label':'并行执行工具'}]
+            {'id':'p','name':'multi_tool_use.parallel','label':'Run tools in parallel'}]
     assert public_tool_calls({'tool_calls':[call('u','custom_sensitive',{'password':secret})]}) == [
             {'id':'u','name':'custom_sensitive','label':'custom_sensitive'}]
     assert public_tool_calls({'tool_calls':[call('bad','terminal','not dict')]}) == [
-            {'id':'bad','name':'terminal','label':'运行命令'}]
+            {'id':'bad','name':'terminal','label':'Run command'}]
     assert public_tool_calls({'tool_calls':'not json'}) == []
     assert public_tool_calls({'tool_calls':[call('😀'*101, 'web_search')]}) == []
     assert 'detail' not in public_tool_calls({'tool_calls':[
         call('emoji','terminal',{'command':'python -m pytest ' + '😀'*2000})]})[0]
     projected = public_tool_calls({'tool_calls':[call(str(i),'web_search') for i in range(131)]})
     assert len(projected) == 128
-    assert projected[-1] == {'id':'127','name':'web_search','label':'此项及另外 3 项工具调用未逐项展示'}
+    assert projected[-1] == {'id':'127','name':'web_search','label':'This and 3 more tool calls are not shown individually'}
 
 
 def test_http_history_search_same_schema(tmp_path, monkeypatch):
@@ -159,7 +159,7 @@ def test_http_history_search_same_schema(tmp_path, monkeypatch):
                 async with TestClient(server) as client:
                     headers={'Authorization':'Bearer '+'x'*32}
                     history=await client.get(f'/v1/threads/{tid}/messages',headers=headers)
-                    search=await client.get(f'/v1/threads/{tid}/search?q=阅读文件',headers=headers)
+                    search=await client.get(f'/v1/threads/{tid}/search?q=Read file',headers=headers)
                     assert history.status == search.status == 200
                     messages=(await history.json())['messages']
                     hits=(await search.json())['messages']

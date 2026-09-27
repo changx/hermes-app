@@ -51,7 +51,7 @@ test('timeout ignoring abort is bounded and retries saved candidate',async()=>{
 });
 test('invalid code is actionable and cannot replace existing connection',async()=>{
   const pending=make(),store=storage();store.data.set(CONFIG_KEY,'old-connection');
-  await assert.rejects(completePairing(pending,{store,signal:new AbortController().signal,fetcher:async(url)=>response(url.endsWith('/capabilities')?401:400,{})}),/配对码/);
+  await assert.rejects(completePairing(pending,{store,signal:new AbortController().signal,fetcher:async(url)=>response(url.endsWith('/capabilities')?401:400,{})}),/pairing code/);
   assert.equal(store.data.get(CONFIG_KEY),'old-connection');assert.ok(store.data.has(PAIRING_KEY));
 });
 test('abort prevents late ignored-abort reply from activating identity',async()=>{
@@ -62,11 +62,11 @@ test('abort prevents late ignored-abort reply from activating identity',async()=
 });
 test('storage failure before network never submits pairing',async()=>{
   const store=storage();store.setItemAsync=async()=>{throw new Error('storage failed');};let calls=0;
-  await assert.rejects(completePairing(make(),{store,signal:new AbortController().signal,fetcher:async()=>{calls++;}}),/尚未提交/);assert.equal(calls,0);
+  await assert.rejects(completePairing(make(),{store,signal:new AbortController().signal,fetcher:async()=>{calls++;}}),/Pairing has not started/);assert.equal(calls,0);
 });
 test('authorization rejected after provision does not endlessly redeem',async()=>{
   const pending=make(),store=storage();let exchanges=0;
   await assert.rejects(completePairing(pending,{store,signal:new AbortController().signal,fetcher:async(url)=>{
     if(url.endsWith('/capabilities'))return response(401,{});exchanges++;return response(201,{device_id:pending.config.token.slice(7,31)});
-  }}),/尚未完成设备授权/);assert.equal(exchanges,1);assert.equal(store.data.has(CONFIG_KEY),false);
+  }}),/has not been authorized yet/);assert.equal(exchanges,1);assert.equal(store.data.has(CONFIG_KEY),false);
 });

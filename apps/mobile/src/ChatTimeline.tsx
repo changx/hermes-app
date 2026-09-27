@@ -17,14 +17,14 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
   const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
-    {!row.continuation && <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>}
+    {!row.continuation && <Text style={styles.byline}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
-    {own && !!row.feedback && <Text accessibilityLabel={`收到后的反馈：${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
+    {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
-    {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
+    {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>Attachment: {a.name || 'Unnamed attachment'} ({a.state === 'available' ? 'Available' : 'Unavailable for now'})</Text>)}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
       {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
-      {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="取消排队" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>取消</Text></Pressable>}
+      {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </View>;
   return own ? <View style={styles.userMessageRow}>{content}</View> : content;
@@ -177,13 +177,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
-  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
-      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
+  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="Message text" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>}
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
-        <Pressable accessibilityRole="button" accessibilityLabel="停止" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
-      {action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
+        <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
+      {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <View style={styles.flex}>
       <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
@@ -194,9 +194,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         // toggle it during programmatic follow/keyboard scrolling.
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
-          {props.onLocateNext && action('继续查看', props.onLocateNext, props.locatingBusy, true)}</View>
-          : props.hasOlder ? <View style={styles.older}>{action('查看更早消息', props.onOlder, props.busy, true)}</View> : null}
-        ListEmptyComponent={props.locatingMessage ? null : <Text style={styles.empty}>暂无消息</Text>}
+          {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>
+          : props.hasOlder ? <View style={styles.older}>{action('View earlier messages', props.onOlder, props.busy, true)}</View> : null}
+        ListEmptyComponent={props.locatingMessage ? null : <Text style={styles.empty}>No messages yet</Text>}
         onViewableItemsChanged={viewability.current}
         onLayout={e => {
           viewport.current = e.nativeEvent.layout.height;
@@ -243,11 +243,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       }
     }}>
     {!!props.interactions.length && <ScrollView style={styles.interactions} keyboardShouldPersistTaps="handled">{props.interactions.map(i => <View key={i.id} style={styles.interaction}>
-      <Text style={styles.controlText}>{i.kind === 'approval' ? '请确认' : '请回答'} · {i.prompt}</Text>
+      <Text style={styles.controlText}>{i.kind === 'approval' ? 'Please confirm' : 'Please answer'} · {i.prompt}</Text>
       <View style={styles.controlRow}>{i.choices.map(choice => <React.Fragment key={choice}>{action(choice, () => props.onAnswer(i, choice), props.busy, true)}</React.Fragment>)}</View>
       {i.kind === 'clarify' && i.choices.length === 0 && <View style={styles.controlRow}>
-        <TextInput accessibilityLabel="你的回答" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)} />
-        {action('提交回答', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
+        <TextInput accessibilityLabel="Your answer" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)} />
+        {action('Submit answer', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
       </View>}
     </View>)}</ScrollView>}
 

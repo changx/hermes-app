@@ -78,7 +78,7 @@ test('production Mermaid draw script fits the viewport and rejects an empty diag
   assert.equal(good.element.innerHTML, '<svg></svg>');
   assert.deepEqual(good.events, ['render-ready']);
   assert.match(good.html, /maximum-scale=1,user-scalable=no/);
-  for (const label of ['放大', '缩小', '重置']) assert.ok(good.html.includes(`aria-label="${label}"`));
+  for (const label of ['Zoom in', 'Zoom out', 'Reset zoom']) assert.ok(good.html.includes(`aria-label="${label}"`));
   assert.equal(good.diagram.style.width, '320px');
   assert.equal(good.diagram.style.height, '160px');
   good.listeners['zoom-in']();
@@ -91,7 +91,7 @@ test('production Mermaid draw script fits the viewport and rejects an empty diag
   assert.equal(good.diagram.style.width, '320px');
   assert.deepEqual(good.events, ['render-ready'], 'zoom never uses the native message bridge');
   const blank = await renderDiagram('');
-  assert.equal(blank.element.textContent, '暂时无法显示：flowchart LR\nA-->B');
+  assert.equal(blank.element.textContent, 'Could not render: flowchart LR\nA-->B');
   assert.deepEqual(blank.events, ['render-failed']);
 });
 

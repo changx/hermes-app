@@ -226,7 +226,7 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   const link = nodes.find(n => n.props.accessibilityRole === 'link');
   link.props.onPress();
   assert.deepEqual(h.opened, ['https://a.test/']);
-  nodes.find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
+  nodes.find(n => n.props.accessibilityLabel === 'Copy code').props.onPress();
   assert.equal(nodes.some(n => n.props.accessibilityLabel === '复制整条消息'), false);
   assert.deepEqual(h.copied, ['const x = 1;\n']);
 });
@@ -334,12 +334,12 @@ test('production controls open one safe-area modal for article, table and Mermai
       modal().props.onRequestClose();
       assert.equal(modal().props.visible, false, 'Android back closes same modal');
     }
-    button(nodes(), '全屏查看表格');
+    button(nodes(), 'View table fullscreen');
     assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
     assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
-    button(inside(), '关闭全屏查看');
+    button(inside(), 'Close fullscreen view');
     assert.equal(modal().props.visible, false);
-    button(nodes(), '全屏查看图表');
+    button(nodes(), 'View diagram fullscreen');
     let diagram = inside();
     const modalBody = diagram.find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.style[0]?.backgroundColor === '#fff');
     assert.deepEqual({ ...modalBody.props.style[1] }, { paddingTop: 33, paddingBottom: 25, paddingLeft: 16, paddingRight: 17 });
@@ -351,7 +351,7 @@ test('production controls open one safe-area modal for article, table and Mermai
     assert.equal(Object.assign({}, ...expanded.props.style).height, 610);
     assert.equal(Object.assign({}, ...expanded.props.containerStyle).width, 340);
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'never duplicates inline and expanded WebViews');
-    button(diagram, '关闭全屏查看');
+    button(diagram, 'Close fullscreen view');
     assert.equal(modal().props.visible, false);
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'expanded instance releases; underlying reading resumes');
     h.unmount();
@@ -373,21 +373,21 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   web.props.onMessage({ nativeEvent: { data: 'link:0' } });
   assert.deepEqual(h.opened, ['https://a.test/']);
   web.props.onMessage({ nativeEvent: { data: 'expand:1' } });
-  assert.equal(inside().some(n => n.props.accessibilityLabel === '重置'), false);
+  assert.equal(inside().some(n => n.props.accessibilityLabel === 'Reset zoom'), false);
   assert.ok(inside().some(n => n.props.onLayout && n.props.style?.flex === 1), 'diagram target switches within same modal');
   h.walk(h.render(false)).find(n => n.type === 'Modal').props.onRequestClose();
   doubleTapArticle(h);
   const failed = inside().find(n => n.type === 'WebView');
   failed.props.onRenderProcessGone();
   assert.equal(inside().some(n => n.type === 'WebView'), false);
-  assert.ok(inside().some(n => n.type === 'Text' && n.children.includes('文章暂时无法加载，已改用普通阅读模式。')));
+  assert.ok(inside().some(n => n.type === 'Text' && n.children.includes('This article could not load. Showing the standard view instead.')));
   assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), 'table not dropped on failure');
   h.unmount();
   const huge = mount('文'.repeat(200001), { canExpand: true });
   doubleTapArticle(huge);
   const nodes = huge.walk(huge.render(false));
   assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
-  assert.ok(nodes.some(n => n.type === 'Text' && n.children.includes('文章较长，已改用普通阅读模式。')));
+  assert.ok(nodes.some(n => n.type === 'Text' && n.children.includes('This article is too long. Showing the standard view instead.')));
   huge.unmount();
 });
 
@@ -456,7 +456,7 @@ test('headings have distinct native sizes and an image inside a link sits outsid
   const linked = mount('[before ![alt](https://example.com/x.png) after](https://example.com)');
   const nodes = linked.walk(linked.render());
   assert.equal(nodes.filter(n => n.props.accessibilityRole === 'link').length, 2);
-  assert.equal(nodes.filter(n => n.props.accessibilityLabel === '图片加载中：alt').length, 1);
+  assert.equal(nodes.filter(n => n.props.accessibilityLabel === 'Loading image: alt').length, 1);
 });
 
 test('video remains a fixed preview until tap, then native controls pause on background and unmount', () => {
@@ -464,7 +464,7 @@ test('video remains a fixed preview until tap, then native controls pause on bac
   let tree = h.render(), nodes = h.walk(tree);
   assert.equal(nodes.filter(n => n.type === 'VideoView').length, 0);
   assert.equal(h.players.length, 0, 'no eager player or remote request');
-  const play = nodes.find(n => n.props.accessibilityLabel === '播放视频：clip');
+  const play = nodes.find(n => n.props.accessibilityLabel === 'Play video: clip');
   assert.equal(nodes.find(n => n.props.style?.maxWidth === 280 && n.props.style?.backgroundColor === '#162132').props.style.height, 168);
   play.props.onPress();
   nodes = h.walk(h.render());
@@ -478,7 +478,7 @@ test('video remains a fixed preview until tap, then native controls pause on bac
   h.players[0].status({ status: 'error' });
   nodes = h.walk(h.render());
   assert.equal(nodes.filter(n => n.type === 'VideoView').length, 0);
-  assert.ok(nodes.some(n => n.props.accessibilityLabel === '视频加载失败，点按重试：clip'));
+  assert.ok(nodes.some(n => n.props.accessibilityLabel === 'Video failed to load. Tap to retry: clip'));
   assert.equal(h.players[0].status, null, 'listener cleaned on error');
   h.unmount();
   const bad = mount('![unsafe](https://u@example.com/a.mp4)');
@@ -629,7 +629,7 @@ test('mixed inline image loads automatically, keeps geometry on loading/error/re
   const text = 'before **strong ![cat](https://example.com/cat.png) after**';
   const h = mount(text);
   let tree = h.render(), nodes = h.walk(tree);
-  const frame = nodes.find(n => n.props.accessibilityLabel === '图片加载中：cat');
+  const frame = nodes.find(n => n.props.accessibilityLabel === 'Loading image: cat');
   assert.equal(nodes.filter(n => n.type === 'Image').length, 1);
   assert.equal(frame.props.style.height, 168);
   assert.equal(frame.props.style.maxWidth, 280);
@@ -648,7 +648,7 @@ test('mixed inline image loads automatically, keeps geometry on loading/error/re
   image.props.onError();
   tree = h.render(); nodes = h.walk(tree);
   assert.equal(nodes.filter(n => n.type === 'Image').length, 0);
-  const retry = nodes.find(n => n.props.accessibilityLabel?.startsWith('图片加载失败'));
+  const retry = nodes.find(n => n.props.accessibilityLabel?.startsWith('Image failed to load. Tap to retry'));
   assert.equal(retry.props.style.height, 168);
   retry.props.onPress();
   nodes = h.walk(h.render());
@@ -656,11 +656,11 @@ test('mixed inline image loads automatically, keeps geometry on loading/error/re
   nodes.find(n => n.type === 'Image').props.onLoad();
   nodes = h.walk(h.render());
   assert.equal(nodes.find(n => n.type === 'Image').props.accessibilityLabel, 'cat');
-  assert.equal(nodes.find(n => n.props.accessibilityLabel === '图片：cat').props.style.height, 168);
+  assert.equal(nodes.find(n => n.props.accessibilityLabel === 'Image: cat').props.style.height, 168);
   checkNesting(tree);
   const bad = mount('![unsafe](https://u@example.com/i.png)');
   const badNodes = bad.walk(bad.render());
-  const fallback = badNodes.find(n => n.props.accessibilityLabel === '图片不可用：unsafe');
+  const fallback = badNodes.find(n => n.props.accessibilityLabel === 'Image unavailable: unsafe');
   assert.equal(fallback.props.disabled, true);
   assert.equal(badNodes.filter(n => n.type === 'Image').length, 0);
 });

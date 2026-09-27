@@ -23,14 +23,14 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
   let rendered = 0, math = false, diagram = false;
   const expand = (kind: 'table' | 'diagram', block: Block) => {
     const index = expansions.push({ kind, block }) - 1;
-    return `<button type="button" data-expand="${index}" aria-label="全屏查看${kind === 'table' ? '表格' : '图表'}">⤢ 全屏查看${kind === 'table' ? '表格' : '图表'}</button>`;
+    return `<button type="button" data-expand="${index}" aria-label="View ${kind === 'table' ? 'table' : 'diagram'} fullscreen">⤢ View ${kind === 'table' ? 'table' : 'diagram'} fullscreen</button>`;
   };
   const formula = (source: string, display: boolean, kind: 'math' | 'diagram') => {
     const allowed = source.length <= (kind === 'math' ? MATH_LIMIT : DIAGRAM_LIMIT) && rendered < ARTICLE_RENDER_LIMIT;
     if (!allowed) {
       const tag = display ? 'pre' : 'span';
       const original = kind === 'math' && !display ? `$${source}$` : source;
-      return `<${tag} class="fallback">${escape(original)}${source.length > (kind === 'math' ? MATH_LIMIT : DIAGRAM_LIMIT) ? '\n（内容过长，显示原文）' : ''}</${tag}>`;
+      return `<${tag} class="fallback">${escape(original)}${source.length > (kind === 'math' ? MATH_LIMIT : DIAGRAM_LIMIT) ? '\n(Content too long; showing the original)' : ''}</${tag}>`;
     }
     rendered++;
     if (kind === 'math') math = true; else diagram = true;
@@ -53,8 +53,8 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
       }
       case 'image': case 'video': {
         const src = node.src && node.src.length <= 2048 && safeLinkUrl(node.src);
-        const caption = escape(node.text || (node.kind === 'video' ? '视频' : '图片'));
-        if (!src) return `<span class="fallback">${node.kind === 'video' ? '视频' : '图片'}不可用：${caption}</span>`;
+        const caption = escape(node.text || (node.kind === 'video' ? 'Video' : 'Unnamed image'));
+        if (!src) return `<span class="fallback">${node.kind === 'video' ? 'Video' : 'Image'} unavailable: ${caption}</span>`;
         // Permit only explicit Markdown media, not URLs introduced by diagrams.
         // CSP ignores query/fragment; encode policy delimiters in the path.
         const mediaUrl = new URL(src);
@@ -72,8 +72,8 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
       case 'paragraph': return `<p>${inline(block.children)}</p>`;
       case 'heading': { const level = Math.min(6, Math.max(1, block.level || 1)); return `<h${level}>${inline(block.children)}</h${level}>`; }
       case 'quote': return `<blockquote>${content(block.children)}</blockquote>`;
-      case 'list': return `<${block.ordered ? 'ol' : 'ul'}${block.ordered ? ` start="${Number.isSafeInteger(block.start) ? block.start : 1}"` : ''}>${block.items.map((item, index) => `<li>${block.checks[index] === null ? '' : `<span class="check" aria-label="${block.checks[index] ? '已完成' : '未完成'}">${block.checks[index] ? '☑' : '☐'}</span> `}${content(item)}</li>`).join('')}</${block.ordered ? 'ol' : 'ul'}>`;
-      case 'code': return `<section class="code"><small>${escape(block.language || '代码')}</small><pre><code>${escape(block.text)}</code></pre></section>`;
+      case 'list': return `<${block.ordered ? 'ol' : 'ul'}${block.ordered ? ` start="${Number.isSafeInteger(block.start) ? block.start : 1}"` : ''}>${block.items.map((item, index) => `<li>${block.checks[index] === null ? '' : `<span class="check" aria-label="${block.checks[index] ? 'Completed' : 'Not completed'}">${block.checks[index] ? '☑' : '☐'}</span> `}${content(item)}</li>`).join('')}</${block.ordered ? 'ol' : 'ul'}>`;
+      case 'code': return `<section class="code"><small>${escape(block.language || 'Code')}</small><pre><code>${escape(block.text)}</code></pre></section>`;
       case 'math': return formula(block.text, true, 'math');
       case 'diagram': return `<section class="diagram-block">${expand('diagram', block)}${formula(block.text, true, 'diagram')}</section>`;
       case 'table': return `<section class="table-block">${expand('table', block)}<div class="table-scroll"><table><thead><tr>${block.header.map(c => cell(c, 'th')).join('')}</tr></thead><tbody>${block.rows.map(row => `<tr>${row.map(c => cell(c, 'td')).join('')}</tr>`).join('')}</tbody></table></div></section>`;
@@ -116,7 +116,7 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
           el.innerHTML=result.svg;
           if(!el.querySelector('svg'))throw Error('diagram unavailable');
         }
-      }catch(_){el.querySelector('.original')?.insertAdjacentText('beforebegin','暂时无法显示：');}
+      }catch(_){el.querySelector('.original')?.insertAdjacentText('beforebegin','Could not render: ');}
     }})();
   })();`;
   return { expansions, links, html: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +

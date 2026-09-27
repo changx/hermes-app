@@ -40,14 +40,14 @@ export class TimeoutError extends Error { constructor(message: string) { super(m
 export function connectionFailure(error: unknown): string {
   if(error instanceof HttpError)return `HTTP ${error.status} · ${error.route}`;
   if(error instanceof TimeoutError) {
-    if(error.message==='hello timed out')return 'WebSocket 握手超时';
-    if(error.message==='WebSocket liveness timed out')return 'WebSocket 心跳超时';
-    return 'HTTP 请求超时';
+    if(error.message==='hello timed out')return 'WebSocket handshake timed out';
+    if(error.message==='WebSocket liveness timed out')return 'WebSocket liveness timed out';
+    return 'HTTP request timed out';
   }
-  if(error instanceof ProtocolError)return '协议校验失败';
-  if(error instanceof TypeError)return '网络传输失败';
-  if(error instanceof Error && error.message==='WebSocket 连接失败')return 'WebSocket 连接失败';
-  return '连接异常';
+  if(error instanceof ProtocolError)return 'Protocol validation failed';
+  if(error instanceof TypeError)return 'Network transport failed';
+  if(error instanceof Error && error.message==='WebSocket connection failed')return 'WebSocket connection failed';
+  return 'Connection error';
 }
 export const isRetryableError = (error: unknown): boolean => error instanceof HttpError ? error.status === 429 || error.status >= 500 : error instanceof TimeoutError || (!(error instanceof ProtocolError) && !(error instanceof SyntaxError) && error instanceof Error && error.message !== 'aborted');
 const obj = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ProtocolError('invalid object'); return v as Record<string, unknown> };

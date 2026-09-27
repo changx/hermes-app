@@ -13,7 +13,7 @@ import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
 
 const copy = (value: string) => {
-  void Clipboard.setStringAsync(value).catch(() => Alert.alert('复制失败', '无法写入剪贴板'));
+  void Clipboard.setStringAsync(value).catch(() => Alert.alert('Copy failed', 'Could not copy to the clipboard.'));
 };
 
 type Tone = (color: string) => { color: Animated.AnimatedInterpolation<string> };
@@ -36,7 +36,7 @@ function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Ton
       case 'link': return node.href
         ? <Animated.Text key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPressIn={onInteraction}
-            onPress={() => { onInteraction(); void Linking.openURL(node.href!).catch(() => Alert.alert('链接无法打开')); }}>
+            onPress={() => { onInteraction(); void Linking.openURL(node.href!).catch(() => Alert.alert('Could not open link')); }}>
             <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} />
           </Animated.Text>
         : <Animated.Text key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
@@ -72,9 +72,9 @@ function segments(nodes: Inline[]): Segment[] {
 function ImagePreview({ image }: { image: Extract<Inline, { kind: 'image' }> }) {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
-  const label = image.text || '未命名图片';
-  const caption = !image.src ? `图片不可用：${label}` : status === 'error' ? `图片加载失败，点按重试：${label}`
-    : status === 'loading' ? `图片加载中：${label}` : `图片：${label}`;
+  const label = image.text || 'Unnamed image';
+  const caption = !image.src ? `Image unavailable: ${label}` : status === 'error' ? `Image failed to load. Tap to retry: ${label}`
+    : status === 'loading' ? `Loading image: ${label}` : `Image: ${label}`;
   return <Pressable onTouchStart={stopTouch} accessibilityRole={!image.src || status === 'loaded' ? 'image' : 'button'} accessibilityLabel={caption}
     disabled={!image.src || status !== 'error'} style={styles.imageFrame}
     onPress={() => { setAttempt(value => value + 1); setStatus('loading'); }}>
@@ -103,13 +103,13 @@ function PlayingVideo({ src, onFailure }: { src: string; onFailure: () => void }
 function VideoPreview({ video }: { video: Extract<Inline, { kind: 'video' }> | Extract<Block, { kind: 'video' }> }) {
   const [active, setActive] = useState(false);
   const [failed, setFailed] = useState(false);
-  const label = video.text || '视频';
+  const label = video.text || 'Video';
   return <View style={styles.videoFrame} onTouchStart={stopTouch}>
     {active && video.src && <PlayingVideo src={video.src} onFailure={() => { setActive(false); setFailed(true); }} />}
     {!active && <Pressable style={styles.videoStart} accessibilityRole="button"
-      accessibilityLabel={!video.src ? `视频不可用：${label}` : failed ? `视频加载失败，点按重试：${label}` : `播放视频：${label}`}
+      accessibilityLabel={!video.src ? `Video unavailable: ${label}` : failed ? `Video failed to load. Tap to retry: ${label}` : `Play video: ${label}`}
       disabled={!video.src} onPress={() => { setFailed(false); setActive(true); }}>
-      <Text style={styles.imageLabel}>{!video.src ? `视频不可用：${label}` : failed ? `视频加载失败，点按重试：${label}` : `▶ ${label}`}</Text>
+      <Text style={styles.imageLabel}>{!video.src ? `Video unavailable: ${label}` : failed ? `Video failed to load. Tap to retry: ${label}` : `▶ ${label}`}</Text>
     </Pressable>}
   </View>;
 }
@@ -200,7 +200,7 @@ function MarkdownTable({ block, tone, allowed, onExpand, onInteraction, suspende
   // bounded, but the actual grid retains readable cells and scrolls inside it.
   const columnWidth = 156;
   return <View style={styles.tableFrame} onTouchStart={stopTouch}>
-    {!fullscreen && <ExpandButton label="全屏查看表格" onPress={() => onExpand({ kind: 'table', block })} />}
+    {!fullscreen && <ExpandButton label="View table fullscreen" onPress={() => onExpand({ kind: 'table', block })} />}
     <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator
       bounces={false} directionalLockEnabled automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never">
       <View style={styles.tableBody}>
@@ -229,9 +229,9 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
     case 'code':
       return <View style={styles.codeBox} onTouchStart={stopTouch}>
         <View style={styles.codeHeader}>
-          <Text style={styles.codeLanguage} numberOfLines={1}>{block.language || '代码'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="复制代码" hitSlop={8} onPress={() => copy(block.text)}>
-            <Text style={styles.copyCode}>复制代码</Text>
+          <Text style={styles.codeLanguage} numberOfLines={1}>{block.language || 'Code'}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Copy code" hitSlop={8} onPress={() => copy(block.text)}>
+            <Text style={styles.copyCode}>Copy code</Text>
           </Pressable>
         </View>
         <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
@@ -242,7 +242,7 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
       return <OfflineRenderer kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;
     case 'diagram':
       return <View style={fullscreenDiagram ? styles.fullscreenDiagram : styles.diagramBlock} onTouchStart={stopTouch}>
-        {!fullscreenDiagram && <ExpandButton label="全屏查看图表" onPress={() => onExpand({ kind: 'diagram', block })} />}
+        {!fullscreenDiagram && <ExpandButton label="View diagram fullscreen" onPress={() => onExpand({ kind: 'diagram', block })} />}
         <OfflineRenderer kind="diagram" source={block.text} enabled={allowed.has(block)} fullscreen={fullscreenDiagram} suspended={suspended} />
       </View>;
     case 'video':
@@ -254,7 +254,7 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
         <View key={index} style={styles.listRow}>
           {block.checks[index] !== null
             ? <View style={styles.bullet} accessibilityRole="checkbox" accessibilityState={{ checked: block.checks[index], disabled: true }}
-                accessibilityLabel={block.checks[index] ? '已完成' : '未完成'}>
+                accessibilityLabel={block.checks[index] ? 'Completed' : 'Not completed'}>
                 <Animated.Text style={tone('#425874')}>{block.checks[index] ? '☑' : '☐'}</Animated.Text>
               </View>
             : <Animated.Text style={[styles.bullet, tone('#425874')]}>{block.ordered ? `${block.start + index}.` : '•'}</Animated.Text>}
@@ -295,7 +295,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
   }, [text, blocks, toolCalls]);
   const [failed, setFailed] = useState(false);
   if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
-    <Text style={styles.articleFailure}>{!page ? '文章较长，已改用普通阅读模式。' : '文章暂时无法加载，已改用普通阅读模式。'}</Text>
+    <Text style={styles.articleFailure}>{!page ? 'This article is too long. Showing the standard view instead.' : 'This article could not load. Showing the standard view instead.'}</Text>
     <RenderBlocks blocks={blocks} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} suspended />
     <ToolCalls calls={toolCalls} onInteraction={() => {}} />
   </ScrollView>;
@@ -311,7 +311,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
         if (target && target.block.kind === target.kind) onExpand(target);
       } else {
         const href = page.links[index];
-        if (href && safeLinkUrl(href) === href) void Linking.openURL(href).catch(() => Alert.alert('链接无法打开'));
+        if (href && safeLinkUrl(href) === href) void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
       }
     }}
     onError={() => setFailed(true)} onHttpError={() => setFailed(true)}
@@ -381,9 +381,9 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
     <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
       {target && <View onTouchStart={stopTouch} style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
         <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>{target.kind === 'message' ? '消息' : target.kind === 'table' ? '表格' : '图表'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭全屏查看" hitSlop={12} onPress={() => setTarget(null)}>
-            <Text style={styles.modalClose}>关闭 ✕</Text>
+          <Text style={styles.modalTitle}>{target.kind === 'message' ? 'Message' : target.kind === 'table' ? 'Table' : 'Diagram'}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close fullscreen view" hitSlop={12} onPress={() => setTarget(null)}>
+            <Text style={styles.modalClose}>Close ✕</Text>
           </Pressable>
         </View>
         {target.kind === 'message'

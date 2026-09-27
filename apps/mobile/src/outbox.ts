@@ -33,7 +33,7 @@ const bytes = (part: string) => {
   return n;
 };
 function pieces(text: string): string[] {
-  if (bytes(text) > MAX_BYTES) throw new OutboxLimitError('消息超过本机安全保存上限（64 KiB），请拆分发送');
+  if (bytes(text) > MAX_BYTES) throw new OutboxLimitError('This message is too long to save (64 KiB limit). Send it in smaller parts.');
   const result: string[] = []; let part = '', length = 0;
   for (const c of text) {
     const size = bytes(c);
@@ -75,7 +75,7 @@ export class OutboxStore {
         const key = prefix(this.config.id, slot), raw = await this.store.getItemAsync(key);
         if (!raw) continue;
         let meta: Stored;
-        try { meta = JSON.parse(raw) as Stored; } catch { throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`); }
+        try { meta = JSON.parse(raw) as Stored; } catch { throw new Error(`Saved message ${slot + 1} is damaged. Keep your app data and contact support.`); }
         if ((meta.version === 2 || meta.version === 3) && (meta.status === 'preparing' || meta.status === 'discarding') && Number.isInteger(meta.chunks) && meta.chunks > 0 && meta.chunks <= MAX_CHUNKS) {
           for (let i = 0; i < meta.chunks; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
           await this.store.deleteItemAsync(key);
@@ -85,22 +85,22 @@ export class OutboxStore {
             'attachments' in meta || 'text' in meta ||
             !Number.isInteger(meta.chunks) || meta.chunks < 1 || meta.chunks > MAX_CHUNKS || !Number.isInteger(meta.hash) ||
             !Number.isSafeInteger(meta.order) || meta.order < 1 || [...this.entries.values()].some(e => e.order === meta.order))
-          throw new Error(`本机待发记录 ${slot + 1} 损坏，请保留应用数据并联系支持`);
+          throw new Error(`Saved message ${slot + 1} is damaged. Keep your app data and contact support.`);
         const chunks: string[] = [];
         for (let i = 0; i < meta.chunks; i++) {
           const chunk = await this.store.getItemAsync(`${key}.part.${i}`);
-          if (chunk === null || bytes(chunk) > CHUNK_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+          if (chunk === null || bytes(chunk) > CHUNK_BYTES) throw new Error(`Saved message ${slot + 1} is incomplete. Keep your app data and contact support.`);
           chunks.push(chunk);
         }
         const data = chunks.join('');
-        if (hash(data) !== meta.hash || bytes(data) > MAX_BYTES) throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+        if (hash(data) !== meta.hash || bytes(data) > MAX_BYTES) throw new Error(`Saved message ${slot + 1} is incomplete. Keep your app data and contact support.`);
         let text: string, attachments: SendRecord['attachments'];
         if (meta.version === 2) { text = data; attachments = undefined; }
         else {
           let decoded: unknown;
-          try { decoded = JSON.parse(data); } catch { throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`); }
+          try { decoded = JSON.parse(data); } catch { throw new Error(`Saved message ${slot + 1} is incomplete. Keep your app data and contact support.`); }
           if (!decoded || typeof decoded !== 'object' || !Array.isArray((decoded as { attachments?: unknown }).attachments))
-            throw new Error(`本机待发消息 ${slot + 1} 不完整，请保留应用数据并联系支持`);
+            throw new Error(`Saved message ${slot + 1} is incomplete. Keep your app data and contact support.`);
           text = (decoded as { text: string }).text;
           attachments = (decoded as { attachments: SendRecord['attachments'] }).attachments;
         }
@@ -108,7 +108,7 @@ export class OutboxStore {
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
           status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
         }), this.config);
-        if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('本机待发记录身份冲突');
+        if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('Saved message identity conflict.');
         this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
       }
       const legacy = await this.store.getItemAsync(LEGACY_SEND_KEY);
@@ -122,10 +122,10 @@ export class OutboxStore {
     });
   }
   private async insert(record: SendRecord): Promise<void> {
-    if (record.connectionId !== this.config.id || this.entries.has(record.clientMessageId)) throw new OutboxIdentityError('待发消息身份冲突');
+    if (record.connectionId !== this.config.id || this.entries.has(record.clientMessageId)) throw new OutboxIdentityError('Pending message identity conflict.');
     const occupied = new Set([...this.entries.values()].map(e => e.slot));
     const slot = Array.from({ length: SLOTS }, (_, n) => n).find(n => !occupied.has(n));
-    if (slot === undefined) throw new OutboxLimitError('本机待发消息已满（24 条）；请等待自动恢复后再发送');
+    if (slot === undefined) throw new OutboxLimitError('You have 24 messages waiting to send. Please wait for the connection to recover.');
     const verified = validSendContent(record.threadId, record.text, record.attachments);
     const saved = copy({ ...record, ...(verified.length ? { attachments: verified } : { attachments: undefined }) });
     // Keep the v2 text-only layout and its full 64 KiB budget; v3 stores
@@ -134,7 +134,7 @@ export class OutboxStore {
     const data = version === 2 ? saved.text : payload(saved);
     const key = prefix(this.config.id, slot), parts = pieces(data);
     const order = Math.max(0, ...[...this.entries.values()].map(e => e.order)) + 1;
-    if (!Number.isSafeInteger(order)) throw new OutboxLimitError('本机待发顺序已达上限');
+    if (!Number.isSafeInteger(order)) throw new OutboxLimitError('Unable to save another message.');
     // A preparatory marker makes interrupted chunk writes discoverable for cleanup;
     // only the final metadata value commits a send before network I/O.
     await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
@@ -151,7 +151,7 @@ export class OutboxStore {
       const entry = this.entries.get(record.clientMessageId);
       if (!entry || entry.record.text !== record.text || entry.record.threadId !== record.threadId ||
           !sameAttachments(entry.record, record) || record.connectionId !== this.config.id)
-        throw new Error('待发消息身份或原文变化');
+        throw new Error('The saved message identity or text has changed.');
       const data = entry.version === 2 ? entry.record.text : payload(entry.record);
       const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
         status: record.status, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
@@ -236,8 +236,8 @@ export class MobileOutbox {
     this.emit(); this.wake();
   }
   async enqueue(record: SendRecord): Promise<void> {
-    if (!this.alive) throw new Error('连接已关闭');
-    if (this.storageFault) throw new Error('本机待发状态异常，暂不能安全发送；请保留应用数据');
+    if (!this.alive) throw new Error('Connection closed.');
+    if (this.storageFault) throw new Error('Sending is paused because saved messages could not be read. Keep your app data.');
     try { await this.storage.enqueue({ ...record, status: 'queued' }); }
     catch (e) { if (!(e instanceof OutboxLimitError) && !(e instanceof OutboxIdentityError)) this.storageFault = true; throw e; }
     if (!this.alive) return;
@@ -282,7 +282,7 @@ export class MobileOutbox {
         this.cleanupRetryAt.set(record.clientMessageId, this.clock() + this.pollMs);
         if (!this.cleanupNoticed.has(record.clientMessageId)) {
           this.cleanupNoticed.add(record.clientMessageId);
-          this.emit('本机已确认记录清理失败；请保留应用数据');
+          this.emit('Sent messages could not be cleared from local storage. Keep your app data.');
         }
         return;
       }
@@ -299,7 +299,7 @@ export class MobileOutbox {
     const task = work().catch(e => {
       if (!this.alive || this.storageFault || retryable(e) || this.noticed.has(id)) return;
       this.noticed.add(id);
-      this.emit('收据暂无法核对；记录已保留，新消息不受影响');
+      this.emit('Unable to check earlier messages right now. They are saved, and you can still send new messages.');
     })
       .finally(() => { this.busy.delete(id); this.tasks.delete(task); if (this.alive) this.wake(); });
     this.tasks.add(task);
@@ -340,7 +340,7 @@ export class MobileOutbox {
     try {
       if (record.status !== 'sending') {
         try { await this.storage.update({ ...record, status: 'sending' }); }
-        catch { this.storageFault = true; this.emit('本机待发状态保存失败；消息未提交，请保留应用数据'); return; }
+        catch { this.storageFault = true; this.emit('Your message was not sent because it could not be saved. Keep your app data.'); return; }
       }
       if (!this.alive || !this.online || gen !== this.generation) return;
       this.emit();
@@ -349,7 +349,7 @@ export class MobileOutbox {
       if (!this.alive || gen !== this.generation) return;
       const next = accepted(record, receipt);
       try { await this.storage.update(next, 0, 0); }
-      catch { this.storageFault = true; this.emit('服务端已接收，但本机确认保存失败；记录已保留，请保留应用数据'); return; }
+      catch { this.storageFault = true; this.emit('Your message was received, but its status could not be saved on this device. Keep your app data.'); return; }
       if (!this.alive || gen !== this.generation) return;
       this.emit();
       // A durable ACK releases the thread's submission queue; history catch-up
@@ -365,10 +365,10 @@ export class MobileOutbox {
       if (retryable(e)) {
         const attempts = (entry?.attempts || 0) + 1;
         try { await this.storage.update({ ...record, status: 'ambiguous' }, attempts, this.clock() + delayFor(attempts, e, this.random)); this.emit(); }
-        catch { this.storageFault = true; this.emit('本机待发状态保存失败；消息已保留，请保留应用数据'); }
+        catch { this.storageFault = true; this.emit('Your message is saved, but its status could not be updated. Keep your app data.'); }
       } else {
-        try { await this.storage.update({ ...record, status: 'blocked' }); this.emit('发送未获服务器确认；请检查连接权限或消息内容'); }
-        catch { this.storageFault = true; this.emit('本机待发状态保存失败；消息已保留，请勿清除应用数据'); }
+        try { await this.storage.update({ ...record, status: 'blocked' }); this.emit('Sending could not be confirmed. Check your connection permissions or message.'); }
+        catch { this.storageFault = true; this.emit('Your message is saved, but its status could not be updated. Do not clear your app data.'); }
       }
     } finally { this.controllers.delete(record.clientMessageId); }
   }
@@ -377,7 +377,7 @@ export class MobileOutbox {
     const gen = this.generation;
     const next = accepted(record, receipt);
     try { await this.storage.update(next); }
-    catch { this.storageFault = true; this.emit('本机收据保存失败；记录已保留，请保留应用数据'); return; }
+    catch { this.storageFault = true; this.emit('The message status could not be saved. Your message is still saved. Keep your app data.'); return; }
     if (!this.alive || gen !== this.generation) return;
     this.emit();
     if (FINAL.has(next.receiptState || '')) await this.refreshHistory(next, authoritative);
@@ -388,7 +388,7 @@ export class MobileOutbox {
     try {
       const receipt = await this.sdk.getReceipt(record.receiptId, abort.signal);
       if (this.alive && gen === this.generation) {
-        if (receipt.id !== record.receiptId) throw new OutboxIdentityError('收据身份不匹配');
+        if (receipt.id !== record.receiptId) throw new OutboxIdentityError('Message confirmation identity mismatch.');
         const verified = accepted(record, receipt); // id alone is not the message identity
         this.noticed.delete(record.clientMessageId);
         // Even unchanged final receipts need another history sync after a

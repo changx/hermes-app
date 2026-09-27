@@ -21,9 +21,9 @@ import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
 import type { TimelineRow } from './timeline';
 
-const sendNotice = (notice: string) => notice.includes('权限') || notice.includes('消息内容')
-  ? '消息未发出，请检查连接权限或消息内容。原消息仍保留。'
-  : '消息暂时无法安全保存或确认，请保留应用数据。';
+const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
+  ? 'Message not sent. Check your access or message content. Your message is still here.'
+  : "Could not save or confirm your message. Don't clear this app's data.";
 
 function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button, secondary && styles.secondary, disabled && styles.disabled]}><Text style={[styles.buttonText, secondary && styles.secondaryText]}>{title}</Text></Pressable>;
@@ -76,7 +76,7 @@ function Screen() {
       if (!mounted) return;
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') throw new Error('保存的连接无效');
+        if (!parsed || typeof parsed !== 'object') throw new Error('Saved connection is invalid');
         const c = parsed as Connection;
         const valid = connection(c.baseUrl, c.token, c.id);
         setConfig(valid); setBase(valid.baseUrl);
@@ -85,7 +85,7 @@ function Screen() {
       if (pending && (!raw || JSON.parse(raw).token !== pending.config.token)) {
         setPendingPairing(pending); setBase(pending.config.baseUrl); setPairingCode(pending.code); setEditing(true);
       } else if (pending) void SecureStore.deleteItemAsync(PAIRING_KEY).catch(() => {});
-    }).catch(() => { if (mounted) setError('连接信息暂时无法读取，请保留应用数据并重新打开。'); }).finally(() => { if (mounted) setReady(true); });
+    }).catch(() => { if (mounted) setError("Could not load your connection. Don't clear this app's data; reopen the app."); }).finally(() => { if (mounted) setReady(true); });
     return () => { mounted = false; };
   }, []);
 
@@ -108,14 +108,14 @@ function Screen() {
     const previous = pairingTask.current;
     previous?.controller.abort();
     const promise = (previous?.promise ?? Promise.resolve()).then(() => completePairing(pendingPairing, { store: SecureStore, signal: controller.signal,
-      onStatus: value => { if (active) setPairingStatus(value.includes('恢复') ? '正在等待连接，会自动继续…' : '正在连接…'); }
+      onStatus: value => { if (active) setPairingStatus(value); }
     })).then(saved => {
       if (!active) return;
       setPairingBusy(false);
       setConfig(saved); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
       setPendingPairing(null); setPairingStatus('');
     }).catch(() => {
-      if (active && !controller.signal.aborted) { setPairingStatus(''); setError('暂时无法完成配对，请检查配对码或联系管理员。'); }
+      if (active && !controller.signal.aborted) { setPairingStatus(''); setError('Could not pair. Check the pairing code or contact your admin.'); }
     }).finally(() => { if (active) setPairingBusy(false); });
     pairingTask.current = { controller, promise };
     return () => { active = false; controller.abort(); };
@@ -131,8 +131,8 @@ function Screen() {
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
         setStatus(state); box?.setConnection(state);
-        if (state === 'online') { setLoading(false); setError(previous => previous.startsWith('暂时无法连接') ? '' : previous); setConnectionEpoch((n: number) => n + 1); box?.reconcile(); }
-        if (state === 'blocked') { setLoading(false); setError('暂时无法连接，请联系管理员；未发出的消息仍保留。'); }
+        if (state === 'online') { setLoading(false); setError(previous => previous.startsWith('Could not connect') ? '' : previous); setConnectionEpoch((n: number) => n + 1); box?.reconcile(); }
+        if (state === 'blocked') { setLoading(false); setError('Could not connect. Contact your admin. Unsent messages are still here.'); }
       },
       onError: (failure: Error) => { if (active) console.info('[connection]', connectionFailure(failure)); },
     } as ConstructorParameters<typeof HermesClient>[0]);
@@ -148,7 +148,7 @@ function Screen() {
       try {
         await box.start();
         if (active && appActive.current) await sdk.connect();
-      } catch { if (active) { setLoading(false); setError('消息暂时无法读取，请保留应用数据并重新打开。'); } }
+      } catch { if (active) { setLoading(false); setError("Could not load your messages. Don't clear this app's data; reopen the app."); } }
     })();
     return () => { active = false; ++openingRef.current; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
   }, [config]);
@@ -165,7 +165,7 @@ function Screen() {
   }, [client]);
 
 
-  const run = async (fn: () => Promise<void>, fallback = '操作没有完成，请稍后重试。') => {
+  const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
     try { await fn(); } catch { setError(fallback); }
@@ -178,7 +178,7 @@ function Screen() {
     const next = existing && existing.config.baseUrl === base.replace(/\/$/, '') && existing.code === code
       ? existing : newPairing(base, code, Platform.OS === 'ios' ? 'iPhone' : 'Android', Crypto.randomUUID(), await Crypto.getRandomBytesAsync(44));
     setPendingPairing(next); setPairingEpoch(n => n + 1);
-  }, '配对码无效，请检查后再试。');
+  }, 'Invalid pairing code. Check it and try again.');
   const forget = () => run(async () => {
     pairingTask.current?.controller.abort();
     await pairingTask.current?.promise.catch(() => {});
@@ -218,7 +218,7 @@ function Screen() {
           setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
         }
       }
-    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
+    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const locateNext = async () => {
@@ -235,7 +235,7 @@ function Screen() {
         const loaded = client.messages.get(id) || [];
         setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
       }
-    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
+    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const loadOlder = async () => {
@@ -250,7 +250,7 @@ function Screen() {
       if (opening !== openingRef.current) return;
       olderCursors.current.set(id, page.older_cursor); setPageCursor(page.older_cursor);
       setStartRef(page.messages[0]?.ref_seq ?? startRef);
-    } catch { if (opening === openingRef.current) setError('暂时无法打开对话，连接恢复后会自动继续。'); }
+    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
   const send = () => run(async () => {
@@ -265,11 +265,11 @@ function Screen() {
       setAttachmentDraft({ scope, items: [], busy: false });
       setAttachmentClearKey(value => value + 1);
     }
-  }, '消息还没保存，未发送。请保留应用数据后重试。');
+  }, "Message not saved or sent. Don't clear this app's data; try again.");
   const answer = (item: Interaction, choice: string) => run(async () => {
     if (!client) return;
     const current = await client.getInteraction(item.thread_id, item.id);
-    if (current.state !== 'pending' || current.generation !== item.generation) throw new Error('请求已经失效');
+    if (current.state !== 'pending' || current.generation !== item.generation) throw new Error('Request is no longer active');
     await client.answerInteraction(current, choice);
   });
 
@@ -308,7 +308,7 @@ function Screen() {
     if (status === 'online' && client && threadId && !located && !historyBusy && !pageCursor) void openThread(threadId);
   }, [connectionEpoch]);
 
-  if (!ready) return <View style={styles.center}><Text>正在打开…</Text></View>;
+  if (!ready) return <View style={styles.center}><Text>Opening…</Text></View>;
   if (!config || editing) return <ConnectionScreen code={pairingCode} onCode={setPairingCode}
     connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
     onPair={saveConnection} onBack={() => { setEditing(false); if (config) setBase(config.baseUrl); }} onForget={forget} />;
@@ -316,16 +316,16 @@ function Screen() {
   return <View style={styles.flex}>
     <View style={styles.header}>
       <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
-      <Button title="连接" secondary onPress={() => setEditing(true)} />
-      <Button title="Agent 设置" secondary onPress={() => setSettingsOpen(true)} />
+      <Button title="Connection" secondary onPress={() => setEditing(true)} />
+      <Button title="Agent settings" secondary onPress={() => setSettingsOpen(true)} />
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}
-    {loading && <Text style={styles.hint}>正在打开…</Text>}
+    {loading && <Text style={styles.hint}>Opening…</Text>}
     {threadId && client ? <>
-      <View style={styles.row}><Button title="‹ 话题" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || '对话'}</Text></View>
+      <View style={styles.row}><Button title="‹ Topics" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || 'Conversation'}</Text></View>
       <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
         startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
-        locatingMessage={!located ? historyBusy ? '正在打开对话…' : pageCursor ? '还有更多消息，继续查看最近的对话。' : '暂时无法打开，连接恢复后会自动继续。' : undefined}
+        locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
         onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
         onOlder={() => { void loadOlder(); }}
         position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
@@ -336,7 +336,7 @@ function Screen() {
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
-        onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('当前没有可停止的执行'); })} busy={busy} />
+        onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
     </> : client ? <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
       <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />
     </KeyboardAvoidingView> : null}

@@ -5,11 +5,11 @@ export interface Reaction { emoji: string; label: string; source: 'agent' }
 export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefined> = {
-  running: { emoji: '👀', label: '处理中', source: 'agent' },
-  completed: { emoji: '✅', label: '已完成', source: 'agent' },
-  failed: { emoji: '❌', label: '处理失败', source: 'agent' },
+  running: { emoji: '👀', label: 'Working', source: 'agent' },
+  completed: { emoji: '✅', label: 'Completed', source: 'agent' },
+  failed: { emoji: '❌', label: 'Failed', source: 'agent' },
   interrupted: undefined,
-  unknown: { emoji: '⚠️', label: '结果待确认', source: 'agent' }
+  unknown: { emoji: '⚠️', label: 'Outcome unknown', source: 'agent' }
 };
 const terminal = (state: Receipt['state']) => !['queued', 'running'].includes(state);
 const matching = (receipt: Receipt | undefined, threadId: string, receiptId: string, clientMessageId: string): receipt is Receipt =>
@@ -27,7 +27,7 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
   if (!receipt) return undefined;
   if (!terminal(receipt.state) && !['completed', 'failed', 'interrupted'].includes(receipt.processing ?? '')) {
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
-    if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? '等待审批' : '等待回答', source: 'agent' };
+    if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? 'Awaiting approval' : 'Awaiting your answer', source: 'agent' };
   }
   return receipt.processing == null ? undefined : agentState[receipt.processing];
 }
@@ -57,7 +57,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
     const receipt = valid ? displayReceipt(candidate, localReceipt(item)) : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
-      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
+      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: 'Not sent. Check your message or contact your administrator.' } : {}) });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
   // invalidations, not token frames; do not simulate a streaming response.

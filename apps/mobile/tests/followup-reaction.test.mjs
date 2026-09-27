@@ -18,9 +18,9 @@ test('multiple followups without callbacks never borrow the primary completion',
   const rows = projectTimeline([message, second], null, 'th', undefined, true, [], cache);
   assert.deepEqual(rows.map(row => row.reaction), [undefined, undefined]);
   assert.equal(reaction({ ...r, handed_off: true, processing: 'running' }).emoji, '👀');
-  assert.equal(reaction({ ...receipt('completed'), processing: 'completed' }).label, '已完成');
-  assert.equal(reaction({ ...receipt('unknown'), processing: 'completed' }).label, '已完成', 'actual callback beats unknown receipt bookkeeping');
-  assert.equal(reaction({ ...receipt('completed'), processing: 'failed' }).label, '处理失败');
+  assert.equal(reaction({ ...receipt('completed'), processing: 'completed' }).label, 'Completed');
+  assert.equal(reaction({ ...receipt('unknown'), processing: 'completed' }).label, 'Completed', 'actual callback beats unknown receipt bookkeeping');
+  assert.equal(reaction({ ...receipt('completed'), processing: 'failed' }).label, 'Failed');
   assert.equal(reaction({ ...r, processing: 'interrupted' }), undefined);
   assert.equal(reaction({ ...r, thread_id: 'foreign', processing: 'completed' }), undefined);
 });
@@ -58,7 +58,7 @@ test('durable callback survives cold outbox restoration and truthful unknown upd
   await cold.update(accepted(records[0], { ...receipt('unknown'), processing: 'unknown' }));
   const again = new OutboxStore(kv, config);
   const restored = await again.load();
-  assert.equal(projectTimeline([], null, 'th', undefined, true, restored)[0].reaction.label, '结果待确认');
+  assert.equal(projectTimeline([], null, 'th', undefined, true, restored)[0].reaction.label, 'Outcome unknown');
 });
 
 test('received input remains visible until exact authoritative identity arrives', async () => {
@@ -169,7 +169,7 @@ test('same-state processing update is persisted immediately without losing compl
     sdk.receipts.set('r', receipt()); box.reconcile(); await flush();
     assert.equal(box.records[0].receiptAdmission, 'followup');
     assert.equal((await new OutboxStore(kv, config).load())[0].receiptAdmission, 'followup');
-    for (const [processing, label] of [[null, undefined], ['running', '处理中'], ['unknown', '结果待确认'], ['completed', '已完成']]) {
+    for (const [processing, label] of [[null, undefined], ['running', 'Working'], ['unknown', 'Outcome unknown'], ['completed', 'Completed']]) {
       sdk.receipts.set('r', { ...receipt(), processing }); box.reconcile(); await flush();
       const restored = await new OutboxStore(kv, config).load();
       assert.equal(restored[0].receiptProcessing, processing);

@@ -134,6 +134,7 @@ test('video URLs, strict HTML video and media safety keep text around inline cli
   assert.deepEqual(line.children.filter(x => x.kind === 'text').map(x => x.text), ['before ', ' after']);
   assert.equal(html.kind, 'video');
   assert.equal(html.src, 'https://example.com/b.webm');
+  assert.equal(html.text, 'Video');
   assert.equal(parseMessageMarkdown('<video src="https://u@example.com/b.mp4" controls></video>')[0].kind, 'paragraph');
   assert.equal(parseMessageMarkdown('<video src="https://example.com/b.mp4" autoplay></video>')[0].kind, 'paragraph');
   assert.equal(parseMessageMarkdown('![bad](https://u@example.com/b.mp4)')[0].children[0].src, null);

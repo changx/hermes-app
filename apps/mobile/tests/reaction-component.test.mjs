@@ -58,17 +58,32 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
+test('owned timeline labels are English while message and attachment names stay verbatim', () => {
+  const row = { ...projectTimeline([{ ...msg, text: '原文' }], null, 'th')[0], attachments: [
+    { id: 'unnamed', name: '', state: 'available' }, { id: 'named', name: '照片.png', state: 'missing' }
+  ] };
+  const { rowTree, tree } = mount([row]);
+  const visible = named(rowTree, 'Text').map(text).join(' ');
+  assert.match(visible, /You/);
+  assert.match(visible, /Attachment: Unnamed attachment \(Available\)/);
+  assert.match(visible, /Attachment: 照片\.png \(Unavailable for now\)/);
+  assert.equal(named(rowTree, 'MessageContent')[0].props.text, '原文');
+  const composer = named(tree, 'TextInput')[0];
+  assert.equal(composer.props.accessibilityLabel, 'Message text');
+  assert.equal(composer.props.placeholder, 'Message…');
+});
+
 test('followup callback reaction stays visible without changing row identity or footprint', () => {
   let previous;
   let footprint;
-  for (const [state, processing, label] of [['queued', null, undefined], ['running', 'running', '处理中'], ['running', 'completed', '已完成'], ['received', null, undefined]]) {
+  for (const [state, processing, label] of [['queued', null, undefined], ['running', 'running', 'Working'], ['running', 'completed', 'Completed'], ['received', null, undefined]]) {
     const r = { ...receipt(state), admission: 'followup', handed_off: true, processing };
     const row = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', r]]))[0];
     const { rowTree } = mount([row]);
     const slot = named(rowTree, 'View').find(n => n.props.style?.height === 23);
     assert.ok(slot, 'reserve the same height to avoid scroll jumps');
     assert.equal(slot.props.accessibilityLabel, label);
-    assert.equal(named(expand(slot), 'Text').map(text).join(''), `${label ? `${row.reaction.emoji} ${label}` : ''}${state === 'queued' ? '取消' : ''}`);
+    assert.equal(named(expand(slot), 'Text').map(text).join(''), `${label ? `${row.reaction.emoji} ${label}` : ''}${state === 'queued' ? 'Cancel' : ''}`);
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, msg.text);
     assert.equal(named(rowTree, 'MessageContent')[0].props.pending, false);
     assert.equal(row.receipt, r);
@@ -94,13 +109,13 @@ test('native busy ACK appears below exact user input, independent of processing 
     const authoritative = projectTimeline([msg, { ...msg, id: 'm2', ref_seq: 2, client_message_id: 'other', receipt_id: 'other', text: 'same' }], null, 'th', undefined, true, [], new Map([['r', r]]));
     for (const rows of [optimistic, authoritative]) {
       const { rowTree } = mount(rows);
-      const label = named(rowTree, 'Text').find(n => n.props.accessibilityLabel === `收到后的反馈：${feedback}`);
+      const label = named(rowTree, 'Text').find(n => n.props.accessibilityLabel === `Feedback after receipt: ${feedback}`);
       assert.ok(label); assert.equal(text(label), feedback);
       assert.equal(label.props.style.fontSize, 12);
       assert.equal(label.props.style.flexShrink, 1);
-      assert.equal(rows[0].reaction?.label, '处理中');
+      assert.equal(rows[0].reaction?.label, 'Working');
       assert.equal(named(rowTree, 'MessageContent')[0].props.text, msg.text);
-      assert.equal(named(rowTree, 'View').find(n => n.props.accessibilityLabel === '处理中').props.style.height, 23);
+      assert.equal(named(rowTree, 'View').find(n => n.props.accessibilityLabel === 'Working').props.style.height, 23);
     }
     assert.equal(authoritative[1].feedback, undefined);
     assert.equal(authoritative.length, 2);
@@ -111,10 +126,10 @@ test('native busy ACK appears below exact user input, independent of processing 
   assert.equal(cold[0].reaction, undefined, 'ACK never implies a successful callback');
   const failed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('failed'), feedback: modes[0], processing: 'failed' }]]));
   assert.equal(failed[0].feedback, modes[0]);
-  assert.equal(failed[0].reaction?.label, '处理失败', 'admission feedback cannot hide final processing failure');
+  assert.equal(failed[0].reaction?.label, 'Failed', 'admission feedback cannot hide final processing failure');
   const noAck = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('completed'), processing: 'failed' }]]));
   assert.equal(noAck[0].feedback, undefined);
-  assert.equal(noAck[0].reaction?.label, '处理失败');
+  assert.equal(noAck[0].reaction?.label, 'Failed');
 });
 
 test('composer accepts ready attachments without text and blocks incomplete uploads; accessories remain in dock', () => {
@@ -123,7 +138,7 @@ test('composer accepts ready attachments without text and blocks incomplete uplo
   const preview = row => ({ type: 'AttachmentPreview', props: { attachmentIds: row.attachments?.map(a => a.id) } });
   rows[0].attachments = [{ id: 'att_a', state: 'available' }];
   const ready = mount(rows, [], [], { text: '', attachmentCount: 2, composerAccessory: accessory, typingIndicator: indicator, renderAttachments: preview });
-  const send = named(ready.tree, 'Pressable').find(n => n.props.accessibilityLabel === '发送');
+  const send = named(ready.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Send');
   assert.equal(send.props.disabled, false); send.props.onPress();
   assert.deepEqual(ready.calls, [['send']]);
   assert.equal(named(ready.rowTree, 'AttachmentPreview').length, 1);
@@ -133,7 +148,7 @@ test('composer accepts ready attachments without text and blocks incomplete uplo
   assert.ok(dockChildren.findIndex(n => n.type === 'TypingIndicator') < dockChildren.findIndex(n => n.type === 'TextInput'));
   for (const overrides of [{ attachmentsBusy: true, attachmentCount: 1 }, { attachmentCount: 0 }, { busy: true, attachmentCount: 1 }]) {
     const h = mount(rows, [], [], { text: '', ...overrides });
-    assert.equal(named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === '发送').props.disabled, true);
+    assert.equal(named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Send').props.disabled, true);
   }
 });
 
@@ -196,8 +211,8 @@ test('user and assistant rows render the same complete Markdown and media tree',
     } finally { modules.react.useState = originalState; }
     assert.equal(named(rendered, 'Image').length, 1);
     assert.equal(named(rendered, 'WebView').length, 3);
-    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === '播放视频：视频'));
-    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === '复制代码'));
+    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === 'Play video: 视频'));
+    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === 'Copy code'));
     assert.ok(rendered.some(n => n.props.accessibilityRole === 'link'));
     assert.ok(rendered.some(n => n.props.accessibilityRole === 'checkbox'));
     assert.ok(named(rendered, 'ScrollView').filter(n => n.props.horizontal).length >= 2);
@@ -278,7 +293,7 @@ test('real message component renders legible gray text until accepted, then norm
     const content = named(rowTree, 'MessageContent')[0];
     assert.equal(content.props.pending, phase !== 'accepted');
     assert.equal(rows[0].reaction, undefined);
-    assert.equal(named(rowTree, 'Text').some(v => text(v).includes('未发出')), phase === 'blocked');
+    assert.equal(named(rowTree, 'Text').some(v => text(v).includes('Not sent. Check your message or contact your administrator.')), phase === 'blocked');
     const rendered = expand(MessageContent(content.props));
     const paragraph = named(rendered, 'Text').find(n => n.props.selectable && Array.isArray(n.props.style) && n.props.style.some(x => x?.fontSize === 15));
     assert.ok(paragraph);
@@ -294,31 +309,31 @@ test('pill is under corresponding user message with stable footprint; controls r
   const interaction = { id: 'ask', kind: 'approval', state: 'pending', thread_id: 'th', receipt_id: 'r', prompt: '允许继续？', choices: ['允许', '拒绝'] };
   const projected = projectTimeline([msg], null, 'th', undefined, true, [], cache, [interaction]);
   const h = mount(projected, [receipt('queued'), receipt('running')], [interaction]);
-  const slot = named(h.rowTree, 'View').find(v => v.props.accessibilityLabel === '等待审批');
+  const slot = named(h.rowTree, 'View').find(v => v.props.accessibilityLabel === 'Awaiting approval');
   assert.ok(slot); assert.equal(slot.props.style.height, 23);
   assert.equal(named(h.rowTree, 'Pressable').length, 0);
-  click(h.tree, '停止'); click(h.tree, '允许');
+  click(h.tree, 'Stop'); click(h.tree, '允许');
   assert.deepEqual(h.calls, [['stop'], ['answer', 'ask', '允许']]);
   const queued = mount(projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', receipt('queued')]])), [receipt('queued')]);
-  click(queued.rowTree, '取消排队');
+  click(queued.rowTree, 'Cancel queued message');
   assert.deepEqual(queued.calls, [['cancel', 'r']]);
   assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === '停止当前执行'), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('本机发送记录')), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('收据')), false);
   const completed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('completed'), processing: 'completed' }]]));
   const changed = mount(completed);
-  assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === '已完成').props.style.height, 23);
+  assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === 'Completed').props.style.height, 23);
   assert.equal(completed[0].key, projected[0].key);
 });
 test('latest-message action lives in composer flow and never covers message content', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   const h = mount(rows, [], [], { position: { offset: 20, following: false } });
-  const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === '回到最新 ↓');
+  const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Jump to latest ↓');
   assert.ok(latest);
   assert.equal(latest.props.style.position, undefined);
   const composer = named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
   assert.ok(expand(composer.props.children).includes(latest));
-  assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === '回到最新 ↓'), false);
+  assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);
 });
 
 test('composer keeps send while running with an independent stop that preserves draft', () => {
@@ -326,32 +341,32 @@ test('composer keeps send while running with an independent stop that preserves 
   for (const draft of ['', 'keep this draft']) {
     const h = mount(rows, [receipt('running')], [], { text: draft });
     const buttons = named(h.tree, 'Pressable');
-    const send = buttons.find(n => n.props.accessibilityLabel === '发送');
+    const send = buttons.find(n => n.props.accessibilityLabel === 'Send');
     assert.ok(send); assert.equal(send.props.disabled, draft === '');
-    const stop = buttons.find(n => n.props.accessibilityLabel === '停止');
+    const stop = buttons.find(n => n.props.accessibilityLabel === 'Stop');
     assert.equal(stop.props.disabled, false);
-    click(h.tree, '停止');
+    click(h.tree, 'Stop');
     assert.deepEqual(h.calls, [['stop']]);
-    if (draft) { click(h.tree, '发送'); assert.deepEqual(h.calls, [['stop'], ['send']]); }
+    if (draft) { click(h.tree, 'Send'); assert.deepEqual(h.calls, [['stop'], ['send']]); }
     assert.equal(named(h.tree, 'TextInput')[0].props.value, draft);
   }
   for (const state of ['queued', 'completed', 'failed', 'interrupted', 'unknown']) {
     const h = mount(rows, [receipt(state)]);
-    click(h.tree, '发送');
+    click(h.tree, 'Send');
     assert.deepEqual(h.calls, [['send']]);
-    assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === '停止'), false);
+    assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === 'Stop'), false);
   }
   const other = mount(rows, [{ ...receipt('running'), thread_id: 'other' }]);
-  click(other.tree, '发送');
+  click(other.tree, 'Send');
   const busy = mount(rows, [receipt('running')], [], { busy: true });
-  assert.equal(named(busy.tree, 'Pressable').find(n => n.props.accessibilityLabel === '停止').props.disabled, true);
+  assert.equal(named(busy.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Stop').props.disabled, true);
 });
 test('connection surface omits URL, ID and raw status and keeps pairing choices', () => {
   const { ConnectionScreen } = load('ConnectionScreen.tsx');
   const base = { code: '', onCode() {}, connected: true, pairing: false, busy: false, status: '', error: '', onPair() {}, onBack() {}, onForget() {} };
   const nodes = expand(ConnectionScreen(base));
   const labels = named(nodes, 'Text').map(text).join(' ');
-  assert.ok(labels.includes('此设备已连接'));
+  assert.ok(labels.includes('This device is connected. It will reconnect automatically if the network drops.'));
   assert.doesNotMatch(labels, /https?:|token|receipt|sync|收据|同步|诊断/);
   assert.ok(named(nodes, 'Pressable').length >= 3);
 });

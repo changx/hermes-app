@@ -10,7 +10,7 @@ import type { Attachment, HermesClient } from '../../../packages/client/src/inde
 import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 
-const friendlyFailure = '上传失败，文件仍在这里。请重试或移除。';
+const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
 let fileSequence = 0;
 function ownedFile(): File { return new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}`); }
 function forgetFile(file: File) { try { if (file.exists) file.delete(); } catch { /* cache cleanup is best effort */ } }
@@ -86,7 +86,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       if (picked.canceled || epoch.current !== generation) return;
       const sources = picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `image.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? new File(asset.uri).size }));
       add(sources);
-    } catch { if (epoch.current === generation) setNotice('无法选择图片，请重试。'); }
+    } catch { if (epoch.current === generation) setNotice('Could not select images. Please try again.'); }
   };
   const files = async () => {
     if (disabled) return;
@@ -95,7 +95,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true, copyToCacheDirectory: true });
       if (picked.canceled || epoch.current !== generation) return;
       add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.name, mime: asset.mimeType, size: asset.size ?? new File(asset.uri).size })));
-    } catch { if (epoch.current === generation) setNotice('无法选择文件，请重试。'); }
+    } catch { if (epoch.current === generation) setNotice('Could not select files. Please try again.'); }
   };
 
   const camera = async () => {
@@ -104,15 +104,15 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (epoch.current !== generation) return;
-      if (!permission.granted) { setNotice('需要允许使用相机才能拍照，也可以从相册选择图片。'); return; }
+      if (!permission.granted) { setNotice('Allow camera access to take a photo, or choose one from your library.'); return; }
       const picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
       if (picked.canceled || epoch.current !== generation) return;
       add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? new File(asset.uri).size })));
-    } catch { if (epoch.current === generation) setNotice('无法打开相机，请重试或从相册选择。'); }
+    } catch { if (epoch.current === generation) setNotice('Could not open the camera. Try again or choose a photo from your library.'); }
   };
 
   const paste = (data: { type: string; data?: string }) => {
-    if (disabled || data.type !== 'image' || !data.data) { if (!disabled) setNotice('剪贴板里没有可粘贴的图片。'); return; }
+    if (disabled || data.type !== 'image' || !data.data) { if (!disabled) setNotice('There is no image to paste from the clipboard.'); return; }
     let file: File | undefined;
     try {
       const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(data.data);
@@ -120,10 +120,10 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       const bytes = toByteArray(match[2]);
       const name = match[1] === 'png' ? 'pasted-image.png' : 'pasted-image.jpg';
       const checked = chooseAttachments(itemsRef.current.length, [{ name, mime: `image/${match[1]}`, data: bytes }]);
-      if (!checked.accepted.length) { setNotice(checked.error || '无法粘贴图片。'); return; }
+      if (!checked.accepted.length) { setNotice(checked.error || 'Could not paste the image.'); return; }
       file = ownedFile(); file.create(); file.write(bytes);
       add([{ uri: file.uri, name, mime: `image/${match[1]}`, size: bytes.length }], file);
-    } catch { if (file) forgetFile(file); setNotice('无法粘贴图片，请重新选择。'); }
+    } catch { if (file) forgetFile(file); setNotice('Could not paste the image. Please select it again.'); }
   };
   const pasteOnDemand = async () => {
     if (disabled) return;
@@ -135,7 +135,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
         const image = await Clipboard.getImageAsync({ format: 'png' });
         if (generation === epoch.current) {
           if (image) paste({ type: 'image', data: image.data });
-          else setNotice('未能粘贴，请检查系统是否允许粘贴。');
+          else setNotice('Could not paste. Check that paste access is allowed.');
         }
         return;
       }
@@ -145,8 +145,8 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       if (!text && Platform.OS === 'ios') text = await Clipboard.getUrlAsync() || '';
       if (generation !== epoch.current) return;
       if (text) { onPasteText(text); setNotice(''); }
-      else setNotice('未能粘贴。请允许系统粘贴；文件请用“选择文件”添加。');
-    } catch { if (generation === epoch.current) setNotice('无法读取剪贴板，请重试。'); }
+      else setNotice('Could not paste. Allow paste access, or use Choose file to add a file.');
+    } catch { if (generation === epoch.current) setNotice('Could not read the clipboard. Please try again.'); }
   };
   const remove = (key: number) => {
     if (disabled) return;
@@ -169,26 +169,26 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   };
   return <View style={styles.composerRoot}>
       {menuOpen && <View style={[styles.controls, styles.menu]}>
-        <Action label="选择文件" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
-        <Action label="系统相册" onPress={() => { setMenuOpen(false); void images(); }} disabled={disabled || items.length >= 8} />
-        <Action label="拍照" onPress={() => { setMenuOpen(false); void camera(); }} disabled={disabled || items.length >= 8} />
-        <Action label="粘贴" onPress={() => { setMenuOpen(false); void pasteOnDemand(); }} disabled={disabled} />
+        <Action label="Choose file" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
+        <Action label="Photo library" onPress={() => { setMenuOpen(false); void images(); }} disabled={disabled || items.length >= 8} />
+        <Action label="Take photo" onPress={() => { setMenuOpen(false); void camera(); }} disabled={disabled || items.length >= 8} />
+        <Action label="Paste" onPress={() => { setMenuOpen(false); void pasteOnDemand(); }} disabled={disabled} />
       </View>}
     {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}
     {!!items.length && <ScrollView horizontal keyboardShouldPersistTaps="always" style={styles.draftStrip}>
     {items.map(item => <View key={item.key} style={[styles.tile, styles.draftTile]}>
-      {isImage(item.source.mime, item.source.name) && item.source.uri && <Pressable accessibilityRole="button" accessibilityLabel={`查看图片：${item.source.name}`} onPress={() => setPreview(item.source.uri!)}>
+      {isImage(item.source.mime, item.source.name) && item.source.uri && <Pressable accessibilityRole="button" accessibilityLabel={`View image: ${item.source.name}`} onPress={() => setPreview(item.source.uri!)}>
         <Image source={{ uri: item.source.uri }} style={styles.thumb} />
       </Pressable>}
       <View style={styles.fileText}>
         <Text numberOfLines={2} style={styles.title}>{item.source.name}</Text>
-        <Text style={styles.detail}>{item.status === 'uploading' ? '正在上传…' : item.status === 'failed' ? item.error : item.source.mime || '文件'}</Text>
+        <Text style={styles.detail}>{item.status === 'uploading' ? 'Uploading…' : item.status === 'failed' ? item.error : item.source.mime || 'File'}</Text>
       </View>
-      {item.status === 'failed' && <Action label={`重试：${item.source.name}`} title="重试" onPress={() => retry(item.key)} disabled={disabled} />}
-      <Action label={`移除：${item.source.name}`} title="×" onPress={() => remove(item.key)} disabled={disabled} />
+      {item.status === 'failed' && <Action label={`Retry: ${item.source.name}`} title="Retry" onPress={() => retry(item.key)} disabled={disabled} />}
+      <Action label={`Remove: ${item.source.name}`} title="×" onPress={() => remove(item.key)} disabled={disabled} />
     </View>)}</ScrollView>}
     <View style={styles.composerRow} onLayout={event => onComposerHeight?.(event.nativeEvent.layout.height)}>
-      <Pressable accessibilityRole="button" accessibilityLabel="添加附件" accessibilityState={{ expanded: menuOpen }}
+      <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" accessibilityState={{ expanded: menuOpen }}
         disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
         <Text style={styles.addText}>{menuOpen ? '×' : '＋'}</Text>
       </Pressable>
@@ -204,13 +204,13 @@ function ImageModal({ uri, onClose }: { uri: string | null; onClose: () => void 
   const [scale, setScale] = useState(1);
   return <Modal visible={!!uri} animationType="fade" onRequestClose={onClose} presentationStyle="fullScreen">
     <View style={[styles.modal, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Action label="关闭图片" onPress={() => { setScale(1); onClose(); }} />
+      <Action label="Close image" onPress={() => { setScale(1); onClose(); }} />
       {uri && <ScrollView key={uri} style={styles.zoom} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent>
         <Image source={{ uri }} resizeMode="contain" style={{ width: width * scale, height: (height - insets.top - insets.bottom - 70) * scale }} />
       </ScrollView>}
       {Platform.OS !== 'ios' && <View style={styles.controls}>
-        <Action label="缩小" onPress={() => setScale(Math.max(1, scale / 1.5))} />
-        <Action label="放大" onPress={() => setScale(Math.min(4, scale * 1.5))} />
+        <Action label="Zoom out" onPress={() => setScale(Math.max(1, scale / 1.5))} />
+        <Action label="Zoom in" onPress={() => setScale(Math.min(4, scale * 1.5))} />
       </View>}
     </View>
   </Modal>;
@@ -277,24 +277,24 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
     const entry = loaded[attachment.id];
     if (entry?.status === 'ready') {
       if (isImage(attachment.mime, attachment.name)) setPreview(entry.uri || null);
-      else setTextPreview(entry.text || '已下载文件。本版暂不支持在应用内打开该格式。');
+      else setTextPreview(entry.text || 'File downloaded. This format cannot be opened in the app yet.');
     } else void load(attachment);
   };
   return <View style={styles.root}>{attachments.map(attachment => {
     const entry = loaded[attachment.id];
     const image = isImage(attachment.mime, attachment.name);
-    const label = attachment.name || '附件';
-    return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`查看附件：${label}`} style={styles.tile}
+    const label = attachment.name || 'Unnamed attachment';
+    return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`View attachment: ${label}`} style={styles.tile}
       disabled={attachment.state !== 'available'} onPress={() => open(attachment)}>
       {image && entry?.uri && <Image source={{ uri: entry.uri }} style={styles.thumb} />}
       <View style={styles.fileText}><Text style={styles.title} numberOfLines={2}>{label}</Text>
-        <Text style={styles.detail}>{attachment.state !== 'available' ? '附件暂时无法查看' : entry?.status === 'loading' ? '正在加载…' : entry?.status === 'error' ? '加载失败，点按重试' : attachment.mime || '文件'}</Text>
+        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : entry?.status === 'loading' ? 'Loading…' : entry?.status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
       </View>
     </Pressable>;
   })}
     <ImageModal uri={preview} onClose={() => setPreview(null)} />
     <Modal visible={textPreview !== null} onRequestClose={() => setTextPreview(null)}><View style={styles.modal}>
-      <Action label="关闭预览" onPress={() => setTextPreview(null)} />
+      <Action label="Close preview" onPress={() => setTextPreview(null)} />
       <ScrollView><Text selectable style={styles.previewText}>{textPreview}</Text></ScrollView>
     </View></Modal>
   </View>;

@@ -3,10 +3,10 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const DEFAULT_NAME = 'Agent';
-const READ_ERROR = '无法读取此设备上的显示名称。可以输入新名称后保存。';
-const WRITE_ERROR = '保存失败，名称尚未更改，请重试。';
-const INVALID_ERROR = '名称不能包含控制字符或方向控制符。';
-const LONG_ERROR = '显示名称最多 40 个字。';
+const READ_ERROR = 'Could not read the display name on this device. Enter a new name to save it.';
+const WRITE_ERROR = 'Could not save the name. Nothing changed. Try again.';
+const INVALID_ERROR = 'Name contains unsupported characters.';
+const LONG_ERROR = 'Display name must be 40 characters or fewer.';
 
 // Hex-encode UTF-16 code units: injective for every JS connection ID, and SecureStore-safe.
 const nameKey = (id: string) => `hermes.agent-name.${Array.from({ length: id.length }, (_, i) => id.charCodeAt(i).toString(16).padStart(4, '0')).join('')}`;
@@ -127,20 +127,20 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
     } finally { inFlight.current = false; }
   };
   return <View style={styles.form}>
-    <Text style={styles.heading}>Agent 设置</Text>
-    <Text style={styles.label}>显示名称</Text>
-    <TextInput accessibilityLabel="显示名称" value={draft} onChangeText={value => { edited.current = true; setDraft(value); }}
+    <Text style={styles.heading}>Agent settings</Text>
+    <Text style={styles.label}>Display name</Text>
+    <TextInput accessibilityLabel="Display name" value={draft} onChangeText={value => { edited.current = true; setDraft(value); }}
       placeholder="Agent" maxLength={80} autoCorrect={false} style={styles.input} editable={!saving} />
-    <Text style={styles.hint}>只影响此设备当前连接的显示。清空后使用 Agent。</Text>
+    <Text style={styles.hint}>Only changes how the Agent appears on this device for this connection. Leave blank to use Agent.</Text>
     {!!error && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
-    {!!error && !ready && onRetry && <Pressable accessibilityRole="button" accessibilityLabel="重试读取" disabled={saving}
-      onPress={onRetry} style={[styles.button, styles.secondary]}><Text style={styles.secondaryText}>重试读取</Text></Pressable>}
-    <Pressable accessibilityRole="button" accessibilityLabel="保存" accessibilityState={{ disabled: saving || (!ready && (!error || !edited.current)) }}
+    {!!error && !ready && onRetry && <Pressable accessibilityRole="button" accessibilityLabel="Retry loading" disabled={saving}
+      onPress={onRetry} style={[styles.button, styles.secondary]}><Text style={styles.secondaryText}>Retry loading</Text></Pressable>}
+    <Pressable accessibilityRole="button" accessibilityLabel="Save" accessibilityState={{ disabled: saving || (!ready && (!error || !edited.current)) }}
       disabled={saving || (!ready && (!error || !edited.current))} onPress={() => { void submit(); }} style={[styles.button, saving && styles.disabled]}>
-      <Text style={styles.buttonText}>{saving ? '正在保存…' : '保存'}</Text>
+      <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save'}</Text>
     </Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="关闭" onPress={onClose} style={[styles.button, styles.secondary]}>
-      <Text style={styles.secondaryText}>关闭</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={[styles.button, styles.secondary]}>
+      <Text style={styles.secondaryText}>Close</Text>
     </Pressable>
   </View>;
 }
