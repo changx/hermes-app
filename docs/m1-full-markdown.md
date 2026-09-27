@@ -19,6 +19,12 @@
 - 主控末轮验证：112/112 手机测试、TypeScript、iOS/Android Expo 导出及 Chromium 9/9 通过；布局回归先失败（Agent 仍 flex-start 气泡）后通过。证据为私有 `markdown-verification/followup-*` 和 `layout-red.log`/`layout-green.log`。Linux WebKit 启动因缺 `libevent-2.1.so.7` 被阻，未声称 WKWebView 或真机通过。
 - 已发布候选 `499d14c` 到隔离 Expo：公网 iOS/Android manifest 与实际 bundle 已验证包含 `agentMessage`、`renderWebContainer` 和失败回退；首次重启后探测短暂 502，随后复验通过。两个 Gateway 的 PID/启动时间及开发插件哈希不变，证据 `followup-release-before.json`、`followup-release-verification.json`；回滚基线 `09ddfa2`。Mermaid 手机问题仍待 Jamie 确认，不以该发布关闭真机验收。
 
+## 消息格式一致性与去围框
+
+- Agent 整条消息继续无气泡、背景及外框；移除公式、Mermaid 及其原文回退区域的额外围框，让内容自然放在消息区域。代码块、表格网格和引用线保留各自的语义样式，不作为整条消息外框。
+- 用户保留原气泡及背景，正文与 Agent 共用 `MessageContent`，不按角色限制语法。验证用户消息从时间线进入真实解析器和组件，覆盖标题、列表、引用、代码、链接、表格、图片、视频、行内/块级公式与 Mermaid；发送中的颜色规则保持。
+- 此轮不新增语法或调整资源上限；113/113 手机测试、TypeScript、iOS/Android Expo 导出通过。生产用户/Agent 时间线到真实解析与组件生成相同渲染树；仅用户外围气泡不同。证据 `markdown-verification/parity-tests.log`、`parity-ts.log`、`parity-export.log`。公网资源核验与 iPhone 实测分开，前一轮 Mermaid 真机待确认仍不冒充已解决。
+
 ## 验收
 
 1. 用真实解析函数验证上述各类语法，包括转义竖线、空/混排单元格、嵌套列表任务误判、引用/链接安全和不完整输入。

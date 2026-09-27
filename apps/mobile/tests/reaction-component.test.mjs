@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { projectTimeline } from '../src/timeline.ts';
+import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles } };
-for (const key of ['FlatList', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View']) native[key] = key;
+for (const key of ['FlatList', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View']) native[key] = key;
 const react = {
   Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   forwardRef: fn => fn, memo: fn => fn, useRef: current => ({ current }), useState: initial => [initial, () => {}],
@@ -19,10 +20,10 @@ const modules = {
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
-  './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown: text => [{ kind: 'paragraph', children: [{ kind: 'text', text }] }] },
+  './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown },
   'expo-clipboard': { setStringAsync: async () => {} },
   'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
-  'react-native-webview': { default: 'WebView' }, './markdownWeb': { renderMarkdownHtml: () => '' }
+  'react-native-webview': 'WebView', './markdownWeb': { renderMarkdownHtml: (kind, source) => `${kind}:${source}` }
 };
 const load = file => { const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'),
@@ -78,6 +79,29 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(user.borderWidth, 1);
   assert.equal(user.borderRadius, 16);
   assert.equal(user.borderTopRightRadius, 4);
+});
+
+test('user and assistant rows render the same complete Markdown and media tree', () => {
+  const markdown = '# 标题\n\n**加粗** *斜体* ~~删除~~ [链接](https://example.com)\n\n> 引用\n\n- [x] 任务\n- 普通项\n\n```js\nconst n = 1;\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n![图片](https://example.com/a.png)\n\n![视频](https://example.com/a.mp4)\n\n前 $x^2$ 后\n\n$$x+y$$\n\n```mermaid\nflowchart LR\nA-->B\n```';
+  const signatures = [];
+  for (const role of ['user', 'assistant']) {
+    const rows = projectTimeline([{ ...msg, role, text: markdown }], null, 'th', undefined, true);
+    const content = named(mount(rows).rowTree, 'MessageContent')[0];
+    assert.equal(content.props.text, markdown, 'no role-specific stripping');
+    const rendered = expand(MessageContent(content.props));
+    assert.equal(named(rendered, 'Image').length, 1);
+    assert.equal(named(rendered, 'WebView').length, 3);
+    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === '播放视频：视频'));
+    assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === '复制代码'));
+    assert.ok(rendered.some(n => n.props.accessibilityRole === 'link'));
+    assert.ok(rendered.some(n => n.props.accessibilityRole === 'checkbox'));
+    assert.ok(named(rendered, 'ScrollView').filter(n => n.props.horizontal).length >= 2);
+    const frames = named(rendered, 'View').filter(n => n.props.style?.height === 220);
+    assert.equal(frames.length, 2);
+    frames.forEach(n => assert.equal(n.props.style.borderWidth, undefined));
+    signatures.push(rendered.map(n => String(n.type)));
+  }
+  assert.deepEqual(signatures[0], signatures[1]);
 });
 
 test('real message component renders legible gray text until accepted, then normal even while queued', () => {
