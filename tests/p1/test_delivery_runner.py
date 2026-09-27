@@ -451,7 +451,8 @@ async def _compact_final_crash(root):
                 ('assistant','P1_INTERIM_2'),('assistant','P1_INTERIM_3'),
                 ('assistant','SYNTHETIC_P1_FINAL')],page
             assert [m['id'] for m in page['messages'][-5:-1]]==[
-                str(row_id) for _,row_id in before_refs]
+                'receipt:'+receipt, *[str(row_id) for _,row_id in before_refs[1:]]]
+            assert [m['ref_seq'] for m in page['messages'][-5:-1]]==[seq for seq,_ in before_refs]
             assert page['messages'][-1]['id']==str(final_id)
             status,replay=await _get(client,url+'/v1/sync?cursor='+cursor)
             assert status==200,replay

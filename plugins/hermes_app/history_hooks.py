@@ -91,6 +91,7 @@ def _capture_tool_row(**kwargs):
         return None
     if visible_text(dict(anchor)) is None or visible_text(dict(assistant)) is None:
         return None
+    _link_core_user(store,thread_id)
     store.bind_turn(turn_id, session_id)
     old = store.turn_refs(turn_id)
     refs = ([] if old else [(session_id, anchor['id'], 'user')])
@@ -136,6 +137,7 @@ def pre_auxiliary_call(**kwargs):
                               'ORDER BY id', (session_id, anchor['id'], tool['id'])).fetchall()
         refs = [(session_id, r['id'], r['role']) for r in rows if visible_text(dict(r)) is not None]
     if refs:
+        _link_core_user(store,thread_id)
         store.append_hook_refs(thread_id, turn_id, refs)
     return None
 

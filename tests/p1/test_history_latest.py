@@ -27,11 +27,15 @@ def fixture(tmp_path):
     a = store.create_thread('p', 'A', 'a', '')
     b = store.create_thread('p', 'B', 'b', '')
     first, _ = store.accept(a, 'send-one', 'same')
-    second, _ = store.accept(a, 'send-two', 'same')
-    store.link_user_receipt(first['id'], 10)
-    store.link_user_receipt(second['id'], 13)
+    with sqlite3.connect(source) as db:
+        db.execute('UPDATE messages SET platform_message_id=? WHERE id=10',(first['id'],))
+    assert store.link_user_from_core(first['id'],source)
     store.record_turn(a, 't1', [('a', 10, 'user'), ('a', 11, 'assistant')])
     store.record_turn(b, 'tb', [('b', 12, 'user')])  # Sparse *global* seq in A.
+    second, _ = store.accept(a, 'send-two', 'same')
+    with sqlite3.connect(source) as db:
+        db.execute('UPDATE messages SET platform_message_id=? WHERE id=13',(second['id'],))
+    assert store.link_user_from_core(second['id'],source)
     store.record_turn(a, 't2', [('a', 13, 'user'), ('a', 14, 'assistant')])
     store.record_turn(a, 't3', [('a', 15, 'user')])
     return store, source, a, b, first, second
@@ -44,12 +48,12 @@ def test_latest_sparse_global_refs_identity_and_original_forward(tmp_path):
     assert latest['next_cursor'] is None
     assert latest['older_cursor']
     middle = store.history_page(a, source, limit=2, before=latest['older_cursor'])
-    assert [m['id'] for m in middle['messages']] == ['11', '13']
+    assert [m['id'] for m in middle['messages']] == ['11', 'receipt:'+second['id']]
     oldest = store.history_page(a, source, limit=2, before=middle['older_cursor'])
-    assert [m['id'] for m in oldest['messages']] == ['10']
+    assert [m['id'] for m in oldest['messages']] == ['receipt:'+first['id']]
     assert oldest['older_cursor'] is None
     assert [m['id'] for m in store.history_page(a, source, after=oldest['next_cursor'])['messages']] == [
-        '11', '13', '14', '15']  # The forward cursor resumes *after* the returned older page.
+        '11', 'receipt:'+second['id'], '14', '15']  # Forward resumes after the older page.
     assert oldest['messages'][0]['receipt_id'] == first['id']
     assert oldest['messages'][0]['client_message_id'] == 'send-one'
     assert middle['messages'][1]['receipt_id'] == second['id']
@@ -57,23 +61,23 @@ def test_latest_sparse_global_refs_identity_and_original_forward(tmp_path):
     for msg in (middle['messages'][0], latest['messages'][0], latest['messages'][1]):
         assert 'receipt_id' not in msg and 'client_message_id' not in msg
     forward = store.history_page(a, source, limit=2)
-    assert [m['id'] for m in forward['messages']] == ['10', '11']
+    assert [m['id'] for m in forward['messages']] == ['receipt:'+first['id'], '11']
     assert 'older_cursor' in forward and forward['older_cursor'] is None
     assert [m['id'] for m in store.history_page(a, source, after=forward['next_cursor'])['messages']] == [
-        '13', '14', '15']
+        'receipt:'+second['id'], '14', '15']
     assert [m['id'] for m in store.history_page(a, source, after_ref_seq=forward['messages'][-1]['ref_seq'])['messages']] == [
-        '13', '14', '15']
+        'receipt:'+second['id'], '14', '15']
     assert store.history_page(b, source)['messages'][0]['id'] == '12'
 
 
 def test_new_arrival_during_backward_paging_no_duplicates_or_skip(tmp_path):
-    store, source, a, _, _, _ = fixture(tmp_path)
+    store, source, a, _, first, second = fixture(tmp_path)
     latest = store.history_page(a, source, latest=True, limit=2)
     with sqlite3.connect(source) as db:
         db.execute("INSERT INTO messages VALUES (16,'a','user','new',NULL,NULL)")
     store.record_turn(a, 't4', [('a', 16, 'user')])
     older = store.history_page(a, source, before=latest['older_cursor'], limit=3)
-    assert [m['id'] for m in older['messages']] == ['10', '11', '13']
+    assert [m['id'] for m in older['messages']] == ['receipt:'+first['id'], '11', 'receipt:'+second['id']]
     assert older['older_cursor'] is None
     tail = store.history_page(a, source, after_ref_seq=latest['messages'][-1]['ref_seq'])
     assert [m['id'] for m in tail['messages']] == ['16']
@@ -106,14 +110,16 @@ def test_cursor_scope_direction_and_validation(tmp_path):
 def test_ambiguous_receipt_link_never_claims_identity(tmp_path):
     store, source, a, _, _, _ = fixture(tmp_path)
     other, _ = store.accept(a, 'send-three', 'same')
-    store.link_user_receipt(other['id'], 10)
-    user = store.history_page(a, source)['messages'][0]
+    another, _ = store.accept(a, 'send-four', 'same')
+    store.link_user_receipt(other['id'], 15)
+    store.link_user_receipt(another['id'], 15)
+    user = next(m for m in store.history_page(a, source)['messages'] if m['id']=='15')
     assert user['role'] == 'user'
     assert 'receipt_id' not in user and 'client_message_id' not in user
 
 
 def test_http_capability_auth_scope_and_bad_requests(tmp_path, monkeypatch):
-    store, source, a, _, _, _ = fixture(tmp_path)
+    store, source, a, _, _, second = fixture(tmp_path)
     monkeypatch.setattr(transport, 'get_hermes_home', lambda: tmp_path)
     # Use the real route/middleware; source DB lives at get_hermes_home()/state.db.
     monkeypatch.setenv('HERMES_APP_TOKEN', 'x' * 32)
@@ -139,7 +145,7 @@ def test_http_capability_auth_scope_and_bad_requests(tmp_path, monkeypatch):
             assert [m['id'] for m in page['messages']] == ['14', '15']
             response = await get(url + '?before=' + page['older_cursor'] + '&limit=2')
             assert response.status == 200
-            assert [m['id'] for m in (await response.json())['messages']] == ['11', '13']
+            assert [m['id'] for m in (await response.json())['messages']] == ['11', 'receipt:'+second['id']]
             for query in ('latest=true&after_ref_seq=1', 'latest=true&before=' + page['older_cursor'],
                           'before=invalid', 'latest=false', 'limit=0', 'after_ref_seq=1&before=invalid'):
                 assert (await get(url + '?' + query)).status == 400

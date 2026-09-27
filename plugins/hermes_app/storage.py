@@ -158,7 +158,7 @@ class Store:
                 if row['thread_id'] != thread_id or row['payload_hash'] != digest:
                     raise ValueError('client_message_id conflict')
                 return self._receipt(row), False
-            thread = db.execute('SELECT archived FROM threads WHERE id=?', (thread_id,)).fetchone()
+            thread = db.execute('SELECT archived,session_id FROM threads WHERE id=?', (thread_id,)).fetchone()
             if thread is None:
                 raise ValueError('unknown thread')
             if thread['archived']:
@@ -177,6 +177,11 @@ class Store:
                        "VALUES (?,?,?,?,?,'queued')", (receipt_id,client_message_id,thread_id,digest,text))
             for attachment_id in attachment_ids:
                 db.execute('UPDATE attachments SET receipt_id=? WHERE id=?', (receipt_id,attachment_id))
+            # Display order is fixed at acceptance, independent of core context.
+            turn_id='input:'+receipt_id
+            db.execute("INSERT INTO turns VALUES (?,?,'input')",(turn_id,thread_id))
+            db.execute("INSERT INTO message_refs(thread_id,turn_id,session_id,input_receipt_id,role) "
+                       "VALUES (?,?,?,?,'user')",(thread_id,turn_id,thread['session_id'],receipt_id))
             self._event(db, 'receipt', thread_id, receipt_id)
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             return self._receipt(row), True
@@ -242,6 +247,7 @@ class Store:
     def _recover_visible_result(self, receipt_id, thread_id, source_db):
         """Publish exact core rows after a crash, retaining uncertain execution state."""
         from .projection import visible_text
+        self.link_user_from_core(receipt_id,source_db)
         with self._connect() as db:
             sessions = [r['session_id'] for r in db.execute(
                 'SELECT session_id FROM session_links WHERE thread_id=?', (thread_id,))]
@@ -300,8 +306,7 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'pending')",(turn_id,thread_id))
             for session_id, row_id, role in refs:
-                db.execute('INSERT OR IGNORE INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
-                           'VALUES (?,?,?,?,?)',(thread_id,turn_id,session_id,row_id,role))
+                self._insert_core_ref(db,thread_id,turn_id,session_id,row_id,role)
             db.execute('UPDATE receipts SET user_row_id=?,pending_text=NULL WHERE id=?',
                        (anchor['id'],receipt_id))
 
@@ -335,8 +340,8 @@ class Store:
             db.execute("UPDATE receipts SET state='running',admission='followup' WHERE id=?",(row['id'],))
             session=db.execute('SELECT session_id FROM threads WHERE id=?',(thread_id,)).fetchone()['session_id']
             turn_id='input:'+row['id']
-            db.execute("INSERT INTO turns VALUES (?,?,'input')",(turn_id,thread_id))
-            db.execute("INSERT INTO message_refs(thread_id,turn_id,session_id,input_receipt_id,role) "
+            db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'input')",(turn_id,thread_id))
+            db.execute("INSERT OR IGNORE INTO message_refs(thread_id,turn_id,session_id,input_receipt_id,role) "
                        "VALUES (?,?,?,?,'user')",(thread_id,turn_id,session,row['id']))
             self._event(db,'receipt',thread_id,row['id'],2)
             return row['id'],row['pending_text']
@@ -389,14 +394,14 @@ class Store:
             row = db.execute('SELECT thread_id,state FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             if not row or row['state'] != 'running':
                 return
-            db.execute('UPDATE receipts SET state=?,pending_text=CASE WHEN ?=? THEN NULL ELSE pending_text END '
-                       'WHERE id=?', (state,state,'interrupted',receipt_id))
+            # The accepted input is already visible even without a core row.
+            db.execute('UPDATE receipts SET state=? WHERE id=?', (state,receipt_id))
             self._event(db,'receipt',row['thread_id'],receipt_id,3)
 
     def cancel_queued(self, thread_id, receipt_id):
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            changed=db.execute("UPDATE receipts SET state='interrupted',pending_text=NULL "
+            changed=db.execute("UPDATE receipts SET state='interrupted' "
                                "WHERE id=? AND thread_id=? AND state='queued'",(receipt_id,thread_id)).rowcount
             if changed:
                 self._event(db,'receipt',thread_id,receipt_id,3)
@@ -555,7 +560,7 @@ class Store:
     def link_user_receipt(self, receipt_id, row_id):
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            db.execute('UPDATE receipts SET user_row_id=?,pending_text=NULL WHERE id=? AND user_row_id IS NULL',
+            db.execute('UPDATE receipts SET user_row_id=? WHERE id=? AND user_row_id IS NULL',
                        (row_id,receipt_id))
 
     @staticmethod
@@ -939,6 +944,8 @@ class Store:
                     last_id = batch[-1]['id']
         visible = [r for r in rows if r.get('display_kind') != 'steer' and visible_text(r) is not None]
         refs = [(r['session_id'], r['id'], r['role']) for r in visible]
+        if refs and refs[0][2]=='user':
+            self.link_user_from_core(platform_message_id,source_db)
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ingress = db.execute('SELECT state FROM turns WHERE turn_id=? AND thread_id=?',
@@ -984,13 +991,12 @@ class Store:
             if compatible and len(refs) > len(old):
                 # Published seq values are cursor identities. Append only the
                 # unobserved tail; a hook may have published an interim page.
-                db.executemany('INSERT INTO message_refs(thread_id,turn_id,session_id,row_id,role) '
-                               'VALUES (?,?,?,?,?)', [(thread_id, turn['turn_id'], *r)
-                                                    for r in refs[len(old):]])
+                for session_id,row_id,role in refs[len(old):]:
+                    self._insert_core_ref(db,thread_id,turn['turn_id'],session_id,row_id,role)
             if not compatible and not proven:
                 # Keep issued cursors valid and expose the unresolved mapping.
                 db.execute("UPDATE turns SET state='unknown' WHERE turn_id=?", (turn['turn_id'],))
-            elif turn['state'] == 'pending':
+            elif turn['state'] in ('pending','input'):
                 db.execute("UPDATE turns SET state=? WHERE turn_id=?",
                            ('complete' if runtime_finished else 'unknown',turn['turn_id']))
             db.execute("UPDATE turns SET state='unknown' WHERE thread_id=? AND state='pending' "

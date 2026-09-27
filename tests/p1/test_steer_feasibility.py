@@ -180,11 +180,14 @@ def test_real_gateway_busy_steer_at_blocked_tool():
             'user', 'assistant', 'tool', 'user', 'assistant']
         assert not result['plugin_page']['incomplete_turns']
         page=result['plugin_page']['messages']
-        projected=[m for m in page if m['id'].startswith('receipt:')]
+        projected=[m for m in page if m.get('client_message_id') in ('native-steer-id-A','native-steer-id-B')]
         assert [(m['receipt_id'],m['client_message_id'],m['text']) for m in projected]==[
             (event['id'],event['client_message_id'],text) for event,text in
             zip(result['events'],('FOLLOWUP_ALPHA','FOLLOWUP_BETA'))]
         assert projected[0]['ref_seq']<projected[1]['ref_seq']
+        owner=next(m for m in page if m['role']=='user' and m['text']=='P1_TIMELINE')
+        assert owner['ref_seq'] < projected[0]['ref_seq']
+        assert delivered[0]['content'].index('FOLLOWUP_ALPHA') < delivered[0]['content'].index('FOLLOWUP_BETA')
         assert [m['id'] for m in page].index(projected[1]['id']) < len(page)-1
         assert all('Gateway message origin' not in m['text'] for m in page)
         assert not any(m['id']==str(rows[0]['id']) for m in page)

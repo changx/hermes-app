@@ -147,22 +147,23 @@ def test_individual_input_pages_search_read_and_reopen_without_core_row(tmp_path
     reopened.recover_receipts(core)
     messages=reopened.history_page(thread,core)['messages']
     assert [(m['id'],m['client_message_id'],m['text']) for m in messages]==[
+        ('receipt:'+owner['id'],'owner','held'),
         ('receipt:'+first['id'],'client-A','same 原文'),
         ('receipt:'+second['id'],'client-B','same 原文')]
     assert [m['ref_seq'] for m in messages]==sorted(m['ref_seq'] for m in messages)
     assert reopened.history_page(thread,core,latest=True,limit=1)['messages']==[messages[-1]]
-    assert reopened.history_page(thread,core,before=reopened._older_cursor(thread,messages[-1]['ref_seq']))['messages']==[messages[0]]
+    assert reopened.history_page(thread,core,before=reopened._older_cursor(thread,messages[-1]['ref_seq']))['messages']==messages[:2]
     forward=reopened.history_page(thread,core,limit=1)
     assert forward['messages']==[messages[0]]
-    assert reopened.history_page(thread,core,after=forward['next_cursor'])['messages']==[messages[1]]
+    assert reopened.history_page(thread,core,after=forward['next_cursor'])['messages']==messages[1:]
     search=reopened.search_page(thread,core,'原文',limit=1)
-    assert search['messages']==[messages[0]]
-    assert reopened.search_page(thread,core,'原文',after=search['next_cursor'])['messages']==[messages[1]]
-    assert reopened.snapshot()['threads'][0]['unread_count']==2
-    assert reopened.read_thread(thread,messages[0]['ref_seq'])['unread_count']==1
-    assert reopened.read_thread(thread,messages[1]['ref_seq'])['unread_count']==0
+    assert search['messages']==[messages[1]]
+    assert reopened.search_page(thread,core,'原文',after=search['next_cursor'])['messages']==[messages[2]]
+    assert reopened.snapshot()['threads'][0]['unread_count']==3
+    assert reopened.read_thread(thread,messages[0]['ref_seq'])['unread_count']==2
+    assert reopened.read_thread(thread,messages[2]['ref_seq'])['unread_count']==0
     assert reopened.accept(thread,'client-A','same 原文')[1] is False
-    assert len(reopened.history_page(thread,core)['messages'])==2
+    assert len(reopened.history_page(thread,core)['messages'])==3
 
 def test_exact_fallback_promotes_input_in_place_and_keeps_original_id(tmp_path):
     store,thread=_store(tmp_path)
@@ -176,14 +177,14 @@ def test_exact_fallback_promotes_input_in_place_and_keeps_original_id(tmp_path):
                    'platform_message_id TEXT,content TEXT,display_kind TEXT,tool_calls TEXT)')
         db.execute('INSERT INTO messages VALUES (1,?,?,?,?,?,?)',
                    ('session','user',item['id'],'normal fallback',None,None))
-    before=store.history_page(thread,core)['messages'][0]
+    before=store.history_page(thread,core)['messages'][1]
     assert store.link_user_from_core(item['id'],core)
     store.bind_turn('formal','session')
     store.append_hook_refs(thread,'formal',[('session',1,'user')])
-    after=Store(store.path).history_page(thread,core)['messages'][0]
+    after=Store(store.path).history_page(thread,core)['messages'][1]
     assert (before['id'],before['ref_seq'],before['text'])==(after['id'],after['ref_seq'],after['text'])
     with store._connect() as db:
-        assert db.execute('SELECT COUNT(*) FROM message_refs').fetchone()[0]==1
+        assert db.execute('SELECT COUNT(*) FROM message_refs').fetchone()[0]==2
         assert db.execute('SELECT pending_text FROM receipts WHERE id=?',(item['id'],)).fetchone()[0] is None
 
 def test_unreadable_exact_anchor_cannot_discard_input_original(tmp_path):
@@ -201,7 +202,7 @@ def test_unreadable_exact_anchor_cannot_discard_input_original(tmp_path):
     assert not store.link_user_from_core(item['id'],core)
     with store._connect() as db:
         assert db.execute('SELECT pending_text FROM receipts WHERE id=?',(item['id'],)).fetchone()[0]=='keep this'
-    assert store.history_page(thread,core)['messages'][0]['text']=='keep this'
+    assert store.history_page(thread,core)['messages'][1]['text']=='keep this'
 
 @pytest.mark.parametrize('partial',[False,True])
 def test_old_ref_schema_migration_preserves_issued_cursors_and_read_marker(tmp_path,partial):
@@ -255,7 +256,7 @@ def test_queue_limit_sync_pagination_and_foreign_cursor(tmp_path):
         if not page['has_more']:
             break
     assert seen==list(range(1,len(seen)+1))
-    assert len(seen)==33
+    assert len(seen)==65  # channel/thread event plus receipt and display event per accept
     with pytest.raises(ValueError,match='cursor'):
         store.sync_page(cursor=store._sync_cursor(1000))
     other=Store(tmp_path/'other.sqlite')
@@ -292,6 +293,7 @@ def test_formal_completed_turn_survives_copied_compaction_anchor(tmp_path):
             (1,'session','user','original user',None,None,None,receipt['id']),
             (2,'session','user','original user',None,None,None,receipt['id']),
             (3,'session','assistant','final',None,None,'stop',None)])
+    assert store.link_user_from_core(receipt['id'],source)
     store.record_turn(thread,'turn',[('session',1,'user'),('session',3,'assistant')])
     before=store.turn_refs('turn')
     store.settle_ingress(thread,ingress,receipt['id'],source,owner_finished=True)
@@ -306,7 +308,6 @@ def test_recover_final_after_copied_anchor_keeps_published_refs(tmp_path):
     receipt,_=store.accept(thread,'compressed-crash','ask')
     store.claim_next(thread)
     store.bind_turn('real-turn','session')
-    store.append_hook_refs(thread,'real-turn',[('session',1,'user'),('session',2,'assistant')])
     source=tmp_path/'state.db'
     with sqlite3.connect(source) as db:
         db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,'
@@ -318,18 +319,19 @@ def test_recover_final_after_copied_anchor_keeps_published_refs(tmp_path):
             (3,'session','user','ask',None,None,None,receipt['id']),
             (4,'session','assistant','final',None,None,'stop',None),
             (5,'unowned','assistant','foreign',None,None,'stop',None)])
+    assert store.link_user_from_core(receipt['id'],source)
+    store.append_hook_refs(thread,'real-turn',[('session',1,'user'),('session',2,'assistant')])
     before=store.history_page(thread,source)['messages']
     store.recover_receipts(source)
     after=store.history_page(thread,source)['messages']
-    assert [m['id'] for m in after]==['1','2','4']
-    assert [{k: v for k, v in m.items() if k not in ('receipt_id', 'client_message_id')}
-            for m in after[:2]] == before
+    assert [m['id'] for m in after]==['receipt:'+receipt['id'],'2','4']
+    assert after[:2] == before
     assert (after[0]['receipt_id'], after[0]['client_message_id']) == (receipt['id'], 'compressed-crash')
     assert 'receipt_id' not in after[1]
     assert store.receipt(receipt['id'])['state']=='unknown'
     assert store.sync_page()['events'][-1]['kind']=='receipt'
     store.recover_receipts(source)
-    assert [m['id'] for m in store.history_page(thread,source)['messages']]==['1','2','4']
+    assert [m['id'] for m in store.history_page(thread,source)['messages']]==['receipt:'+receipt['id'],'2','4']
 
 
 def test_accept_retry_after_archive_and_atomic_new_rejection(tmp_path):

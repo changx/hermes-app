@@ -542,7 +542,10 @@ async def main():
                 assert compressor.session_id != one['session_id']
             else:
                 assert compressor.session_id == one['session_id']
-            compaction_new_active_rows = sum(r['id'] not in {int(x) for x in original_ids}
+            with sqlite3.connect(HOME/'hermes-app'/'metadata.sqlite') as meta:
+                original_core_ids = {r[0] for r in meta.execute(
+                    'SELECT row_id FROM message_refs WHERE thread_id=? AND row_id IS NOT NULL', (one['id'],))}
+            compaction_new_active_rows = sum(r['id'] not in original_core_ids
                                              for r in writer.get_messages(compressor.session_id))
             assert compaction_new_active_rows > 0
             writer.close()
@@ -632,11 +635,14 @@ async def main():
                 db.close()
             async with a.delete(root+f"/v1/threads/{three['id']}") as resp:
                 assert resp.status == 200 and (await resp.json())['thread']['archived'] == 1
+            with sqlite3.connect(HOME/'hermes-app'/'metadata.sqlite') as meta:
+                original_row = meta.execute('SELECT row_id FROM message_refs WHERE seq=?',
+                    (before_page['messages'][0]['ref_seq'],)).fetchone()[0]
             with sqlite3.connect(HOME/'state.db') as raw:
-                raw.execute('DELETE FROM messages WHERE id=?', (int(original_ids[0]),))
+                raw.execute('DELETE FROM messages WHERE id=?', (original_row,))
             async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                 deleted_source_status = resp.status
-                assert deleted_source_status == 409 and 'original row' in await resp.text()
+                assert deleted_source_status == 409 and 'unavailable' in await resp.text()
             result = {'runner':type(runner).__name__, 'adapter':type(adapter).__name__,
                 'two_clients':True, 'auth_http_ws':True, 'profile_rejected':True,
                 'model_requests':len(model.requests), 'initial_description':True,
