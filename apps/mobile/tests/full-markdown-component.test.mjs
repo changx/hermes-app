@@ -70,13 +70,20 @@ function mount(text) {
     return [{ ...element, children: expand(element.props?.children, `${path}.children`) }];
   };
   const walk = nodes => nodes.flatMap(node => [node, ...walk(node.children)]);
-  const render = () => {
+  const renderOnce = () => {
     visited = new Set();
     const tree = expand({ type: output.exports.MessageContent, props: { text } });
     for (const [path, cells] of hooks) if (!visited.has(path)) {
       cells.forEach(cell => cell.cleanup?.()); hooks.delete(path);
     }
     return tree;
+  };
+  const render = (measure = true) => {
+    const tree = renderOnce();
+    if (!measure) return tree;
+    const frames = walk(tree).filter(n => n.props.onLayout);
+    frames.forEach(n => n.props.onLayout({ nativeEvent: { layout: { width: 320, height: n.props.style.height } } }));
+    return frames.length ? renderOnce() : tree;
   };
   return { render, walk, copied, opened, players, paused, background: () => appListeners.forEach(listener => listener('background')),
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
@@ -90,9 +97,13 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   const text = '| left | **right** |\n|:---|---:|\n| x | [link](https://a.test) |\n\n```js\nconst x = 1;\n```';
   const h = mount(text);
   const nodes = h.walk(h.render());
-  const frame = findStyle(nodes, s => s?.maxWidth === '100%' && s?.borderRadius === 6);
+  const frame = findStyle(nodes, s => s?.maxWidth === '100%' && s?.minWidth === 0 && s?.overflow === 'hidden');
   assert.equal(frame?.type, 'View');
   assert.equal(frame.props.style.width, '100%');
+  assert.equal(frame.props.style.borderWidth, undefined, 'no full-width table outline');
+  const grid = findStyle(nodes, s => s?.borderTopWidth === 1 && s?.borderLeftWidth === 1);
+  assert.equal(grid.props.style.alignSelf, 'flex-start');
+  assert.equal(grid.props.style.width, undefined, 'grid wraps actual columns');
   const scrolls = nodes.filter(n => n.type === 'ScrollView');
   assert.equal(scrolls.length, 2);
   for (const scroll of scrolls) {
@@ -172,10 +183,14 @@ test('display math and Mermaid use isolated bounded native WebViews; oversized c
     assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'file:///etc/passwd' }), false);
     assert.equal(view.props.onShouldStartLoadWithRequest({ url: 'about:blank' }), true);
     for (const prop of ['allowFileAccess', 'allowFileAccessFromFileURLs', 'allowUniversalAccessFromFileURLs', 'domStorageEnabled', 'sharedCookiesEnabled', 'thirdPartyCookiesEnabled', 'javaScriptCanOpenWindowsAutomatically', 'setSupportMultipleWindows']) assert.equal(view.props[prop], false, prop);
-    assert.equal(view.props.containerStyle.width, '100%');
-    assert.equal(view.props.containerStyle.height, '100%');
-    assert.equal(view.props.containerStyle.flex, 0, 'override WebView outer flex wrapper, not just inner native style');
-    assert.equal(view.props.style.flex, 1);
+    const container = Object.assign({}, ...view.props.containerStyle);
+    const native = Object.assign({}, ...view.props.style);
+    assert.equal(container.width, 320);
+    assert.ok([72, 220].includes(container.height));
+    assert.equal(container.flex, 0, 'numeric wrapper dimensions');
+    assert.equal(native.width, container.width);
+    assert.equal(native.height, container.height);
+    assert.equal(native.flex, 0);
   }
   assert.ok(nodes.some(n => n.type === 'View' && n.props.style?.height === 72), 'inline math has a compact stable frame');
   views[0].props.onMessage({ nativeEvent: { data: 'render-ready' } });
@@ -190,6 +205,33 @@ test('display math and Mermaid use isolated bounded native WebViews; oversized c
   assert.equal(huge.walk(huge.render()).find(n => n.type === 'ScrollView').props.style.height, 220);
 });
 
+
+test('native diagram waits for measured dimensions and keeps source until render acknowledgement', () => {
+  const h = mount('```mermaid\nflowchart TD\nA-->B\n```');
+  let nodes = h.walk(h.render(false));
+  assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
+  assert.ok(nodes.some(n => n.type === 'Text' && n.props.selectable), 'source visible before native layout');
+  const frame = nodes.find(n => n.props.onLayout);
+  for (const width of [0, -1, NaN]) frame.props.onLayout({ nativeEvent: { layout: { width, height: 220 } } });
+  assert.equal(h.walk(h.render(false)).filter(n => n.type === 'WebView').length, 0);
+  const event = { nativeEvent: { layout: { width: 262, height: 220 } } };
+  frame.props.onLayout(event);
+  event.nativeEvent = null;
+  nodes = h.walk(h.render(false));
+  const web = nodes.find(n => n.type === 'WebView');
+  assert.equal(Object.assign({}, ...web.props.style).width, 262);
+  assert.equal(Object.assign({}, ...web.props.containerStyle).height, 220);
+  const hasSourceOverlay = () => h.walk(h.render(false)).some(n => n.props.style?.position === 'absolute');
+  assert.equal(hasSourceOverlay(), true);
+  web.props.onMessage({ nativeEvent: { data: '{"command":"open"}' } });
+  assert.equal(hasSourceOverlay(), true, 'unknown messages do nothing');
+  web.props.onMessage({ nativeEvent: { data: 'render-ready' } });
+  assert.equal(hasSourceOverlay(), false);
+  web.props.onMessage({ nativeEvent: { data: 'render-failed' } });
+  nodes = h.walk(h.render(false));
+  assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
+  assert.ok(nodes.some(n => n.type === 'Text' && n.props.selectable));
+});
 
 test('Mermaid script failure retains selectable source as native content', () => {
   const source = 'flowchart LR\n甲-->乙';

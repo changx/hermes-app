@@ -1,7 +1,7 @@
 import { getRandomBytes } from 'expo-crypto';
 import { KATEX_CSS, KATEX_SCRIPT, MERMAID_SCRIPT } from './markdownRenderer.generated';
 
-/** No remote documents, resources, bridge or navigation: only bundled engines and data. */
+/** Bundled engines/data only; the bridge returns fixed render status, never commands. */
 export function renderMarkdownHtml(kind: 'math' | 'diagram', source: string, display = true): string {
   // Do not initialize multi-megabyte engines for oversized or untrusted input.
   if (source.length > (kind === 'math' ? 4096 : 6000)) {
@@ -20,7 +20,8 @@ export function renderMarkdownHtml(kind: 'math' | 'diagram', source: string, dis
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; font-src data:; img-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">` +
     `<style>html,body{margin:0;padding:0;background:transparent;color:#172a40;font:15px system-ui}` +
     `body{overflow:auto}#content{padding:8px;min-width:min-content}svg{max-width:none}` + css + `</style></head><body><div id="content"></div>` +
-    `<script nonce="${nonce}">${engine}</script><script nonce="${nonce}">(async()=>{try{${draw}}catch(e){` +
+    `<script nonce="${nonce}">${engine}</script><script nonce="${nonce}">(async()=>{try{${draw}` +
+    `if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage('render-ready');}catch(e){` +
     `const el=document.getElementById('content');el.textContent='暂时无法显示：'+${data};` +
     `if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage('render-failed');}})();</script></body></html>`;
 }

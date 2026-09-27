@@ -145,23 +145,35 @@ function webViewAllowlist(blocks: Block[]): WeakSet<object> {
   return allowed;
 }
 function OfflineRenderer({ kind, source, enabled, display = true }: { kind: 'math' | 'diagram'; source: string; enabled: boolean; display?: boolean }) {
-  const [failed, setFailed] = useState(false);
+  const [failedHtml, setFailedHtml] = useState<string | null>(null);
+  const [readyHtml, setReadyHtml] = useState<string | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const tooLarge = !enabled || source.length > (kind === 'math' ? MAX_MATH_SOURCE : MAX_DIAGRAM_SOURCE);
   const html = useMemo(() => tooLarge ? '' : renderMarkdownHtml(kind, source, display), [kind, source, tooLarge, display]);
-  if (tooLarge || failed) return <ScrollView style={display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
+  const fallback = <ScrollView style={display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
     <Text selectable style={styles.codeText}>{source}</Text>
   </ScrollView>;
-  return <View style={display ? styles.renderFrame : styles.inlineRenderFrame}>
+  if (tooLarge || failedHtml === html) return fallback;
+  return <View style={display ? styles.renderFrame : styles.inlineRenderFrame} onLayout={event => {
+    const { width, height } = event.nativeEvent.layout;
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      setSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
+    }
+  }}>
     {/* Route every URL to our deny-by-default callback; WebView sends URLs outside its whitelist to Linking. */}
-    <WebView source={{ html }} originWhitelist={['*']} onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
-      onMessage={event => { if (event.nativeEvent.data === 'render-failed') setFailed(true); }}
-      onError={() => setFailed(true)} onHttpError={() => setFailed(true)}
-      onContentProcessDidTerminate={() => setFailed(true)} onRenderProcessGone={() => setFailed(true)} renderError={() => <View />}
+    {size && <WebView source={{ html }} originWhitelist={['*']} onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
+      onMessage={event => {
+        if (event.nativeEvent.data === 'render-failed') setFailedHtml(html);
+        else if (event.nativeEvent.data === 'render-ready') setReadyHtml(html);
+      }}
+      onError={() => setFailedHtml(html)} onHttpError={() => setFailedHtml(html)}
+      onContentProcessDidTerminate={() => setFailedHtml(html)} onRenderProcessGone={() => setFailedHtml(html)} renderError={() => <View />}
       javaScriptEnabled domStorageEnabled={false} allowFileAccess={false} allowFileAccessFromFileURLs={false}
       allowUniversalAccessFromFileURLs={false} mixedContentMode="never" setSupportMultipleWindows={false}
       javaScriptCanOpenWindowsAutomatically={false} cacheEnabled={false} incognito
       sharedCookiesEnabled={false} thirdPartyCookiesEnabled={false} scrollEnabled
-      containerStyle={styles.renderWebContainer} style={styles.renderWeb} />
+      containerStyle={[styles.renderWebContainer, size]} style={[styles.renderWeb, size]} />}
+    {readyHtml !== html && <View style={styles.renderPending}>{fallback}</View>}
   </View>;
 }
 
@@ -283,8 +295,9 @@ const styles = StyleSheet.create({
   inlineRenderFrame: { width: '100%', minWidth: 0, height: 72, overflow: 'hidden' },
   inlineRenderFallback: { width: '100%', height: 72 },
   // WebView's style reaches its inner native view, not its flex:1 wrapper.
-  renderWebContainer: { width: '100%', height: '100%', flex: 0 },
-  renderWeb: { flex: 1, backgroundColor: 'transparent' },
+  renderWebContainer: { flex: 0 },
+  renderWeb: { flex: 0, backgroundColor: 'transparent' },
+  renderPending: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 },
   renderFallback: { width: '100%', height: 220, padding: 8 },
   quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },
   list: { gap: 5, minWidth: 0 },
@@ -297,9 +310,9 @@ const styles = StyleSheet.create({
   codeLanguage: { color: '#52657c', fontSize: 12, flexShrink: 1 }, copyCode: { color: '#215ca7', fontSize: 12, fontWeight: '600' },
   codeScroll: { width: '100%', maxWidth: '100%' },
   codeText: { fontFamily: 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
-  tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', borderWidth: 1, borderColor: '#d6e0ed', borderRadius: 6 },
+  tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
   tableScroll: { width: '100%', maxWidth: '100%' },
-  tableBody: { alignSelf: 'flex-start' },
+  tableBody: { alignSelf: 'flex-start', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
   tableRow: { flexDirection: 'row' },
   tableCell: { width: 156, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', padding: 8 },
   tableHeadCell: { backgroundColor: '#e5ecf5' },

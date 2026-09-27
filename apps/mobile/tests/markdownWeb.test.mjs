@@ -66,7 +66,7 @@ test('production Mermaid draw script rejects an empty diagram and reports only f
   }
   const good = await render('<svg></svg>');
   assert.equal(good.element.innerHTML, '<svg></svg>');
-  assert.deepEqual(good.events, []);
+  assert.deepEqual(good.events, ['render-ready']);
   const blank = await render('');
   assert.equal(blank.element.textContent, '暂时无法显示：flowchart LR\nA-->B');
   assert.deepEqual(blank.events, ['render-failed']);

@@ -95,7 +95,21 @@ test('user and assistant rows render the same complete Markdown and media tree',
     const rows = projectTimeline([{ ...msg, role, text: markdown }], null, 'th', undefined, true);
     const content = named(mount(rows).rowTree, 'MessageContent')[0];
     assert.equal(content.props.text, markdown, 'no role-specific stripping');
-    const rendered = expand(MessageContent(content.props));
+    const originalState = modules.react.useState;
+    const states = [];
+    let cursor = 0;
+    modules.react.useState = initial => {
+      const at = cursor++;
+      if (!(at in states)) states[at] = initial;
+      return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next; }];
+    };
+    let rendered;
+    try {
+      const initial = expand(MessageContent(content.props));
+      initial.filter(n => n.props.onLayout).forEach(n => n.props.onLayout({ nativeEvent: { layout: { width: 260, height: n.props.style.height } } }));
+      cursor = 0;
+      rendered = expand(MessageContent(content.props));
+    } finally { modules.react.useState = originalState; }
     assert.equal(named(rendered, 'Image').length, 1);
     assert.equal(named(rendered, 'WebView').length, 3);
     assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === '播放视频：视频'));
