@@ -49,8 +49,20 @@ def _link_core_user(store,thread_id):
         store.link_user_from_core(ingress,get_hermes_home() / 'state.db')
 
 
+def pre_tool_call(**kwargs):
+    """Core persists the whole assistant batch before this execution hook fires."""
+    return _capture_tool_row(**kwargs)
+
+
 def post_tool_call(**kwargs):
-    """Capture a visible assistant tool-call row by its formal call ID."""
+    """Fallback when a start hook was skipped or a call exited early."""
+    return _capture_tool_row(**kwargs)
+
+
+def _capture_tool_row(**kwargs):
+    """Capture the original assistant batch by formal call ID, without rewriting it."""
+    if kwargs.get('platform') not in (None, '', 'hermes_app'):
+        return None
     turn_id, session_id, call_id = (kwargs.get(k) for k in
                                     ('turn_id', 'session_id', 'tool_call_id'))
     if not turn_id or not session_id or not call_id:

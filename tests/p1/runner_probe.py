@@ -18,7 +18,7 @@ BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline'
 PLUGIN = Path(__file__).resolve().parents[2] / 'plugins' / 'hermes_app'
 HOME = Path(os.environ['HERMES_HOME'])
 COMPACT_MODE = os.environ.get('P1_COMPACT_MODE', 'inplace')
-assert COMPACT_MODE in ('inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed', 'race')
+assert COMPACT_MODE in ('inplace', 'idle', 'rotate', 'preflight', 'midturn', 'timeline', 'failed', 'race')
 assert str(BASE) in __import__('sys').path
 assert os.environ['HOME'] == str(HOME.parent)
 
@@ -42,12 +42,14 @@ class Model(BaseHTTPRequestHandler):
         answer = 'SYNTHETIC_P1_FINAL'
         usage_prompt = (max(30, len(json.dumps(request.get('messages', []))) // 4)
                         if COMPACT_MODE in ('preflight', 'midturn') else 30)
-        call_tool = (COMPACT_MODE == 'midturn' and self.server.tool_calls < 3
+        call_tool = (COMPACT_MODE in ('midturn', 'timeline') and
+                     self.server.tool_calls < (1 if COMPACT_MODE == 'timeline' else 3)
                      and any('p1_synthetic_expand' in json.dumps(t) for t in request.get('tools', []))
-                     and 'P1_MIDTURN' in json.dumps(request.get('messages', [])))
+                     and ('P1_MIDTURN' if COMPACT_MODE == 'midturn' else 'P1_TIMELINE')
+                     in json.dumps(request.get('messages', [])))
         if call_tool:
             self.server.tool_calls += 1
-            answer = f'P1_INTERIM_{self.server.tool_calls}'
+            answer = '' if COMPACT_MODE == 'timeline' else f'P1_INTERIM_{self.server.tool_calls}'
         tool_call = {'index':0,'id':f'p1_call_{self.server.tool_calls}','type':'function',
                      'function':{'name':'p1_synthetic_expand','arguments':'{}'}}
         if request.get('stream'):
@@ -101,7 +103,7 @@ async def main():
         f'  idle_compact_after_seconds: {1 if COMPACT_MODE == "idle" else 0}\n'
         'auxiliary:\n  title_generation:\n    enabled: false\n'
         'security:\n  tirith_enabled: false\n'
-        f'platform_toolsets:\n  hermes_app: {"[p1_synthetic]" if COMPACT_MODE == "midturn" else "[]"}\n'
+        f'platform_toolsets:\n  hermes_app: {"[p1_synthetic]" if COMPACT_MODE in ("midturn", "timeline") else "[]"}\n'
         'tools:\n  tool_search:\n    enabled: "off"\n'
         'agent:\n  disabled_toolsets: [terminal, execute_code, browser, web, files, automation]\n'
         'plugins:\n  enabled: [hermes-app, p1-synthetic-tool]\n'
@@ -184,6 +186,50 @@ async def main():
             assert history_status == 200, history_status
             assert [(m['role'], m['text']) for m in first_history['messages']] == [
                 ('user','P1_FIRST'),('assistant','SYNTHETIC_P1_FINAL')], first_history
+            if COMPACT_MODE == 'timeline':
+                async with a.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'client_message_id':uuid.uuid4().hex,'text':'P1_TIMELINE'}) as resp:
+                    assert resp.status == 202, await resp.text()
+                try:
+                    for _ in range(100):
+                        if (HOME/'timeline-tool-entered').exists():
+                            break
+                        await asyncio.sleep(.05)
+                    assert (HOME/'timeline-tool-entered').exists(), 'real tool handler never started'
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        during = await resp.json()
+                        assert resp.status == 200
+                    interim = during['messages'][-1]
+                    assert [(m['role'],m['text']) for m in during['messages'][-2:]] == [
+                        ('user','P1_TIMELINE'),('assistant','')], during
+                    assert interim['tool_calls'] == [{'id':'p1_call_1','name':'p1_synthetic_expand',
+                                                       'label':'p1_synthetic_expand'}], during
+                    assert during['incomplete_turns']
+                    with sqlite3.connect(HOME/'state.db') as raw:
+                        raw.row_factory = sqlite3.Row
+                        original = raw.execute('SELECT * FROM messages WHERE id=?',(int(interim['id']),)).fetchone()
+                        assert original and original['role'] == 'assistant'
+                        assert json.loads(original['tool_calls'])[0]['id'] == 'p1_call_1'
+                finally:
+                    (HOME/'timeline-tool-release').write_text('1')
+                for _ in range(100):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
+                        after = await resp.json()
+                        if (resp.status == 200 and not after['incomplete_turns'] and
+                                len(after['messages']) == len(during['messages']) + 1):
+                            break
+                    await asyncio.sleep(.1)
+                assert [(m['id'],m['ref_seq'],m['text'],m.get('tool_calls'))
+                        for m in after['messages'][:len(during['messages'])]] == [
+                        (m['id'],m['ref_seq'],m['text'],m.get('tool_calls'))
+                        for m in during['messages']], after
+                assert after['messages'][-1]['text'] == 'SYNTHETIC_P1_FINAL'
+                assert not after['incomplete_turns']
+                (HOME.parent/'runner-timeline-result.json').write_text(json.dumps({
+                    'published_during_handler':True, 'core_row_id':interim['id'],
+                    'tool_call_id':interim['tool_calls'][0]['id'],
+                    'before':during,'after':after},sort_keys=True))
+                return
             if COMPACT_MODE == 'race':
                 async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':'P1_RACE'}) as resp:
                     assert resp.status == 202, await resp.text()

@@ -35,6 +35,8 @@ curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Conte
 
 `GET /v1/threads/{id}/messages?after=<cursor>&limit=1..100` 返回核心可见投影，每条含稳定 `ref_seq`、核心原始 `id`、`role`、`text`。`ref_seq` 是已发布逻辑引用，压缩复制行不会改写已发序号。缺失原始行返回 409；不以摘要伪造原文。
 
+M1 工具时间线增量：capabilities 的 `tool_call_timeline=true` 表示 assistant 消息可有 `tool_calls: [{id, name, label, detail?}]`。`id` 保留原始调用 ID，`label` 是安全展示摘要，`detail` 仅为通过敏感检查和脱敏的命令；没有原始参数、工具结果或 reasoning。纯工具行允许 `text=""`；同一行先正文、后按数组顺序展示工具调用。正式 `pre_tool_call` 在执行前发布原始行，`post_tool_call` 幂等后备；沿用稳定引用和 message 失效事件，历史与搜索结构一致。旧历史未捕获的纯工具行不追溯插入。包装器只展示自身名称/摘要，不展开原始嵌套参数；至多 128 展示槽，超界在最后一槽明确说明省略项数。记录不代表调用成功。
+
 已有客户端可用 `after_ref_seq=<已知且属于该 Thread 的引用>` 读取有界增量页；它与 `after` 互斥。不存在或越权引用返回 400。新客户端首次加载仍用普通分页，后续消息失效事件仅取已知末尾之后的页。
 
 `GET /v1/snapshot?after=<opaque>&limit=1..100` 返回有界 Thread 元数据、最后可见引用、已读引用、实际可见未读数、`next_after` 和在同一 SQLite 读事务取得的准确 `waterline`。分页的每个响应各有水位；客户端先保存首页水位，分页结束后从该水位调用增量即可补上分页期间的变化。

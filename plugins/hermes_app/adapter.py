@@ -23,7 +23,7 @@ from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
 from . import device_pairing
-from .history_hooks import pre_llm_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
+from .history_hooks import pre_llm_call, pre_tool_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
 log = logging.getLogger(__name__)
 
@@ -274,7 +274,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         return web.json_response({'protocol': 1, 'baseline': '2f16a1aa5a35feec496949abdef7ad51aea0e7ef',
             'owner': 'single', 'channels': True, 'threads': True,
             'execution_ingress': 'durable_fifo', 'durable_accept': True,
-            'history': True, 'history_latest': True, 'message_send_identity': True,
+            'history': True, 'history_latest': True, 'tool_call_timeline': True,
+            'message_send_identity': True,
             'durable_sync': True, 'attachments': True, 'approvals': True,
             'stop': True, 'search': True, 'background_delivery': True})
 
@@ -958,6 +959,7 @@ class HermesAppAdapter(BasePlatformAdapter):
 def register(ctx):
     ctx.register_system_prompt_section('hermes_app.channel', _initial_description, max_chars=4000)
     ctx.register_hook('pre_llm_call', pre_llm_call)
+    ctx.register_hook('pre_tool_call', pre_tool_call)
     ctx.register_hook('post_tool_call', post_tool_call)
     ctx.register_hook('pre_auxiliary_call', pre_auxiliary_call)
     ctx.register_hook('post_llm_call', post_llm_call)

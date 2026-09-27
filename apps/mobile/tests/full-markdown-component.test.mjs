@@ -8,7 +8,7 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text, { canExpand = false } = {}) {
+function mount(text, { canExpand = false, toolCalls } = {}) {
   const copied = [], opened = [], players = [], paused = [];
   const hooks = new Map(), playerBySrc = new Map();
   const appListeners = new Set();
@@ -77,7 +77,7 @@ function mount(text, { canExpand = false } = {}) {
   const walk = nodes => nodes.flatMap(node => node && typeof node === 'object' ? [node, ...walk(node.children)] : []);
   const renderOnce = () => {
     visited = new Set();
-    const tree = expand({ type: output.exports.MessageContent, props: { text, canExpand } });
+    const tree = expand({ type: output.exports.MessageContent, props: { text, canExpand, toolCalls } });
     for (const [path, cells] of hooks) if (!visited.has(path)) {
       cells.forEach(cell => cell.cleanup?.()); hooks.delete(path);
     }
@@ -97,6 +97,26 @@ function mount(text, { canExpand = false } = {}) {
 function findStyle(tree, predicate) {
   return tree.find(n => predicate(n.props?.style));
 }
+
+test('public tool summaries persist in article mode, never interpret command details as Markdown', () => {
+  const toolCalls = [{ id: 'c1', name: 'terminal', label: '运行命令', detail: '[literal](https://example.com) && printf "**text**"' }];
+  const h = mount('先检查 **项目**。', { canExpand: true, toolCalls });
+  const flatten = value => Array.isArray(value) ? value.map(flatten).join('') : value && typeof value === 'object' ? flatten(value.children) : String(value ?? '');
+  let nodes = h.walk(h.render());
+  assert.equal(nodes.some(n => n.props.accessibilityRole === 'link'), false);
+  assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
+  nodes.find(n => n.props.accessibilityLabel === '全屏查看消息').props.onPress();
+  nodes = h.walk(h.render());
+  const modal = nodes.find(n => n.type === 'Modal');
+  assert.equal(modal.props.visible, true);
+  assert.ok(flatten(modal).includes('先检查 项目。'));
+  assert.ok(flatten(modal).includes('运行命令'));
+  assert.ok(flatten(modal).includes(toolCalls[0].detail));
+  modal.props.onRequestClose();
+  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
+  assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
+  h.unmount();
+});
 
 test('production table stays bounded, scrolls horizontally and retains inline cells and code copy', () => {
   const text = '| left | **right** |\n|:---|---:|\n| x | [link](https://a.test) |\n\n```js\nconst x = 1;\n```';

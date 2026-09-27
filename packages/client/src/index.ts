@@ -6,7 +6,9 @@ export interface ThreadSummary { id: string; project_id: string; title: string; 
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
-export interface Message { id: string; ref_seq: number; role: string; text: string; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+/** Display-only summaries from the authenticated server, never raw tool arguments/results. */
+export interface ToolCall { id: string; name: string; label: string; detail?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -68,7 +70,20 @@ const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str
 const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = num(x.event_id); const kind=str(x.kind); if (!event_id || !['channel','thread','message','receipt','read','interaction','attachment'].includes(kind)) throw new ProtocolError('invalid event'); return { event_id, cursor: str(x.cursor), kind, thread_id: str(x.thread_id), ref: str(x.ref), version: num(x.version) } };
 const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
+const displayString = (value: unknown, max: number): string => { const s = str(value); if (!s || s.length > max) throw new ProtocolError('invalid tool display'); return s };
+const validToolCalls = (value: unknown): ToolCall[] => {
+  const calls = arr(value);
+  if (calls.length > 128) throw new ProtocolError('too many tool calls');
+  const ids = new Set<string>();
+  return calls.map(value => {
+    const x = obj(value), id = displayString(x.id, 200);
+    if (ids.has(id)) throw new ProtocolError('duplicate tool call');
+    ids.add(id);
+    return { id, name: displayString(x.name, 200), label: displayString(x.label, 240),
+      ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
+  });
+};
+const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);

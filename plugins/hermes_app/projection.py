@@ -32,12 +32,28 @@ def visible_text(message):
     from tui_gateway.server import _history_to_messages
     value = dict(message)
     value['content'] = _content(value.get('content'))
-    if isinstance(value.get('tool_calls'), str):
-        value['tool_calls'] = json.loads(value['tool_calls'])
+    from .tool_timeline import public_tool_calls
+    calls = public_tool_calls(value) if value['role'] == 'assistant' else []
+    # The core display projector suppresses empty assistant rows. Supply a
+    # local sentinel only to run its existing marker/compaction filtering; the
+    # sentinel never leaves this function or changes the original row.
+    tool_only = calls and (not isinstance(value['content'], str) or not value['content'].strip())
+    if tool_only:
+        value['content'] = 'hermes-app-tool-only-projection'
+    # Core's one-row display projection needs no raw tool arguments (it uses
+    # them only to decorate following *tool* rows, which are never selected).
+    # Invalid nested calls must not suppress otherwise valid public prose.
+    value['tool_calls'] = []
     if isinstance(value.get('display_metadata'), str):
-        value['display_metadata'] = json.loads(value['display_metadata'])
-    projected = _history_to_messages([value])
+        try:
+            value['display_metadata'] = json.loads(value['display_metadata'])
+        except (ValueError, TypeError):
+            value['display_metadata'] = None
+    try:
+        projected = _history_to_messages([value])
+    except (ValueError, TypeError, AttributeError):
+        return None  # Malformed source must never bypass core filtering.
     if len(projected) != 1 or projected[0].get('role') != value['role']:
         return None
     text = projected[0].get('text')
-    return text if isinstance(text, str) and text.strip() else None
+    return '' if tool_only else text if isinstance(text, str) and text.strip() else None

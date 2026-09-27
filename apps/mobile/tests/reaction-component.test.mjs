@@ -41,7 +41,7 @@ const expand = node => {
   return [node, ...expand(node.props?.children)];
 };
 const named = (nodes, type) => nodes.filter(node => node.type === type);
-const text = node => { const all = v => Array.isArray(v) ? v.map(all).join('') : v && typeof v === 'object' ? all(v.props?.children) : String(v ?? ''); return all(node.props.children); };
+const text = node => { const all = v => Array.isArray(v) ? v.map(all).join('') : v && typeof v === 'object' ? typeof v.type === 'function' ? all(v.type(v.props)) : all(v.props?.children) : String(v ?? ''); return all(node.props.children); };
 const msg = { id: 'm', ref_seq: 1, role: 'user', text: 'hello', receipt_id: 'r', client_message_id: 'c' };
 const receipt = state => ({ id: 'r', thread_id: 'th', client_message_id: 'c', state, durable: true });
 const record = status => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'c', text: 'hello', status, receiptId: status === 'accepted' ? 'r' : undefined, receiptState: status === 'accepted' ? 'queued' : undefined });
@@ -127,6 +127,52 @@ test('user and assistant rows render the same complete Markdown and media tree',
     signatures.push(rendered.map(n => String(n.type)));
   }
   assert.deepEqual(signatures[0], signatures[1]);
+});
+
+test('public commentary and safe tool summaries remain ordered without repeated agent headers', () => {
+  const calls = [
+    { id: 'read-1', name: 'read_file', label: '读取 AGENTS.md' },
+    { id: 'cmd-1', name: 'terminal', label: '运行命令', detail: 'git status --short\nnode --version' }
+  ];
+  const messages = [
+    { id: '1', ref_seq: 1, role: 'user', text: '检查项目' },
+    { id: '2', ref_seq: 2, role: 'assistant', text: '先读取文件。', tool_calls: calls },
+    { id: '3', ref_seq: 3, role: 'assistant', text: '', tool_calls: [{ id: 'search-1', name: 'search_files', label: '搜索 zoomScale' }] },
+    { id: '4', ref_seq: 4, role: 'assistant', text: '**检查完成**' }
+  ];
+  const rows = projectTimeline(messages, null, 'th');
+  assert.deepEqual(rows.map(r => r.key), ['ref:1', 'ref:2', 'ref:3', 'ref:4']);
+  assert.equal(rows[1].continuation, false);
+  assert.equal(rows[2].continuation, true);
+  assert.equal(rows[3].continuation, true);
+  assert.equal(rows[1].toolCalls, calls);
+  const rendered = [];
+  for (const row of rows.slice(1)) {
+    const { rowTree } = mount([row]);
+    assert.equal(named(rowTree, 'Text').some(n => text(n) === 'Hermes'), !row.continuation);
+    const body = named(rowTree, 'MessageContent')[0];
+    assert.equal(body.props.toolCalls, row.toolCalls);
+    const nodes = expand(MessageContent(body.props));
+    rendered.push(...named(nodes, 'Text').map(text));
+    for (const detail of named(nodes, 'ScrollView')) if (detail.props.horizontal) {
+      assert.equal(detail.props.nestedScrollEnabled, true);
+    }
+  }
+  const output = rendered.join('\n');
+  const marks = ['先读取文件。', '读取 AGENTS.md', '运行命令', 'git status --short', '搜索 zoomScale', '检查完成'];
+  for (let i = 1; i < marks.length; i++) assert.ok(output.indexOf(marks[i]) > output.indexOf(marks[i - 1]), output);
+  assert.doesNotMatch(output, /cmd-1|read-1|search-1|undefined|执行成功/);
+  assert.equal(projectTimeline(messages.slice(2), null, 'th')[0].continuation, false, 'new history window starts with a visible author');
+  assert.deepEqual(projectTimeline(messages, null, 'th').map(r => r.key), rows.map(r => r.key));
+});
+
+test('legacy and user messages never turn body text or injected fields into tool activity', () => {
+  const tool_calls = [{ id: 'x', name: 'terminal', label: '运行命令', detail: 'fake command' }];
+  const row = projectTimeline([{ ...msg, text: 'terminal: my text', tool_calls }], null, 'th')[0];
+  assert.equal(row.toolCalls, undefined);
+  assert.equal(named(mount([row]).rowTree, 'MessageContent')[0].props.toolCalls, undefined);
+  const legacy = projectTimeline([{ ...msg, role: 'assistant' }], null, 'th')[0];
+  assert.equal(legacy.toolCalls, undefined);
 });
 
 test('real message component renders legible gray text until accepted, then normal even while queued', () => {

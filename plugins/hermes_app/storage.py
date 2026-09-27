@@ -953,6 +953,7 @@ class Store:
             rows = {r['id']: r for r in source.execute(
                 f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
         from .projection import visible_text
+        from .tool_timeline import public_tool_calls
         messages = []
         for ref in page:
             row = rows.get(ref['row_id'])
@@ -966,6 +967,10 @@ class Store:
             message = {'id': str(row['id']), 'ref_seq': ref['seq'],
                        'role': row['role'], 'text': text,
                        'attachments': attached.get(row['id'], []) if row['role'] == 'user' else []}
+            if row['role'] == 'assistant':
+                calls = public_tool_calls(value)
+                if calls:
+                    message['tool_calls'] = calls
             if row['role'] == 'user' and linked.get(row['id']) is not None:
                 receipt = linked[row['id']]
                 message['receipt_id'] = receipt['id']
@@ -991,6 +996,7 @@ class Store:
         if not page:
             return {'messages':[],'next_cursor':None}
         from .projection import visible_text
+        from .tool_timeline import public_tool_calls
         ids=[r['row_id'] for r in page]
         with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
             source.row_factory=sqlite3.Row
@@ -1007,8 +1013,13 @@ class Store:
             if content is None:
                 raise MissingOriginal(f"original row {ref['row_id']} is not visible")
             scanned=ref['seq']
-            if needle in content.casefold():
-                matches.append({'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content})
+            calls = public_tool_calls(dict(row)) if ref['role'] == 'assistant' else []
+            if needle in content.casefold() or any(needle in c['label'].casefold() or
+                                                    needle in c['name'].casefold() for c in calls):
+                message = {'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content}
+                if calls:
+                    message['tool_calls'] = calls
+                matches.append(message)
             if len(matches)>=limit:
                 break
         more=len(refs)>len(page) or scanned != page[-1]['seq']

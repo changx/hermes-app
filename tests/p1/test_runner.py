@@ -43,6 +43,11 @@ def _run_real_runner_loopback(mode):
                 for p in (home/'logs').glob('*.log')))
         assert proc.returncode == 0, proc.stdout[-2000:] + '\n' + proc.stderr[-5000:]
         record = json.loads((isolated/f'runner-{mode}-result.json').read_text())
+        if mode == 'timeline':
+            assert record['published_during_handler']
+            EVIDENCE.mkdir(parents=True, exist_ok=True)
+            (EVIDENCE/'runner-timeline.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
+            return record
         if mode == 'preflight':
             assert record['summary_http_count'] > 0 and record['effective_threshold'] == 2400
             record['run_id'] = isolated.name
@@ -70,7 +75,7 @@ def _run_real_runner_loopback(mode):
         shutil.rmtree(isolated)
 
 
-@pytest.mark.parametrize('mode', ['inplace', 'idle', 'rotate', 'preflight', 'midturn', 'failed', 'race'])
+@pytest.mark.parametrize('mode', ['inplace', 'idle', 'rotate', 'preflight', 'midturn', 'timeline', 'failed', 'race'])
 def test_real_runner_loopback(mode):
     _run_real_runner_loopback(mode)
 

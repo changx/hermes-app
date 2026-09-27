@@ -17,6 +17,14 @@ def _expand(args, **kwargs):
     global _tool_count
     _tool_count += 1
     _record('tool_handler', **kwargs)
+    if os.environ.get('P1_COMPACT_MODE') == 'timeline' and _tool_count == 1:
+        home = Path(os.environ['HERMES_HOME'])
+        (home / 'timeline-tool-entered').write_text('1')
+        deadline = time.monotonic() + 15
+        while not (home / 'timeline-tool-release').exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        if not (home / 'timeline-tool-release').exists():
+            raise RuntimeError('timeline tool release missing')
     return ('P1_TOOL_RESULT small' if _tool_count == 1 else
             'P1_TOOL_RESULT ' + 'synthetic local data ' * 4000)
 

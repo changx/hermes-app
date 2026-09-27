@@ -25,6 +25,44 @@ test('newest window preserves sparse refs, cursor direction and authoritative se
   assert.match(paths[1],/latest=true/); assert.match(paths[2],/before=back%3A901/);
   assert.doesNotMatch(paths[2],/latest=/);
 });
+test('tool display survives history replay, tail updates and cold reload with stable identity', async () => {
+  const calls = [{ id: 'c1', name: 'terminal', label: '运行命令', detail: 'git status', arguments: { secret: 'NOT-DISPLAYED' }, result: 'RAW-RESULT' }];
+  const messages = [
+    { id: '1', ref_seq: 1, role: 'assistant', text: '先检查', tool_calls: calls },
+    { id: '2', ref_seq: 2, role: 'assistant', text: '', tool_calls: [{ id: 'c2', name: 'read_file', label: '读取 README.md' }] },
+    { id: '3', ref_seq: 3, role: 'assistant', text: '完成' }
+  ];
+  let count = 1;
+  const http = { async request(_method, path) {
+    const after = path.includes('after_ref_seq=1');
+    return { status: 200, body: { messages: after ? messages.slice(1) : messages.slice(0, count), next_cursor: null, incomplete_turns: [], turn_outcomes: [] } };
+  } };
+  const client = new HermesClient({ ...base, http });
+  await client.history('th_1'); await client.history('th_1');
+  assert.equal(client.messages.get('th_1').length, 1);
+  await client.historyTail('th_1');
+  count = 3;
+  await client.history('th_1');
+  const all = client.messages.get('th_1');
+  assert.deepEqual(all.map(m => m.ref_seq), [1, 2, 3]);
+  assert.equal(all[1].text, '');
+  assert.deepEqual(all[0].tool_calls, [{ id: 'c1', name: 'terminal', label: '运行命令', detail: 'git status' }]);
+  assert.doesNotMatch(JSON.stringify(all), /NOT-DISPLAYED|RAW-RESULT|arguments/);
+  const cold = new HermesClient({ ...base, http }); await cold.history('th_1');
+  assert.deepEqual(cold.messages.get('th_1'), all);
+});
+
+test('tool display is bounded, validated and unavailable on user messages', async () => {
+  const good = { id: 'x', name: 'terminal', label: '运行命令' };
+  for (const tool_calls of ['raw', [null], [{ ...good, label: 1 }], [{ ...good, detail: 'x'.repeat(4001) }], [good, good], Array(129).fill(good)]) {
+    const c = new HermesClient({ ...base, http: { async request() { return { status: 200, body: { messages: [{ id: '1', ref_seq: 1, role: 'assistant', text: '', tool_calls }], next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } } });
+    await assert.rejects(c.history('th_1'), ProtocolError);
+    assert.equal(c.messages.has('th_1'), false, 'invalid data must not partially change history');
+  }
+  const c = new HermesClient({ ...base, http: { async request() { return { status: 200, body: { messages: [{ id: '1', ref_seq: 1, role: 'user', text: 'hello', tool_calls: [good] }], next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } } });
+  await c.history('th_1'); assert.equal(c.messages.get('th_1')[0].tool_calls, undefined);
+});
+
 test('legacy server capabilities do not silently use new history query',async()=>{
   const c=new HermesClient({...base,http:{async request(){return {status:200,body:{protocol:1,durable_sync:true}}}}});
   await c.capabilities(); assert.equal(c.supportsLatest,false); await assert.rejects(c.historyWindow('t'),ProtocolError);

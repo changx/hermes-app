@@ -8,6 +8,7 @@ import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
 import { renderMarkdownHtml } from './markdownWeb';
 import type { Block, Inline, TableCell } from './messageMarkdown';
+import type { ToolCall } from '../../../packages/client/src/index';
 
 const copy = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('复制失败', '无法写入剪贴板'));
@@ -267,8 +268,18 @@ function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspende
   return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} />)}</View>;
 }
 
+function ToolCalls({ calls }: { calls?: readonly ToolCall[] }) {
+  if (!calls?.length) return null;
+  return <View style={styles.toolCalls} onTouchStart={stopTouch}>{calls.map(call => <View key={call.id} style={styles.toolCall}>
+    <Text selectable style={styles.toolLabel}>{/read_file|skill_view/.test(call.name) ? '📖' : /search/.test(call.name) ? '🔎' : /terminal|execute_code/.test(call.name) ? '💻' : '🔧'} {call.label}</Text>
+    {!!call.detail && <ScrollView horizontal nestedScrollEnabled style={styles.toolDetail}>
+      <Text selectable style={styles.codeText}>{call.detail}</Text>
+    </ScrollView>}
+  </View>)}</View>;
+}
+
 /** Native renderer: validated remote images load automatically in a fixed frame. */
-export const MessageContent = memo(function MessageContent({ text, pending = false, canExpand = false }: { text: string; pending?: boolean; canExpand?: boolean }) {
+export const MessageContent = memo(function MessageContent({ text, toolCalls, pending = false, canExpand = false }: { text: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
   const allowed = useMemo(() => webViewAllowlist(parsed), [parsed]);
   const [target, setTarget] = useState<ExpandTarget | null>(null);
@@ -322,6 +333,7 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
   return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
     {canExpand && !!text && <ExpandButton label="全屏查看消息" onPress={() => setTarget({ kind: 'message' })} />}
     <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} suspended={!!target} />
+    <ToolCalls calls={toolCalls} />
     {!!text && <Pressable onTouchStart={event => { gesture.current = {}; stopTouch(event); }} accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
       style={styles.copyMessage} onPress={() => copy(text)}><Text style={styles.copyMessageText}>复制消息</Text></Pressable>}
     <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
@@ -335,6 +347,7 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
         {target.kind === 'message'
           ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
               <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} />
+              <ToolCalls calls={toolCalls} />
             </ScrollView>
           : target.kind === 'table' && target.block.kind === 'table'
             ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
@@ -349,6 +362,10 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
 });
 
 const styles = StyleSheet.create({
+  toolCalls: { minWidth: 0, gap: 7, paddingVertical: 6 },
+  toolCall: { minWidth: 0, gap: 4 },
+  toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
+  toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#f2f5fa' },
   root: { alignSelf: 'stretch', minWidth: 0 },
   blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
   paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },

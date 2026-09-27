@@ -2,7 +2,7 @@ import type { Interaction, Message, Receipt } from '../../../packages/client/src
 import type { SendRecord } from './send';
 
 export interface Reaction { emoji: string; label: string; source: 'agent' }
-export interface TimelineRow { key: string; role: string; text: string; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
+export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<Receipt['state'], Reaction> = {
   queued: { emoji: '⏳', label: '排队中', source: 'agent' },
@@ -29,12 +29,13 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
 // Only explicit server identity can reconcile a send; never match equal text.
 // Legacy servers have no such identity and retain the conservative fallback.
 export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string, supportsIdentity = false, pending: readonly SendRecord[] = [], receipts: ReadonlyMap<string, Receipt> = new Map(), interactions: readonly Interaction[] = []): TimelineRow[] {
-  const rows: TimelineRow[] = messages.map(m => {
+  const rows: TimelineRow[] = messages.map((m, index) => {
     const known = m.role === 'user' && !!m.receipt_id && !!m.client_message_id;
     const candidate = known ? receipts.get(m.receipt_id!) : undefined;
     const valid = known && (!candidate || matching(candidate, threadId, m.receipt_id!, m.client_message_id!));
     // Cache hydration cannot change a published row's identity or its position.
     return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
+      ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: index > 0 && messages[index - 1].role === 'assistant' } : {}),
       ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
       ...(valid ? { reaction: statusFor(candidate, interactions), ...(candidate ? { receipt: candidate } : {}) } : {}) };
   });
