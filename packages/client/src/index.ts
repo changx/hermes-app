@@ -1,6 +1,6 @@
 /** P1-03 owner-scoped transport. No runtime imports or platform globals. */
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
-export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; admission?: 'followup' }
+export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; admission?: 'followup'; handed_off?: true }
 export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
 export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
@@ -62,7 +62,8 @@ const query = (items: Record<string, string | number | null | undefined>): strin
 const validReceipt = (v: unknown): Receipt => {
   const x = obj(v); const states = ['queued','running','completed','failed','interrupted','unknown','received'];
   if (!states.includes(x.state as string) || x.durable !== true || (x.admission !== undefined && x.admission !== 'followup')) throw new ProtocolError('invalid receipt');
-  return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true, ...(x.admission === 'followup' ? { admission: 'followup' as const } : {}) };
+  if (x.handed_off !== undefined && x.handed_off !== true) throw new ProtocolError('invalid receipt');
+  return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true, ...(x.admission === 'followup' ? { admission: 'followup' as const } : {}), ...(x.handed_off === true ? { handed_off: true as const } : {}) };
 };
 const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x.project_id); str(x.title); if (typeof x.archived !== 'boolean' && x.archived !== 0 && x.archived !== 1) throw new ProtocolError('invalid thread'); return x as unknown as Thread };
 const validSummary = (v: unknown): ThreadSummary => { const x = validThread(v) as unknown as ThreadSummary; num(x.last_ref); num(x.read_ref); num(x.unread_count); if(x.active_receipts!==undefined)x.active_receipts=arr(x.active_receipts).map(validReceipt);if(x.pending_interactions!==undefined)x.pending_interactions=arr(x.pending_interactions).map(validInteraction);return x };

@@ -471,6 +471,8 @@ class HermesAppAdapter(BasePlatformAdapter):
                     return
                 # Busy success normally leaves _gateway_accepted False. Gateway may
                 # instead take a normal owner or enqueue a native FIFO fallback.
+                await asyncio.to_thread(self._store.mark_handed_off, receipt_id)
+                self._events_changed.set()
                 task=asyncio.create_task(self._reconcile_followup(thread_id,receipt_id,event))
                 self._followup_tasks.add(task)
                 task.add_done_callback(self._followup_tasks.discard)

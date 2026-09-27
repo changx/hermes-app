@@ -58,11 +58,11 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
-test('followup reaction clears at round end without removing its row or changing the status footprint', () => {
+test('followup handoff reaction stays visible without changing row identity or footprint', () => {
   let previous;
   let footprint;
-  for (const [state, label] of [['queued', '排队中'], ['running', '处理中'], ['received', undefined]]) {
-    const r = { ...receipt(state), admission: 'followup' };
+  for (const [state, label, handed_off] of [['queued', '排队中'], ['running', '处理中'], ['running', '已处理', true], ['received', '已处理']]) {
+    const r = { ...receipt(state), admission: 'followup', ...(handed_off ? { handed_off } : {}) };
     const row = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', r]]))[0];
     const { rowTree } = mount([row]);
     const slot = named(rowTree, 'View').find(n => n.props.style?.height === 23);

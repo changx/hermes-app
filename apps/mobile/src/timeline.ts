@@ -24,9 +24,9 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
     if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? '等待审批' : '等待回答', source: 'agent' };
   }
-  // A follow-up tracks the active round, not a separate per-message completion.
-  // Keep its row and status footprint, but clear the temporary reaction at rest.
-  if (receipt.admission === 'followup' && (receipt.state === 'received' || receipt.state === 'completed')) return undefined;
+  // Handled acknowledges handoff to Hermes, not completion of its work.
+  if (receipt.handed_off || (receipt.admission === 'followup' && (receipt.state === 'received' || receipt.state === 'completed')))
+    return { emoji: '✅', label: '已处理', source: 'agent' };
   return agentState[receipt.state];
 }
 
@@ -50,7 +50,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed' && item.receiptAdmission !== 'followup')) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
-    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}) } : undefined;
+    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}) } : undefined;
     const receipt = valid ? candidate ?? fallback : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });

@@ -102,7 +102,7 @@ export class OutboxStore {
         }
         const restored = restoreSend(JSON.stringify({
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
-          status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, text, attachments
+          status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, text, attachments
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('本机待发记录身份冲突');
         this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
@@ -136,7 +136,7 @@ export class OutboxStore {
     await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
     for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
     const meta: Stored = { connectionId: saved.connectionId, threadId: saved.threadId, clientMessageId: saved.clientMessageId,
-      status: saved.status, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptAdmission: saved.receiptAdmission,
+      status: saved.status, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff,
       version, chunks: parts.length, hash: hash(data), order, attempts: 0, nextAttemptAt: 0 };
     await this.store.setItemAsync(key, JSON.stringify(meta));
     this.entries.set(record.clientMessageId, { slot, order, version, record: saved, attempts: 0, nextAttemptAt: 0 });
@@ -150,7 +150,7 @@ export class OutboxStore {
         throw new Error('待发消息身份或原文变化');
       const data = entry.version === 2 ? entry.record.text : payload(entry.record);
       const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
-        status: record.status, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission,
+        status: record.status, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff,
         version: entry.version, chunks: pieces(data).length, hash: hash(data), order: entry.order,
         attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt };
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));
@@ -253,7 +253,7 @@ export class MobileOutbox {
       if ((this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
       const cached = this.sdk.receipts.get(record.receiptId);
       if (cached && (receiptStage(cached.state) > receiptStage(record.receiptState) ||
-          cached.state === record.receiptState && cached.admission !== record.receiptAdmission))
+          cached.state === record.receiptState && (cached.admission !== record.receiptAdmission || cached.handed_off !== record.receiptHandedOff)))
         this.launch(record.clientMessageId, () => this.recordReceipt(record, cached));
       else if (FINAL.has(record.receiptState || '') && this.sdk.messages.get(record.threadId)?.some((m: Message) => m.role === 'user' && m.client_message_id === record.clientMessageId))
         this.launch(record.clientMessageId, () => this.confirmHistory(record));

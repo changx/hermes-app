@@ -15,8 +15,10 @@ test('native followup shows processing until its own terminal receipt; primary c
   const r = receipt();
   const cache = new Map([['r', r], ['primary', { ...r, id: 'primary', client_message_id: 'other', state: 'completed', admission: undefined }]]);
   assert.deepEqual(projectTimeline([message], null, 'th', undefined, true, [], cache)[0].reaction, { emoji: '⚙️', label: '处理中', source: 'agent' });
-  assert.equal(reaction(receipt('received')), undefined);
-  assert.equal(reaction(receipt('completed')), undefined);
+  assert.deepEqual(reaction({ ...r, handed_off: true }), { emoji: '✅', label: '已处理', source: 'agent' });
+  assert.equal(reaction({ ...r, handed_off: true, admission: undefined }).label, '已处理', 'native fallback does not undo successful handoff');
+  assert.equal(reaction(receipt('received')).label, '已处理');
+  assert.equal(reaction(receipt('completed')).label, '已处理');
   assert.equal(reaction({ ...receipt('completed'), admission: undefined }).label, '已完成');
   assert.equal(reaction({ ...r, admission: undefined }).label, '处理中');
   for (const [state, label] of [['queued', '排队中'], ['failed', '执行失败'], ['interrupted', '已停止'], ['unknown', '结果待确认']]) assert.equal(reaction(receipt(state)).label, label);
@@ -27,6 +29,11 @@ test('SDK validates admission from authenticated server without inventing it for
   let value = receipt();
   const client = new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { receipt: value } }; } }, socket: { connect() {} } });
   assert.equal((await client.getReceipt('r')).admission, 'followup');
+  value = { ...value, handed_off: true };
+  assert.equal((await client.getReceipt('r')).handed_off, true);
+  value = { ...value, handed_off: 'true' };
+  await assert.rejects(client.getReceipt('r'), ProtocolError);
+  value = receipt();
   value = { ...value, admission: undefined };
   assert.equal((await client.getReceipt('r')).admission, undefined);
   value = { ...value, admission: 'completed-steer' };
@@ -58,7 +65,7 @@ test('received input remains visible until exact authoritative identity arrives'
   const pending = projectTimeline([], null, 'th', undefined, true, [local]);
   assert.equal(pending.length, 1);
   assert.equal(pending[0].text, '补充一');
-  assert.equal(pending[0].reaction, undefined);
+  assert.equal(pending[0].reaction.label, '已处理');
   const foreign = { ...message, client_message_id: 'another', text: '补充一' };
   assert.equal(projectTimeline([foreign], null, 'th', undefined, true, [local]).length, 2, 'equal text is not identity');
   const input = { id: 'receipt:r', ref_seq: 8, role: 'user', text: '补充一', client_message_id: id, receipt_id: 'r' };
@@ -67,7 +74,7 @@ test('received input remains visible until exact authoritative identity arrives'
   const result = projectTimeline(client.messages.get('th'), null, 'th', undefined, true, [local], new Map([['r', receipt('received')]]));
   assert.equal(result.length, 1);
   assert.equal(result[0].key, pending[0].key, 'confirmation preserves the optimistic row identity');
-  assert.equal(result[0].reaction, undefined);
+  assert.equal(result[0].reaction.label, '已处理');
   assert.equal(result[0].receipt.id, 'r');
   const data = new Map();
   const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
@@ -100,7 +107,7 @@ test('interleaved input/output keeps server order across replay, cold history an
   page = stream; const cold = makeClient(); await cold.history('th');
   assert.deepEqual(project(cold), rows);
   const unresolved = accepted(newSend(config, 'th', '尚无原文引用', id), receipt('completed'));
-  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction, undefined);
+  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction.label, '已处理');
 });
 
 test('received followup survives successful history sync until its exact input is available', async () => {
@@ -146,6 +153,13 @@ test('same-state admission update is persisted immediately, including normal fal
   try {
     await box.start(); box.setConnection('online'); await flush();
     const before = queries;
+    sdk.receipts.set('r', { ...receipt(), handed_off: true });
+    box.reconcile(); await flush();
+    assert.equal(box.records[0].receiptHandedOff, true);
+    const cold = await new OutboxStore(kv, config).load();
+    assert.equal(cold[0].receiptHandedOff, true);
+    assert.equal(projectTimeline([], null, 'th', undefined, true, cold)[0].reaction.label, '已处理');
+    assert.equal(queries, before, 'handoff status must not wait for another polling cycle');
     sdk.receipts.set('r', { ...receipt(), admission: undefined });
     box.reconcile(); await flush();
     assert.equal(box.records[0].receiptAdmission, undefined);

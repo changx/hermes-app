@@ -89,6 +89,8 @@ class Store:
             ''')
             if not any(r['name'] == 'admission' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute("ALTER TABLE receipts ADD COLUMN admission TEXT NOT NULL DEFAULT 'owner'")
+            if not any(r['name'] == 'handed_off' for r in db.execute('PRAGMA table_info(receipts)')):
+                db.execute('ALTER TABLE receipts ADD COLUMN handed_off INTEGER NOT NULL DEFAULT 0')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
             if ('input_receipt_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
@@ -183,7 +185,8 @@ class Store:
     def _receipt(row):
         return {'id':row['id'], 'client_message_id':row['client_message_id'],
                 'thread_id':row['thread_id'], 'state':row['state'], 'durable':True,
-                **({'admission':'followup'} if row['admission']=='followup' else {})}
+                **({'admission':'followup'} if row['admission']=='followup' else {}),
+                **({'handed_off':True} if row['handed_off'] else {})}
 
     def receipt(self, receipt_id):
         with self._connect() as db:
@@ -367,6 +370,16 @@ class Store:
         # The exact normal user row exists, but a matching final is not proven.
         # Do not turn its failed/interrupted/incomplete owner into a received steer.
         return 'anchored'
+
+    def mark_handed_off(self, receipt_id):
+        """Record successful Gateway handoff without changing execution state."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT thread_id FROM receipts WHERE id=? AND admission='followup' "
+                             'AND handed_off=0', (receipt_id,)).fetchone()
+            if row:
+                db.execute('UPDATE receipts SET handed_off=1 WHERE id=?', (receipt_id,))
+                self._event(db, 'receipt', row['thread_id'], receipt_id, 3)
 
     def finish_receipt(self, receipt_id, state):
         if state not in ('received','completed','failed','interrupted','unknown'):
@@ -690,7 +703,7 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
-                active=db.execute("SELECT id,client_message_id,thread_id,state,admission FROM receipts "
+                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
                                   "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()
                 # Admission permits 32 queued/running receipts in total.
