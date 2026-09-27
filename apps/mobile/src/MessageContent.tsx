@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -268,19 +268,42 @@ function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspende
   return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} />)}</View>;
 }
 
-function ToolCalls({ calls }: { calls?: readonly ToolCall[] }) {
+function ToolCalls({ calls, onInteraction }: { calls?: readonly ToolCall[]; onInteraction: () => void }) {
+  const [selected, setSelected] = useState<{ call: ToolCall; x: number; y: number } | null>(null);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   if (!calls?.length) return null;
-  return <View style={styles.toolCalls} onTouchStart={stopTouch}>{calls.map(call => {
+  const toolbarWidth = 96, toolbarHeight = 44, margin = 8;
+  const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), Math.max(low, high));
+  const left = selected && clamp(selected.x - toolbarWidth / 2, insets.left + margin, width - insets.right - margin - toolbarWidth);
+  const top = selected && clamp(selected.y - toolbarHeight - margin < insets.top + margin
+    ? selected.y + margin : selected.y - toolbarHeight - margin,
+    insets.top + margin, height - insets.bottom - margin - toolbarHeight);
+  return <View style={styles.toolCalls} onTouchStart={event => { onInteraction(); stopTouch(event); }}>{calls.map(call => {
     const name = call.name.replace(/^functions\./, '');
     const terminal = name === 'terminal';
     const icon = name === 'skill_view' ? '📚' : name === 'read_file' ? '📖' : /search/.test(name) ? '🔎' : terminal || name === 'execute_code' ? '💻' : '🔧';
-    return <View key={call.id} style={styles.toolCall}>
-      <Text selectable numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
+    return <Pressable key={call.id} style={styles.toolCall} accessibilityRole="button" accessibilityLabel={`复制工具调用：${call.label}`}
+      onPress={event => {
+        onInteraction();
+        const { pageX, pageY } = event.nativeEvent;
+        setSelected({ call, x: Number.isFinite(pageX) ? pageX : width / 2, y: Number.isFinite(pageY) ? pageY : height / 2 });
+      }}>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
       {terminal && !!call.detail && <View style={styles.toolDetail}>
-        <Text selectable numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
+        <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
       </View>}
-    </View>;
-  })}</View>;
+    </Pressable>;
+  })}{selected && <Modal transparent visible onRequestClose={() => setSelected(null)} animationType="none">
+    <View style={styles.toolOverlay}>
+      <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="关闭复制工具条" onPress={() => setSelected(null)} />
+      <Pressable style={[styles.toolToolbar, { left, top, width: toolbarWidth, height: toolbarHeight }]}
+        accessibilityRole="button" accessibilityLabel="复制工具调用" onPress={() => {
+          setSelected(null);
+          copy(selected.call.label + (selected.call.detail ? `\n${selected.call.detail}` : ''));
+        }}><Text style={styles.toolToolbarText}>复制</Text></Pressable>
+    </View>
+  </Modal>}</View>;
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
@@ -336,11 +359,8 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
   }, [pending, progress]);
   const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
   return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
-    {canExpand && !!text && <ExpandButton label="全屏查看消息" onPress={() => setTarget({ kind: 'message' })} />}
     <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} suspended={!!target} />
-    <ToolCalls calls={toolCalls} />
-    {!!text && <Pressable onTouchStart={event => { gesture.current = {}; stopTouch(event); }} accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
-      style={styles.copyMessage} onPress={() => copy(text)}><Text style={styles.copyMessageText}>复制消息</Text></Pressable>}
+    <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
     <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
       {target && <View style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
         <View style={styles.modalHeader}>
@@ -352,7 +372,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
         {target.kind === 'message'
           ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
               <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} />
-              <ToolCalls calls={toolCalls} />
+              <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
             </ScrollView>
           : target.kind === 'table' && target.block.kind === 'table'
             ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
@@ -372,6 +392,9 @@ const styles = StyleSheet.create({
   toolDetailText: { paddingVertical: 4 },
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#f2f5fa' },
+  toolOverlay: { flex: 1 },
+  toolToolbar: { position: 'absolute', borderRadius: 8, backgroundColor: '#172a40', alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6 },
+  toolToolbarText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   root: { alignSelf: 'stretch', minWidth: 0 },
   blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
   paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
@@ -427,6 +450,4 @@ const styles = StyleSheet.create({
   tableHeadText: { fontSize: 15, lineHeight: 23, fontWeight: '700' },
   cellContent: { minWidth: 0 },
   alignCenter: { alignItems: 'center' }, alignRight: { alignItems: 'flex-end' },
-  copyMessage: { alignSelf: 'flex-end', paddingTop: 7, paddingBottom: 2 },
-  copyMessageText: { color: '#526d91', fontSize: 12 },
 });

@@ -37,7 +37,7 @@ function mount(initialPending, reduced = false) {
       isReduceMotionEnabled: async () => reduced,
       addEventListener: (_, listener) => { motionListener = listener; return { remove() { removed = true; } }; }
     },
-    StyleSheet: { create: x => x }, Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal'
+    StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 390, height: 844 }), Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal'
   };
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },

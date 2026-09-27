@@ -8,7 +8,7 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text, { canExpand = false, toolCalls } = {}) {
+function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 } } = {}) {
   const copied = [], opened = [], players = [], paused = [];
   const hooks = new Map(), playerBySrc = new Map();
   const appListeners = new Set();
@@ -42,7 +42,8 @@ function mount(text, { canExpand = false, toolCalls } = {}) {
     }, timing: () => ({ start() {} }) },
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
     AppState: { addEventListener: (_, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } },
-    StyleSheet: { create: value => value },
+    StyleSheet: { create: value => value, absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
+    useWindowDimensions: () => screen,
     Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal',
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
@@ -98,6 +99,15 @@ function findStyle(tree, predicate) {
   return tree.find(n => predicate(n.props?.style));
 }
 
+function doubleTapArticle(h) {
+  const root = h.walk(h.render(false)).find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
+  const event = { nativeEvent: { target: 42, pageX: 80, pageY: 100, touches: [] } };
+  for (let i = 0; i < 2; i++) {
+    root.props.onTouchStart(event);
+    root.props.onTouchEnd(event);
+  }
+}
+
 test('public tool summaries persist in article mode, never interpret command details as Markdown', () => {
   const toolCalls = [{ id: 'c1', name: 'terminal', label: '运行命令', detail: '[literal](https://example.com) && printf "**text**"' }];
   const h = mount('先检查 **项目**。', { canExpand: true, toolCalls });
@@ -105,7 +115,8 @@ test('public tool summaries persist in article mode, never interpret command det
   let nodes = h.walk(h.render());
   assert.equal(nodes.some(n => n.props.accessibilityRole === 'link'), false);
   assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
-  nodes.find(n => n.props.accessibilityLabel === '全屏查看消息').props.onPress();
+  assert.equal(nodes.some(n => n.props.accessibilityLabel === '全屏查看消息'), false);
+  doubleTapArticle(h);
   nodes = h.walk(h.render());
   const modal = nodes.find(n => n.type === 'Modal');
   assert.equal(modal.props.visible, true);
@@ -141,11 +152,12 @@ test('multiple tool calls use compact spacing but ordinary Markdown code keeps i
     const style = Object.assign({}, ...text.props.style);
     assert.equal(style.paddingVertical, 4);
     assert.equal(style.padding, 10, 'horizontal text padding remains readable');
-    assert.equal(text.props.selectable, true);
+    assert.equal(text.props.selectable, undefined, 'tool copy belongs to the toolbar, not native selection');
     assert.equal(text.props.numberOfLines, 2);
     assert.equal(text.props.ellipsizeMode, 'tail');
   }
   assert.equal(nodes.some(n => n.props.accessibilityLabel === '复制整条消息'), false);
+  assert.equal(nodes.filter(n => n.type === 'Modal').length, 1, 'no extra invisible toolbar modal');
   const code = mount('```sh\ngit status\n```');
   const codeText = code.walk(code.render()).find(n => n.type === 'Animated.Text' && n.props.selectable);
   const codeStyle = Object.assign({}, ...codeText.props.style);
@@ -179,8 +191,69 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   link.props.onPress();
   assert.deepEqual(h.opened, ['https://a.test/']);
   nodes.find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
-  nodes.find(n => n.props.accessibilityLabel === '复制整条消息').props.onPress();
-  assert.deepEqual(h.copied, ['const x = 1;\n', text]);
+  assert.equal(nodes.some(n => n.props.accessibilityLabel === '复制整条消息'), false);
+  assert.deepEqual(h.copied, ['const x = 1;\n']);
+});
+
+test('tool tap opens bounded floating copy, preserving exact safe label/detail instead of visually shortened text', () => {
+  const calls = [
+    { id: 'a', name: 'web_extract', label: '阅读网页', detail: 'https://example.com/very/long/path/…  https://other.example', arguments: { raw: 'never-copy-this' } },
+    { id: 'b', name: 'terminal', label: '运行命令', detail: 'git status --short\n  printf "长命令…"\n# server-truncated' },
+  ];
+  const h = mount('前言 **可选择**', { canExpand: true, toolCalls: calls, screen: { width: 240, height: 200 } });
+  const nodes = () => h.walk(h.render(false));
+  const modal = () => nodes().filter(n => n.type === 'Modal');
+  const row = i => nodes().find(n => n.props.accessibilityLabel === `复制工具调用：${calls[i].label}`);
+  const press = (i, x, y) => row(i).props.onPress({ nativeEvent: { pageX: x, pageY: y } });
+  const toolbar = () => nodes().find(n => n.props.accessibilityLabel === '复制工具调用');
+  assert.equal(modal().length, 1);
+  assert.equal(row(0).children[0].props.selectable, undefined);
+  assert.ok(nodes().some(n => n.type === 'Animated.Text' && n.props.selectable), 'ordinary Markdown remains selectable');
+  press(0, 239, 1);
+  assert.equal(modal().length, 2);
+  assert.equal(modal()[0].props.transparent, true);
+  assert.equal(nodes().find(n => n.props.style?.gap === 4)?.children.length, 3, 'overlay is not part of row height');
+  let geometry = toolbar().props.style[1];
+  assert.ok(geometry.left >= 10 && geometry.left + geometry.width <= 229);
+  assert.ok(geometry.top >= 29 && geometry.top + geometry.height <= 179);
+  assert.equal(h.copied.length, 0, 'opening does not copy');
+  nodes().find(n => n.props.accessibilityLabel === '关闭复制工具条').props.onPress();
+  assert.equal(modal().length, 1, 'outside dismisses');
+  press(1, 0, 199);
+  geometry = toolbar().props.style[1];
+  assert.ok(geometry.left >= 10 && geometry.left + geometry.width <= 229);
+  assert.ok(geometry.top >= 29 && geometry.top + geometry.height <= 179);
+  modal()[0].props.onRequestClose();
+  assert.equal(modal().length, 1, 'Android back dismisses');
+  press(1, 120, 100);
+  toolbar().props.onPress();
+  assert.equal(modal().length, 1, 'copy dismisses');
+  assert.deepEqual(h.copied, [`${calls[1].label}\n${calls[1].detail}`], 'copies only selected server-sanitized fields, including lines hidden by numberOfLines');
+  press(0, 120, 100);
+  toolbar().props.onPress();
+  assert.deepEqual(h.copied, [`${calls[1].label}\n${calls[1].detail}`, `${calls[0].label}\n${calls[0].detail}`]);
+  assert.equal(h.copied.join('').includes('never-copy-this'), false, 'no raw arguments enter clipboard');
+  h.unmount();
+});
+
+test('full article tool rows open their toolbar inside the article modal, with code copy intact', () => {
+  const calls = [{ id: 'safe', name: 'terminal', label: '运行命令', detail: 'printf "safe"' }];
+  const h = mount('正文\n\n```sh\nprintf ok\n```', { canExpand: true, toolCalls: calls });
+  const nodes = () => h.walk(h.render(false));
+  doubleTapArticle(h);
+  let article = nodes().find(n => n.type === 'Modal');
+  assert.equal(article.props.visible, true);
+  assert.equal(h.walk([article]).filter(n => n.type === 'Modal').length, 1);
+  h.walk([article]).find(n => n.props.accessibilityLabel === '复制工具调用：运行命令').props.onPress({ nativeEvent: { pageX: 88, pageY: 120 } });
+  article = nodes().find(n => n.type === 'Modal');
+  const inside = h.walk([article]);
+  assert.equal(inside.filter(n => n.type === 'Modal').length, 2, 'toolbar is mounted under article native modal');
+  inside.find(n => n.props.accessibilityLabel === '复制工具调用').props.onPress();
+  assert.deepEqual(h.copied, ['运行命令\nprintf "safe"']);
+  assert.equal(h.walk([nodes().find(n => n.type === 'Modal')]).filter(n => n.type === 'Modal').length, 1);
+  nodes().find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
+  assert.deepEqual(h.copied, ['运行命令\nprintf "safe"', 'printf ok\n']);
+  h.unmount();
 });
 
 test('three-column table fits measured phone width, keeps every cell and trailing prose', () => {
@@ -217,9 +290,9 @@ test('production controls open one safe-area modal for article, table and Mermai
     const inside = () => h.walk([modal()]);
     assert.equal(modal().props.visible, false);
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1);
-    assert.equal(nodes().some(n => n.props.accessibilityLabel === '全屏查看消息'), canExpand);
+    assert.equal(nodes().some(n => n.props.accessibilityLabel === '全屏查看消息'), false);
     if (canExpand) {
-      button(nodes(), '全屏查看消息');
+      doubleTapArticle(h);
       assert.equal(modal().props.visible, true);
       assert.equal(nodes().filter(n => n.type === 'Modal').length, 1);
       assert.equal(nodes().filter(n => n.type === 'WebView').length, 0, 'underlying WebView is suspended until modal content measures');
@@ -276,12 +349,7 @@ test('article double tap needs same still text target; movement, cancellation an
   tree().find(n => n.props.accessibilityRole === 'link').props.onPressIn();
   root().props.onTouchEnd(event());
   assert.equal(visible(), false, 'link press takes precedence');
-  tap();
-  let stopped = false;
-  tree().find(n => n.props.accessibilityLabel === '复制整条消息').props.onTouchStart({ stopPropagation() { stopped = true; } });
-  root().props.onTouchEnd(event());
-  tap(); assert.equal(visible(), false, 'copy breaks the double-tap sequence');
-  assert.equal(stopped, true, 'copy does not bubble to article gesture');
+  tap(); assert.equal(visible(), false, 'first tap after link only primes double tap');
   tap(); assert.equal(visible(), true);
   tree().find(n => n.type === 'Modal').props.onRequestClose();
   assert.equal(visible(), false);
@@ -291,6 +359,25 @@ test('article double tap needs same still text target; movement, cancellation an
   const userRoot = userTree.find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
   for (let i = 0; i < 2; i++) { userRoot.props.onTouchStart(event()); userRoot.props.onTouchEnd(event()); }
   assert.equal(user.walk(user.render(false)).find(n => n.type === 'Modal').props.visible, false);
+});
+
+test('tool touch interrupts prose double tap and scroll never opens toolbar', () => {
+  const h = mount('普通文字', { canExpand: true, toolCalls: [{ id: 't', name: 'terminal', label: '运行命令', detail: 'echo safe' }] });
+  const nodes = () => h.walk(h.render(false));
+  const root = () => nodes().find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
+  const group = () => nodes().find(n => n.type === 'View' && n.props.style?.gap === 4);
+  const event = (x = 40, y = 50) => ({ nativeEvent: { target: 17, pageX: x, pageY: y, touches: [] } });
+  const proseTap = () => { root().props.onTouchStart(event()); root().props.onTouchEnd(event()); };
+  proseTap();
+  let stopped = false;
+  group().props.onTouchStart({ stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true);
+  proseTap();
+  assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false, 'tool touch resets prior prose tap');
+  root().props.onTouchStart(event()); root().props.onTouchMove(event(40, 90)); root().props.onTouchEnd(event(40, 90));
+  assert.equal(nodes().filter(n => n.type === 'Modal').length, 1, 'scroll opens no copy toolbar');
+  assert.deepEqual(h.copied, []);
+  h.unmount();
 });
 
 test('real list checkbox tree is inert; ordinary [x] paragraph has no checkbox', () => {

@@ -7,7 +7,7 @@ import { projectTimeline } from '../src/timeline.ts';
 import { parseMessageMarkdown, messageNeedsViewport } from '../src/messageMarkdown.ts';
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
-  Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles } };
+  Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ width: 390, height: 844 }) };
 for (const key of ['FlatList', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View', 'Modal']) native[key] = key;
 const react = {
   Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
