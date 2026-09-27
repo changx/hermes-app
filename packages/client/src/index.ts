@@ -5,6 +5,8 @@ export interface Receipt { id: string; client_message_id: string; thread_id: str
 export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
 export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
+export interface AgentModelSettings { scope: 'connected-default'; provider: string; model: string; providers: {id: string; name: string; models: string[]}[] }
+export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
@@ -77,6 +79,18 @@ const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = n
 const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
 const displayString = (value: unknown, max: number): string => { const s = str(value); if (!s || s.length > max) throw new ProtocolError('invalid tool display'); return s };
+const validModelSettings = (x: Record<string, unknown>): AgentModelSettings => {
+  if (x.scope !== 'connected-default') throw new ProtocolError('invalid model settings scope');
+  const rows = arr(x.providers), ids = new Set<string>();
+  if (rows.length > 1000) throw new ProtocolError('too many providers');
+  const providers = rows.map(value => {
+    const row = obj(value), id = displayString(row.id, 256), models = arr(row.models);
+    if (ids.has(id) || models.length > 50000) throw new ProtocolError('invalid provider inventory');
+    ids.add(id);
+    return {id, name: displayString(row.name, 256), models: models.map(value => displayString(value, 256))};
+  });
+  return {scope:'connected-default', provider:str(x.provider), model:str(x.model), providers};
+};
 const validToolCalls = (value: unknown): ToolCall[] => {
   const calls = arr(value);
   if (calls.length > 128) throw new ProtocolError('too many tool calls');
@@ -191,6 +205,18 @@ export class HermesClient {
     return obj(response.body);
   }
   async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.capabilitiesReady=true; return x }
+  async getModelSettings(signal?: AbortSignal): Promise<AgentModelSettings> {
+    return validModelSettings(await this.call('GET', '/v1/agent/model/options', undefined, signal));
+  }
+  async setModelSettings(provider: string, model: string, signal?: AbortSignal, confirmSelection = false): Promise<AgentModelSettings | ModelSelectionConfirmation> {
+    const x = await this.call('PUT', '/v1/agent/model', {scope:'connected-default', provider, model, confirm_selection:confirmSelection}, signal);
+    if (x.confirmation_required === true) {
+      if (x.provider !== provider || x.model !== model) throw new ProtocolError('model confirmation identity mismatch');
+      return {confirmation_required:true, warning:displayString(x.warning, 12000), provider, model};
+    }
+    if (x.effective !== 'next-turn') throw new ProtocolError('model settings not confirmed');
+    return validModelSettings(x);
+  }
   async listChannels(signal?: AbortSignal): Promise<Channel[]> {
     const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/channels',undefined,signal);
     const channels = arr(x.channels).map(validChannel);

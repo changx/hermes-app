@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './FontSize';
 import type { HermesClient, ThreadSummary } from '../../../packages/client/src/index';
 import { channelPatch, threadPatch } from './channel-edits';
 

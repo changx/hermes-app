@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,19 +28,19 @@ function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Ton
     switch (node.kind) {
       case 'text': return <React.Fragment key={key}>{node.text}</React.Fragment>;
       case 'break': return <React.Fragment key={key}>{'\n'}</React.Fragment>;
-      case 'code': return <Animated.Text key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</Animated.Text>;
-      case 'math': return <Animated.Text key={key} style={[styles.inlineCode, tone('#20314a')]}>{`$${node.text}$`}</Animated.Text>;
+      case 'code': return <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</AnimatedText>;
+      case 'math': return <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]}>{`$${node.text}$`}</AnimatedText>;
       case 'image': case 'video': return null; // Media is split out before Text.
-      case 'em': return <Animated.Text key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
-      case 'strong': return <Animated.Text key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
-      case 'strike': return <Animated.Text key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
+      case 'em': return <AnimatedText key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
+      case 'strong': return <AnimatedText key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
+      case 'strike': return <AnimatedText key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
       case 'link': return node.href
-        ? <Animated.Text key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
+        ? <AnimatedText key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPressIn={onInteraction}
             onPress={() => { onInteraction(); void Linking.openURL(node.href!).catch(() => Alert.alert('Could not open link')); }}>
             <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} />
-          </Animated.Text>
-        : <Animated.Text key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
+          </AnimatedText>
+        : <AnimatedText key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
     }
   })}</>;
 }
@@ -118,9 +119,9 @@ function RichText({ nodes, tone, style, allowed, onInteraction, suspended = fals
   return <View style={styles.richText}>{segments(nodes).map((part, index) => part.kind === 'media'
     ? part.media.kind === 'image' ? <ImagePreview key={index} image={part.media} /> : <VideoPreview key={index} video={part.media} />
     : part.kind === 'math' ? <OfflineRenderer key={index} kind="math" source={part.node.text} enabled={allowed.has(part.node)} display={false} suspended={suspended} />
-    : <Animated.Text key={index} selectable style={[style, tone('#172a40')]}>
+    : <AnimatedText key={index} selectable style={[style, tone('#172a40')]}>
         <InlineText nodes={part.nodes} tone={tone} onInteraction={onInteraction} />
-      </Animated.Text>)}</View>;
+      </AnimatedText>)}</View>;
 }
 
 const MAX_MATH_SOURCE = 4096;
@@ -154,11 +155,12 @@ function webViewAllowlist(blocks: Block[]): WeakSet<object> {
   return allowed;
 }
 function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = false, suspended = false }: { kind: 'math' | 'diagram'; source: string; enabled: boolean; display?: boolean; fullscreen?: boolean; suspended?: boolean }) {
+  const { scale } = useFontSize();
   const [failedHtml, setFailedHtml] = useState<string | null>(null);
   const [readyHtml, setReadyHtml] = useState<string | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const tooLarge = !enabled || source.length > (kind === 'math' ? MAX_MATH_SOURCE : MAX_DIAGRAM_SOURCE);
-  const html = useMemo(() => tooLarge ? '' : renderMarkdownHtml(kind, source, display), [kind, source, tooLarge, display]);
+  const html = useMemo(() => tooLarge ? '' : renderMarkdownHtml(kind, source, display, scale), [kind, source, tooLarge, display, scale]);
   useEffect(() => { if (suspended) setReadyHtml(null); }, [suspended]);
   const fallback = <ScrollView onTouchStart={stopTouch} style={fullscreen ? styles.fullscreenFallback : display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
     <Text selectable style={styles.codeText}>{source}</Text>
@@ -235,7 +237,7 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
           </Pressable>
         </View>
         <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
-          <Animated.Text selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</Animated.Text>
+          <AnimatedText selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</AnimatedText>
         </ScrollView>
       </View>;
     case 'math':
@@ -255,9 +257,9 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
           {block.checks[index] !== null
             ? <View style={styles.bullet} accessibilityRole="checkbox" accessibilityState={{ checked: block.checks[index], disabled: true }}
                 accessibilityLabel={block.checks[index] ? 'Completed' : 'Not completed'}>
-                <Animated.Text style={tone('#425874')}>{block.checks[index] ? '☑' : '☐'}</Animated.Text>
+                <AnimatedText style={tone('#425874')}>{block.checks[index] ? '☑' : '☐'}</AnimatedText>
               </View>
-            : <Animated.Text style={[styles.bullet, tone('#425874')]}>{block.ordered ? `${block.start + index}.` : '•'}</Animated.Text>}
+            : <AnimatedText style={[styles.bullet, tone('#425874')]}>{block.ordered ? `${block.start + index}.` : '•'}</AnimatedText>}
           <View style={styles.listBody}><RenderBlocks blocks={item} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} /></View>
         </View>)}</View>;
     case 'table':
@@ -288,11 +290,12 @@ function ToolCalls({ calls, onInteraction }: { calls?: readonly ToolCall[]; onIn
 }
 
 function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { text: string; blocks: Block[]; toolCalls?: readonly ToolCall[]; onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object> }) {
+  const { scale } = useFontSize();
   const page = useMemo(() => {
     if (text.length > ARTICLE_TEXT_LIMIT) return null;
-    const result = renderArticleHtml(blocks, toolCalls);
+    const result = renderArticleHtml(blocks, toolCalls, scale);
     return result.html.length <= 8_000_000 ? result : null; // includes the local engine bundles
-  }, [text, blocks, toolCalls]);
+  }, [text, blocks, toolCalls, scale]);
   const [failed, setFailed] = useState(false);
   if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
     <Text style={styles.articleFailure}>{!page ? 'This article is too long. Showing the standard view instead.' : 'This article could not load. Showing the standard view instead.'}</Text>

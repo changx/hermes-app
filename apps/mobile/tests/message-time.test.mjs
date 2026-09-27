@@ -60,7 +60,7 @@ function mountClock(seconds, initialMs) {
   const output = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL('../src/MessageTime.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module: output, exports: output.exports, Date: date,
-    require: name => name === 'react' ? { ...react, default: react } : name === 'react-native' ? native : name === './messageTime' ? { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, accessibleMessageTime } : assert.fail(name),
+    require: name => name === 'react' ? { ...react, default: react } : name === 'react-native' ? native : name === './FontSize' ? { Text: native.Text } : name === './messageTime' ? { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, accessibleMessageTime } : assert.fail(name),
     setTimeout: (fn, delay) => { const key = ++nextId; timers.set(key, { fn, at: now + delay }); return key; },
     clearTimeout: key => timers.delete(key) });
   const Component = output.exports.MessageTime;

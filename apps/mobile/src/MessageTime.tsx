@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
-import { AppState, Text } from 'react-native';
+import { AppState } from 'react-native';
+import { Text } from './FontSize';
 import { accessibleMessageTime, formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds } from './messageTime';
 
 /** Isolated from the markdown row/list so relative-time ticks don't re-render either. */

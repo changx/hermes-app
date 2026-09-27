@@ -23,6 +23,7 @@ from hermes_cli import projects_db
 
 from .storage import Store, HistoryPending, MissingOriginal
 from . import device_pairing
+from . import model_settings
 from .history_hooks import pre_llm_call, pre_tool_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
 log = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ class HermesAppAdapter(BasePlatformAdapter):
         app.router.add_get('/v1/pairing/devices', device_pairing.devices)
         app.router.add_delete('/v1/pairing/devices/{id}', device_pairing.revoke)
         app.router.add_get('/v1/capabilities', self._capabilities)
+        app.router.add_get('/v1/agent/model/options', self._model_options)
+        app.router.add_put('/v1/agent/model', self._model_selection)
         app.router.add_get('/v1/channels', self._channels)
         app.router.add_post('/v1/channels', self._channels)
         app.router.add_patch('/v1/channels/{id}', self._channel)
@@ -300,6 +303,58 @@ class HermesAppAdapter(BasePlatformAdapter):
             'message_send_identity': True,
             'durable_sync': True, 'attachments': True, 'approvals': True,
             'stop': True, 'search': True, 'background_delivery': True})
+
+    def _model_owner(self):
+        # The GatewayRunner, not the adapter, owns the same lock used by /model.
+        # Reject an unbound adapter rather than silently creating an independent lock.
+        for cell in getattr(self._message_handler, '__closure__', ()) or ():
+            target = getattr(cell.cell_contents, '__self__', None)
+            if target is not None and hasattr(target, '_model_switch_lock') and hasattr(target, '_startup_restore_in_progress'):
+                # A multiplexed gateway requires a request-scoped profile binding, which
+                # this single-owner transport intentionally does not offer.
+                if getattr(getattr(target, 'config', None), 'multiplex_profiles', False):
+                    raise model_settings.SelectionUnavailable()
+                return target
+        raise model_settings.SelectionUnavailable()
+
+    async def _model_options(self, request):
+        try:
+            async with self._model_owner()._model_switch_lock():
+                result = await asyncio.to_thread(model_settings.options)
+            return web.json_response(result, headers={'Cache-Control': 'no-store'})
+        except Exception:
+            log.warning('Model options unavailable')
+            raise web.HTTPServiceUnavailable(text='Model options unavailable')
+
+    async def _model_selection(self, request):
+        body = await _body(request)
+        try:
+            provider, model, confirmed = model_settings.validate_request(body)
+            async with self._model_owner()._model_switch_lock():
+                work = asyncio.create_task(asyncio.to_thread(model_settings.save, provider, model, confirmed))
+                cancelled = False
+                # Cancelling an await does not stop the worker thread. Keep the owner lock
+                # until native persistence/readback completes, including client disconnects.
+                while not work.done():
+                    try:
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                if cancelled:
+                    try:
+                        work.result()
+                    except Exception:
+                        pass  # no raw native exception/logging after caller departed
+                    raise asyncio.CancelledError()
+                result = work.result()
+            return web.json_response(result, headers={'Cache-Control': 'no-store'})
+        except model_settings.InvalidSelection:
+            raise web.HTTPBadRequest(text='Invalid model selection')
+        except Exception:
+            # Native resolver/config errors may embed URLs or credentials; neither logs nor
+            # HTTP bodies may contain exception text or submitted model identifiers.
+            log.warning('Model selection unavailable')
+            raise web.HTTPServiceUnavailable(text='Model selection unavailable')
 
     async def _channels(self, request):
         def operation():

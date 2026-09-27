@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './FontSize';
 import * as SecureStore from 'expo-secure-store';
 
 const DEFAULT_NAME = 'Agent';
@@ -107,10 +108,11 @@ export function useAgentName(connectionId: string | null): {
 type Props = {
   name: string; ready: boolean; error: string; saving: boolean;
   onSave(value: string): Promise<boolean>; onClose(): void; onRetry?(): void;
+  children?: React.ReactNode;
 };
 
 /** Parent owns the Modal and safe area; keep this mounted only while it is open. */
-export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry }: Props) {
+export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry, children }: Props) {
   const [draft, setDraft] = useState(name === DEFAULT_NAME ? '' : name);
   const edited = useRef(false);
   const inFlight = useRef(false);
@@ -126,7 +128,7 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
       if (await onSave(draft) && mounted.current) onClose();
     } finally { inFlight.current = false; }
   };
-  return <View style={styles.form}>
+  return <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
     <Text style={styles.heading}>Agent settings</Text>
     <Text style={styles.label}>Display name</Text>
     <TextInput accessibilityLabel="Display name" value={draft} onChangeText={value => { edited.current = true; setDraft(value); }}
@@ -139,14 +141,15 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
       disabled={saving || (!ready && (!error || !edited.current))} onPress={() => { void submit(); }} style={[styles.button, saving && styles.disabled]}>
       <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save'}</Text>
     </Pressable>
+    {children}
     <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={[styles.button, styles.secondary]}>
       <Text style={styles.secondaryText}>Close</Text>
     </Pressable>
-  </View>;
+  </ScrollView>;
 }
 
 const styles = StyleSheet.create({
-  form: { flex: 1, padding: 24, gap: 14, backgroundColor: '#f8fafc' },
+  form: { flexGrow: 1, padding: 24, gap: 14, backgroundColor: '#f8fafc' },
   heading: { fontSize: 20, fontWeight: '700', color: '#172a40' },
   label: { fontSize: 14, color: '#172a40' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 10, minHeight: 44, padding: 12, color: '#172a40' },

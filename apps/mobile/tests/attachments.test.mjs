@@ -39,6 +39,7 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
   }
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
+    './FontSize': { Text: native.Text },
     'expo-image-picker': { launchImageLibraryAsync: (...args) => imagePick(...args), launchCameraAsync: (...args) => cameraPick(...args), requestCameraPermissionsAsync: () => cameraPermission() },
     'expo-document-picker': { getDocumentAsync: (...args) => documentPick(...args) },
     'expo-clipboard': { isPasteButtonAvailable: nativePaste, ClipboardPasteButton: 'ClipboardPasteButton', getImageAsync: (...args) => clipboardRead(...args), hasImageAsync: async () => hasImage, getStringAsync: async () => clipboardText, getUrlAsync: async () => clipboardUrl },

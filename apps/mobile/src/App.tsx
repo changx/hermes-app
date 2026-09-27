@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FontSizeProvider, FontSizeSettings, Text, TextInput } from './FontSize';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
@@ -19,6 +20,7 @@ import { VisibleReceiptHydrator } from './receiptHydration';
 import { AttachmentComposer, MessageAttachments } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
+import { ModelSettings } from './ModelSettings';
 import type { TimelineRow } from './timeline';
 
 const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
@@ -343,13 +345,16 @@ function Screen() {
     {settingsOpen && <Modal animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setSettingsOpen(false)}>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
-          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => setSettingsOpen(false)} />
+          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => setSettingsOpen(false)}>
+            {client && <ModelSettings key={config.id} client={client} />}
+            <FontSizeSettings />
+          </AgentSettings>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>}
   </View>;
 }
-export default function App() { return <SafeAreaProvider><KeyboardProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></KeyboardProvider></SafeAreaProvider>; }
+export default function App() { return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></KeyboardProvider></FontSizeProvider></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f8fafc' }, flex: { flex: 1 }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' },

@@ -11,9 +11,24 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/markdownWeb.ts',
 }).outputText, { module, exports: module.exports, require: name => {
   if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(7) };
   if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: '/* local katex */', MERMAID_SCRIPT: '/* local mermaid */' };
+  if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
   throw Error(`unexpected import ${name}`);
 } });
 const { renderMarkdownHtml } = module.exports;
+
+test('local math/diagram HTML and too-long fallback scale text without changing source or CSP', () => {
+  for (const kind of ['math', 'diagram']) {
+    const large = renderMarkdownHtml(kind, 'x+y', true, 1.3);
+    assert.match(large, /:root\{--interface-scale:1\.3\}/);
+    assert.match(large, /font:19\.5px system-ui/);
+    assert.match(large, /default-src 'none'/);
+    assert.match(renderMarkdownHtml(kind, 'x+y', true, 0.9), /--interface-scale:0\.9/);
+    assert.match(renderMarkdownHtml(kind, 'x+y', true, 100), /--interface-scale:1\}/);
+  }
+  const oversized = renderMarkdownHtml('math', 'x'.repeat(4100), true, 1.15);
+  assert.match(oversized, /--interface-scale:1\.15/);
+  assert.match(oversized, /font-size:17\.25px/);
+});
 
 test('production HTML keeps UTF-8, safe JSON, nonce CSP and strict local engines', () => {
   const payload = '</script><script>alert(1)</script>\u2028$&\\"甲';

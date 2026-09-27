@@ -21,9 +21,9 @@ function harness(store = new Map()) {
       scheduled.push(() => { cell.cleanup?.(); cell.cleanup = fn(); cell.deps = deps; });
     } }
   };
-  const native = { StyleSheet: { create: value => value }, View: 'View', Text: 'Text', TextInput: 'TextInput', Pressable: 'Pressable' };
+  const native = { StyleSheet: { create: value => value }, ScrollView: 'ScrollView', View: 'View', Text: 'Text', TextInput: 'TextInput', Pressable: 'Pressable' };
   const disk = { getItemAsync: key => { reads.push(key); return get(key); }, setItemAsync: (key, value) => { writes.push([key, value]); return put(key, value); } };
-  const mods = { react: { ...react, default: react }, 'react-native': native, 'expo-secure-store': disk };
+  const mods = { react: { ...react, default: react }, 'react-native': native, './FontSize': native, 'expo-secure-store': disk };
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/AgentSettings.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText,

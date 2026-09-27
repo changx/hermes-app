@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, AppState, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, AppState, StyleSheet, View } from 'react-native';
+import { Text } from './FontSize';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 
 export function isAgentTyping(threadId: string, receipts: readonly Receipt[], interactions: readonly Interaction[], online: boolean): boolean {

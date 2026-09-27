@@ -22,7 +22,7 @@ function harness() {
     busy: false, channelId: null, openingRef: { current: 0 }, agentName: { name: 'Tuly', ready: true, error: '', saving: false, save: async () => true, reload: () => calls.push(['reload']) },
     isAgentTyping: () => true,
   };
-  for (const name of ['View', 'Text', 'Button', 'ChatTimeline', 'TypingIndicator', 'AttachmentComposer', 'ChannelScreens', 'KeyboardAvoidingView', 'Modal', 'SafeAreaView', 'AgentSettings']) context[name] = name;
+  for (const name of ['View', 'Text', 'Button', 'ChatTimeline', 'TypingIndicator', 'AttachmentComposer', 'ChannelScreens', 'KeyboardAvoidingView', 'Modal', 'SafeAreaView', 'AgentSettings', 'FontSizeSettings', 'ModelSettings']) context[name] = name;
   for (const name of ['setEditing', 'setThreadId', 'setPageCursor', 'locateNext', 'loadOlder', 'visibleRef', 'setText', 'send', 'renderAttachments', 'onAttachmentsChange', 'setAnswers', 'answer', 'run', 'setChannelId', 'openThread']) context[name] = () => {};
   context.setSettingsOpen = value => { context.settingsOpen = value; };
   const render = runInNewContext(code, context);
@@ -40,6 +40,9 @@ test('settings opens over existing chat, names running indicator, and closes by 
   const modal = nodes.find(n => n.type === 'Modal');
   assert.equal(modal.props.presentationStyle, 'fullScreen');
   const settings = nodes.find(n => n.type === 'AgentSettings');
+  assert.ok(nodes.some(n => n.type === 'FontSizeSettings'));
+  assert.equal(nodes.find(n => n.type === 'ModelSettings').props.client, h.context.client);
+  assert.equal(nodes.find(n => n.type === 'ModelSettings').props.key, 'conn');
   assert.equal(settings.props.name, 'Tuly'); assert.equal(settings.props.onSave, h.context.agentName.save);
   settings.props.onRetry(); assert.deepEqual(h.calls, [['reload']]);
   const retained = nodes.find(n => n.type === 'ChatTimeline');

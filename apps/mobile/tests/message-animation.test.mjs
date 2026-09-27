@@ -42,6 +42,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
   };
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
+    './FontSize': { Text: native.Text, TextInput: native.TextInput },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },

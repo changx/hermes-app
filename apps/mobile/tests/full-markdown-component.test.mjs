@@ -8,8 +8,9 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 } } = {}) {
+function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1 } = {}) {
   const copied = [], opened = [], players = [], paused = [];
+  const webCalls = [], font = { scale: fontScale };
   const hooks = new Map(), playerBySrc = new Map();
   const appListeners = new Set();
   let scope, index, visited;
@@ -48,6 +49,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
   const modules = { react: { ...react, default: react }, 'react-native': native,
+    './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => font },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 21, bottom: 13, left: 2, right: 3 }) },
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: (src, setup) => {
@@ -57,7 +59,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
       } }; setup(player); players.push(player); playerBySrc.set(src, player); return player;
     } },
     'react-native-webview': 'WebView',
-    './markdownWeb': { renderMarkdownHtml: (kind, source, display) => `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}` },
+    './markdownWeb': { renderMarkdownHtml: (kind, source, display, scale) => { webCalls.push({ kind, source, display, scale }); return `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}`; } },
     './messageMarkdown': { parseMessageMarkdown, safeLinkUrl: href => { try { const u = new URL(href); return /^https?:$/.test(u.protocol) && !u.username && !u.password && !/[\s\\]/.test(href) ? u.href : null; } catch { return null; } } } };
   const articleOutput = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts', import.meta.url), 'utf8'), {
@@ -66,6 +68,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(42) };
     if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' };
     if (name === './messageMarkdown') return modules[name];
+    if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
     throw Error(name);
   } });
   modules['./articleHtml'] = articleOutput.exports;
@@ -101,13 +104,27 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     frames.forEach(n => n.props.onLayout({ nativeEvent: { layout: { width: 320, height: n.props.style.height } } }));
     return frames.length ? renderOnce() : tree;
   };
-  return { render, walk, copied, opened, players, paused, background: () => appListeners.forEach(listener => listener('background')),
+  return { render, walk, copied, opened, players, paused, webCalls, font, background: () => appListeners.forEach(listener => listener('background')),
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
 }
 
 function findStyle(tree, predicate) {
   return tree.find(n => predicate(n.props?.style));
 }
+
+test('article and inline math receive live device font scale without reparsing message text', () => {
+  const h = mount('Paragraph $x^2$ and `code`.\n\n```js\nconst n = 1;\n```', { canExpand: true, fontScale: 1.3 });
+  h.render();
+  assert.ok(h.webCalls.some(call => call.kind === 'math' && call.scale === 1.3));
+  doubleTapArticle(h);
+  const modal = h.walk(h.render()).find(node => node.type === 'Modal');
+  assert.match(h.walk(modal.children).find(node => node.type === 'WebView').props.source.html, /:root\{--interface-scale:1\.3\}/);
+  h.font.scale = 0.9;
+  const resized = h.walk(h.render()).find(node => node.type === 'Modal');
+  assert.match(h.walk(resized.children).find(node => node.type === 'WebView').props.source.html, /:root\{--interface-scale:0\.9\}/);
+  assert.ok(h.webCalls.some(call => call.kind === 'math' && call.scale === 0.9));
+  h.unmount();
+});
 
 function doubleTapArticle(h) {
   const root = h.walk(h.render(false)).find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);

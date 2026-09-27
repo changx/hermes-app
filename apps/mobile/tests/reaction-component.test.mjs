@@ -16,6 +16,7 @@ const react = {
 };
 const modules = {
   react: { ...react, default: react }, 'react-native': native,
+  './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
