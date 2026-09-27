@@ -77,8 +77,8 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(agent.borderRadius, undefined);
   const user = rowStyle('user');
   assert.equal(user.alignSelf, 'flex-end');
-  assert.equal(user.width, '100%');
-  assert.equal(user.maxWidth, '100%');
+  assert.equal(user.width, '80%');
+  assert.equal(user.maxWidth, '80%');
   assert.equal(user.marginHorizontal, 0, 'gutters belong to the definite-width parent');
   assert.equal(user.padding, 13);
   assert.equal(user.backgroundColor, '#e6f0ff');

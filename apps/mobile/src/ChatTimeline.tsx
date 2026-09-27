@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
-  own: { width: '100%', maxWidth: '100%', marginHorizontal: 0, backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },
+  own: { width: '80%', maxWidth: '80%', marginHorizontal: 0, backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },
   byline: { color: '#50647b', fontSize: 12, fontWeight: '600', marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
