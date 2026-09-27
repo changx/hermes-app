@@ -13,3 +13,7 @@
 ## 本地验证
 
 移动端 169/169 测试与 TypeScript 通过；干净离线 npm ci、iOS/Android Expo 导出通过。覆盖菜单开关、相册/文件多选、权限拒绝/拍照取消/成功/异步过期、文字/URL/图片粘贴、正文选区替换及既有网络/滚动/附件回归。首次完整测试因隔离工作树缺少 SDK dist 失败，按现有构建脚本生成后全过。证据在私有 workspace/hermes-app/m1-attachment-menu/；不把回调测试等同 iPhone 原生交互验收。
+
+## 发布
+
+代码 `243b960` 已快进至运行目录，仅重启隔离 Expo；公网 iOS/Android manifest 与实际包确认加号菜单、拍照和按类型粘贴代码。开发 Gateway 与 Jamie Gateway 的 PID/启动时间不变。发布后首次请求在 Expo 启动期间返回 502，恢复后读回成功；检查脚本已兼容 Babel 大写 Unicode 转义。回滚基线 `f7bac3d` 与服务身份记录在私有证据目录。iPhone 拍照、粘贴授权和键盘焦点仍待实机确认。
