@@ -56,14 +56,47 @@ test('late ACK cannot clear or restart a terminal callback', async () => {
 
 test('snapshot active receipt preserves callback through cold projection and later same-state fetch', async () => {
   let processing = 'running';
+  const feedback = '⏩ Steered into current run (iteration 2/500). Your message arrives after the next tool call.';
   const sdk = new HermesClient({ token: () => 'test', socket: { connect() {} }, http: { async request(_method, path) {
-    if (path.startsWith('/v1/snapshot')) return { status: 200, body: { threads: [{ id: 'th', project_id: 'p', title: 'Thread', archived: 0, last_ref: 0, read_ref: 0, unread_count: 0, active_receipts: [{ ...base, processing }] }], waterline: 'c1', next_after: null } };
+    if (path.startsWith('/v1/snapshot')) return { status: 200, body: { threads: [{ id: 'th', project_id: 'p', title: 'Thread', archived: 0, last_ref: 0, read_ref: 0, unread_count: 0, active_receipts: [{ ...base, processing, feedback }] }], waterline: 'c1', next_after: null } };
     if (path === '/v1/channels') return { status: 200, body: { channels: [] } };
     return { status: 200, body: { receipt: { ...base, processing } } };
   } } });
   await sdk.snapshot();
   assert.equal(sdk.receipts.get('r').processing, 'running');
+  assert.equal(sdk.receipts.get('r').feedback, feedback);
   processing = 'completed';
   await sdk.getReceipt('r');
   assert.equal(sdk.receipts.get('r').processing, 'completed');
+  assert.equal(sdk.receipts.get('r').feedback, feedback);
+});
+
+test('feedback accepts exact native ACK text, rejects malformed values, survives omitted same-state and late ACK', async () => {
+  const modes = [
+    '⏩ Steered into current run (iteration 2/500). Your message arrives after the next tool call.',
+    '⏩ Steered into current run and its active subagent(s). Your message arrives after their next tool call.',
+    "↪ Redirected current run. I'll adjust using your correction.",
+    "⏳ Queued for the next turn. I'll respond once the current task finishes.",
+    '⏳ Subagent working — your message is queued for when it finishes (use /stop to cancel everything).',
+    '⏳ Compressing context — your message is queued for when it finishes (use /stop to cancel everything).',
+    "⚡ Interrupting current task. I'll respond to your message shortly."
+  ];
+  const source = { value: base }, sdk = makeClient(source);
+  for (const feedback of modes) {
+    source.value = { ...base, feedback };
+    assert.equal((await sdk.getReceipt('r')).feedback, feedback);
+    assert.equal((await makeClient(source).getReceipt('r')).feedback, feedback);
+  }
+  const prior = modes.at(-1);
+  source.value = { ...base, state: 'completed', processing: 'failed' };
+  assert.equal((await sdk.getReceipt('r')).feedback, prior);
+  source.value = { ...base, state: 'running' };
+  assert.equal((await sdk.send('th', 'client', 'hello')).feedback, prior);
+  for (const feedback of ['', null, 4, {}, 'a'.repeat(2001)]) {
+    source.value = { ...base, feedback };
+    await assert.rejects(sdk.getReceipt('r'), ProtocolError);
+    assert.equal(sdk.receipts.get('r').feedback, prior);
+  }
+  source.value = { ...base, feedback: 'x'.repeat(2000) };
+  assert.equal((await sdk.getReceipt('r')).feedback.length, 2000);
 });

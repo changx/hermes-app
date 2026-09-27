@@ -2,7 +2,7 @@ import type { Interaction, Message, Receipt } from '../../../packages/client/src
 import type { SendRecord } from './send';
 
 export interface Reaction { emoji: string; label: string; source: 'agent' }
-export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
+export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefined> = {
   running: { emoji: '👀', label: '处理中', source: 'agent' },
@@ -14,6 +14,14 @@ const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefine
 const terminal = (state: Receipt['state']) => !['queued', 'running'].includes(state);
 const matching = (receipt: Receipt | undefined, threadId: string, receiptId: string, clientMessageId: string): receipt is Receipt =>
   !!receipt && receipt.id === receiptId && receipt.thread_id === threadId && receipt.client_message_id === clientMessageId;
+const localReceipt = (item: SendRecord | undefined): Receipt | undefined => item?.status === 'accepted' && item.receiptId && item.receiptState ? {
+  id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true,
+  ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}),
+  ...(item.receiptProcessing !== undefined ? { processing: item.receiptProcessing } : {}), ...(item.receiptFeedback ? { feedback: item.receiptFeedback } : {})
+} : undefined;
+const displayReceipt = (candidate: Receipt | undefined, fallback: Receipt | undefined): Receipt | undefined =>
+  candidate && fallback ? { ...candidate, ...(candidate.processing === undefined && fallback.processing !== undefined ? { processing: fallback.processing } : {}),
+    ...(candidate.feedback === undefined && fallback.feedback ? { feedback: fallback.feedback } : {}) } : candidate ?? fallback;
 
 function statusFor(receipt: Receipt | undefined, interactions: readonly Interaction[]): Reaction | undefined {
   if (!receipt) return undefined;
@@ -27,27 +35,29 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
 // Only explicit server identity can reconcile a send; never match equal text.
 // Legacy servers have no such identity and retain the conservative fallback.
 export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string, supportsIdentity = false, pending: readonly SendRecord[] = [], receipts: ReadonlyMap<string, Receipt> = new Map(), interactions: readonly Interaction[] = []): TimelineRow[] {
+  const local = new Map(pending.map(r => [r.clientMessageId, r]));
+  if (record) local.set(record.clientMessageId, record);
   const rows: TimelineRow[] = messages.map((m, index) => {
     const known = m.role === 'user' && !!m.receipt_id && !!m.client_message_id;
     const candidate = known ? receipts.get(m.receipt_id!) : undefined;
     const valid = known && (!candidate || matching(candidate, threadId, m.receipt_id!, m.client_message_id!));
+    const item = known ? local.get(m.client_message_id!) : undefined;
+    const fallback = item?.receiptId === m.receipt_id && item?.threadId === threadId ? localReceipt(item) : undefined;
+    const receipt = valid ? displayReceipt(candidate, fallback) : undefined;
     // Cache hydration cannot change a published row's identity or its position.
     return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
       ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: index > 0 && messages[index - 1].role === 'assistant' } : {}),
       ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
-      ...(valid ? { reaction: statusFor(candidate, interactions), ...(candidate ? { receipt: candidate } : {}) } : {}) };
+      ...(valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {}) };
   });
-  const local = new Map(pending.map(r => [r.clientMessageId, r]));
-  if (record) local.set(record.clientMessageId, record);
   for (const item of local.values()) {
     if (item.threadId !== threadId || messages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId)) continue;
     if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed' && item.receiptAdmission !== 'followup')) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
-    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}), ...(item.receiptProcessing !== undefined ? { processing: item.receiptProcessing } : {}) } : undefined;
-    const receipt = valid ? candidate && fallback && candidate.processing === undefined && fallback.processing !== undefined ? { ...candidate, processing: fallback.processing } : candidate ?? fallback : undefined;
+    const receipt = valid ? displayReceipt(candidate, localReceipt(item)) : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
-      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
+      ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
   // invalidations, not token frames; do not simulate a streaming response.

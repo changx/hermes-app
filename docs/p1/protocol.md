@@ -27,6 +27,8 @@ curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Conte
 
 收据另含 `processing: null | "running" | "completed" | "failed" | "interrupted" | "unknown"`，仅记录正式处理开始/结束回调；进程重启将尚未结束的 running 转为 unknown。旧客户端可忽略此新增字段，新客户端兼容旧服务端省略字段。reaction 只由 processing 驱动；state、admission 和 handed_off 不证明处理完成。没有独立回调的 steer 追加保持 null；旧数据不反推回调。详细语义见 [原生 reaction](../m1-native-reactions.md)。
 
+可选 `feedback` 为原生 Gateway 实际发出的追加接收提示首段（非空字符串，最多2000字符），按准确 reply_to 绑定 receipt，独立于 processing。客户端持久保留并在对应消息旁展示；不作为助手正文或完成证据。核心未发 ACK 时字段省略，保留原生模式与去抖规则。详见 [续轮展示与追加反馈](../m1-origin-display-fix.md)。
+
 同一 `client_message_id`、Thread 和原始正文重试返回原收据，绝不再次派发，Thread 归档后亦然；归档后新 ID 发送返回 409。归档检查与接收写入同一事务；改正文或 Thread 返回 409。两次独立发送须使用不同 ID，即使正文相同。正文 SHA-256 仅检查重试载荷一致性，不作消息身份或历史去重。收据 ID 由服务端生成、不透明。接收、临时队列正文及一条 `receipt` 同步事件在同一 SQLite `BEGIN IMMEDIATE` 事务提交后才确认。普通队列正文以核心 `messages.platform_message_id=receipt.id` 找到原始用户行后清空；运行中补充输入沿用已持久接收的 receipt 原文作为平台输入展示来源，直至有精确核心行承接。Agent 输出仍只来自核心 SessionDB。人类可读历史按输入、输出的展示引用时序保留每条原文，模型内部的聚合 steer 不重复展示为另一条用户输入；不改写模型历史，不根据正文猜测身份。同步事件只有引用、版本与状态，不含正文。
 
 每 Thread 同时最多 32 条 `queued/running` 收据，满队列返回 429；请求体上限 64 KiB。普通发送按接收顺序排队；不同 Thread 可以并发。启用原生 steer 的隔离 profile 可在当前 owner 运行时向 Gateway 交付 FIFO 队首纯文本，带附件的消息不走插入路径。状态为 `queued`、`running`、`received`、`completed`、`failed`、`interrupted`、`unknown`。补充消息可带 `admission:"followup"`；`received` 仅表示 Gateway 已接收，不代表模型逐条消费或任务完成。只有核心精确普通 user 行锚点能把补充消息识别为独立执行；主任务完成不意味着补充消息 `completed`。详见 [运行中输入契约](../m1-midrun-steer.md)。`unknown` 表示执行/副作用边界无法证实，不能自动重试模型或工具；重试相同 client ID 仍返回原收据。崩溃时已经开始的收据变 `unknown`，尚未开始的 `queued` 在重启后重新派发。旧 `unknown` 队首不阻止后续真实 `queued`：它保留原接收顺序和可见状态，执行调度跳过它，不伪称旧执行成功。
@@ -36,6 +38,8 @@ curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Conte
 ## 历史、快照与增量
 
 `GET /v1/threads/{id}/messages?after=<cursor>&limit=1..100` 返回人类可读历史，每条含稳定 `ref_seq`、不透明 `id`、`role`、`text`。正常核心行保留原始核心 `id`；平台补充输入使用 `receipt:<receipt_id>`，并带精确 `receipt_id/client_message_id`，不冒充核心行。`ref_seq` 是已发布逻辑引用，压缩复制行或补充输入转普通执行不会改写已发序号或再插入相同输入。缺失原始内容返回 409；不以摘要伪造原文。
+
+续轮上下文中的来源封装若精确对应已发布的追加原文，历史和搜索读取时不再显示其副本；原始 ref 与游标仍保留，不改数据库或模型内容。分页可能经过只含隐藏副本的空页，须继续使用返回的 next_cursor/older_cursor，不以消息数组为空判定末页。
 
 M1 工具时间线增量：capabilities 的 `tool_call_timeline=true` 表示 assistant 消息可有 `tool_calls: [{id, name, label, detail?}]`。`id` 保留原始调用 ID，`label` 是安全展示摘要，`detail` 仅为通过敏感检查和脱敏的命令；没有原始参数、工具结果或 reasoning。纯工具行允许 `text=""`；同一行先正文、后按数组顺序展示工具调用。正式 `pre_tool_call` 在执行前发布原始行，`post_tool_call` 幂等后备；沿用稳定引用和 message 失效事件，历史与搜索结构一致。旧历史未捕获的纯工具行不追溯插入。包装器只展示自身名称/摘要，不展开原始嵌套参数；至多 128 展示槽，超界在最后一槽明确说明省略项数。记录不代表调用成功。
 

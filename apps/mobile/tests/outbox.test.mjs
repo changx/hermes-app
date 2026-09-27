@@ -50,6 +50,35 @@ test('offline multiple records durable before network, exact UTF-8 chunks and mi
   await resumed.box.stop();
 });
 
+test('feedback persists across cold outbox load and same-state receipt updates without callback success', async () => {
+  const store = new Store(), client = sdk(async (thread, clientId) => ({
+    ...receipt({ threadId: thread, clientMessageId: clientId }, 'running'),
+    feedback: '⏩ Steered into current run (iteration 2/500). Your message arrives after the next tool call.'
+  }));
+  const first = make(store, client);
+  await first.box.start(); first.box.setConnection('online'); await first.box.enqueue(draft(50)); await flush();
+  const ack = first.box.records[0].receiptFeedback;
+  assert.ok(ack); assert.equal(first.box.records[0].receiptProcessing, undefined);
+  await first.box.stop();
+  const remote = sdk();
+  const second = make(store, remote);
+  await second.box.start();
+  assert.equal(second.box.records[0].receiptFeedback, ack);
+  remote.receipts.set(receipt(draft(50)).id, { ...receipt(draft(50), 'running'), processing: 'failed' });
+  second.box.setConnection('online'); await flush();
+  assert.equal(second.box.records[0].receiptFeedback, ack);
+  assert.equal(second.box.records[0].receiptProcessing, 'failed');
+  const nextAck = "↪ Redirected current run. I'll adjust using your correction.";
+  remote.receipts.set(receipt(draft(50)).id, { ...receipt(draft(50), 'running'), feedback: nextAck });
+  second.box.reconcile(); await flush();
+  assert.equal(second.box.records[0].receiptFeedback, nextAck);
+  assert.equal(second.box.records[0].receiptProcessing, 'failed');
+  await second.box.stop();
+  const third = make(store);
+  await third.box.start(); assert.equal(third.box.records[0].receiptFeedback, nextAck);
+  await third.box.stop();
+});
+
 test('ACK loss retries the original ID/body, never runs concurrent duplicate drain', async () => {
   let now = 1000, calls = 0;
   const seen = new Map();

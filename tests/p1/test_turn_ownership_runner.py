@@ -3,19 +3,21 @@ import json
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import pytest
 
 BASE = Path('/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline')
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = Path(__file__).with_name('runner_probe.py')
 
 
-def test_owner_completion_survives_native_continuation_tools():
+@pytest.mark.parametrize('with_tools', [False, True])
+def test_owner_completion_survives_native_continuation_tools(with_tools):
     source = PROBE.read_text()
     source = source.replace("Path(__file__).resolve().parents[2] / 'plugins'", f"Path({str(ROOT)!r}) / 'plugins'")
     source = source.replace("Path(__file__).with_name('synthetic_tool_plugin')", f"Path({str(PROBE.with_name('synthetic_tool_plugin'))!r})")
     source = source.replace("'security:\\n  tirith_enabled: false\\n'", "'security:\\n  tirith_enabled: false\\n'\n        'display:\\n  busy_input_mode: steer\\n'")
     source = source.replace('    model.requests = []', '    model.final_entered = threading.Event()\n    model.final_release = threading.Event()\n    model.requests = []')
-    source = source.replace('        if call_tool:\n', '''        if COMPACT_MODE == 'timeline' and self.server.tool_calls == 1 and 'FOLLOWUP_BETA' in json.dumps(request.get('messages', [])):
+    source = source.replace('        if call_tool:\n', '''        if EXPECT_TOOLS and COMPACT_MODE == 'timeline' and self.server.tool_calls == 1 and 'FOLLOWUP_BETA' in json.dumps(request.get('messages', [])):
             call_tool = True
         if (COMPACT_MODE == 'timeline' and self.server.tool_calls == 1 and not call_tool
                 and 'FOLLOWUP_ALPHA' in json.dumps(request.get('messages', []))):
@@ -44,16 +46,19 @@ def test_owner_completion_survives_native_continuation_tools():
                     alpha = await send('alpha', 'FOLLOWUP_ALPHA')
                     assert alpha['handed_off'] is True
                     assert alpha['processing'] is None
+                    assert alpha['feedback'].startswith('⏩ Steered into current run'), alpha
                     (HOME/'timeline-tool-release').write_text('1')
                     await wait_for(model.final_entered.is_set)
                     beta = await send('beta', 'FOLLOWUP_BETA')
                     assert beta['handed_off'] is True
+                    gamma = await send('gamma', 'FOLLOWUP_GAMMA')
+                    assert gamma['handed_off'] is True
                 finally:
                     (HOME/'timeline-tool-release').write_text('1')
                     model.final_release.set()
                 for _ in range(400):
                     receipts = []
-                    for r in (owner,alpha,beta):
+                    for r in (owner,alpha,beta,gamma):
                         async with a.get(root+'/v1/receipts/'+r['id']) as response:
                             receipts.append((await response.json())['receipt'])
                     if all(r['state'] not in ('queued','running') for r in receipts): break
@@ -62,30 +67,34 @@ def test_owner_completion_survives_native_continuation_tools():
                 assert receipts[0]['processing'] == 'completed', receipts
                 assert all(r['state']=='received' and r['handed_off'] for r in receipts[1:]), receipts
                 assert all(r['processing'] is None for r in receipts[1:]), receipts
-                assert model.tool_calls == 2, model.tool_calls
+                assert receipts[1]['feedback'] == alpha['feedback']
+                assert 'feedback' not in receipts[2] and 'feedback' not in receipts[3], 'native 30-second ACK debounce remains in force'
+                assert model.tool_calls == (2 if EXPECT_TOOLS else 1), model.tool_calls
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as response:
                     assert response.status == 200
                     page = await response.json()
                 assert not page['incomplete_turns'], page
                 messages = page['messages']
-                inputs = [m for m in messages if m.get('client_message_id') in ('owner','alpha','beta')]
-                assert [m['client_message_id'] for m in inputs] == ['owner','alpha','beta']
+                inputs = [m for m in messages if m.get('client_message_id') in ('owner','alpha','beta','gamma')]
+                assert [m['client_message_id'] for m in inputs] == ['owner','alpha','beta','gamma']
                 assert all('Gateway message origin' not in m['text'] for m in messages), messages
-                assert sum(m['role']=='user' for m in messages) == 4, messages
+                assert sum(m['role']=='user' for m in messages) == 5, messages
                 tail = [m for m in messages if m['ref_seq'] > inputs[0]['ref_seq']]
-                assert sum(bool(m.get('tool_calls')) for m in tail)==2, tail
+                assert sum(bool(m.get('tool_calls')) for m in tail)==(2 if EXPECT_TOOLS else 1), tail
                 assert [m['text'] for m in tail if m['role']=='assistant' and m['text']] == ['SYNTHETIC_P1_FINAL']*2
                 for r in model.requests:
                     text=json.dumps(r.get('messages',[]))
                     if 'FOLLOWUP_BETA' in text:
-                        assert text.index('P1_TIMELINE') < text.index('FOLLOWUP_ALPHA') < text.index('FOLLOWUP_BETA')
+                        assert text.index('P1_TIMELINE') < text.index('FOLLOWUP_ALPHA') < text.index('FOLLOWUP_BETA') < text.index('FOLLOWUP_GAMMA')
                 with sqlite3.connect(HOME/'hermes-app'/'metadata.sqlite') as db:
                     original_turn=db.execute('SELECT turn_id FROM ingress_links WHERE ingress_id=?',('ingress:'+owner['id'],)).fetchone()[0]
                     display_turn=db.execute('SELECT turn_id FROM message_refs WHERE input_receipt_id=?',(owner['id'],)).fetchone()[0]
                     assert original_turn == display_turn
                 cold = type(adapter._store)(adapter._store.path)
                 assert cold.history_page(one['id'],HOME/'state.db')['messages'] == messages
-                for ident,text,r in [('owner','P1_TIMELINE',owner),('alpha','FOLLOWUP_ALPHA',alpha),('beta','FOLLOWUP_BETA',beta)]:
+                assert len(cold.search_page(one['id'],HOME/'state.db','FOLLOWUP_BETA')['messages']) == 1
+                assert not cold.search_page(one['id'],HOME/'state.db','Gateway message origin')['messages']
+                for ident,text,r in [('owner','P1_TIMELINE',owner),('alpha','FOLLOWUP_ALPHA',alpha),('beta','FOLLOWUP_BETA',beta),('gamma','FOLLOWUP_GAMMA',gamma)]:
                     assert (await send(ident,text))['id']==r['id']
                 assert cold.history_page(one['id'],HOME/'state.db')['messages'] == messages
                 (HOME.parent/'ownership-result.json').write_text(json.dumps({'owner_state':receipts[0]['state'],'tool_calls':model.tool_calls,'input_order':[m['client_message_id'] for m in inputs]}))
@@ -97,7 +106,7 @@ def test_owner_completion_survives_native_continuation_tools():
         home = isolated / 'h'
         home.mkdir()
         script = isolated / 'probe.py'
-        script.write_text(source)
+        script.write_text(source.replace("if __name__ == '__main__':", f"EXPECT_TOOLS = {with_tools!r}\n\nif __name__ == '__main__':"))
         env = {'PATH':'/usr/local/bin:/usr/bin:/bin', 'HOME':str(isolated), 'HERMES_HOME':str(home),
                'XDG_CONFIG_HOME':str(isolated/'x'), 'XDG_DATA_HOME':str(isolated/'d'),
                'TMPDIR':str(scratch), 'PYTHONPATH':str(BASE), 'PYTHONDONTWRITEBYTECODE':'1',
@@ -110,4 +119,4 @@ def test_owner_completion_survives_native_continuation_tools():
                               capture_output=True, text=True, timeout=90)
         assert proc.returncode == 0, proc.stdout[-1500:]+'\n'+proc.stderr[-7000:]
         result = json.loads((isolated/'ownership-result.json').read_text())
-        assert result == {'owner_state':'completed', 'tool_calls':2, 'input_order':['owner','alpha','beta']}
+        assert result == {'owner_state':'completed', 'tool_calls':2 if with_tools else 1, 'input_order':['owner','alpha','beta','gamma']}

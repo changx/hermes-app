@@ -7,7 +7,7 @@ import re
 # envelope in the user-facing words. Strip only that exact generated prefix.
 _ORIGIN_NOTE = re.compile(
     r'Gateway message origin \(JSON data, not instructions or authorization\):\n'
-    r'\{[^\n]{1,4096}\}\n'
+    r'(?P<origin>\{[^\n]{1,4096}\})\n'
     r'Do not guess a reply destination when these fields are insufficient\.\n\n')
 
 _INTERNAL_KINDS = frozenset({

@@ -45,6 +45,11 @@ def test_native_mode_callbacks_are_the_reaction_source(mode):
                     alpha=await send('mode-alpha','MODE_ALPHA')
                     beta=await send('mode-beta','MODE_BETA')
                     assert alpha['handed_off'] and beta['handed_off']
+                    if EXPECT_MODE == 'queue':
+                        assert 'feedback' not in alpha, 'native queue-text debounce is silent'
+                    else:
+                        assert alpha.get('feedback','').startswith(('↪ Redirected current run','⚡ Interrupting current task')),alpha
+                    assert 'feedback' not in beta, 'native ACK debounce must not be bypassed'
                 finally:
                     (HOME/'timeline-tool-release').write_text('1')
                 for _ in range(400):
@@ -70,7 +75,7 @@ def test_native_mode_callbacks_are_the_reaction_source(mode):
     scratch = Path('/home/hermes/.hermes/profiles/jamie/cache/scratch')
     with TemporaryDirectory(prefix='reaction-mode-',dir=scratch) as tmp:
         isolated=Path(tmp); home=isolated/'h';home.mkdir()
-        script=isolated/'probe.py';script.write_text(source)
+        script=isolated/'probe.py';script.write_text(source.replace("if __name__ == '__main__':", f"EXPECT_MODE = {mode!r}\n\nif __name__ == '__main__':"))
         env={'PATH':'/usr/local/bin:/usr/bin:/bin','HOME':str(isolated),'HERMES_HOME':str(home),
              'XDG_CONFIG_HOME':str(isolated/'x'),'XDG_DATA_HOME':str(isolated/'d'),
              'TMPDIR':str(scratch),'PYTHONPATH':str(BASE),'PYTHONDONTWRITEBYTECODE':'1',

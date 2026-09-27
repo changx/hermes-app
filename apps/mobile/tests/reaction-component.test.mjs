@@ -78,6 +78,45 @@ test('followup callback reaction stays visible without changing row identity or 
   }
 });
 
+test('native busy ACK appears below exact user input, independent of processing reaction', () => {
+  const modes = [
+    '⏩ Steered into current run (iteration 2/500). Your message arrives after the next tool call.',
+    '⏩ Steered into current run and its active subagent(s). Your message arrives after their next tool call.',
+    "↪ Redirected current run. I'll adjust using your correction.",
+    "⏳ Queued for the next turn. I'll respond once the current task finishes.",
+    '⏳ Subagent working — your message is queued for when it finishes (use /stop to cancel everything).',
+    '⏳ Compressing context — your message is queued for when it finishes (use /stop to cancel everything).',
+    "⚡ Interrupting current task. I'll respond to your message shortly."
+  ];
+  for (const feedback of modes) {
+    const r = { ...receipt('running'), admission: 'followup', feedback, processing: 'running' };
+    const optimistic = projectTimeline([], { ...record('accepted'), receiptState: 'running', receiptFeedback: feedback, receiptProcessing: 'running' }, 'th', undefined, true);
+    const authoritative = projectTimeline([msg, { ...msg, id: 'm2', ref_seq: 2, client_message_id: 'other', receipt_id: 'other', text: 'same' }], null, 'th', undefined, true, [], new Map([['r', r]]));
+    for (const rows of [optimistic, authoritative]) {
+      const { rowTree } = mount(rows);
+      const label = named(rowTree, 'Text').find(n => n.props.accessibilityLabel === `收到后的反馈：${feedback}`);
+      assert.ok(label); assert.equal(text(label), feedback);
+      assert.equal(label.props.style.fontSize, 12);
+      assert.equal(label.props.style.flexShrink, 1);
+      assert.equal(rows[0].reaction?.label, '处理中');
+      assert.equal(named(rowTree, 'MessageContent')[0].props.text, msg.text);
+      assert.equal(named(rowTree, 'View').find(n => n.props.accessibilityLabel === '处理中').props.style.height, 23);
+    }
+    assert.equal(authoritative[1].feedback, undefined);
+    assert.equal(authoritative.length, 2);
+    assert.equal(optimistic[0].key, authoritative[0].key);
+  }
+  const cold = projectTimeline([msg], { ...record('accepted'), receiptState: 'running', receiptFeedback: modes[0] }, 'th', undefined, true);
+  assert.equal(cold[0].feedback, modes[0], 'durable fallback survives missing receipt cache');
+  assert.equal(cold[0].reaction, undefined, 'ACK never implies a successful callback');
+  const failed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('failed'), feedback: modes[0], processing: 'failed' }]]));
+  assert.equal(failed[0].feedback, modes[0]);
+  assert.equal(failed[0].reaction?.label, '处理失败', 'admission feedback cannot hide final processing failure');
+  const noAck = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('completed'), processing: 'failed' }]]));
+  assert.equal(noAck[0].feedback, undefined);
+  assert.equal(noAck[0].reaction?.label, '处理失败');
+});
+
 test('composer accepts ready attachments without text and blocks incomplete uploads; accessories remain in dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   const accessory = controls => ({ type: 'AttachmentComposer', props: { children: controls } }), indicator = { type: 'TypingIndicator', props: {} };

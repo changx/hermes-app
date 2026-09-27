@@ -19,6 +19,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
     {!row.continuation && <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
+    {own && !!row.feedback && <Text accessibilityLabel={`收到后的反馈：${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
     {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
@@ -27,7 +28,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
     </View>}
   </View>;
   return own ? <View style={styles.userMessageRow}>{content}</View> : content;
-}, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -270,6 +271,7 @@ const styles = StyleSheet.create({
   ownViewport: { width: '80%' },
   byline: { color: '#50647b', fontSize: 12, fontWeight: '600', marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
+  feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },
   older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 },

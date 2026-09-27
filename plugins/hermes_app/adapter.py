@@ -221,6 +221,17 @@ class HermesAppAdapter(BasePlatformAdapter):
         return {'name': chat_id, 'type': 'thread'}
 
     async def send(self, chat_id, content, reply_to=None, metadata=None):
+        # Only ACKs emitted inside this exact busy admission belong to the input.
+        # Ordinary agent output still comes exclusively from SessionDB below.
+        target = self.__dict__.get('_busy_feedback_targets', {}).get(reply_to)
+        if target and target[0] == chat_id and isinstance(content, str):
+            feedback = content.split('\n\n', 1)[0]  # omit one-time config onboarding
+            if len(feedback) <= 2000 and feedback.startswith((
+                    '⏩ Steered into current run', '↪ Redirected current run',
+                    '⏳ Subagent working', '⏳ Compressing context',
+                    '⏳ Queued for the next turn', '⚡ Interrupting current task')):
+                if await asyncio.to_thread(self._store.record_feedback,reply_to,target[1],feedback):
+                    self._events_changed.set()
         # Normal agent finals are already authoritative SessionDB rows. Cron is
         # delivered through this same adapter, but has no inbound turn to mirror.
         if metadata and metadata.get('job_id'):
@@ -467,6 +478,8 @@ class HermesAppAdapter(BasePlatformAdapter):
                 receipt_id, text = claim
                 self._events_changed.set()
                 event = MessageEvent(text=text,source=source,message_id=receipt_id)
+                feedback_targets = self.__dict__.setdefault('_busy_feedback_targets', {})
+                feedback_targets[receipt_id] = (thread['project_id'], thread_id)
                 try:
                     await self.handle_message(event)
                 except asyncio.CancelledError:
@@ -478,6 +491,8 @@ class HermesAppAdapter(BasePlatformAdapter):
                     await asyncio.to_thread(self._store.finish_receipt,receipt_id,'unknown')
                     self._events_changed.set()
                     return
+                finally:
+                    feedback_targets.pop(receipt_id, None)
                 # Busy success normally leaves _gateway_accepted False. Gateway may
                 # instead take a normal owner or enqueue a native FIFO fallback.
                 await asyncio.to_thread(self._store.mark_handed_off, receipt_id)

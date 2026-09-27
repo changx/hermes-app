@@ -15,6 +15,7 @@ export interface SendRecord {
   receiptAdmission?: Receipt['admission'];
   receiptHandedOff?: Receipt['handed_off'];
   receiptProcessing?: Receipt['processing'];
+  receiptFeedback?: Receipt['feedback'];
 }
 
 // Only an HTTPS origin is accepted. Credentials, paths, fragments and query strings
@@ -66,7 +67,7 @@ export function accepted(record: SendRecord, receipt: Receipt): SendRecord {
   if (receipt.client_message_id !== record.clientMessageId || receipt.thread_id !== record.threadId) throw new Error('收据与消息不匹配');
   const keepCallback = receipt.processing === undefined ||
     ['completed', 'failed', 'interrupted'].includes(record.receiptProcessing ?? '');
-  return { ...record, status: 'accepted', receiptId: receipt.id, receiptState: receipt.state, receiptAdmission: receipt.admission, receiptHandedOff: receipt.handed_off, receiptProcessing: keepCallback ? record.receiptProcessing : receipt.processing };
+  return { ...record, status: 'accepted', receiptId: receipt.id, receiptState: receipt.state, receiptAdmission: receipt.admission, receiptHandedOff: receipt.handed_off, receiptProcessing: keepCallback ? record.receiptProcessing : receipt.processing, receiptFeedback: receipt.feedback ?? record.receiptFeedback };
 }
 export function restoreSend(raw: string | null, config: Connection): SendRecord | null {
   if (!raw) return null;
@@ -82,6 +83,7 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   if (r.receiptAdmission !== undefined && r.receiptAdmission !== 'followup') throw new Error('收据记录损坏');
   if (r.receiptHandedOff !== undefined && r.receiptHandedOff !== true) throw new Error('收据记录损坏');
   if (r.receiptProcessing !== undefined && r.receiptProcessing !== null && !['running','completed','failed','interrupted','unknown'].includes(r.receiptProcessing)) throw new Error('收据记录损坏');
+  if (r.receiptFeedback !== undefined && (typeof r.receiptFeedback !== 'string' || !r.receiptFeedback.length || r.receiptFeedback.length > 2000)) throw new Error('收据记录损坏');
   if (r.status === 'accepted' && typeof r.receiptId !== 'string') throw new Error('收据记录损坏');
   // A process may have died after dispatch but before storing the response.
   return { ...r, ...(attachments.length ? { attachments } : { attachments: undefined }), status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;

@@ -93,6 +93,8 @@ class Store:
                 db.execute('ALTER TABLE receipts ADD COLUMN handed_off INTEGER NOT NULL DEFAULT 0')
             if not any(r['name'] == 'processing' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute('ALTER TABLE receipts ADD COLUMN processing TEXT')
+            if not any(r['name'] == 'feedback' for r in db.execute('PRAGMA table_info(receipts)')):
+                db.execute('ALTER TABLE receipts ADD COLUMN feedback TEXT')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
             if ('input_receipt_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
@@ -193,6 +195,7 @@ class Store:
         return {'id':row['id'], 'client_message_id':row['client_message_id'],
                 'thread_id':row['thread_id'], 'state':row['state'], 'durable':True,
                 'processing':row['processing'],
+                **({'feedback':row['feedback']} if row['feedback'] else {}),
                 **({'admission':'followup'} if row['admission']=='followup' else {}),
                 **({'handed_off':True} if row['handed_off'] else {})}
 
@@ -213,6 +216,19 @@ class Store:
                 return
             db.execute('UPDATE receipts SET processing=? WHERE id=?',(state,receipt_id))
             self._event(db,'receipt',thread_id,receipt_id,3)
+
+    def record_feedback(self, receipt_id, thread_id, text):
+        """The native busy ACK is admission feedback, never completion evidence."""
+        if not isinstance(text, str) or not 1 <= len(text) <= 2000:
+            raise ValueError('invalid feedback')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed = db.execute("UPDATE receipts SET feedback=? WHERE id=? AND thread_id=? "
+                                 "AND admission='followup' AND feedback IS NULL",
+                                 (text,receipt_id,thread_id)).rowcount
+            if changed:
+                self._event(db,'receipt',thread_id,receipt_id,4)
+            return bool(changed)
 
     def reconcile_channels(self, channels):
         """Durable ProjectDB invalidations; no channel body is duplicated here."""
@@ -730,7 +746,7 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
-                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing FROM receipts "
+                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing,feedback FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
                                   "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()
                 # Admission permits 32 queued/running receipts in total.
@@ -1091,6 +1107,40 @@ class Store:
             raise MissingOriginal('input text unavailable without replacement')
         return message
 
+    def _is_followup_copy(self, ref, row):
+        """Hide only a generated continuation whose original inputs are published."""
+        from .projection import _ORIGIN_NOTE
+        if (row['role'] != 'user' or 'platform_message_id' not in row.keys() or
+                row['platform_message_id'] or row['display_kind']):
+            return False
+        text = row['content']
+        if not isinstance(text, str):
+            return False
+        notes = list(_ORIGIN_NOTE.finditer(text))
+        if not notes or notes[0].start() != 0:
+            return False
+        with self._connect() as db:
+            for i, note in enumerate(notes):
+                try:
+                    origin = json.loads(note['origin'])
+                except ValueError:
+                    return False
+                if (origin.get('platform') != 'hermes_app' or
+                        origin.get('thread_id') != ref['thread_id'] or
+                        not isinstance(origin.get('message_id'), str)):
+                    return False
+                original = db.execute(
+                    'SELECT r.pending_text,t.project_id FROM receipts r JOIN threads t ON t.id=r.thread_id '
+                    'JOIN message_refs m ON m.input_receipt_id=r.id AND m.thread_id=r.thread_id '
+                    "WHERE r.id=? AND r.thread_id=? AND r.admission='followup' AND r.handed_off=1 "
+                    'AND m.seq<?', (origin['message_id'],ref['thread_id'],ref['seq'])).fetchone()
+                end = notes[i+1].start() if i+1 < len(notes) else len(text)
+                if (not original or origin.get('chat_id') != original['project_id'] or
+                        original['pending_text'] is None or
+                        text[note.end():end].strip() != original['pending_text'].strip()):
+                    return False
+        return True
+
     def history_page(self, thread_id, source_db, *, limit=50, after=None, after_ref_seq=None,
                      latest=False, before=None):
         if type(limit) is not int or not 1 <= limit <= 100:
@@ -1166,6 +1216,8 @@ class Store:
             row = rows.get(ref['row_id'])
             if row is None or row['session_id'] != ref['session_id'] or row['role'] != ref['role']:
                 raise MissingOriginal(f"original row {ref['row_id']} unavailable")
+            if self._is_followup_copy(ref, row):
+                continue
             value = dict(row)
             value['_row_id'] = row['id']
             text = visible_text(value)
@@ -1220,6 +1272,7 @@ class Store:
         scanned=cursor
         needle=query.casefold()
         for ref in page:
+            scanned=ref['seq']
             if ref['seq'] in inputs:
                 message=self._input_display(inputs[ref['seq']],ref,rows)
                 content=message['text']
@@ -1228,6 +1281,8 @@ class Store:
                 row=rows.get(ref['row_id'])
                 if row is None or row['session_id']!=ref['session_id'] or row['role']!=ref['role']:
                     raise MissingOriginal(f"original row {ref['row_id']} unavailable")
+                if self._is_followup_copy(ref, row):
+                    continue
                 content=visible_text(dict(row))
                 if content is None:
                     raise MissingOriginal(f"original row {ref['row_id']} is not visible")
