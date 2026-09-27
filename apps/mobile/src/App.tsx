@@ -328,7 +328,7 @@ function Screen() {
         text={text} onText={setText} onSend={send}
         attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
         typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} />}
-        composerAccessory={<AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} clearKey={attachmentClearKey} disabled={busy} />}
+        composerAccessory={<AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} />}
         receipts={receipts} interactions={interactions} answers={answers}
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}

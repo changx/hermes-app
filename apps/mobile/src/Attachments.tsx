@@ -19,11 +19,12 @@ function Action({ label, title = label, onPress, disabled = false }: { label: st
 }
 
 /** Only ready, server-returned Attachment metadata reaches onChange. Failed selections remain visible; busy is true until removed/retried. */
-export function AttachmentComposer({ client, threadId, onChange, clearKey, disabled = false }: {
-  client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; clearKey: number; disabled?: boolean;
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, disabled = false }: {
+  client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; disabled?: boolean;
 }) {
   const [items, setItems] = useState<DraftAttachment[]>([]);
   const [notice, setNotice] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const itemsRef = useRef(items), callbacks = useRef(onChange), epoch = useRef(0), nextKey = useRef(0);
   const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>());
@@ -41,7 +42,7 @@ export function AttachmentComposer({ client, threadId, onChange, clearKey, disab
   };
   useEffect(() => {
     if (identity.current.client !== client || identity.current.threadId !== threadId || identity.current.clearKey !== clearKey) {
-      cleanup(); identity.current = { client, threadId, clearKey }; update([]); setPreview(null); setNotice('');
+      cleanup(); identity.current = { client, threadId, clearKey }; update([]); setPreview(null); setNotice(''); setMenuOpen(false);
     }
   }, [client, threadId, clearKey]);
   useEffect(() => { callbacks.current([], false); }, []);
@@ -97,6 +98,19 @@ export function AttachmentComposer({ client, threadId, onChange, clearKey, disab
     } catch { if (epoch.current === generation) setNotice('无法选择文件，请重试。'); }
   };
 
+  const camera = async () => {
+    if (disabled || itemsRef.current.length >= 8) return;
+    const generation = epoch.current;
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (epoch.current !== generation) return;
+      if (!permission.granted) { setNotice('需要允许使用相机才能拍照，也可以从相册选择图片。'); return; }
+      const picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+      if (picked.canceled || epoch.current !== generation) return;
+      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? new File(asset.uri).size })));
+    } catch { if (epoch.current === generation) setNotice('无法打开相机，请重试或从相册选择。'); }
+  };
+
   const paste = (data: { type: string; data?: string }) => {
     if (disabled || data.type !== 'image' || !data.data) { if (!disabled) setNotice('剪贴板里没有可粘贴的图片。'); return; }
     let file: File | undefined;
@@ -111,11 +125,28 @@ export function AttachmentComposer({ client, threadId, onChange, clearKey, disab
       add([{ uri: file.uri, name, mime: `image/${match[1]}`, size: bytes.length }], file);
     } catch { if (file) forgetFile(file); setNotice('无法粘贴图片，请重新选择。'); }
   };
-  const pasteOnDemand = () => {
+  const pasteOnDemand = async () => {
+    if (disabled) return;
     const generation = epoch.current;
-    if (!disabled) void Clipboard.getImageAsync({ format: 'png' })
-      .then(image => { if (generation === epoch.current) paste(image ? { type: 'image', data: image.data } : { type: 'none' }); })
-      .catch(() => { if (generation === epoch.current) setNotice('无法读取剪贴板，请重新选择。'); });
+    try {
+      const hasImage = await Clipboard.hasImageAsync();
+      if (generation !== epoch.current) return;
+      if (hasImage) {
+        const image = await Clipboard.getImageAsync({ format: 'png' });
+        if (generation === epoch.current) {
+          if (image) paste({ type: 'image', data: image.data });
+          else setNotice('未能粘贴，请检查系统是否允许粘贴。');
+        }
+        return;
+      }
+      // Plain-text conversion also covers rich text. URL-only pasteboards are iOS-specific.
+      let text = await Clipboard.getStringAsync();
+      if (generation !== epoch.current) return;
+      if (!text && Platform.OS === 'ios') text = await Clipboard.getUrlAsync() || '';
+      if (generation !== epoch.current) return;
+      if (text) { onPasteText(text); setNotice(''); }
+      else setNotice('未能粘贴。请允许系统粘贴；文件请用“选择文件”添加。');
+    } catch { if (generation === epoch.current) setNotice('无法读取剪贴板，请重试。'); }
   };
   const remove = (key: number) => {
     if (disabled) return;
@@ -138,12 +169,16 @@ export function AttachmentComposer({ client, threadId, onChange, clearKey, disab
   };
   return <View style={styles.root}>
     <View style={styles.controls}>
-      <Action label="添加图片" onPress={() => { void images(); }} disabled={disabled || items.length >= 8} />
-      <Action label="添加文件" onPress={() => { void files(); }} disabled={disabled || items.length >= 8} />
-      {/* Expo Go's RN TextInput has no image-paste callback. This is a separate native UIPasteControl, not its long-press menu. */}
-      {Platform.OS === 'ios' && Clipboard.isPasteButtonAvailable
-        ? <Clipboard.ClipboardPasteButton accessibilityLabel="粘贴图片" acceptedContentTypes={['image']} imageOptions={{ format: 'png' }} onPress={paste} style={styles.paste} />
-        : <Action label="粘贴图片" onPress={pasteOnDemand} disabled={disabled || items.length >= 8} />}
+      <Pressable accessibilityRole="button" accessibilityLabel="添加附件" accessibilityState={{ expanded: menuOpen }}
+        disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
+        <Text style={styles.addText}>{menuOpen ? '×' : '＋'}</Text>
+      </Pressable>
+      {menuOpen && <View style={styles.controls}>
+        <Action label="选择文件" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
+        <Action label="系统相册" onPress={() => { setMenuOpen(false); void images(); }} disabled={disabled || items.length >= 8} />
+        <Action label="拍照" onPress={() => { setMenuOpen(false); void camera(); }} disabled={disabled || items.length >= 8} />
+        <Action label="粘贴" onPress={() => { setMenuOpen(false); void pasteOnDemand(); }} disabled={disabled} />
+      </View>}
     </View>
     {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}
     <ScrollView horizontal keyboardShouldPersistTaps="always" style={styles.draftStrip}>
@@ -268,7 +303,8 @@ const styles = StyleSheet.create({
   draftStrip: { maxHeight: 112 }, draftTile: { width: 250, marginRight: 6 },
   root: { marginVertical: 4 }, controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   action: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, backgroundColor: '#e6f0ff' }, actionText: { color: '#215ca7', fontSize: 12 }, disabled: { opacity: 0.45 },
-  paste: { width: 92, height: 32 }, tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
+  add: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 }, addText: { color: '#215ca7', fontSize: 28 },
+  tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
   thumb: { width: 62, height: 62, borderRadius: 6 }, fileText: { flex: 1, minWidth: 0 }, title: { color: '#172a40', fontSize: 12 },
   detail: { color: '#50647b', fontSize: 11, marginTop: 3 }, error: { color: '#a53238', fontSize: 12, marginTop: 5 },
   modal: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 }

@@ -29,7 +29,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   return own ? <View style={styles.userMessageRow}>{content}</View> : content;
 }, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
-export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void }
+export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
   threadId: string;
   rows: TimelineRow[];
@@ -66,6 +66,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const dockHeight = useRef(0);
   const [composerHeight, setComposerHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
+  const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
   const onContentInsetChange = useCallback((insets: { bottom: number }) => { reportedInset.current = insets.bottom; }, []);
   const renderScrollComponent = useCallback((scrollProps: ScrollViewProps) =>
@@ -151,10 +152,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     }
     savePosition();
   }, [savePosition, scheduleFollow]);
-  useImperativeHandle(ref, () => ({ followLatest, holdPosition() {
+  useImperativeHandle(ref, () => ({ followLatest, pasteText(text: string) {
+    const start = Math.min(textSelection.current?.start ?? props.text.length, props.text.length);
+    const end = Math.max(start, Math.min(textSelection.current?.end ?? start, props.text.length));
+    props.onText(props.text.slice(0, start) + text + props.text.slice(end));
+    textSelection.current = { start: start + text.length, end: start + text.length };
+  }, holdPosition() {
     following.current = false; pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
     setShowLatest(true); savePosition();
-  } }), [followLatest, savePosition]);
+  } }), [followLatest, savePosition, props.text, props.onText]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
   const previousRows = useRef<readonly TimelineRow[]>([]);
   useEffect(() => {
@@ -239,7 +245,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
 
     {props.typingIndicator}
     {props.composerAccessory}
-    <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
+    <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>}

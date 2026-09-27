@@ -13,7 +13,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', im
 
 function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}) {
   const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
-  let index = 0, flatList, sticky, keyboardHandler, visible = keyboard;
+  let index = 0, flatList, sticky, input, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
   const ref = { current: null };
   const react = {
@@ -65,14 +65,16 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     const tree = output.exports.ChatTimeline(props, ref);
     flatList = find(tree, 'FlatList').props;
     sticky = find(tree, 'KeyboardStickyView').props;
+    input = find(tree, 'TextInput').props;
     while (effects.length) effects.shift()();
   };
   render();
   // React applies the FlatList ref during commit.
-  hooks.find(h => h && h.current === null && h !== ref).current = list;
+  flatList.ref.current = list;
   const flush = () => { while (frames.length) frames.shift()(); };
   return {
-    calls, ref, get flatList() { return flatList; }, flush,
+    calls, ref, get flatList() { return flatList; }, get input() { return input; }, flush,
+    draft(text, onText) { props.text = text; props.onText = onText; render(); },
     content: height => flatList.onContentSizeChange(0, height),
     layout: height => flatList.onLayout({ nativeEvent: { layout: { height } } }),
     dock: height => sticky.onLayout({ nativeEvent: { layout: { height } } }),
@@ -87,6 +89,15 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
 
 const user = key => ({ key, role: 'user', text: key });
 const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, toolCalls });
+
+test('clipboard text replaces composer selection without sending or scrolling', () => {
+  const h = mount({ keyboard: true }); let draft;
+  h.draft('hello world', value => { draft = value; });
+  h.input.onSelectionChange({ nativeEvent: { selection: { start: 6, end: 11 } } });
+  h.ref.current.pasteText('Jamie'); assert.equal(draft, 'hello Jamie');
+  h.draft(draft, value => { draft = value; }); h.ref.current.pasteText('!'); assert.equal(draft, 'hello Jamie!');
+  assert.deepEqual(h.calls, []);
+});
 
 test('text taps keep the composer keyboard, while interactive drag dismissal remains native', () => {
   const h = mount({ keyboard: true });
