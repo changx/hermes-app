@@ -39,6 +39,8 @@ curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Conte
 
 `GET /v1/threads/{id}/messages?after=<cursor>&limit=1..100` 返回人类可读历史，每条含稳定 `ref_seq`、不透明 `id`、`role`、`text`。正常核心行保留原始核心 `id`；平台补充输入使用 `receipt:<receipt_id>`，并带精确 `receipt_id/client_message_id`，不冒充核心行。`ref_seq` 是已发布逻辑引用，压缩复制行或补充输入转普通执行不会改写已发序号或再插入相同输入。缺失原始内容返回 409；不以摘要伪造原文。
 
+消息可包含 `created_at`：有限非负 UNIX 秒数，允许小数，最大 `8.64e12`。取原始消息 timestamp 或 App 原始输入收据的首次 created_at，历史/最新分页/搜索保持一致。未知或无效则省略；旧服务端缺字段兼容。仅供客户端显示时间，不参与排序、身份判断或模型上下文构造，不用读取或重连时刻回填。详见[网络恢复与消息时间](../m1-network-time.md)。
+
 续轮上下文中的来源封装若精确对应已发布的追加原文，历史和搜索读取时不再显示其副本；原始 ref 与游标仍保留，不改数据库或模型内容。分页可能经过只含隐藏副本的空页，须继续使用返回的 next_cursor/older_cursor，不以消息数组为空判定末页。
 
 M1 工具时间线增量：capabilities 的 `tool_call_timeline=true` 表示 assistant 消息可有 `tool_calls: [{id, name, label, detail?}]`。`id` 保留原始调用 ID，`label` 是安全展示摘要，`detail` 仅为通过敏感检查和脱敏的命令；没有原始参数、工具结果或 reasoning。纯工具行允许 `text=""`；同一行先正文、后按数组顺序展示工具调用。正式 `pre_tool_call` 在执行前发布原始行，`post_tool_call` 幂等后备；沿用稳定引用和 message 失效事件，历史与搜索结构一致。旧历史未捕获的纯工具行不追溯插入。包装器只展示自身名称/摘要，不展开原始嵌套参数；至多 128 展示槽，超界在最后一槽明确说明省略项数。记录不代表调用成功。

@@ -9,7 +9,7 @@ export interface Attachment { id: string; thread_id: string; name?: string; mime
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -53,6 +53,8 @@ export const isRetryableError = (error: unknown): boolean => error instanceof Ht
 const obj = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ProtocolError('invalid object'); return v as Record<string, unknown> };
 const str = (v: unknown): string => { if (typeof v !== 'string') throw new ProtocolError('invalid string'); return v };
 const num = (v: unknown): number => { if (!Number.isSafeInteger(v) || (v as number) < 0) throw new ProtocolError('invalid integer'); return v as number };
+// Display-only UNIX seconds; absent on legacy servers. Never use it for message order.
+const timestamp = (v: unknown): number => { if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 8.64e12) throw new ProtocolError('invalid message timestamp'); return v };
 const arr = (v: unknown): unknown[] => { if (!Array.isArray(v)) throw new ProtocolError('invalid array'); return v };
 const optionalCursor = (v: unknown): string | null => v === null ? null : str(v);
 const idPath = (id: string): string => encodeURIComponent(id);
@@ -87,7 +89,7 @@ const validToolCalls = (value: unknown): ToolCall[] => {
       ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
   });
 };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
+const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);
@@ -359,9 +361,10 @@ export class HermesClient {
     await new Promise<void>((resolve,reject) => {
       let done=false, hello=false, onlineReady=false, awaitingPong=false, dirty=false, replayJob: Promise<void> | null=null;
       let helloTimer: ReturnType<typeof setTimeout> | undefined;
+      let pongTimer: ReturnType<typeof setTimeout> | undefined;
       const active=()=>!done && !signal.aborted && gen===this.generation;
       const finish=(error?: unknown) => {
-        if(done)return; done=true; clearTimeout(helloTimer); signal.removeEventListener('abort',abort); attempt.abort();
+        if(done)return; done=true; clearTimeout(helloTimer); clearTimeout(pongTimer); signal.removeEventListener('abort',abort); attempt.abort();
         if(error)reject(error);else resolve();
       };
       const abort=()=>finish();
@@ -388,7 +391,7 @@ export class HermesClient {
       socket.onMessage(data => {
         if(!active())return;
         try {
-          if(data==='pong') { if(!hello)throw new ProtocolError('pong before hello'); if(awaitingPong)stable(); awaitingPong=false; return }
+          if(data==='pong') { if(!hello)throw new ProtocolError('pong before hello'); if(awaitingPong)stable(); awaitingPong=false; clearTimeout(pongTimer); pongTimer=undefined; return }
           const x=obj(JSON.parse(data));
           if(x.type==='hello') {
             if(hello || x.protocol!==1 || x.durable_sync!==true)throw new ProtocolError('invalid hello');
@@ -404,20 +407,25 @@ export class HermesClient {
       });
       if(signal.aborted)finish();
       void (async()=>{
-        const interval=timeout(this.options.livenessMs,30000);
+        const interval=timeout(this.options.livenessMs,10000);
         while(active()) {
           try { await wait(interval,signal) } catch { break }
           if(!active())break;
           if(!hello)continue;
-          if(socket.send && awaitingPong) {finish(new TimeoutError('WebSocket liveness timed out'));break}
           try {
-            // Durable replay repairs missed frames even if the TCP socket is half-open.
-            await replayNow();
-            if(!active())break;
-            if(socket.send) {awaitingPong=true;socket.send('ping')}
-            else { // Adapters without ping support rotate the socket periodically.
+            if(socket.send) {
+              // The pong deadline starts at send, independently of any slow
+              // durable replay. Never send a second ping while one is pending.
+              if(!awaitingPong) {
+                awaitingPong=true;
+                pongTimer=setTimeout(()=>finish(new TimeoutError('WebSocket liveness timed out')),interval);
+                socket.send('ping');
+              }
+            } else { // Adapters without ping support rotate the socket periodically.
               stable();finish();break;
             }
+            // Keep one replay owner; HTTP must not delay ping or its deadline.
+            if(active())void replayNow();
           } catch(e) {finish(e);break}
         }
       })();

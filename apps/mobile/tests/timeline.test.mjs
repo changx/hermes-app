@@ -28,6 +28,19 @@ test('draft appears only when actual ephemeral text is supplied; final ref stays
   assert.equal(projectTimeline(messages, null, 'th_1', 'incomplete **').at(-1).text, 'incomplete **');
 });
 
+test('authoritative time wins over matching local send; legacy remains unknown', () => {
+  const record = { ...newSend(config, 'th_1', 'local', id), createdAt: 100 };
+  assert.equal(projectTimeline([], record, 'th_1')[0].timestamp, 100);
+  const published = { id: 'published', role: 'user', text: record.text, ref_seq: 11, client_message_id: id, created_at: 0 };
+  assert.equal(projectTimeline([published], record, 'th_1')[0].timestamp, 0);
+  assert.equal(projectTimeline([{ ...published, created_at: 300 }], record, 'th_1')[0].timestamp, 300);
+  assert.equal(projectTimeline([{ ...published, created_at: undefined }], record, 'th_1')[0].timestamp, 100);
+  assert.equal(projectTimeline([{ ...published, created_at: undefined }], null, 'th_1')[0].timestamp, undefined);
+  assert.equal(projectTimeline([], { ...record, createdAt: undefined }, 'th_1')[0].timestamp, undefined);
+  assert.equal(projectTimeline([{ id: 'assistant', role: 'assistant', text: 'reply', ref_seq: 12 }], null, 'th_1')[0].timestamp, undefined);
+  assert.equal(projectTimeline([{ ...published, created_at: 300 }], record, 'different')[0].timestamp, 300);
+});
+
 test('window reveals older cached refs without assuming dense global ref sequences', () => {
   assert.equal(windowStart(messages, null, 2), 1);
   assert.equal(windowStart(messages, 13, 2), 1);

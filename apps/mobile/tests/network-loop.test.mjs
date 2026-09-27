@@ -59,6 +59,39 @@ test('native transport + SDK: slow healthy read replay does not take online outb
   }
 });
 
+test('native-like silent socket recovers before a stalled sync HTTP timeout, without duplicate owners', async () => {
+  const oldFetch=globalThis.fetch,oldSocket=globalThis.WebSocket;
+  const stuck=deferred(),sockets=[],failures=[];let syncs=0,aborted=false;
+  class NativeSocket {
+    constructor() { this.sent=[];this.closes=0;sockets.push(this);queueMicrotask(()=>{this.onopen?.();this.onmessage?.({data:hello});}); }
+    send(data) { this.sent.push(data);if(sockets.indexOf(this)>0 && data==='ping')queueMicrotask(()=>this.onmessage?.({data:'pong'})); }
+    close() { this.closes++;this.onclose?.(); }
+  }
+  let sdk;
+  try {
+    globalThis.WebSocket=NativeSocket;
+    globalThis.fetch=async (url,options) => {
+      const path=new URL(url).pathname;
+      if(path==='/v1/capabilities')return response({protocol:1,durable_sync:true});
+      if(path==='/v1/sync') {
+        if(++syncs===2){options.signal.addEventListener('abort',()=>aborted=true,{once:true});await stuck.promise;}
+        return response({events:[],waterline:'c0',next_cursor:'c0',has_more:false});
+      }
+      throw Error('unexpected '+path);
+    };
+    sdk=new HermesClient({...nativeTransport(config.baseUrl),token:()=>config.token,
+      requestTimeoutMs:400,livenessMs:35,backoffMs:[5],onError:e=>failures.push(connectionFailure(e))});
+    sdk.cursor='c0';await sdk.connect();await sdk.connect();
+    await until(()=>syncs===2);await until(()=>sockets.length===2);
+    assert.deepEqual(sockets[0].sent,['ping']);assert.ok(sockets[0].closes>=1);
+    assert.ok(aborted);assert.deepEqual(failures,['WebSocket liveness timed out']);
+    await until(()=>sdk.connectionState==='online');assert.equal(sockets.length,2);
+    stuck.resolve();await pause(60);
+    assert.equal(sdk.cursor,'c0');assert.equal(sdk.lastEventId,0);
+    assert.equal(sockets.length,2);
+  } finally {stuck.resolve();sdk?.close();globalThis.fetch=oldFetch;globalThis.WebSocket=oldSocket;}
+});
+
 test('native-like fetch failure retries; new hello gates foreground recovery', async () => {
   const oldFetch=globalThis.fetch, oldSocket=globalThis.WebSocket;
   const sockets=[], failures=[], states=[];

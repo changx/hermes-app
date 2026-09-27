@@ -50,3 +50,21 @@ test('corrupt saved send refuses unsafe retry', () => {
   assert.throws(() => restoreSend('{"connectionId":"one","threadId":"th_1","text":"x","clientMessageId":"bad","status":"sending"}', config));
   assert.throws(() => newSend(config, 'th_1', ' ', id1));
 });
+
+test('send time is captured once in UNIX seconds and survives retry, ACK, restore', () => {
+  const record = newSend(config, 'th_1', 'text', id1);
+  assert.ok(Math.abs(record.createdAt - Date.now() / 1000) < 1);
+  const restored = restoreSend(JSON.stringify(record), config);
+  assert.equal(restored.createdAt, record.createdAt);
+  assert.equal(retrySend(config, restored).createdAt, record.createdAt);
+  const receipt = { id: 'r', client_message_id: id1, thread_id: 'th_1', durable: true, state: 'queued' };
+  assert.equal(accepted(record, receipt).createdAt, record.createdAt);
+  const legacy = { ...record };
+  delete legacy.createdAt;
+  assert.equal(restoreSend(JSON.stringify(legacy), config).createdAt, undefined);
+  for (const bad of [null, '1', -1, Infinity, NaN, 8.64e12 + 1]) {
+    assert.throws(() => restoreSend(JSON.stringify({ ...record, createdAt: bad }), config), /damaged/);
+  }
+  assert.equal(restoreSend(JSON.stringify({ ...record, createdAt: 0 }), config).createdAt, 0);
+  assert.equal(restoreSend(JSON.stringify({ ...record, createdAt: 8.64e12 }), config).createdAt, 8.64e12);
+});

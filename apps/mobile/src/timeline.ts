@@ -1,8 +1,9 @@
 import type { Interaction, Message, Receipt } from '../../../packages/client/src/index';
 import type { SendRecord } from './send';
+import { validTimestampSeconds } from './messageTime.ts';
 
 export interface Reaction { emoji: string; label: string; source: 'agent' }
-export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
+export interface TimelineRow { key: string; role: string; text: string; timestamp?: number; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefined> = {
   running: { emoji: '👀', label: 'Working', source: 'agent' },
@@ -41,11 +42,15 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const known = m.role === 'user' && !!m.receipt_id && !!m.client_message_id;
     const candidate = known ? receipts.get(m.receipt_id!) : undefined;
     const valid = known && (!candidate || matching(candidate, threadId, m.receipt_id!, m.client_message_id!));
-    const item = known ? local.get(m.client_message_id!) : undefined;
+    const candidateLocal = m.role === 'user' && m.client_message_id ? local.get(m.client_message_id) : undefined;
+    const item = candidateLocal?.threadId === threadId ? candidateLocal : undefined;
     const fallback = item?.receiptId === m.receipt_id && item?.threadId === threadId ? localReceipt(item) : undefined;
     const receipt = valid ? displayReceipt(candidate, fallback) : undefined;
     // Cache hydration cannot change a published row's identity or its position.
+    const serverTime = m.created_at;
+    const timestamp = validTimestampSeconds(serverTime) ? serverTime : item?.createdAt;
     return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
+      ...(validTimestampSeconds(timestamp) ? { timestamp } : {}),
       ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: index > 0 && messages[index - 1].role === 'assistant' } : {}),
       ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
       ...(valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {}) };
@@ -57,6 +62,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
     const receipt = valid ? displayReceipt(candidate, localReceipt(item)) : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
+      ...(validTimestampSeconds(item.createdAt) ? { timestamp: item.createdAt } : {}),
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: 'Not sent. Check your message or contact your administrator.' } : {}) });
   }
   // Only actual ephemeral client state can supply a draft. Durable events are

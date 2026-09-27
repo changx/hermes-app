@@ -79,7 +79,7 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         assert store.history_page(tid, home/'state.db',after_ref_seq=during['messages'][-1]['ref_seq'])['messages'] == [page['messages'][-1]]
         assert [m['id'] for m in store.history_page(tid,home/'state.db',latest=True,limit=2)['messages']] == list(map(str,[tool_only,final]))
         assert store.search_page(tid,home/'state.db','Search files')['messages'] == [
-            {k:page['messages'][2][k] for k in ('id','ref_seq','role','text','tool_calls')}]
+            {k:page['messages'][2][k] for k in ('id','ref_seq','role','text','created_at','tool_calls')}]
         # Re-read from a fresh Store after a reconnect; do not infer missing older refs.
         assert Store(store.path).history_page(tid,home/'state.db')['messages'] == page['messages']
     finally:

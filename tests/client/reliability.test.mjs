@@ -87,6 +87,62 @@ test('idle durable replay repairs a lost receipt frame; missing pong rotates hal
   } finally {c.close()}
 });
 
+test('silent socket expires on its own pong deadline and reconnects once',async()=>{
+  const sockets=[],errors=[],pings=[];
+  const c=fixture((_m,p)=>p.startsWith('/v1/sync')?empty:Promise.reject(Error(p)),sockets,{
+    livenessMs:30,requestTimeoutMs:300,backoffMs:[5],onError:e=>errors.push(e),
+    socket:{async connect(){const s=socket();const send=s.send;s.send=data=>{pings.push(Date.now());send.call(s,data)};sockets.push(s);return s}}
+  });
+  c.cursor='c0';const started=Date.now();await c.connect();
+  try {
+    await until(()=>sockets.length===2);
+    assert.equal(sockets[0].sent[0],'ping');
+    assert.ok(pings[0]-started<100,'first ping precedes a replay-sized HTTP timeout');
+    assert.ok(errors[0] instanceof TimeoutError);
+    assert.equal(errors[0].message,'WebSocket liveness timed out');
+    assert.ok(Date.now()-pings[0]<100,'missing-pong deadline is not a further replay wait');
+    assert.ok(sockets[0].closes>=1);
+    await until(()=>c.connectionState==='online');
+  }finally{c.close()}
+});
+
+test('never-pong expires even while replay HTTP ignores abort; successor owns state',async()=>{
+  const old=deferred(),sockets=[],errors=[];let syncs=0,aborted=false;
+  const c=fixture((_m,p,_token,_body,signal)=>{
+    if(!p.startsWith('/v1/sync'))throw Error(p);
+    if(++syncs===2){signal.addEventListener('abort',()=>aborted=true,{once:true});return old.promise}
+    return empty;
+  },sockets,{livenessMs:30,requestTimeoutMs:350,backoffMs:[5],onError:e=>errors.push(e)});
+  c.cursor='c0';await c.connect();
+  try {
+    await until(()=>syncs===2);
+    await until(()=>sockets[0].sent.length===1);
+    await until(()=>sockets.length===2);
+    assert.ok(aborted,'old replay signal was cancelled');
+    assert.equal(errors[0]?.message,'WebSocket liveness timed out');
+    await until(()=>c.connectionState==='online');
+    old.resolve({status:200,body:{events:[{event_id:1,cursor:'late',kind:'read',thread_id:'th',ref:'1',version:1}],waterline:'late',next_cursor:'late',has_more:false}});
+    await tick();assert.equal(c.cursor,'c0');assert.equal(c.lastEventId,0);
+  }finally{c.close();old.resolve(empty)}
+});
+
+test('healthy pongs clear deadlines; close and abort dispose an outstanding heartbeat',async()=>{
+  const sockets=[],errors=[];
+  const c=fixture((_m,p)=>p.startsWith('/v1/sync')?empty:Promise.reject(Error(p)),sockets,{
+    livenessMs:30,backoffMs:[5],onError:e=>errors.push(e)
+  });
+  c.cursor='c0';await c.connect();
+  try {
+    await until(()=>sockets[0]?.sent.length===1);
+    sockets[0].emit('pong');await until(()=>sockets[0].sent.length===2);
+    sockets[0].emit('pong');await until(()=>sockets[0].sent.length===3);
+    assert.equal(sockets.length,1);assert.equal(errors.length,0);
+    c.close();await pause(75);
+    assert.equal(sockets.length,1);assert.equal(errors.length,0);
+    assert.equal(c.connectionState,'suspended');
+  }finally{c.close()}
+});
+
 test('rapid close/resume ignores old callbacks and never marks online before new hello',async()=>{
   const sockets=[];const c=fixture((_m,p)=>p.startsWith('/v1/sync')?empty:Promise.reject(Error(p)),sockets,{socket:{async connect(){const s=socket(false);sockets.push(s);return s}},backoffMs:[5]});
   c.cursor='c0';await c.connect();await until(()=>sockets.length===1);
@@ -128,6 +184,9 @@ test('burst frames and periodic liveness coalesce into one in-flight plus one di
   },sockets,{livenessMs:15,requestTimeoutMs:200});
   c.cursor='c0';await c.connect();
   try {
+    await until(()=>sockets.length===1);
+    const send=sockets[0].send.bind(sockets[0]);
+    sockets[0].send=data=>{send(data);queueMicrotask(()=>sockets[0].emit('pong'))};
     await until(()=>syncs===2);
     const frame=JSON.stringify({type:'event',event_id:1,cursor:'c1',kind:'receipt',thread_id:'th',ref:'r1',version:1});
     for(let i=0;i<500;i++)sockets[0].emit(frame);
@@ -136,7 +195,7 @@ test('burst frames and periodic liveness coalesce into one in-flight plus one di
     for(let i=0;i<500;i++)sockets[0].emit(frame);
     assert.equal(syncs,3);
     second.resolve(empty);await until(()=>c.connectionState==='online');
-    assert.equal(syncs,4);assert.deepEqual(sockets[0].sent,['ping']);
+    assert.ok(syncs>=4 && syncs<=6,'periodic checks coalesce rather than queueing each frame');assert.ok(sockets[0].sent.length>=1);assert.ok(sockets[0].sent.every(data=>data==='ping'));assert.equal(sockets.length,1);
   }finally{c.close()}
 });
 

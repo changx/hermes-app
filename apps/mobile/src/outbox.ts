@@ -1,5 +1,6 @@
 import type { HermesClient, Message, Receipt } from '../../../packages/client/src/index';
 import { accepted, restoreSend, validSendContent, type Connection, type SendRecord } from './send.ts';
+import { validTimestampSeconds } from './messageTime.ts';
 
 export interface KeyValueStore {
   getItemAsync(key: string): Promise<string | null>;
@@ -106,7 +107,7 @@ export class OutboxStore {
         }
         const restored = restoreSend(JSON.stringify({
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
-          status: meta.status, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
+          status: meta.status, createdAt: meta.createdAt, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('Saved message identity conflict.');
         this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
@@ -123,6 +124,7 @@ export class OutboxStore {
   }
   private async insert(record: SendRecord): Promise<void> {
     if (record.connectionId !== this.config.id || this.entries.has(record.clientMessageId)) throw new OutboxIdentityError('Pending message identity conflict.');
+    if (record.createdAt !== undefined && !validTimestampSeconds(record.createdAt)) throw new Error('The message time is invalid.');
     const occupied = new Set([...this.entries.values()].map(e => e.slot));
     const slot = Array.from({ length: SLOTS }, (_, n) => n).find(n => !occupied.has(n));
     if (slot === undefined) throw new OutboxLimitError('You have 24 messages waiting to send. Please wait for the connection to recover.');
@@ -140,7 +142,7 @@ export class OutboxStore {
     await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
     for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
     const meta: Stored = { connectionId: saved.connectionId, threadId: saved.threadId, clientMessageId: saved.clientMessageId,
-      status: saved.status, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
+      status: saved.status, createdAt: saved.createdAt, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
       version, chunks: parts.length, hash: hash(data), order, attempts: 0, nextAttemptAt: 0 };
     await this.store.setItemAsync(key, JSON.stringify(meta));
     this.entries.set(record.clientMessageId, { slot, order, version, record: saved, attempts: 0, nextAttemptAt: 0 });
@@ -150,11 +152,11 @@ export class OutboxStore {
     return this.serialize(async () => {
       const entry = this.entries.get(record.clientMessageId);
       if (!entry || entry.record.text !== record.text || entry.record.threadId !== record.threadId ||
-          !sameAttachments(entry.record, record) || record.connectionId !== this.config.id)
+          !sameAttachments(entry.record, record) || record.connectionId !== this.config.id || record.createdAt !== entry.record.createdAt)
         throw new Error('The saved message identity or text has changed.');
       const data = entry.version === 2 ? entry.record.text : payload(entry.record);
       const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
-        status: record.status, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
+        status: record.status, createdAt: record.createdAt, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
         version: entry.version, chunks: pieces(data).length, hash: hash(data), order: entry.order,
         attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt };
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));

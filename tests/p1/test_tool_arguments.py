@@ -23,7 +23,7 @@ def test_urls_safe_and_compact():
         'http://site.test/?page=2', 'file:///etc/passwd', 'javascript:alert(1)',
         'https://ignored.test/'
     ], 'headers': {'Authorization': 'Bearer private'}})
-    assert result == {'id': 'real-id', 'name': 'web_extract', 'label': '阅读网页',
+    assert result == {'id': 'real-id', 'name': 'web_extract', 'label': 'Read webpage',
                       'detail': 'URL=https://example.org/a?q=hello · URL=http://site.test/?page=2 · …'}
     for name in ('browser_navigate', 'browser_open', 'functions.browser_navigate'):
         assert project(name, {'url': 'https://u:p@example.org/path?q=%E4%B8%AD%E6%96%87&%61pi_key=x#secret'})['detail'] == (
@@ -123,9 +123,9 @@ def test_lengths_and_malformed_arguments():
     c = call('x', 'browser_exec')
     c['function']['arguments'] = '{invalid'
     assert tool_timeline.public_tool_calls({'tool_calls': [c]}) == [
-        {'id': 'x', 'name': 'browser_exec', 'label': '浏览网页'}]
+        {'id': 'x', 'name': 'browser_exec', 'label': 'Browse web'}]
     assert project('web_extract', {'urls': {'url': 'https://x.test'}}) == {
-        'id': 'real-id', 'name': 'web_extract', 'label': '阅读网页'}
+        'id': 'real-id', 'name': 'web_extract', 'label': 'Read webpage'}
 
 
 def test_real_db_hooks_history_api_reread_urls(tmp_path, monkeypatch):
@@ -137,7 +137,7 @@ def test_real_db_hooks_history_api_reread_urls(tmp_path, monkeypatch):
         source = call('url-call', 'browser_exec', {'code': 'new_tab("https://u:pass@site.test/page?q=ok&token=hidden#hidden")'})
         row = core.append_message('s', 'assistant', '', tool_calls=[source], finish_reason='tool_calls')
         pre_tool_call(turn_id='turn-url', session_id='s', tool_call_id='url-call')
-        expected = [{'id': 'url-call', 'name': 'browser_exec', 'label': '浏览网页',
+        expected = [{'id': 'url-call', 'name': 'browser_exec', 'label': 'Browse web',
                      'detail': 'URL=https://site.test/page?q=ok'}]
         page = store.history_page(tid, home/'state.db')
         assert [x['id'] for x in page['messages']] == [str(user), str(row)]

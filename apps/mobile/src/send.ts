@@ -1,4 +1,5 @@
 import type { Attachment, Receipt } from '../../../packages/client/src/index';
+import { validTimestampSeconds } from './messageTime.ts';
 
 export const DEFAULT_BASE = 'https://agent.tuly.space';
 export interface Connection { baseUrl: string; token: string; id: string }
@@ -9,6 +10,7 @@ export interface SendRecord {
   clientMessageId: string;
   text: string;
   attachments?: Attachment[];
+  createdAt?: number;
   status: SendState;
   receiptId?: string;
   receiptState?: Receipt['state'];
@@ -57,7 +59,7 @@ export function validSendContent(threadId: string, text: string, attachments: re
 export function newSend(config: Connection, threadId: string, text: string, id: string, attachments: Attachment[] = []): SendRecord {
   const verified = validSendContent(threadId, text, attachments);
   if (!/^mob_[a-f0-9-]{36}$/i.test(id)) throw new Error('Invalid message identifier.');
-  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending', ...(verified.length ? { attachments: verified } : {}) };
+  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending', createdAt: Date.now() / 1000, ...(verified.length ? { attachments: verified } : {}) };
 }
 export function retrySend(config: Connection, record: SendRecord): SendRecord {
   if (record.connectionId !== config.id || record.status !== 'ambiguous' || record.receiptId) throw new Error('This message cannot be sent again unchanged.');
@@ -75,6 +77,7 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   if (!value || typeof value !== 'object') throw new Error('The saved message is damaged.');
   const r = value as Partial<SendRecord>;
   if (r.connectionId !== config.id) return null;
+  if (r.createdAt !== undefined && !validTimestampSeconds(r.createdAt)) throw new Error('The saved message is damaged.');
   if (typeof r.threadId !== 'string' || typeof r.clientMessageId !== 'string' || typeof r.text !== 'string' ||
       !/^mob_[a-f0-9-]{36}$/i.test(r.clientMessageId) || !['queued','sending','ambiguous','accepted','blocked'].includes(r.status || '')) throw new Error('The saved message is damaged.');
   let attachments: Attachment[];

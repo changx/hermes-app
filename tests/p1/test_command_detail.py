@@ -66,7 +66,7 @@ def test_real_history_preserves_script_details_and_identity(tmp_path):
         assert first['messages'][-1]['id'] == str(row)
         assert first['messages'][-1]['tool_calls'][0]['detail'] == command
         assert Store(store.path).history_page(tid, home/'state.db') == first
-        hit = store.search_page(tid, home/'state.db', '运行命令')['messages'][0]
+        hit = store.search_page(tid, home/'state.db', 'Run command')['messages'][0]
         assert hit['tool_calls'] == first['messages'][-1]['tool_calls']
         pre_tool_call(turn_id='script-turn', session_id='s', tool_call_id='script')
         assert store.history_page(tid, home/'state.db') == first

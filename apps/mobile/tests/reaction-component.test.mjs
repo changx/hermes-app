@@ -21,7 +21,7 @@ const modules = {
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
-  './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl },
+  './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl },
   './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
   'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
@@ -71,6 +71,33 @@ test('owned timeline labels are English while message and attachment names stay 
   const composer = named(tree, 'TextInput')[0];
   assert.equal(composer.props.accessibilityLabel, 'Message text');
   assert.equal(composer.props.placeholder, 'Message…');
+});
+
+test('sender and time are adjacent for each full message, not assistant continuations', () => {
+  const messages = [
+    { ...msg, created_at: 0 },
+    { id: 'a1', ref_seq: 2, role: 'assistant', text: 'First', created_at: 123 },
+    { id: 'a2', ref_seq: 3, role: 'assistant', text: '', tool_calls: [{ id: 'tool', name: 'search', label: 'Searching' }], created_at: 124 },
+    { id: 'a3', ref_seq: 4, role: 'assistant', text: 'Last', created_at: 125 },
+    { ...msg, id: 'u2', ref_seq: 5, client_message_id: 'c2', receipt_id: 'r2', created_at: 126 }
+  ];
+  const rows = projectTimeline(messages, null, 'th');
+  assert.deepEqual(rows.map(r => r.key), ['local:c', 'ref:2', 'ref:3', 'ref:4', 'local:c2']);
+  for (const [index, expected] of [[0, 'You'], [1, 'Hermes'], [4, 'You']]) {
+    const { rowTree } = mount([rows[index]]);
+    const byline = named(rowTree, 'View').find(v => v.props.style?.flexDirection === 'row' && v.props.style?.gap === 8);
+    assert.ok(byline, `byline for row ${index}`);
+    const children = byline.props.children.filter(n => n && typeof n === 'object');
+    assert.equal(children[0].type, 'Text'); assert.equal(text(children[0]), expected);
+    assert.equal(children[1].type, 'MessageTime');
+    assert.equal(children[1].props.seconds, messages[index].created_at);
+    assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
+  }
+  for (const index of [2, 3]) {
+    const { rowTree } = mount([rows[index]]);
+    assert.equal(named(rowTree, 'MessageTime').length, 0);
+    assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
+  }
 });
 
 test('followup callback reaction stays visible without changing row identity or footprint', () => {

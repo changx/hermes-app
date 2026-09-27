@@ -9,6 +9,7 @@ import sqlite3
 import base64
 import json
 import hashlib
+import math
 import stat
 from contextlib import contextmanager, closing
 from pathlib import Path
@@ -20,6 +21,13 @@ class MissingOriginal(Exception):
 
 class HistoryPending(Exception):
     pass
+
+
+def _message_time(value):
+    """Project only a finite, JS-representable UNIX-second source timestamp."""
+    if type(value) in (int, float) and 0 <= value <= 8.64e12 and math.isfinite(value):
+        return {'created_at': value}
+    return {}
 
 
 class Store:
@@ -1082,13 +1090,13 @@ class Store:
 
     def _input_message(self, db, ref):
         """One durable input identity; only an exact core anchor can replace its text."""
-        receipt=db.execute('SELECT id,client_message_id,thread_id,pending_text FROM receipts WHERE id=?',
+        receipt=db.execute('SELECT id,client_message_id,thread_id,pending_text,created_at FROM receipts WHERE id=?',
                            (ref['input_receipt_id'],)).fetchone()
         if not receipt or receipt['thread_id'] != ref['thread_id']:
             raise MissingOriginal('input receipt unavailable')
         return {'id':'receipt:'+receipt['id'], 'ref_seq':ref['seq'], 'role':'user',
                 'text':receipt['pending_text'], 'receipt_id':receipt['id'],
-                'client_message_id':receipt['client_message_id'],
+                'client_message_id':receipt['client_message_id'], **_message_time(receipt['created_at']),
                 'attachments':[self.attachment_view(dict(a)) for a in db.execute(
                     'SELECT * FROM attachments WHERE receipt_id=? ORDER BY rowid',(receipt['id'],))]}
 
@@ -1191,7 +1199,7 @@ class Store:
             linked = {}
             if ids:
                 for receipt in db.execute(
-                        'SELECT id,client_message_id,user_row_id FROM receipts WHERE thread_id=? AND '
+                        'SELECT id,client_message_id,user_row_id,created_at FROM receipts WHERE thread_id=? AND '
                         f'user_row_id IN ({",".join("?" for _ in ids)})', (thread_id, *ids)):
                     row_id = receipt['user_row_id']
                     # A legacy/corrupt duplicate link proves no unique send identity.
@@ -1225,6 +1233,8 @@ class Store:
                 raise MissingOriginal(f"original row {ref['row_id']} is not visible")
             message = {'id': str(row['id']), 'ref_seq': ref['seq'],
                        'role': row['role'], 'text': text,
+                       **_message_time(linked[row['id']]['created_at'] if row['role']=='user' and
+                                       linked.get(row['id']) is not None else value.get('timestamp')),
                        'attachments': attached.get(row['id'], []) if row['role'] == 'user' else []}
             if row['role']=='user' and row['display_kind']=='steer':
                 message['display_kind']='steer'  # Only the actual core typed row.
@@ -1262,6 +1272,13 @@ class Store:
         with self._connect() as db:
             inputs={r['seq']:self._input_message(db,r) for r in page
                     if r['input_receipt_id'] is not None}
+            linked = {}
+            if ids:
+                for receipt in db.execute(
+                        'SELECT user_row_id,created_at FROM receipts WHERE thread_id=? AND '
+                        f'user_row_id IN ({",".join("?" for _ in ids)})', (thread_id, *ids)):
+                    row_id = receipt['user_row_id']
+                    linked[row_id] = None if row_id in linked else dict(receipt)
         rows={}
         if ids:
             with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro',uri=True)) as source:
@@ -1291,7 +1308,10 @@ class Store:
             if needle in content.casefold() or any(needle in c['label'].casefold() or
                                                     needle in c['name'].casefold() for c in calls):
                 if ref['seq'] not in inputs:
-                    message = {'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content}
+                    message = {'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content,
+                               **_message_time(linked[row['id']]['created_at'] if ref['role']=='user' and
+                                               linked.get(row['id']) is not None else
+                                               row['timestamp'] if 'timestamp' in row.keys() else None)}
                     if row['role']=='user' and row['display_kind']=='steer':
                         message['display_kind']='steer'
                     if calls:
