@@ -16,7 +16,7 @@ from urllib.parse import quote, unquote
 
 from aiohttp import web, WSMsgType
 from gateway.config import Platform
-from gateway.platforms.base import BasePlatformAdapter, SendResult
+from gateway.platforms.base import BasePlatformAdapter, SendResult, ProcessingOutcome
 from gateway.platforms.event import MessageEvent
 from hermes_constants import get_hermes_home
 from hermes_cli import projects_db
@@ -440,6 +440,16 @@ class HermesAppAdapter(BasePlatformAdapter):
     def _ingress_lock(self, thread_id):
         return self.__dict__.setdefault('_ingress_locks',{}).setdefault(thread_id, asyncio.Lock())
 
+    async def on_processing_start(self, event: MessageEvent) -> None:
+        await asyncio.to_thread(self._store.record_processing,event.message_id,event.source.thread_id,'running')
+        self._events_changed.set()
+
+    async def on_processing_complete(self, event: MessageEvent, outcome: ProcessingOutcome) -> None:
+        state = {ProcessingOutcome.SUCCESS:'completed', ProcessingOutcome.FAILURE:'failed',
+                 ProcessingOutcome.CANCELLED:'interrupted'}[outcome]
+        await asyncio.to_thread(self._store.record_processing,event.message_id,event.source.thread_id,state)
+        self._events_changed.set()
+
     async def _dispatch_busy_text(self, thread_id):
         # The running receipt is the primary owner. A follow-up is claimed in
         # durable FIFO order before crossing the Gateway boundary, exactly once.
@@ -449,8 +459,7 @@ class HermesAppAdapter(BasePlatformAdapter):
                 return
             thread = self._store.get_thread(thread_id)
             source = self._source(thread['project_id'],thread_id)
-            if self._gateway_owner()._effective_busy_input_mode(source) != 'steer':
-                return  # Default interrupt mode must keep the old safe FIFO.
+            # Let the native Gateway choose steer/queue/interrupt for this profile.
             while not self._stopping:
                 claim = await asyncio.to_thread(self._store.claim_busy_text,thread_id)
                 if claim is None:

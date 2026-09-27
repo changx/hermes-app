@@ -91,6 +91,8 @@ class Store:
                 db.execute("ALTER TABLE receipts ADD COLUMN admission TEXT NOT NULL DEFAULT 'owner'")
             if not any(r['name'] == 'handed_off' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute('ALTER TABLE receipts ADD COLUMN handed_off INTEGER NOT NULL DEFAULT 0')
+            if not any(r['name'] == 'processing' for r in db.execute('PRAGMA table_info(receipts)')):
+                db.execute('ALTER TABLE receipts ADD COLUMN processing TEXT')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
             if ('input_receipt_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
@@ -190,6 +192,7 @@ class Store:
     def _receipt(row):
         return {'id':row['id'], 'client_message_id':row['client_message_id'],
                 'thread_id':row['thread_id'], 'state':row['state'], 'durable':True,
+                'processing':row['processing'],
                 **({'admission':'followup'} if row['admission']=='followup' else {}),
                 **({'handed_off':True} if row['handed_off'] else {})}
 
@@ -197,6 +200,19 @@ class Store:
         with self._connect() as db:
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             return self._receipt(row) if row else None
+
+    def record_processing(self, receipt_id, thread_id, state):
+        """Persist actual platform lifecycle callbacks, not history inference."""
+        if state not in ('running','completed','failed','interrupted'):
+            raise ValueError('invalid processing outcome')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT processing FROM receipts WHERE id=? AND thread_id=?',
+                             (receipt_id,thread_id)).fetchone()
+            if not row or row['processing'] == state or row['processing'] in ('completed','failed','interrupted'):
+                return
+            db.execute('UPDATE receipts SET processing=? WHERE id=?',(state,receipt_id))
+            self._event(db,'receipt',thread_id,receipt_id,3)
 
     def reconcile_channels(self, channels):
         """Durable ProjectDB invalidations; no channel body is duplicated here."""
@@ -234,6 +250,9 @@ class Store:
                 self._recover_visible_result(receipt['id'],receipt['thread_id'],source_db)
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            for row in db.execute("SELECT id,thread_id FROM receipts WHERE processing='running'").fetchall():
+                db.execute("UPDATE receipts SET processing='unknown' WHERE id=?", (row['id'],))
+                self._event(db,'receipt',row['thread_id'],row['id'],3)
             for row in db.execute("SELECT id,thread_id FROM receipts WHERE state='running'").fetchall():
                 db.execute("UPDATE receipts SET state='unknown' WHERE id=?", (row['id'],))
                 db.execute("UPDATE turns SET state='unknown' WHERE turn_id=? AND state='pending'",
@@ -711,7 +730,7 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
-                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off FROM receipts "
+                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
                                   "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()
                 # Admission permits 32 queued/running receipts in total.

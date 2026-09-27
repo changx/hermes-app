@@ -11,36 +11,48 @@ const receipt = (id, clientId, state, thread = 'th') => ({ id, client_message_id
 const record = (status, receiptState) => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'a', receiptId: status === 'accepted' ? 'ra' : undefined, receiptState, text: 'same', status });
 const rows = (messages, recs = [], cache = new Map(), interactions = []) => projectTimeline(messages, null, 'th', undefined, true, recs, cache, interactions);
 
-for (const [state, label] of Object.entries({ queued: '排队中', running: '处理中', completed: '已完成', failed: '执行失败', interrupted: '已停止', unknown: '结果待确认' })) {
-  test(`exact user receipt projects ${state} without inventing a separate message`, () => {
-    const result = rows([message('a', 'ra'), { id: 'bot', ref_seq: 2, role: 'assistant', text: 'answer' }], [], new Map([['ra', receipt('ra', 'a', state)]]));
+for (const [processing, label, emoji] of [['running', '处理中', '👀'], ['completed', '已完成', '✅'], ['failed', '处理失败', '❌'], ['unknown', '结果待确认', '⚠️']]) {
+  test(`exact user callback projects ${processing} without inventing a separate message`, () => {
+    const result = rows([message('a', 'ra'), { id: 'bot', ref_seq: 2, role: 'assistant', text: 'answer' }], [], new Map([['ra', { ...receipt('ra', 'a', 'unknown'), processing }]]));
     assert.equal(result.length, 2);
     assert.equal(result[0].reaction.label, label);
+    assert.equal(result[0].reaction.emoji, emoji);
     assert.equal(result[0].reaction.source, 'agent');
     assert.equal(result[1].reaction, undefined);
   });
 }
+test('receipt lifecycle, handoff and followup admission never imply callback; cancel clears', () => {
+  for (const state of ['queued', 'running', 'received', 'completed', 'failed', 'interrupted', 'unknown']) {
+    for (const processing of [undefined, null, 'interrupted']) {
+      const r = { ...receipt('ra', 'a', state), admission: 'followup', handed_off: true, processing };
+      assert.equal(rows([message('a', 'ra')], [], new Map([['ra', r]]))[0].reaction, undefined);
+    }
+  }
+  assert.equal(rows([message('a', 'ra')])[0].reaction, undefined);
+  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'completed'), processing: null }]]))[0].reaction, undefined);
+});
 test('pending approval and clarification override only nonterminal matching receipt', () => {
   const approval = { state: 'pending', kind: 'approval', id: 'a', receipt_id: 'ra', thread_id: 'th' };
   const clarify = { ...approval, kind: 'clarify' };
   for (const [kind, label] of [[approval, '等待审批'], [clarify, '等待回答']]) {
-    assert.equal(rows([message('a', 'ra')], [], new Map([['ra', receipt('ra', 'a', 'running')]]), [kind])[0].reaction.label, label);
+    assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'running' }]]), [kind])[0].reaction.label, label);
   }
   for (const state of ['completed', 'failed', 'interrupted', 'unknown']) {
-    assert.notEqual(rows([message('a', 'ra')], [], new Map([['ra', receipt('ra', 'a', state)]]), [approval])[0].reaction.label, '等待审批');
+    assert.notEqual(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', state), processing: 'completed' }]]), [approval])[0].reaction?.label, '等待审批');
   }
-  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', receipt('ra', 'a', 'running')]]), [{ ...approval, receipt_id: 'rb' }])[0].reaction.label, '处理中');
+  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'running' }]]), [{ ...approval, receipt_id: 'rb' }])[0].reaction.label, '处理中');
+  assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'running'), processing: 'completed' }]]), [approval])[0].reaction.label, '已完成');
 });
 test('same text, cross thread, foreign client and receipt mismatch never borrow a reaction or shift key', () => {
   const msgs = [message('a', 'ra'), message('b', 'rb', 2), { id: 'old', ref_seq: 3, role: 'user', text: 'same' }];
   const cold = rows(msgs);
-  assert.deepEqual(cold.map(x => x.reaction?.label), ['已接收', '已接收', undefined]);
+  assert.deepEqual(cold.map(x => x.reaction?.label), [undefined, undefined, undefined]);
   for (const wrong of [receipt('ra', 'b', 'completed'), receipt('ra', 'a', 'completed', 'other'), receipt('wrong', 'a', 'completed')]) {
     const next = rows(msgs, [], new Map([['ra', wrong]]));
     assert.deepEqual(next.map(x => x.key), cold.map(x => x.key));
     assert.equal(next[0].reaction, undefined);
     assert.equal(next[0].reactionSlot, true);
-    assert.equal(next[1].reaction.label, '已接收');
+    assert.equal(next[1].reaction, undefined);
   }
   assert.equal(rows([message('a', 'ra')], [record('accepted', 'running')], new Map([['ra', receipt('ra', 'b', 'completed')]])).length, 1);
   assert.equal(rows([message('a', 'ra')], [{ ...record('accepted', 'running'), threadId: 'other' }]).length, 1);
@@ -52,7 +64,7 @@ test('local status remains honest, acceptance solid before agent completes, then
     assert.equal(!!row.sendError, status === 'blocked');
   }
   const accepted = rows([], [record('accepted', 'queued')]);
-  assert.equal(accepted[0].reaction.label, '排队中');
+  assert.equal(accepted[0].reaction, undefined);
   assert.equal(accepted[0].status, 'accepted');
   assert.equal(rows([message('a', 'ra')], [record('accepted', 'queued')]).length, 1);
   assert.equal(rows([message('a', 'ra')], [record('accepted', 'queued')])[0].key, accepted[0].key);

@@ -38,6 +38,7 @@ def test_real_gateway_busy_steer_at_blocked_tool():
                             assert resp.status == 202, await resp.text()
                             receipt=(await resp.json())['receipt']
                             assert receipt.get('handed_off') is True, receipt
+                            assert receipt['processing'] is None, receipt
                             assert receipt['state']=='running', 'handoff must not wait for the blocked tool or finish execution'
                         async with a.post(root+f"/v1/threads/{one['id']}/messages",
                                 json={'client_message_id':message_id,'text':text}) as resp:
@@ -193,6 +194,7 @@ def test_real_gateway_busy_steer_at_blocked_tool():
         assert not any(m['id']==str(rows[0]['id']) for m in page)
         assert result['receipts'] and all(r['state']=='received' and r['admission']=='followup'
                                           for r in result['receipts'])
+        assert all(r['processing'] is None for r in result['receipts'])
         assert result['boundary']['initial']['admission']=='followup'
         assert result['stopped']['stopped'] is True
         assert result['boundary']['final']['state']=='received'

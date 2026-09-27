@@ -13,3 +13,4 @@ node_modules/.bin/tsc -p packages/client/tsconfig.json
 node_modules/.bin/esbuild packages/client/src/index.ts --bundle --format=esm --platform=neutral --outfile=packages/client/dist/index.js
 node tests/client/unit.test.mjs
 node tests/client/reliability.test.mjs
+node --test packages/client/tests/*.test.mjs

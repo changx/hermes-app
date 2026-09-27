@@ -39,8 +39,11 @@ def test_owner_completion_survives_native_continuation_tools():
                 owner = await send('owner', 'P1_TIMELINE')
                 try:
                     await wait_for(lambda: (HOME/'timeline-tool-entered').exists())
+                    async with a.get(root+'/v1/receipts/'+owner['id']) as response:
+                        assert (await response.json())['receipt']['processing'] == 'running'
                     alpha = await send('alpha', 'FOLLOWUP_ALPHA')
                     assert alpha['handed_off'] is True
+                    assert alpha['processing'] is None
                     (HOME/'timeline-tool-release').write_text('1')
                     await wait_for(model.final_entered.is_set)
                     beta = await send('beta', 'FOLLOWUP_BETA')
@@ -56,7 +59,9 @@ def test_owner_completion_survives_native_continuation_tools():
                     if all(r['state'] not in ('queued','running') for r in receipts): break
                     await asyncio.sleep(.05)
                 assert receipts[0]['state'] == 'completed', receipts
+                assert receipts[0]['processing'] == 'completed', receipts
                 assert all(r['state']=='received' and r['handed_off'] for r in receipts[1:]), receipts
+                assert all(r['processing'] is None for r in receipts[1:]), receipts
                 assert model.tool_calls == 2, model.tool_calls
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as response:
                     assert response.status == 200

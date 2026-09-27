@@ -58,17 +58,17 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
-test('followup handoff reaction stays visible without changing row identity or footprint', () => {
+test('followup callback reaction stays visible without changing row identity or footprint', () => {
   let previous;
   let footprint;
-  for (const [state, label, handed_off] of [['queued', '排队中'], ['running', '处理中'], ['running', '已处理', true], ['received', '已处理']]) {
-    const r = { ...receipt(state), admission: 'followup', ...(handed_off ? { handed_off } : {}) };
+  for (const [state, processing, label] of [['queued', null, undefined], ['running', 'running', '处理中'], ['running', 'completed', '已完成'], ['received', null, undefined]]) {
+    const r = { ...receipt(state), admission: 'followup', handed_off: true, processing };
     const row = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', r]]))[0];
     const { rowTree } = mount([row]);
     const slot = named(rowTree, 'View').find(n => n.props.style?.height === 23);
     assert.ok(slot, 'reserve the same height to avoid scroll jumps');
     assert.equal(slot.props.accessibilityLabel, label);
-    assert.equal(named(expand(slot), 'Text').map(text).join(''), label ? `${row.reaction.emoji} ${label}${state === 'queued' ? '取消' : ''}` : '');
+    assert.equal(named(expand(slot), 'Text').map(text).join(''), `${label ? `${row.reaction.emoji} ${label}` : ''}${state === 'queued' ? '取消' : ''}`);
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, msg.text);
     assert.equal(named(rowTree, 'MessageContent')[0].props.pending, false);
     assert.equal(row.receipt, r);
@@ -238,8 +238,7 @@ test('real message component renders legible gray text until accepted, then norm
     const { rowTree } = mount(rows);
     const content = named(rowTree, 'MessageContent')[0];
     assert.equal(content.props.pending, phase !== 'accepted');
-    if (phase === 'accepted') assert.equal(named(rowTree, 'View').some(v => v.props.accessibilityLabel === rows[0].reaction.label), true);
-    else assert.equal(rows[0].reaction, undefined);
+    assert.equal(rows[0].reaction, undefined);
     assert.equal(named(rowTree, 'Text').some(v => text(v).includes('未发出')), phase === 'blocked');
     const rendered = expand(MessageContent(content.props));
     const paragraph = named(rendered, 'Text').find(n => n.props.selectable && Array.isArray(n.props.style) && n.props.style.some(x => x?.fontSize === 15));
@@ -252,7 +251,7 @@ test('real message component renders legible gray text until accepted, then norm
   assert.equal(named(mount(authoritative).rowTree, 'MessageContent')[0].props.pending, false);
 });
 test('pill is under corresponding user message with stable footprint; controls remain callbacks, not reaction taps', () => {
-  const cache = new Map([['r', receipt('running')]]);
+  const cache = new Map([['r', { ...receipt('running'), processing: 'running' }]]);
   const interaction = { id: 'ask', kind: 'approval', state: 'pending', thread_id: 'th', receipt_id: 'r', prompt: '允许继续？', choices: ['允许', '拒绝'] };
   const projected = projectTimeline([msg], null, 'th', undefined, true, [], cache, [interaction]);
   const h = mount(projected, [receipt('queued'), receipt('running')], [interaction]);
@@ -267,7 +266,7 @@ test('pill is under corresponding user message with stable footprint; controls r
   assert.equal(named(h.tree, 'Pressable').some(n => n.props.accessibilityLabel === '停止当前执行'), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('本机发送记录')), false);
   assert.equal(named(h.tree, 'Text').some(node => text(node).includes('收据')), false);
-  const completed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', receipt('completed')]]));
+  const completed = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', { ...receipt('completed'), processing: 'completed' }]]));
   const changed = mount(completed);
   assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === '已完成').props.style.height, 23);
   assert.equal(completed[0].key, projected[0].key);

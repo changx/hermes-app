@@ -127,6 +127,7 @@ async def _scenario(root,mode):
             assert status==409
             cursor=(await _get(second,url+'/v1/sync'))[1]['waterline']
             queued=None
+            attachment=None
             if mode=='queued':
                 await _wait(home/'model-requests.jsonl',proc)
                 assert _requests(home)[0]['blocked']
@@ -138,7 +139,14 @@ async def _scenario(root,mode):
                         break
                     await asyncio.sleep(.05)
                 assert linked[0] is not None and linked[1] is None,linked
-                status,data=await _post(second,endpoint,{'client_message_id':'client-second','text':'P1_SECOND_QUEUED'})
+                # Plain text now follows native busy policy. An attachment
+                # remains in the durable App queue and exercises unsent recovery.
+                async with second.post(url+f'/v1/threads/{thread}/attachments',data=b'queued proof',
+                                       headers={'X-File-Name':'queued.txt'}) as response:
+                    assert response.status==201
+                    attachment=(await response.json())['attachment']['id']
+                status,data=await _post(second,endpoint,{'client_message_id':'client-second','text':'P1_SECOND_QUEUED',
+                                                        'attachments':[attachment]})
                 assert status==202,data
                 queued=data['receipt']['id']
                 assert (await _get(second,url+'/v1/receipts/'+queued))[1]['receipt']['state']=='queued'
@@ -158,7 +166,8 @@ async def _scenario(root,mode):
             proc=None
             proc,log,url=await _start(root,'after')
             endpoint=url+f'/v1/threads/{thread}/messages'
-            await _receipt(second,url,receipt,'unknown')
+            recovered=await _receipt(second,url,receipt,'unknown')
+            assert recovered['processing']=='unknown'
             if queued:
                 await _receipt(second,url,queued,'completed')
             status,retry=await _post(second,endpoint,{'client_message_id':message_id,'text':content})
@@ -169,8 +178,11 @@ async def _scenario(root,mode):
             if mode=='final':
                 assert sum('SYNTHETIC_P1_FINAL' in m['text'] for m in page['messages'])==1,page
             if queued:
-                assert [(m['role'],m['text']) for m in page['messages']][-2:]==[
-                    ('user','P1_SECOND_QUEUED'),('assistant','SYNTHETIC_P1_FINAL')],page
+                user,answer=page['messages'][-2:]
+                assert user['role']=='user' and user['receipt_id']==queued
+                assert user['text'].endswith('P1_SECOND_QUEUED')
+                assert [a['id'] for a in user['attachments']]==[attachment]
+                assert (answer['role'],answer['text'])==('assistant','SYNTHETIC_P1_FINAL')
             assert len(_requests(home))==before_count+(1 if queued else 0),_requests(home)
             if mode=='tool':
                 assert (home/'tool-marker').read_text().splitlines()==['called']

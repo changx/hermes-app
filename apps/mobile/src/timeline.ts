@@ -4,30 +4,24 @@ import type { SendRecord } from './send';
 export interface Reaction { emoji: string; label: string; source: 'agent' }
 export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
 
-const agentState: Record<Receipt['state'], Reaction> = {
-  received: { emoji: '👀', label: '已接收', source: 'agent' },
-  queued: { emoji: '⏳', label: '排队中', source: 'agent' },
-  running: { emoji: '⚙️', label: '处理中', source: 'agent' },
+const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefined> = {
+  running: { emoji: '👀', label: '处理中', source: 'agent' },
   completed: { emoji: '✅', label: '已完成', source: 'agent' },
-  failed: { emoji: '⚠️', label: '执行失败', source: 'agent' },
-  interrupted: { emoji: '⏹', label: '已停止', source: 'agent' },
+  failed: { emoji: '❌', label: '处理失败', source: 'agent' },
+  interrupted: undefined,
   unknown: { emoji: '⚠️', label: '结果待确认', source: 'agent' }
 };
-const received: Reaction = { emoji: '👀', label: '已接收', source: 'agent' };
 const terminal = (state: Receipt['state']) => !['queued', 'running'].includes(state);
 const matching = (receipt: Receipt | undefined, threadId: string, receiptId: string, clientMessageId: string): receipt is Receipt =>
   !!receipt && receipt.id === receiptId && receipt.thread_id === threadId && receipt.client_message_id === clientMessageId;
 
 function statusFor(receipt: Receipt | undefined, interactions: readonly Interaction[]): Reaction | undefined {
-  if (!receipt) return received;
-  if (!terminal(receipt.state)) {
+  if (!receipt) return undefined;
+  if (!terminal(receipt.state) && !['completed', 'failed', 'interrupted'].includes(receipt.processing ?? '')) {
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
     if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? '等待审批' : '等待回答', source: 'agent' };
   }
-  // Handled acknowledges handoff to Hermes, not completion of its work.
-  if (receipt.handed_off || (receipt.admission === 'followup' && (receipt.state === 'received' || receipt.state === 'completed')))
-    return { emoji: '✅', label: '已处理', source: 'agent' };
-  return agentState[receipt.state];
+  return receipt.processing == null ? undefined : agentState[receipt.processing];
 }
 
 // Only explicit server identity can reconcile a send; never match equal text.
@@ -50,8 +44,8 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed' && item.receiptAdmission !== 'followup')) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
-    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}) } : undefined;
-    const receipt = valid ? candidate ?? fallback : undefined;
+    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}), ...(item.receiptProcessing !== undefined ? { processing: item.receiptProcessing } : {}) } : undefined;
+    const receipt = valid ? candidate && fallback && candidate.processing === undefined && fallback.processing !== undefined ? { ...candidate, processing: fallback.processing } : candidate ?? fallback : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });
   }

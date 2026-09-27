@@ -177,7 +177,12 @@ async def _scenario(root):
             # queued receipt is cancelled independently; another Thread runs.
             held=await _send(a,url,tid,'P1_HOLD_TOOL','hold-1')
             await _wait(lambda:(home/'hold-entered').exists())
-            queued=await _send(a,url,tid,'queued after hold','hold-queued')
+            # Text uses native busy handling; attached input remains locally queued.
+            async with a.post(url+f'/v1/threads/{tid}/attachments',data=b'queued proof',
+                              headers={'X-File-Name':'queued.txt'}) as response:
+                assert response.status==201
+                queued_attachment=(await response.json())['attachment']['id']
+            queued=await _send(a,url,tid,'queued after hold','hold-queued',[queued_attachment])
             code,_=await _json(a,'POST',url+f'/v1/threads/{tid}/receipts/{queued}/cancel',{})
             assert code==200
             code,_=await _json(a,'POST',url+f'/v1/threads/{tid}/stop',{})
