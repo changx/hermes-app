@@ -56,6 +56,15 @@
 - 主控最终复跑120/120手机测试、TypeScript、iOS/Android Expo导出及diff检查全部通过。生产HTML在Chromium与Linux WebKit分别10/10通过，实际断言SVG放大/缩小/重置尺寸、旋转后可见、成功/失败回报和无远程请求。尚无iPhone真机手势/原生渲染验收，不能据此宣布此前手机空白完全解决。
 - 证据：私有 `markdown-verification/fullscreen-parent-tests.log`、`fullscreen-parent-ts.log`、`fullscreen-export.log`、`fullscreen-browser/{chromium,webkit}-fullscreen-results.json`、`visible-original-results.json`。此次发布仅更新隔离Expo，Gateway/插件保持不变；发布结果单独记录。
 
+## Mermaid 全图与持久缩放修正
+
+- 真机反馈：捏合松手后弹回。当前页面只有浏览器 viewport 缩放，图形自身仅按钮修改尺寸；初始比例固定为1，没有按消息区域高度/宽度适配。尚不能仅凭源码确认 iOS 回弹的唯一原生原因。
+- 本轮改为图形自身维护比例：首次按可用宽高缩小到全图（不放大小图），为缩放按钮预留位置；双指围绕手势中心修改实际 SVG 尺寸，松手/取消手势不重置比例；单指仍滚动查看放大后的图。按钮与捏合同用一个比例，重置回到适合全图。
+- 页面不再叠加浏览器原生页面缩放；视口尺寸变化仅在尚未手动缩放或重置后重新适配，用户已缩放时保留比例。消息流和全屏共用相同行为，不修改时间线、表格或网络逻辑；CSP及固定状态桥保持。
+- 验收：生产脚本回归覆盖宽图/高图初始适配、捏合后松手/取消不回弹、第二次手势接续、缩放边界及窗口变化；真实 Chromium/WebKit 验证尺寸与事件路径，全量手机测试/TS/双端导出后发布隔离 Expo。触摸事件自动化与真实 iPhone 手势验收分开。
+- 本轮实测：122/122 手机测试、TypeScript、iOS/Android Expo 导出通过；Chromium 9/9（CDP 双指触摸输入）与 Linux WebKit 9/9（DOM 触摸事件）验证生产引擎默认全图、缩放松手后保留、旋转不重置、全屏重置适配及放大后滚动，无站外请求。WebKit 复用既有私有依赖目录，未安装系统包。尚未做真实 iPhone 捏合验收。
+- 证据：私有 `markdown-verification/pinch-tests-final.log`、`pinch-ts-final.log`、`pinch-export.log`、`pinch-browser/{chromium,webkit}-pinch-results.json`；发布只更新隔离 Expo，结果记录在 `pinch-release-verification.json`。
+
 ## 验收
 
 1. 用真实解析函数验证上述各类语法，包括转义竖线、空/混排单元格、嵌套列表任务误判、引用/链接安全和不完整输入。

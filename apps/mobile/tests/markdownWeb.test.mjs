@@ -51,37 +51,92 @@ test('oversized source returns inert text without engines or executable tags', (
   assert.ok(html.includes("default-src 'none'"));
 });
 
-test('production Mermaid draw script rejects an empty diagram and reports only failure status', async () => {
-  async function render(svg) {
-    const html = renderMarkdownHtml('diagram', 'flowchart LR\nA-->B');
-    const script = [...html.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)].at(-1)[1];
-    const events = [];
-    const listeners = {};
-    const diagram = { style: {}, viewBox: { baseVal: { width: 400, height: 200 } }, getBoundingClientRect: () => ({ width: 400, height: 200 }) };
-    const element = { innerHTML: '', textContent: '', querySelector: selector => selector === 'svg' && element.innerHTML.includes('<svg') ? diagram : null };
-    const context = { document: { getElementById: id => id === 'content' ? element : { addEventListener: (type, callback) => { listeners[id] = callback; } } },
-      mermaid: { initialize: () => {}, render: async () => ({ svg }) },
-      window: { ReactNativeWebView: { postMessage: data => events.push(data) } } };
-    runInNewContext(script, context);
-    await new Promise(setImmediate);
-    return { element, events, diagram, listeners, html };
-  }
-  const good = await render('<svg></svg>');
+async function renderDiagram(svg = '<svg></svg>', width = 400, height = 200) {
+  const html = renderMarkdownHtml('diagram', 'flowchart LR\nA-->B');
+  const script = [...html.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)].at(-1)[1];
+  const events = [], listeners = {}, touch = {}, windowEvents = {};
+  const diagram = { style: {}, viewBox: { baseVal: { width, height } }, getBoundingClientRect: () => ({ width, height }) };
+  const element = { innerHTML: '', textContent: '', querySelector: selector => selector === 'svg' && element.innerHTML.includes('<svg') ? diagram : null };
+  const stage = { clientWidth: 336, clientHeight: 176, scrollLeft: 0, scrollTop: 0,
+    getBoundingClientRect: () => ({ left: 0, top: 46 }),
+    addEventListener: (type, callback, options) => { touch[type] = { callback, options }; } };
+  const context = { document: { getElementById: id => id === 'content' ? element : id === 'diagram-stage' ? stage : { addEventListener: (type, callback) => { listeners[id] = callback; } } },
+    mermaid: { initialize: () => {}, render: async () => ({ svg }) },
+    window: { ReactNativeWebView: { postMessage: data => events.push(data) }, addEventListener: (type, callback) => { windowEvents[type] = callback; } } };
+  runInNewContext(script, context);
+  await new Promise(setImmediate);
+  const dispatch = (type, touches = []) => {
+    let prevented = false;
+    touch[type].callback({ touches, preventDefault: () => { prevented = true; } });
+    return prevented;
+  };
+  return { element, events, diagram, listeners, html, stage, dispatch, touch, windowEvents };
+}
+
+test('production Mermaid draw script fits the viewport and rejects an empty diagram with only failure status', async () => {
+  const good = await renderDiagram();
   assert.equal(good.element.innerHTML, '<svg></svg>');
   assert.deepEqual(good.events, ['render-ready']);
-  assert.match(good.html, /maximum-scale=5,user-scalable=yes/);
+  assert.match(good.html, /maximum-scale=1,user-scalable=no/);
   for (const label of ['放大', '缩小', '重置']) assert.ok(good.html.includes(`aria-label="${label}"`));
-  assert.equal(good.diagram.style.width, '400px');
+  assert.equal(good.diagram.style.width, '320px');
+  assert.equal(good.diagram.style.height, '160px');
   good.listeners['zoom-in']();
-  assert.equal(good.diagram.style.width, '500px');
-  good.listeners['zoom-out']();
   assert.equal(good.diagram.style.width, '400px');
   good.listeners['zoom-out']();
-  assert.equal(good.diagram.style.width, '300px');
+  assert.equal(good.diagram.style.width, '320px');
+  good.listeners['zoom-out']();
+  assert.equal(good.diagram.style.width, '256px');
   good.listeners['zoom-reset']();
-  assert.equal(good.diagram.style.width, '400px');
+  assert.equal(good.diagram.style.width, '320px');
   assert.deepEqual(good.events, ['render-ready'], 'zoom never uses the native message bridge');
-  const blank = await render('');
+  const blank = await renderDiagram('');
   assert.equal(blank.element.textContent, '暂时无法显示：flowchart LR\nA-->B');
   assert.deepEqual(blank.events, ['render-failed']);
+});
+
+test('wide and tall Mermaid diagrams initially fit both axes; small diagrams are not enlarged', async () => {
+  for (const [width, height] of [[1600, 200], [200, 1600], [100, 80]]) {
+    const { diagram } = await renderDiagram('<svg></svg>', width, height);
+    const scale = Math.min(1, 320 / width, 160 / height);
+    assert.equal(parseFloat(diagram.style.width), width * scale);
+    assert.equal(parseFloat(diagram.style.height), height * scale);
+  }
+});
+
+test('pinch scale survives release, cancellation, resize and subsequent gestures; single-touch remains native', async () => {
+  const g = await renderDiagram();
+  const fingers = distance => [{ clientX: 160 - distance / 2, clientY: 126 }, { clientX: 160 + distance / 2, clientY: 126 }];
+  assert.equal(g.touch.touchmove.options.passive, false);
+  assert.equal(g.dispatch('touchstart', fingers(80)), true);
+  assert.equal(g.dispatch('touchmove', fingers(160)), true);
+  assert.equal(g.diagram.style.width, '640px');
+  // Same diagram point stays under the centre of the two fingers.
+  assert.equal(g.stage.scrollLeft, 152);
+  assert.equal(g.stage.scrollTop, 72);
+  g.dispatch('touchend');
+  assert.equal(g.diagram.style.width, '640px', 'release must not restore the fit scale');
+  g.stage.clientWidth = 216; g.stage.clientHeight = 116;
+  g.windowEvents.resize();
+  assert.equal(g.diagram.style.width, '640px', 'layout changes preserve manual zoom');
+  g.dispatch('touchstart', fingers(80));
+  g.dispatch('touchmove', fingers(120));
+  g.dispatch('touchcancel');
+  assert.equal(parseFloat(g.diagram.style.width), 960, 'new pinch continues from retained scale');
+  g.dispatch('touchmove', fingers(200));
+  assert.equal(parseFloat(g.diagram.style.width), 960, 'cancel clears stale gesture');
+  assert.equal(g.dispatch('touchstart', fingers(80).slice(0, 1)), false);
+  assert.equal(g.dispatch('touchmove', fingers(120).slice(0, 1)), false);
+  for (const event of ['gesturestart', 'gesturechange', 'gestureend']) assert.equal(g.dispatch(event), true);
+  g.listeners['zoom-reset']();
+  assert.equal(g.diagram.style.width, '200px');
+  assert.equal(g.stage.scrollLeft, 0);
+  assert.equal(g.stage.scrollTop, 0);
+  g.stage.clientWidth = 416; g.stage.clientHeight = 216; g.windowEvents.resize();
+  assert.equal(g.diagram.style.width, '400px', 'automatic fitting resumes after reset');
+  for (let i = 0; i < 50; i++) g.listeners['zoom-in']();
+  assert.equal(g.diagram.style.width, '1600px');
+  for (let i = 0; i < 80; i++) g.listeners['zoom-out']();
+  assert.equal(g.diagram.style.width, '100px');
+  assert.deepEqual(g.events, ['render-ready']);
 });
