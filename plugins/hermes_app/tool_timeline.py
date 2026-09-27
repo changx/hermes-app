@@ -2,6 +2,7 @@
 import ast
 import json
 import re
+import shlex
 import unicodedata
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
@@ -9,9 +10,9 @@ from agent.redact import REDACTION_UNAVAILABLE, redact_for_egress
 
 _NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.]{0,199}\Z')
 _UNSAFE_COMMAND = re.compile(
-    r'(?i)(?:https?://|wss?://|ftp://|\$|\b(?:password|passwd|secret|token|credential|authorization|api[_-]?key|auth[_-]?key)\b'
+    r'(?i)(?:wss?://|ftp://|\$|\b(?:password|passwd|secret|token|credential|authorization|api[_-]?key|auth[_-]?key)\b'
     r'|--[\w-]*(?:password|passwd|secret|token|credential|auth|key)[\w-]*'
-    r'|(?:^|\s)[A-Za-z_][A-Za-z_0-9]*=\S|\s(?:-H|-u|-p|--header|--data|--data-raw|--user|--password|--cookie)(?:\s|=)'
+    r'|\s(?:-H|-u|-p|--header|--data|--data-raw|--user|--password|--cookie)(?:\s|=)'
     r'|(?:^|\s)(?:export|env|set|printenv)\b|\b\.env\b)')
 _LABELS = {
     'read_file': '阅读文件', 'search_files': '搜索文件', 'web_search': '搜索网页',
@@ -45,15 +46,16 @@ def _utf16_length(value):
     return len(value.encode('utf-16-le', errors='surrogatepass')) // 2
 
 
-def _valid_text(value):
+def _valid_text(value, *, multiline=False):
     if not isinstance(value, str) or not value.strip() or _utf16_length(value) > 16000:
         return False
-    return not any(unicodedata.category(c) in {'Cc', 'Cf', 'Cs'} for c in value)
+    return not any(unicodedata.category(c) in {'Cc', 'Cf', 'Cs'} and
+                   not (multiline and c in '\n\t') for c in value)
 
 
-def _safe_text(value):
+def _safe_text(value, *, multiline=False):
     """Check the ENTIRE original scalar before display or truncation; fail closed."""
-    if not _valid_text(value):
+    if not _valid_text(value, multiline=multiline):
         return None
     if _SENSITIVE_TEXT.search(value) or _SECRET_SHAPE.search(value) or _SECRET_FILE.search(value):
         return None
@@ -71,7 +73,7 @@ def _short(text, cap=160):
 
 
 def _command_detail(arguments):
-    """Only simple, non-sensitive shell lines; fail closed on ambiguous command shapes."""
+    """Safe shell/script preview, checked in full before truncating."""
     if not isinstance(arguments, dict):
         return None
     command = arguments.get('command')
@@ -82,12 +84,25 @@ def _command_detail(arguments):
     if _UNSAFE_COMMAND.search(command):
         return None
     try:
+        # Keep quotes so a Python -c body is not mistaken for a shell assignment.
+        shell = shlex.shlex(command, posix=False, punctuation_chars=True)
+        shell.whitespace_split = True
+        shell.commenters = ''
+        if any(re.match(r'^[A-Za-z_][A-Za-z_0-9]*=', word) for word in shell):
+            return None
+    except ValueError:
+        return None
+    for url in re.findall(r'https?://[^\s\'"<>]+', command, flags=re.IGNORECASE):
+        # Arbitrary query values may be credentials even without a known key name.
+        if any(mark in url for mark in '@?#') or _safe_url(url) is None:
+            return None
+    try:
         clean = redact_for_egress(command)
     except Exception:
         return None
     if not isinstance(clean, str) or clean == REDACTION_UNAVAILABLE or 'redacted' in clean.lower() or clean != command:
         return None  # A redaction implies command structure may still reveal sensitive context.
-    if _safe_text(command) is None:
+    if _safe_text(command, multiline=True) is None:
         return None
     return _short(clean, 600)
 
