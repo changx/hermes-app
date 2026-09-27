@@ -8,7 +8,7 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text) {
+function mount(text, { canExpand = false } = {}) {
   const copied = [], opened = [], players = [], paused = [];
   const hooks = new Map(), playerBySrc = new Map();
   const appListeners = new Set();
@@ -21,7 +21,11 @@ function mount(text) {
   };
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
-    Fragment: Symbol('fragment'), memo: f => f, useMemo: f => f(),
+    Fragment: Symbol('fragment'), memo: f => f, useMemo: (fn, deps) => {
+      const cell = slot(null);
+      if (!cell.deps || deps.some((value, i) => value !== cell.deps[i])) { cell.value = fn(); cell.deps = deps; }
+      return cell.value;
+    },
     useRef: initial => { const cell = slot(initial); return { get current() { return cell.value; }, set current(value) { cell.value = value; } }; },
     useState: initial => { const cell = slot(initial); return [cell.value, next => { cell.value = typeof next === 'function' ? next(cell.value) : next; }]; },
     useEffect: (fn, deps) => {
@@ -39,10 +43,11 @@ function mount(text) {
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
     AppState: { addEventListener: (_, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } },
     StyleSheet: { create: value => value },
-    Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView',
+    Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal',
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
   const modules = { react: { ...react, default: react }, 'react-native': native,
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 21, bottom: 13, left: 2, right: 3 }) },
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: (src, setup) => {
       if (playerBySrc.has(src)) return playerBySrc.get(src);
@@ -59,7 +64,7 @@ function mount(text) {
   }).outputText, { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; } });
   const expand = (element, path = 'root') => {
     if (Array.isArray(element)) return element.flatMap((item, i) => expand(item, `${path}.${i}`));
-    if (element === null || element === undefined || typeof element !== 'object') return [];
+    if (element === null || element === undefined || typeof element !== 'object') return element == null ? [] : [element];
     if (typeof element.type === 'function') {
       const previous = scope;
       scope = `${path}:${element.type.name}`; index = 0; visited.add(scope);
@@ -69,10 +74,10 @@ function mount(text) {
     }
     return [{ ...element, children: expand(element.props?.children, `${path}.children`) }];
   };
-  const walk = nodes => nodes.flatMap(node => [node, ...walk(node.children)]);
+  const walk = nodes => nodes.flatMap(node => node && typeof node === 'object' ? [node, ...walk(node.children)] : []);
   const renderOnce = () => {
     visited = new Set();
-    const tree = expand({ type: output.exports.MessageContent, props: { text } });
+    const tree = expand({ type: output.exports.MessageContent, props: { text, canExpand } });
     for (const [path, cells] of hooks) if (!visited.has(path)) {
       cells.forEach(cell => cell.cleanup?.()); hooks.delete(path);
     }
@@ -120,6 +125,116 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   nodes.find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
   nodes.find(n => n.props.accessibilityLabel === '复制整条消息').props.onPress();
   assert.deepEqual(h.copied, ['const x = 1;\n', text]);
+});
+
+test('three-column table fits measured phone width, keeps every cell and trailing prose', () => {
+  const h = mount('先说：**中文结论。**所以继续。\n\n| 产品 | 收入 | 渠道 |\n|---|---|---|\n| 甲 | 未公开 | 官网 |\n| 乙 | 订阅 | 分享 |\n| 丙 | 积分 | 搜索 |\n\n**最后：**仍需验证。');
+  let nodes = h.walk(h.render());
+  const cellWidth = n => Object.assign({}, ...n.props.style.filter(Boolean)).width;
+  const cells = () => nodes.filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156);
+  assert.equal(cells().length, 12);
+  assert.equal(cellWidth(cells()[0]) * 3, 468, 'grid stays wider than phone viewport');
+  const scroll = nodes.find(n => n.type === 'ScrollView' && n.props.horizontal);
+  assert.equal(scroll.props.bounces, false);
+  assert.equal(scroll.props.directionalLockEnabled, true);
+  assert.equal(scroll.props.automaticallyAdjustContentInsets, false);
+  assert.equal(scroll.props.contentOffset, undefined, 'rerenders do not reset deliberate horizontal reading');
+  const flattenText = value => Array.isArray(value) ? value.map(flattenText).join('') : value && typeof value === 'object' ? flattenText(value.children ?? value.props?.children) : String(value ?? '');
+  const content = flattenText(h.render(false));
+  assert.ok(content.includes('中文结论。'));
+  assert.ok(content.includes('仍需验证。'));
+  for (const value of ['产品', '收入', '渠道', '甲', '未公开', '官网', '乙', '订阅', '分享', '丙', '积分', '搜索']) assert.ok(content.includes(value), value);
+  h.unmount();
+});
+
+test('production controls open one safe-area modal for article, table and Mermaid; close releases expanded WebView', () => {
+  const text = '开头。\n\n| 第一 | 第二 | 第三 |\n|---|---|---|\n| 甲 | 乙 | 丙 |\n\n```mermaid\nflowchart LR\nA-->B\n```\n\n结尾。';
+  for (const canExpand of [false, true]) {
+    const h = mount(text, { canExpand });
+    h.render(); // Mount the inline WebView first; opening must release it.
+    const nodes = () => h.walk(h.render(false));
+    const button = (entries, label) => {
+      const found = entries.find(n => n.props.accessibilityLabel === label);
+      assert.ok(found, label); found.props.onPress();
+    };
+    const modal = () => nodes().find(n => n.type === 'Modal');
+    const inside = () => h.walk([modal()]);
+    assert.equal(modal().props.visible, false);
+    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1);
+    assert.equal(nodes().some(n => n.props.accessibilityLabel === '全屏查看消息'), canExpand);
+    if (canExpand) {
+      button(nodes(), '全屏查看消息');
+      assert.equal(modal().props.visible, true);
+      assert.equal(nodes().filter(n => n.type === 'Modal').length, 1);
+      assert.equal(nodes().filter(n => n.type === 'WebView').length, 0, 'underlying WebView is suspended until modal content measures');
+      const article = inside();
+      const leaves = value => Array.isArray(value) ? value.map(leaves).join('') : value && typeof value === 'object' ? leaves(value.children ?? value.props?.children) : String(value ?? '');
+      const words = article.filter(n => n.type === 'Animated.Text').map(n => leaves(n.children)).join('');
+      assert.ok(words.includes('开头。') && words.includes('结尾。') && words.includes('甲'));
+      assert.ok(article.some(n => n.props.accessibilityLabel === '全屏查看表格'));
+      assert.ok(article.some(n => n.props.accessibilityLabel === '全屏查看图表'));
+      button(article, '全屏查看表格');
+      assert.equal(inside().filter(n => n.type === 'Modal').length, 1, 'switches target rather than nesting dialogs');
+      assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
+      modal().props.onRequestClose();
+      assert.equal(modal().props.visible, false, 'Android back closes same modal');
+    }
+    button(nodes(), '全屏查看表格');
+    assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
+    assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
+    button(inside(), '关闭全屏查看');
+    assert.equal(modal().props.visible, false);
+    button(nodes(), '全屏查看图表');
+    let diagram = inside();
+    const modalBody = diagram.find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.style[0]?.backgroundColor === '#fff');
+    assert.deepEqual({ ...modalBody.props.style[1] }, { paddingTop: 33, paddingBottom: 25, paddingLeft: 16, paddingRight: 17 });
+    const frame = diagram.find(n => n.props.onLayout && n.props.style?.flex === 1);
+    assert.ok(frame, 'full-height flex diagram, not fixed 220');
+    frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 610 } } });
+    diagram = inside();
+    const expanded = diagram.find(n => n.type === 'WebView');
+    assert.equal(Object.assign({}, ...expanded.props.style).height, 610);
+    assert.equal(Object.assign({}, ...expanded.props.containerStyle).width, 340);
+    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'never duplicates inline and expanded WebViews');
+    button(diagram, '关闭全屏查看');
+    assert.equal(modal().props.visible, false);
+    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'expanded instance releases; underlying reading resumes');
+    h.unmount();
+  }
+});
+
+test('article double tap needs same still text target; movement, cancellation and links do not open it', () => {
+  const h = mount('普通文字 [链接](https://example.com)', { canExpand: true });
+  const tree = () => h.walk(h.render(false));
+  const root = () => tree().find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
+  const visible = () => tree().find(n => n.type === 'Modal').props.visible;
+  const event = (target = 17, x = 40, y = 50) => ({ nativeEvent: { target, pageX: x, pageY: y, touches: [] } });
+  const tap = (target = 17, x = 40) => { root().props.onTouchStart(event(target, x)); root().props.onTouchEnd(event(target, x)); };
+  tap(); assert.equal(visible(), false, 'one tap does nothing');
+  tap(18); assert.equal(visible(), false, 'different target does nothing');
+  root().props.onTouchStart(event()); root().props.onTouchMove(event(17, 70)); root().props.onTouchEnd(event());
+  assert.equal(visible(), false, 'scroll gesture is not a tap');
+  root().props.onTouchStart(event()); root().props.onTouchCancel(); root().props.onTouchEnd(event());
+  assert.equal(visible(), false, 'cancelled touch is inert');
+  root().props.onTouchStart(event());
+  tree().find(n => n.props.accessibilityRole === 'link').props.onPressIn();
+  root().props.onTouchEnd(event());
+  assert.equal(visible(), false, 'link press takes precedence');
+  tap();
+  let stopped = false;
+  tree().find(n => n.props.accessibilityLabel === '复制整条消息').props.onTouchStart({ stopPropagation() { stopped = true; } });
+  root().props.onTouchEnd(event());
+  tap(); assert.equal(visible(), false, 'copy breaks the double-tap sequence');
+  assert.equal(stopped, true, 'copy does not bubble to article gesture');
+  tap(); assert.equal(visible(), true);
+  tree().find(n => n.type === 'Modal').props.onRequestClose();
+  assert.equal(visible(), false);
+  h.unmount();
+  const user = mount('普通文字');
+  const userTree = user.walk(user.render(false));
+  const userRoot = userTree.find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
+  for (let i = 0; i < 2; i++) { userRoot.props.onTouchStart(event()); userRoot.props.onTouchEnd(event()); }
+  assert.equal(user.walk(user.render(false)).find(n => n.type === 'Modal').props.visible, false);
 });
 
 test('real list checkbox tree is inert; ordinary [x] paragraph has no checkbox', () => {
@@ -279,6 +394,7 @@ test('formula budget is shared across inline, nested list, table and display con
   assert.match(text, /flowchart LR/);
   assert.equal(nodes.filter(n => n.type === 'Animated.Text' && n.props.style?.fontWeight === '700').length, 2);
   const nested = (entries, inText = false) => entries.forEach(n => {
+    if (!n || typeof n !== 'object') return;
     assert.equal(inText && ['View', 'WebView', 'ScrollView'].includes(n.type), false);
     nested(n.children, inText || n.type === 'Text' || n.type === 'Animated.Text');
   });
@@ -297,6 +413,7 @@ test('mixed inline image loads automatically, keeps geometry on loading/error/re
   assert.equal(nodes.filter(n => n.type === 'Animated.Text' && n.props.style?.fontWeight === '700').length, 2);
   const checkNesting = (entries, insideText = false) => {
     for (const n of entries) {
+      if (!n || typeof n !== 'object') continue;
       assert.equal(insideText && ['View', 'Pressable', 'Image', 'VideoView', 'WebView'].includes(n.type), false, 'no native media inside Text');
       checkNesting(n.children, insideText || n.type === 'Text' || n.type === 'Animated.Text');
     }

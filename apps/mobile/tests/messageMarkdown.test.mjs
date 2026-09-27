@@ -2,6 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseMessageMarkdown, safeLinkUrl, messageNeedsViewport } from '../src/messageMarkdown.ts';
 
+test('CJK punctuation bold renders around a table without losing surrounding content', () => {
+  const source = '先说结论：**中文结论。**所以继续。\n\n| 产品 | 收入 | 渠道 |\n|---|---|---|\n| **甲** | 未公开 | **无法确认。**(来源) |\n| 乙 | 订阅 | 官网 |\n| 丙 | 积分 | 分享 |\n\n**粗略判断：**仍需验证。';
+  const blocks = parseMessageMarkdown(source);
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].children[1].kind, 'strong');
+  assert.equal(blocks[0].children[1].children[0].text, '中文结论。');
+  assert.equal(blocks[0].children[2].text, '所以继续。');
+  assert.equal(blocks[1].header.length, 3);
+  assert.equal(blocks[1].rows.length, 3);
+  assert.equal(blocks[2].children[0].kind, 'strong');
+  assert.equal(blocks[2].children.at(-1).text, '仍需验证。');
+  const nested = parseMessageMarkdown('前**（中文 *嵌套*。）**后')[0].children[1];
+  assert.equal(nested.kind, 'strong');
+  assert.ok(nested.children.some(n => n.kind === 'em'));
+  assert.equal(parseMessageMarkdown('** bold **')[0].children[0].text, '** bold **');
+  assert.equal(parseMessageMarkdown(String.raw`\*\*中文。\*\*后`)[0].children[0].text, '**中文。**后');
+  assert.equal(parseMessageMarkdown('`**中文。**后`')[0].children[0].kind, 'code');
+  assert.equal(parseMessageMarkdown('```text\n**中文。**后\n```')[0].text, '**中文。**后\n');
+});
+
 test('normal prose stays intrinsic while nested native viewports get usable width', () => {
   for (const text of ['好', '**hello**', '# 标题', '> 引用', '- 简短列表', '[link](https://example.com)', '`inline code`']) assert.equal(messageNeedsViewport(text), false, text);
   for (const text of ['```mermaid\nflowchart TD\nA-->B\n```', '```js\nx\n```', '|a|b|\n|-|-|\n|1|2|', '$$x$$', '![img](https://example.com/a.png)', '> $x$', '- ![v](https://example.com/a.mp4)']) assert.equal(messageNeedsViewport(text), true, text);

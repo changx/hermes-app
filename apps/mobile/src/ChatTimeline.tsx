@@ -17,7 +17,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy }: { row: Time
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
   const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? styles.agentMessage : styles.bubble}>
     <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>
-    <MessageContent text={row.text} pending={own && !!row.optimistic && row.status !== 'accepted'} />
+    <MessageContent text={row.text} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
     {row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>附件：{a.name || '未命名附件'}（{a.state === 'available' ? '可查看' : '暂时无法查看'}）</Text>)}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
@@ -203,7 +203,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           if (state.following !== following.current) { following.current = state.following; setShowLatest(!state.following); }
           savePosition();
         }} scrollEventThrottle={16} />
-      {showLatest && <View style={styles.latest}>{action('回到最新 ↓', () => followLatest())}</View>}
+
     </View>
     <KeyboardStickyView offset={{ opened: bottom }} onLayout={e => {
       const height = e.nativeEvent.layout.height;
@@ -224,6 +224,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     </View>)}</ScrollView>}
 
     <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} />
+      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
+        <Text style={styles.latestText}>↓</Text>
+      </Pressable>}
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running')
         ? action('停止', props.onStop, props.busy)
         : action('发送', props.onSend, props.busy || !props.text.trim())}
@@ -246,7 +249,8 @@ const styles = StyleSheet.create({
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },
-  older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 }, latest: { position: 'absolute', right: 16, bottom: 12 },
+  older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 },
+  latest: { minWidth: 40, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e7eef7' }, latestText: { color: '#294e7b', fontSize: 20 },
   controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }, controlText: { color: '#233b56', fontSize: 13, flexShrink: 1 },
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },

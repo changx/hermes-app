@@ -8,7 +8,7 @@ import { parseMessageMarkdown, messageNeedsViewport } from '../src/messageMarkdo
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles } };
-for (const key of ['FlatList', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View']) native[key] = key;
+for (const key of ['FlatList', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View', 'Modal']) native[key] = key;
 const react = {
   Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   forwardRef: fn => fn, memo: fn => fn, useRef: current => ({ current }), useState: initial => [initial, () => {}],
@@ -16,9 +16,10 @@ const react = {
 };
 const modules = {
   react: { ...react, default: react }, 'react-native': native,
+
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
-  'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
+  'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
   './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport },
   'expo-clipboard': { setStringAsync: async () => {} },
@@ -95,6 +96,7 @@ test('user and assistant rows render the same complete Markdown and media tree',
     const rows = projectTimeline([{ ...msg, role, text: markdown }], null, 'th', undefined, true);
     const content = named(mount(rows).rowTree, 'MessageContent')[0];
     assert.equal(content.props.text, markdown, 'no role-specific stripping');
+    assert.equal(content.props.canExpand, role === 'assistant', 'whole-message fullscreen belongs to Agent replies');
     const originalState = modules.react.useState;
     const states = [];
     let cursor = 0;
@@ -105,10 +107,12 @@ test('user and assistant rows render the same complete Markdown and media tree',
     };
     let rendered;
     try {
-      const initial = expand(MessageContent(content.props));
+      // Compare the common Markdown body with role-specific whole-message UI off.
+      const bodyProps = { ...content.props, canExpand: false };
+      const initial = expand(MessageContent(bodyProps));
       initial.filter(n => n.props.onLayout).forEach(n => n.props.onLayout({ nativeEvent: { layout: { width: 260, height: n.props.style.height } } }));
       cursor = 0;
-      rendered = expand(MessageContent(content.props));
+      rendered = expand(MessageContent(bodyProps));
     } finally { modules.react.useState = originalState; }
     assert.equal(named(rendered, 'Image').length, 1);
     assert.equal(named(rendered, 'WebView').length, 3);
@@ -166,6 +170,17 @@ test('pill is under corresponding user message with stable footprint; controls r
   assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === '已完成').props.style.height, 23);
   assert.equal(completed[0].key, projected[0].key);
 });
+test('latest-message action lives in composer flow and never covers message content', () => {
+  const rows = projectTimeline([msg], null, 'th', undefined, true);
+  const h = mount(rows, [], [], { position: { offset: 20, following: false } });
+  const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === '回到最新 ↓');
+  assert.ok(latest);
+  assert.equal(latest.props.style.position, undefined);
+  const composer = named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
+  assert.ok(composer.props.children.flat(Infinity).includes(latest));
+  assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === '回到最新 ↓'), false);
+});
+
 test('composer swaps send for stop only in current running thread, preserves draft and empty stop', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   for (const draft of ['', 'keep this draft']) {

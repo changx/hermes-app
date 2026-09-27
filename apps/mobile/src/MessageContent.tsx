@@ -1,6 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
@@ -12,8 +14,11 @@ const copy = (value: string) => {
 };
 
 type Tone = (color: string) => { color: Animated.AnimatedInterpolation<string> };
+type ExpandTarget = { kind: 'message' } | { kind: 'table' | 'diagram'; block: Block };
+type OpenExpand = (target: ExpandTarget) => void;
+const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
 
-function InlineText({ nodes, tone }: { nodes: Inline[]; tone: Tone }) {
+function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Tone; onInteraction: () => void }) {
   return <>{nodes.map((node, index) => {
     const key = index;
     switch (node.kind) {
@@ -22,15 +27,16 @@ function InlineText({ nodes, tone }: { nodes: Inline[]; tone: Tone }) {
       case 'code': return <Animated.Text key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</Animated.Text>;
       case 'math': return <Animated.Text key={key} style={[styles.inlineCode, tone('#20314a')]}>{`$${node.text}$`}</Animated.Text>;
       case 'image': case 'video': return null; // Media is split out before Text.
-      case 'em': return <Animated.Text key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
-      case 'strong': return <Animated.Text key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
-      case 'strike': return <Animated.Text key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
+      case 'em': return <Animated.Text key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
+      case 'strong': return <Animated.Text key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
+      case 'strike': return <Animated.Text key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
       case 'link': return node.href
         ? <Animated.Text key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
-            onPress={() => { void Linking.openURL(node.href!).catch(() => Alert.alert('链接无法打开')); }}>
-            <InlineText nodes={node.children} tone={tone} />
+            onPressIn={onInteraction}
+            onPress={() => { onInteraction(); void Linking.openURL(node.href!).catch(() => Alert.alert('链接无法打开')); }}>
+            <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} />
           </Animated.Text>
-        : <Animated.Text key={key}><InlineText nodes={node.children} tone={tone} /></Animated.Text>;
+        : <Animated.Text key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></Animated.Text>;
     }
   })}</>;
 }
@@ -66,7 +72,7 @@ function ImagePreview({ image }: { image: Extract<Inline, { kind: 'image' }> }) 
   const label = image.text || '未命名图片';
   const caption = !image.src ? `图片不可用：${label}` : status === 'error' ? `图片加载失败，点按重试：${label}`
     : status === 'loading' ? `图片加载中：${label}` : `图片：${label}`;
-  return <Pressable accessibilityRole={!image.src || status === 'loaded' ? 'image' : 'button'} accessibilityLabel={caption}
+  return <Pressable onTouchStart={stopTouch} accessibilityRole={!image.src || status === 'loaded' ? 'image' : 'button'} accessibilityLabel={caption}
     disabled={!image.src || status !== 'error'} style={styles.imageFrame}
     onPress={() => { setAttempt(value => value + 1); setStatus('loading'); }}>
     {image.src && status !== 'error' &&
@@ -95,7 +101,7 @@ function VideoPreview({ video }: { video: Extract<Inline, { kind: 'video' }> | E
   const [active, setActive] = useState(false);
   const [failed, setFailed] = useState(false);
   const label = video.text || '视频';
-  return <View style={styles.videoFrame}>
+  return <View style={styles.videoFrame} onTouchStart={stopTouch}>
     {active && video.src && <PlayingVideo src={video.src} onFailure={() => { setActive(false); setFailed(true); }} />}
     {!active && <Pressable style={styles.videoStart} accessibilityRole="button"
       accessibilityLabel={!video.src ? `视频不可用：${label}` : failed ? `视频加载失败，点按重试：${label}` : `播放视频：${label}`}
@@ -105,12 +111,12 @@ function VideoPreview({ video }: { video: Extract<Inline, { kind: 'video' }> | E
   </View>;
 }
 
-function RichText({ nodes, tone, style, allowed }: { nodes: Inline[]; tone: Tone; style: object; allowed: WeakSet<object> }) {
+function RichText({ nodes, tone, style, allowed, onInteraction, suspended = false }: { nodes: Inline[]; tone: Tone; style: object; allowed: WeakSet<object>; onInteraction: () => void; suspended?: boolean }) {
   return <View style={styles.richText}>{segments(nodes).map((part, index) => part.kind === 'media'
     ? part.media.kind === 'image' ? <ImagePreview key={index} image={part.media} /> : <VideoPreview key={index} video={part.media} />
-    : part.kind === 'math' ? <OfflineRenderer key={index} kind="math" source={part.node.text} enabled={allowed.has(part.node)} display={false} />
+    : part.kind === 'math' ? <OfflineRenderer key={index} kind="math" source={part.node.text} enabled={allowed.has(part.node)} display={false} suspended={suspended} />
     : <Animated.Text key={index} selectable style={[style, tone('#172a40')]}>
-        <InlineText nodes={part.nodes} tone={tone} />
+        <InlineText nodes={part.nodes} tone={tone} onInteraction={onInteraction} />
       </Animated.Text>)}</View>;
 }
 
@@ -144,17 +150,18 @@ function webViewAllowlist(blocks: Block[]): WeakSet<object> {
   visit(blocks);
   return allowed;
 }
-function OfflineRenderer({ kind, source, enabled, display = true }: { kind: 'math' | 'diagram'; source: string; enabled: boolean; display?: boolean }) {
+function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = false, suspended = false }: { kind: 'math' | 'diagram'; source: string; enabled: boolean; display?: boolean; fullscreen?: boolean; suspended?: boolean }) {
   const [failedHtml, setFailedHtml] = useState<string | null>(null);
   const [readyHtml, setReadyHtml] = useState<string | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const tooLarge = !enabled || source.length > (kind === 'math' ? MAX_MATH_SOURCE : MAX_DIAGRAM_SOURCE);
   const html = useMemo(() => tooLarge ? '' : renderMarkdownHtml(kind, source, display), [kind, source, tooLarge, display]);
-  const fallback = <ScrollView style={display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
+  useEffect(() => { if (suspended) setReadyHtml(null); }, [suspended]);
+  const fallback = <ScrollView onTouchStart={stopTouch} style={fullscreen ? styles.fullscreenFallback : display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
     <Text selectable style={styles.codeText}>{source}</Text>
   </ScrollView>;
-  if (tooLarge || failedHtml === html) return fallback;
-  return <View style={display ? styles.renderFrame : styles.inlineRenderFrame} onLayout={event => {
+  if (tooLarge || failedHtml === html || suspended) return fallback;
+  return <View onTouchStart={stopTouch} style={fullscreen ? styles.fullscreenDiagram : display ? styles.renderFrame : styles.inlineRenderFrame} onLayout={event => {
     const { width, height } = event.nativeEvent.layout;
     if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
       setSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
@@ -177,22 +184,47 @@ function OfflineRenderer({ kind, source, enabled, display = true }: { kind: 'mat
   </View>;
 }
 
-function Cell({ cell, header, tone, allowed }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object> }) {
-  return <View style={[styles.tableCell, header && styles.tableHeadCell]}>
+function Cell({ cell, header, tone, allowed, width, onInteraction, suspended }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object>; width: number; onInteraction: () => void; suspended: boolean }) {
+  return <View style={[styles.tableCell, { width }, header && styles.tableHeadCell]}>
     <View style={[styles.cellContent, cell.align === 'center' && styles.alignCenter, cell.align === 'right' && styles.alignRight]}>
-      <RichText nodes={cell.children} tone={tone} allowed={allowed} style={header ? styles.tableHeadText : styles.paragraph} />
+      <RichText nodes={cell.children} tone={tone} allowed={allowed} style={header ? styles.tableHeadText : styles.paragraph} onInteraction={onInteraction} suspended={suspended} />
     </View>
   </View>;
 }
 
-function RenderBlock({ block, tone, allowed }: { block: Block; tone: Tone; allowed: WeakSet<object> }) {
+function MarkdownTable({ block, tone, allowed, onExpand, onInteraction, suspended = false, fullscreen = false }: { block: Extract<Block, { kind: 'table' }>; fullscreen?: boolean } & BlockProps) {
+  // Never squeeze a multi-column grid into the phone viewport. The frame is
+  // bounded, but the actual grid retains readable cells and scrolls inside it.
+  const columnWidth = 156;
+  return <View style={styles.tableFrame} onTouchStart={stopTouch}>
+    {!fullscreen && <ExpandButton label="全屏查看表格" onPress={() => onExpand({ kind: 'table', block })} />}
+    <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator
+      bounces={false} directionalLockEnabled automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never">
+      <View style={styles.tableBody}>
+        <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}</View>
+        {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
+          {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}
+        </View>)}
+      </View>
+    </ScrollView>
+  </View>;
+}
+
+function ExpandButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return <Pressable onTouchStart={stopTouch} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={styles.expandButton} onPress={onPress}>
+    <Text style={styles.expandText}>⤢ {label}</Text>
+  </Pressable>;
+}
+
+type BlockProps = { tone: Tone; allowed: WeakSet<object>; onExpand: OpenExpand; onInteraction: () => void; suspended?: boolean };
+function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended = false, fullscreenDiagram = false }: { block: Block; fullscreenDiagram?: boolean } & BlockProps) {
   switch (block.kind) {
     case 'paragraph':
-      return <RichText nodes={block.children} tone={tone} allowed={allowed} style={styles.paragraph} />;
+      return <RichText nodes={block.children} tone={tone} allowed={allowed} style={styles.paragraph} onInteraction={onInteraction} suspended={suspended} />;
     case 'heading':
-      return <RichText nodes={block.children} tone={tone} allowed={allowed} style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : block.level === 3 ? styles.h3 : block.level === 4 ? styles.h4 : block.level === 5 ? styles.h5 : styles.h6]} />;
+      return <RichText nodes={block.children} tone={tone} allowed={allowed} style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : block.level === 3 ? styles.h3 : block.level === 4 ? styles.h4 : block.level === 5 ? styles.h5 : styles.h6]} onInteraction={onInteraction} suspended={suspended} />;
     case 'code':
-      return <View style={styles.codeBox}>
+      return <View style={styles.codeBox} onTouchStart={stopTouch}>
         <View style={styles.codeHeader}>
           <Text style={styles.codeLanguage} numberOfLines={1}>{block.language || '代码'}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="复制代码" hitSlop={8} onPress={() => copy(block.text)}>
@@ -203,12 +235,17 @@ function RenderBlock({ block, tone, allowed }: { block: Block; tone: Tone; allow
           <Animated.Text selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</Animated.Text>
         </ScrollView>
       </View>;
-    case 'math': case 'diagram':
-      return <OfflineRenderer kind={block.kind} source={block.text} enabled={allowed.has(block)} />;
+    case 'math':
+      return <OfflineRenderer kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;
+    case 'diagram':
+      return <View style={fullscreenDiagram ? styles.fullscreenDiagram : styles.diagramBlock} onTouchStart={stopTouch}>
+        {!fullscreenDiagram && <ExpandButton label="全屏查看图表" onPress={() => onExpand({ kind: 'diagram', block })} />}
+        <OfflineRenderer kind="diagram" source={block.text} enabled={allowed.has(block)} fullscreen={fullscreenDiagram} suspended={suspended} />
+      </View>;
     case 'video':
       return <VideoPreview video={block} />;
     case 'quote':
-      return <View style={styles.quote}><RenderBlocks blocks={block.children} tone={tone} allowed={allowed} /></View>;
+      return <View style={styles.quote}><RenderBlocks blocks={block.children} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} /></View>;
     case 'list':
       return <View style={styles.list}>{block.items.map((item, index) =>
         <View key={index} style={styles.listRow}>
@@ -218,31 +255,46 @@ function RenderBlock({ block, tone, allowed }: { block: Block; tone: Tone; allow
                 <Animated.Text style={tone('#425874')}>{block.checks[index] ? '☑' : '☐'}</Animated.Text>
               </View>
             : <Animated.Text style={[styles.bullet, tone('#425874')]}>{block.ordered ? `${block.start + index}.` : '•'}</Animated.Text>}
-          <View style={styles.listBody}><RenderBlocks blocks={item} tone={tone} allowed={allowed} /></View>
+          <View style={styles.listBody}><RenderBlocks blocks={item} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} /></View>
         </View>)}</View>;
     case 'table':
-      return <View style={styles.tableFrame}>
-        <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator>
-          <View style={styles.tableBody}>
-            <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} />)}</View>
-            {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
-              {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} />)}
-            </View>)}
-          </View>
-        </ScrollView>
-      </View>;
+      return <MarkdownTable block={block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} />;
     case 'rule': return <View style={styles.rule} />;
   }
 }
 
-function RenderBlocks({ blocks, tone, allowed }: { blocks: Block[]; tone: Tone; allowed: WeakSet<object> }) {
-  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} allowed={allowed} />)}</View>;
+function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspended }: { blocks: Block[] } & BlockProps) {
+  return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} />)}</View>;
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
-export const MessageContent = memo(function MessageContent({ text, pending = false }: { text: string; pending?: boolean }) {
+export const MessageContent = memo(function MessageContent({ text, pending = false, canExpand = false }: { text: string; pending?: boolean; canExpand?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
   const allowed = useMemo(() => webViewAllowlist(parsed), [parsed]);
+  const [target, setTarget] = useState<ExpandTarget | null>(null);
+  const insets = useSafeAreaInsets();
+  // Observe ordinary text taps without becoming a responder (selection and
+  // nested links/scroll views retain their native touch handling).
+  const gesture = useRef<{ start?: { target: number; x: number; y: number; at: number }; tap?: { target: number; x: number; y: number; at: number } }>({});
+  const point = (event: GestureResponderEvent) => {
+    const { target, pageX, pageY, touches } = event.nativeEvent;
+    return typeof target === 'number' && Number.isFinite(pageX) && Number.isFinite(pageY) && (!touches || touches.length <= 1)
+      ? { target, x: pageX, y: pageY, at: Date.now() } : null;
+  };
+  const touchStart = (event: GestureResponderEvent) => { gesture.current.start = point(event) || undefined; };
+  const touchMove = (event: GestureResponderEvent) => {
+    const start = gesture.current.start, now = point(event);
+    if (!start || !now || Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) gesture.current = {};
+  };
+  const touchEnd = (event: GestureResponderEvent) => {
+    const start = gesture.current.start, now = point(event), previous = gesture.current.tap;
+    gesture.current = {};
+    if (!canExpand || !start || !now || now.target !== start.target || now.at - start.at > 250 ||
+      Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) return;
+    if (previous && previous.target === now.target && now.at - previous.at <= 350 &&
+      Math.abs(previous.x - now.x) <= 24 && Math.abs(previous.y - now.y) <= 24) setTarget({ kind: 'message' });
+    else gesture.current.tap = now;
+  };
   const progress = useRef(new Animated.Value(pending ? 0 : 1)).current;
   const wasPending = useRef(pending);
   const reducedMotion = useRef(false);
@@ -267,10 +319,32 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
     wasPending.current = pending;
   }, [pending, progress]);
   const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
-  return <View style={styles.root}>
-    <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} />
-    {!!text && <Pressable accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
+  return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
+    {canExpand && !!text && <ExpandButton label="全屏查看消息" onPress={() => setTarget({ kind: 'message' })} />}
+    <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} suspended={!!target} />
+    {!!text && <Pressable onTouchStart={event => { gesture.current = {}; stopTouch(event); }} accessibilityRole="button" accessibilityLabel="复制整条消息" hitSlop={8}
       style={styles.copyMessage} onPress={() => copy(text)}><Text style={styles.copyMessageText}>复制消息</Text></Pressable>}
+    <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
+      {target && <View style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>{target.kind === 'message' ? '消息' : target.kind === 'table' ? '表格' : '图表'}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="关闭全屏查看" hitSlop={12} onPress={() => setTarget(null)}>
+            <Text style={styles.modalClose}>关闭 ✕</Text>
+          </Pressable>
+        </View>
+        {target.kind === 'message'
+          ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
+              <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} />
+            </ScrollView>
+          : target.kind === 'table' && target.block.kind === 'table'
+            ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled>
+                <MarkdownTable block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreen />
+              </ScrollView>
+            : target.block.kind === 'diagram'
+              ? <RenderBlock block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreenDiagram />
+              : null}
+      </View>}
+    </Modal>
   </View>;
 });
 
@@ -299,6 +373,17 @@ const styles = StyleSheet.create({
   renderWeb: { flex: 0, backgroundColor: 'transparent' },
   renderPending: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 },
   renderFallback: { width: '100%', height: 220, padding: 8 },
+  fullscreenFallback: { flex: 1, width: '100%', padding: 8 },
+  diagramBlock: { width: '100%', minWidth: 0 },
+  fullscreenDiagram: { flex: 1, minHeight: 0, width: '100%' },
+  expandButton: { alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 },
+  expandText: { color: '#215ca7', fontSize: 12 },
+  modal: { flex: 1, backgroundColor: '#fff' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
+  modalTitle: { color: '#172a40', fontWeight: '700', fontSize: 18 },
+  modalClose: { color: '#215ca7', fontSize: 15, padding: 6 },
+  modalScroll: { flex: 1, minWidth: 0 },
+  modalScrollContent: { paddingBottom: 16 },
   quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },
   list: { gap: 5, minWidth: 0 },
   listRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },

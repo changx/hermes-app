@@ -11,6 +11,7 @@ function mount(initialPending, reduced = false) {
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), memo: f => f,
     useMemo: f => f(),
+    useState: value => { const slot = index++; hooks[slot] ??= { value }; return [hooks[slot].value, next => { hooks[slot].value = typeof next === 'function' ? next(hooks[slot].value) : next; }]; },
     useRef: value => { const slot = index++; return hooks[slot] ??= { current: value }; },
     useEffect: (fn, deps) => {
       const slot = index++, previous = hooks[slot];
@@ -36,9 +37,10 @@ function mount(initialPending, reduced = false) {
       isReduceMotionEnabled: async () => reduced,
       addEventListener: (_, listener) => { motionListener = listener; return { remove() { removed = true; } }; }
     },
-    StyleSheet: { create: x => x }, Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView'
+    StyleSheet: { create: x => x }, Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal'
   };
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
     'react-native-webview': { default: 'WebView' }, './markdownWeb': { renderMarkdownHtml: () => '' },
     './messageMarkdown': { parseMessageMarkdown: text => [{ kind: 'paragraph', children: [{ kind: 'text', text }] }] } };

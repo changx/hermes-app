@@ -56,17 +56,31 @@ test('production Mermaid draw script rejects an empty diagram and reports only f
     const html = renderMarkdownHtml('diagram', 'flowchart LR\nA-->B');
     const script = [...html.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)].at(-1)[1];
     const events = [];
-    const element = { innerHTML: '', textContent: '', querySelector: selector => selector === 'svg' && element.innerHTML.includes('<svg') ? {} : null };
-    const context = { document: { getElementById: () => element },
+    const listeners = {};
+    const diagram = { style: {}, viewBox: { baseVal: { width: 400, height: 200 } }, getBoundingClientRect: () => ({ width: 400, height: 200 }) };
+    const element = { innerHTML: '', textContent: '', querySelector: selector => selector === 'svg' && element.innerHTML.includes('<svg') ? diagram : null };
+    const context = { document: { getElementById: id => id === 'content' ? element : { addEventListener: (type, callback) => { listeners[id] = callback; } } },
       mermaid: { initialize: () => {}, render: async () => ({ svg }) },
       window: { ReactNativeWebView: { postMessage: data => events.push(data) } } };
     runInNewContext(script, context);
     await new Promise(setImmediate);
-    return { element, events };
+    return { element, events, diagram, listeners, html };
   }
   const good = await render('<svg></svg>');
   assert.equal(good.element.innerHTML, '<svg></svg>');
   assert.deepEqual(good.events, ['render-ready']);
+  assert.match(good.html, /maximum-scale=5,user-scalable=yes/);
+  for (const label of ['放大', '缩小', '重置']) assert.ok(good.html.includes(`aria-label="${label}"`));
+  assert.equal(good.diagram.style.width, '400px');
+  good.listeners['zoom-in']();
+  assert.equal(good.diagram.style.width, '500px');
+  good.listeners['zoom-out']();
+  assert.equal(good.diagram.style.width, '400px');
+  good.listeners['zoom-out']();
+  assert.equal(good.diagram.style.width, '300px');
+  good.listeners['zoom-reset']();
+  assert.equal(good.diagram.style.width, '400px');
+  assert.deepEqual(good.events, ['render-ready'], 'zoom never uses the native message bridge');
   const blank = await render('');
   assert.equal(blank.element.textContent, '暂时无法显示：flowchart LR\nA-->B');
   assert.deepEqual(blank.events, ['render-failed']);

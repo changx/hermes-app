@@ -24,6 +24,24 @@ export type Block =
 // HTML remains inert; linkify covers bare URLs but the URL gate still applies.
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
 
+// Chat prose commonly closes bold after CJK punctuation with no following space.
+// Add only those delimiter flags; markdown-it still owns pairing and nesting.
+markdown.inline.ruler.before('emphasis', 'cjk_strong', (state, silent) => {
+  if (silent || state.src.slice(state.pos, state.pos + 2) !== '**') return false;
+  const scanned = state.scanDelims(state.pos, true);
+  if (scanned.length !== 2) return false;
+  const cjkPunctuation = /[。、，：；！？（）《》〈〉【】「」『』〔〕［］｛｝]/u;
+  const open = scanned.can_open || cjkPunctuation.test(state.src[state.pos + 2] || '');
+  const close = scanned.can_close || cjkPunctuation.test(state.src[state.pos - 1] || '');
+  if (open === scanned.can_open && close === scanned.can_close) return false;
+  for (let i = 0; i < 2; i++) {
+    state.push('text', '', 0).content = '*';
+    state.delimiters.push({ marker: 0x2A, length: 2, token: state.tokens.length - 1, end: -1, open, close });
+  }
+  state.pos += 2;
+  return true;
+});
+
 // Delimiters are recognized here; KaTeX (not this tokenizer) interprets math.
 markdown.inline.ruler.before('escape', 'message_math', (state, silent) => {
   const start = state.pos;
