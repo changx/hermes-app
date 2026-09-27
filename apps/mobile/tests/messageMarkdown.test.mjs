@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
+import { parseMessageMarkdown, safeLinkUrl, messageNeedsViewport } from '../src/messageMarkdown.ts';
+
+test('normal prose stays intrinsic while nested native viewports get usable width', () => {
+  for (const text of ['好', '**hello**', '# 标题', '> 引用', '- 简短列表', '[link](https://example.com)', '`inline code`']) assert.equal(messageNeedsViewport(text), false, text);
+  for (const text of ['```mermaid\nflowchart TD\nA-->B\n```', '```js\nx\n```', '|a|b|\n|-|-|\n|1|2|', '$$x$$', '![img](https://example.com/a.png)', '> $x$', '- ![v](https://example.com/a.mp4)']) assert.equal(messageNeedsViewport(text), true, text);
+});
 
 test('paragraphs, heading, emphasis, inline code and line breaks become native render nodes', () => {
   assert.deepEqual(parseMessageMarkdown('# Hello\n\nA **strong** and *soft* `x < y`\nsecond line'), [

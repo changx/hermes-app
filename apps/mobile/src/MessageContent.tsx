@@ -275,8 +275,8 @@ export const MessageContent = memo(function MessageContent({ text, pending = fal
 });
 
 const styles = StyleSheet.create({
-  root: { width: '100%', minWidth: 0 },
-  blocks: { width: '100%', minWidth: 0, gap: 8 },
+  root: { alignSelf: 'stretch', minWidth: 0 },
+  blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
   paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
   heading: { color: '#172a40', fontWeight: '700', flexShrink: 1 },
   h1: { fontSize: 21, lineHeight: 28 }, h2: { fontSize: 18, lineHeight: 26 },

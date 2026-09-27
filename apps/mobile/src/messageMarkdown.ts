@@ -209,3 +209,16 @@ function blocks(tokens: Token[], cursor: { index: number }, end?: string): Block
 export function parseMessageMarkdown(text: string): Block[] {
   return blocks(markdown.parse(text, {}), { index: 0 });
 }
+
+/** Scroll/media surfaces need a definite viewport; normal text sizes intrinsically. */
+export function messageNeedsViewport(text: string): boolean {
+  const inline = (nodes: Inline[]): boolean => nodes.some(node =>
+    ['image', 'video', 'math'].includes(node.kind) || ('children' in node && inline(node.children)));
+  const visit = (items: Block[]): boolean => items.some(block => {
+    if (block.kind === 'paragraph' || block.kind === 'heading') return inline(block.children);
+    if (block.kind === 'quote') return visit(block.children);
+    if (block.kind === 'list') return block.items.some(visit);
+    return true;
+  });
+  return visit(parseMessageMarkdown(text));
+}
