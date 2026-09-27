@@ -176,13 +176,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
-  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="消息内容" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="输入消息…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="回到最新 ↓" onPress={() => followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>}
-      {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running')
-        ? action('停止', props.onStop, props.busy)
-        : action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
+      {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
+        <Pressable accessibilityRole="button" accessibilityLabel="停止" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
+      {action('发送', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <View style={styles.flex}>
       <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
@@ -278,6 +278,10 @@ const styles = StyleSheet.create({
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
 
+  // Clearing a controlled multiline value must also invalidate its old native height.
+  stopButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e6edf7' },
+  stopIcon: { color: '#425874', fontSize: 17 },
+  emptyComposeInput: { height: 42 },
   composer: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }, composeInput: { flex: 1, maxHeight: 120 }
 });

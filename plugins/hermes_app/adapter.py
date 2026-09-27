@@ -90,6 +90,9 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._settlement_tasks = set()
         self._queue_tasks = {}
         self._queue_wakes = {}
+        self._followup_tasks = set()
+        self._admission_tasks = set()
+        self._ingress_locks = {}
         self._channel_refresh_lock = asyncio.Lock()
         self._events_changed = asyncio.Event()
         self._stopping = False
@@ -179,6 +182,14 @@ class HermesAppAdapter(BasePlatformAdapter):
         if getattr(self, '_queue_tasks', None):
             await asyncio.gather(*tuple(self._queue_tasks.values()), return_exceptions=True)
             self._queue_tasks.clear()
+        followups=getattr(self,'_followup_tasks',set())
+        for task in tuple(followups):
+            task.cancel()
+        if followups:
+            await asyncio.gather(*tuple(followups), return_exceptions=True)
+        admissions=getattr(self,'_admission_tasks',set())
+        if admissions:
+            await asyncio.gather(*tuple(admissions),return_exceptions=True)
         await super().cancel_background_tasks()
         # Core cancellation completes owner tasks, which in turn schedules their
         # reconciliation callbacks. Let those callbacks run before draining.
@@ -273,7 +284,7 @@ class HermesAppAdapter(BasePlatformAdapter):
     async def _capabilities(self, request):
         return web.json_response({'protocol': 1, 'baseline': '2f16a1aa5a35feec496949abdef7ad51aea0e7ef',
             'owner': 'single', 'channels': True, 'threads': True,
-            'execution_ingress': 'durable_fifo', 'durable_accept': True,
+            'execution_ingress': 'durable_fifo_native_steer', 'durable_accept': True,
             'history': True, 'history_latest': True, 'tool_call_timeline': True,
             'message_send_identity': True,
             'durable_sync': True, 'attachments': True, 'approvals': True,
@@ -415,8 +426,101 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPBadRequest(text=str(exc)) from exc
         if created:
             self._events_changed.set()
-            self._wake_thread(tid)
+            admission=asyncio.create_task(self._dispatch_busy_text(tid))
+            self._admission_tasks.add(admission)
+            def done(task):
+                self._admission_tasks.discard(task)
+                if not self._stopping:
+                    self._wake_thread(tid)
+            admission.add_done_callback(done)
+            await asyncio.shield(admission)  # client disconnect cannot revoke durable handoff
+            receipt=await asyncio.to_thread(self._store.receipt,receipt['id'])
         return web.json_response({'receipt':receipt}, status=202)
+
+    def _ingress_lock(self, thread_id):
+        return self.__dict__.setdefault('_ingress_locks',{}).setdefault(thread_id, asyncio.Lock())
+
+    async def _dispatch_busy_text(self, thread_id):
+        # The running receipt is the primary owner. A follow-up is claimed in
+        # durable FIFO order before crossing the Gateway boundary, exactly once.
+        async with self._ingress_lock(thread_id):
+            if (self._stopping or self._gateway_starting() or
+                    thread_id not in self._active_receipts):
+                return
+            thread = self._store.get_thread(thread_id)
+            source = self._source(thread['project_id'],thread_id)
+            if self._gateway_owner()._effective_busy_input_mode(source) != 'steer':
+                return  # Default interrupt mode must keep the old safe FIFO.
+            while not self._stopping:
+                claim = await asyncio.to_thread(self._store.claim_busy_text,thread_id)
+                if claim is None:
+                    return
+                receipt_id, text = claim
+                self._events_changed.set()
+                event = MessageEvent(text=text,source=source,message_id=receipt_id)
+                try:
+                    await self.handle_message(event)
+                except asyncio.CancelledError:
+                    await asyncio.shield(asyncio.to_thread(self._store.finish_receipt,receipt_id,'unknown'))
+                    raise
+                except Exception:
+                    # After claim even an exception is ambiguous; never requeue.
+                    log.exception('Hermes App busy admission ambiguous: %s',receipt_id)
+                    await asyncio.to_thread(self._store.finish_receipt,receipt_id,'unknown')
+                    self._events_changed.set()
+                    return
+                # Busy success normally leaves _gateway_accepted False. Gateway may
+                # instead take a normal owner or enqueue a native FIFO fallback.
+                task=asyncio.create_task(self._reconcile_followup(thread_id,receipt_id,event))
+                self._followup_tasks.add(task)
+                task.add_done_callback(self._followup_tasks.discard)
+
+    async def _reconcile_followup(self, thread_id, receipt_id, event):
+        key=self._event_session_key(event)
+        try:
+            while not self._stopping:
+                outcome=await asyncio.to_thread(self._store.followup_core_outcome,
+                                                 receipt_id,get_hermes_home()/'state.db')
+                current=self._session_tasks.get(key)
+                pending=self._pending_messages.get(key)
+                primary=self._active_receipts.get(thread_id)
+                if event._gateway_accepted and primary is None and current and not current.done():
+                    self._active_receipts[thread_id]=receipt_id
+                    self._session_threads[key]=thread_id
+                    primary=receipt_id
+                if outcome in ('completed','failed','interrupted','unknown') and (not current or current.done()) and not pending:
+                    await asyncio.to_thread(self._store.finish_receipt,receipt_id,outcome)
+                    break
+                if (primary not in (None,receipt_id) or (current and not current.done()) or pending):
+                    await asyncio.sleep(.05)
+                    continue
+                # Native Gateway admitted the follow-up, but there is no
+                # per-ID model-consumption/completion proof. Do not inherit the
+                # primary owner's completion. A crash before here stays unknown.
+                await asyncio.sleep(.05)  # allow the in-band drain handoff
+                if not self._session_tasks.get(key) and not self._pending_messages.get(key):
+                    # An exact normal user anchor without formal completion is
+                    # ambiguous; it is not a successfully admitted steer.
+                    await asyncio.to_thread(self._store.finish_receipt,receipt_id,
+                                            'unknown' if outcome == 'anchored' else 'received')
+                    break
+            else:
+                return  # cold recovery converts running to unknown
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception('Hermes App follow-up reconciliation failed: %s',receipt_id)
+            await asyncio.to_thread(self._store.finish_receipt,receipt_id,'unknown')
+        finally:
+            if self._active_receipts.get(thread_id)==receipt_id:
+                self._active_receipts.pop(thread_id,None)
+                self._session_threads.pop(key,None)
+            self._stop_receipts.discard(receipt_id)
+            if self._store.expire_receipt_interactions(receipt_id,self._generation):
+                self._events_changed.set()
+            self._events_changed.set()
+            if not self._stopping:
+                self._wake_thread(thread_id)
 
     def _wake_thread(self, thread_id):
         self._queue_wakes[thread_id] = self._queue_wakes.get(thread_id, 0) + 1
@@ -443,7 +547,8 @@ class HermesAppAdapter(BasePlatformAdapter):
             while self._gateway_starting():
                 await asyncio.sleep(.05)
             generation = self._queue_wakes.get(thread_id, 0)
-            claim = await asyncio.to_thread(self._store.claim_next, thread_id)
+            async with self._ingress_lock(thread_id):
+                claim = await asyncio.to_thread(self._store.claim_next, thread_id)
             if claim is None:
                 if generation != self._queue_wakes.get(thread_id, 0):
                     continue
@@ -475,6 +580,11 @@ class HermesAppAdapter(BasePlatformAdapter):
                     await asyncio.to_thread(self._store.finish_receipt,receipt_id,'interrupted')
                     continue
                 await self.handle_message(event)
+                # Messages durably accepted before _active_receipts was installed
+                # missed the HTTP-side busy dispatch. The Gateway guard now exists:
+                # drain that FIFO prefix into the same native busy handler.
+                if event._gateway_accepted:
+                    await self._dispatch_busy_text(thread_id)
                 if receipt_id in self._stop_receipts:
                     from gateway.run import _INTERRUPT_REASON_STOP
                     await self._gateway_owner()._interrupt_and_clear_session(
@@ -523,8 +633,9 @@ class HermesAppAdapter(BasePlatformAdapter):
             finally:
                 if self._store.expire_receipt_interactions(receipt_id,self._generation):
                     self._events_changed.set()
-                self._active_receipts.pop(thread_id,None)
-                self._session_threads.pop(session_key,None)
+                if self._active_receipts.get(thread_id)==receipt_id:
+                    self._active_receipts.pop(thread_id,None)
+                    self._session_threads.pop(session_key,None)
                 self._stop_receipts.discard(receipt_id)
                 self._events_changed.set()
 

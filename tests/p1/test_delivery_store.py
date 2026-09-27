@@ -2,6 +2,7 @@
 import concurrent.futures
 import asyncio
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,6 +36,208 @@ def test_atomic_accept_retry_conflict_and_fifo(tmp_path):
     with sqlite3.connect(store.path) as db:
         assert db.execute('SELECT COUNT(*) FROM receipts').fetchone()[0]==2
         assert db.execute('SELECT COUNT(*) FROM sync_events WHERE kind="receipt"').fetchone()[0]>=4
+
+
+def test_busy_followups_claim_fifo_no_media_and_cold_unknown(tmp_path):
+    store,thread=_store(tmp_path)
+    primary,_=store.accept(thread,'first','held')
+    assert store.claim_next(thread)==(primary['id'],'held')
+    a,_=store.accept(thread,'a','alpha')
+    b,_=store.accept(thread,'b','beta')
+    assert store.claim_busy_text(thread)==(a['id'],'alpha')
+    assert store.claim_busy_text(thread)==(b['id'],'beta')
+    assert store.claim_busy_text(thread) is None
+    assert store.receipt(a['id'])['admission']=='followup'
+    assert len(store.snapshot()['threads'][0]['active_receipts'])==3
+    same,created=store.accept(thread,'a','alpha')
+    assert not created and same['id']==a['id'] and same['admission']=='followup'
+    store.attachment_add(thread,'att_'+'a'*32,'file.txt','text/plain',2)
+    media,_=store.accept(thread,'media','media',['att_'+'a'*32])
+    later,_=store.accept(thread,'later','later')
+    assert store.claim_busy_text(thread) is None  # no bypass of older media
+    assert store.recover_receipts()==[thread]
+    assert store.receipt(a['id'])['state']=='unknown'
+    assert store.receipt(a['id'])['admission']=='followup'
+    assert store.receipt(b['id'])['state']=='unknown'
+    assert store.claim_next(thread)==(media['id'],'media')
+    assert store.receipt(later['id'])['state']=='queued'
+
+
+def test_normal_fallback_exact_core_anchor_clears_followup_marker(tmp_path):
+    store,thread=_store(tmp_path)
+    first,_=store.accept(thread,'first','held')
+    store.claim_next(thread)
+    receipt,_=store.accept(thread,'boundary','normal')
+    store.claim_busy_text(thread)
+    store.mark_ingress_unknown(thread,'ingress:'+first['id'])
+    store.finish_receipt(first['id'],'unknown')
+    core=tmp_path/'state.db'
+    with sqlite3.connect(core) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,'
+                   'platform_message_id TEXT,finish_reason TEXT,tool_calls TEXT,content TEXT,display_kind TEXT)')
+        db.execute('INSERT INTO messages VALUES (1,?,?,?,?,?,?,?)',
+                   ('session','user',receipt['id'],None,None,'normal',None))
+    assert store.followup_core_outcome(receipt['id'],core)=='anchored'
+    store.begin_turn(thread,'normal-turn')
+    store.append_hook_refs(thread,'normal-turn',[('session',1,'user')])
+    assert store.followup_core_outcome(receipt['id'],core)=='anchored'
+    assert 'admission' not in store.receipt(receipt['id'])
+    with sqlite3.connect(core) as db:
+        db.execute('INSERT INTO messages VALUES (2,?,?,?,?,?,?,?)',
+                   ('session','assistant',None,'stop',None,'response',None))
+    store.append_hook_refs(thread,'normal-turn',[('session',2,'assistant')],complete=True)
+    assert store.followup_core_outcome(receipt['id'],core)=='completed'
+
+
+@pytest.mark.parametrize('state',['failed','interrupted','unknown'])
+def test_normal_fallback_failure_is_not_received(tmp_path,state):
+    store,thread=_store(tmp_path)
+    first,_=store.accept(thread,'first','held')
+    store.claim_next(thread)
+    item,_=store.accept(thread,'boundary','normal')
+    store.claim_busy_text(thread)
+    store.mark_ingress_unknown(thread,'ingress:'+first['id'])
+    store.finish_receipt(first['id'],'unknown')
+    core=tmp_path/'state.db'
+    with sqlite3.connect(core) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,'
+                   'platform_message_id TEXT,finish_reason TEXT,tool_calls TEXT,content TEXT,display_kind TEXT)')
+        db.execute('INSERT INTO messages VALUES (1,?,?,?,?,?,?,?)',
+                   ('session','user',item['id'],None,None,'normal',None))
+    assert store.followup_core_outcome(item['id'],core)=='anchored'
+    store.begin_turn(thread,'normal-turn')
+    store.append_hook_refs(thread,'normal-turn',[('session',1,'user')])
+    store.finish_turn(thread,'normal-turn',state)
+    assert store.followup_core_outcome(item['id'],core)==state
+    assert 'admission' not in store.receipt(item['id'])
+    store.finish_receipt(item['id'],state)
+    assert store.receipt(item['id'])['state']==state
+
+
+def test_received_followup_is_terminal_not_restart_unknown(tmp_path):
+    store,thread=_store(tmp_path)
+    first,_=store.accept(thread,'first','held')
+    store.claim_next(thread)
+    item,_=store.accept(thread,'second','followup')
+    store.claim_busy_text(thread)
+    store.finish_receipt(item['id'],'received')
+    with store._connect() as db:
+        assert db.execute('SELECT pending_text FROM receipts WHERE id=?',(item['id'],)).fetchone()[0]=='followup'
+    store.recover_receipts()
+    assert store.receipt(item['id'])['state']=='received'
+    assert store.receipt(item['id'])['admission']=='followup'
+    retry,created=store.accept(thread,'second','followup')
+    assert not created and retry==store.receipt(item['id'])
+
+def test_individual_input_pages_search_read_and_reopen_without_core_row(tmp_path):
+    store,thread=_store(tmp_path)
+    owner,_=store.accept(thread,'owner','held')
+    store.claim_next(thread)
+    first,_=store.accept(thread,'client-A','same 原文')
+    second,_=store.accept(thread,'client-B','same 原文')
+    store.claim_busy_text(thread)
+    store.claim_busy_text(thread)
+    store.finish_receipt(first['id'],'received')
+    store.finish_receipt(second['id'],'unknown')
+    store.finish_receipt(owner['id'],'interrupted')
+    core=tmp_path/'empty-core.db'
+    with sqlite3.connect(core) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY)')
+    reopened=Store(store.path)
+    reopened.recover_receipts(core)
+    messages=reopened.history_page(thread,core)['messages']
+    assert [(m['id'],m['client_message_id'],m['text']) for m in messages]==[
+        ('receipt:'+first['id'],'client-A','same 原文'),
+        ('receipt:'+second['id'],'client-B','same 原文')]
+    assert [m['ref_seq'] for m in messages]==sorted(m['ref_seq'] for m in messages)
+    assert reopened.history_page(thread,core,latest=True,limit=1)['messages']==[messages[-1]]
+    assert reopened.history_page(thread,core,before=reopened._older_cursor(thread,messages[-1]['ref_seq']))['messages']==[messages[0]]
+    forward=reopened.history_page(thread,core,limit=1)
+    assert forward['messages']==[messages[0]]
+    assert reopened.history_page(thread,core,after=forward['next_cursor'])['messages']==[messages[1]]
+    search=reopened.search_page(thread,core,'原文',limit=1)
+    assert search['messages']==[messages[0]]
+    assert reopened.search_page(thread,core,'原文',after=search['next_cursor'])['messages']==[messages[1]]
+    assert reopened.snapshot()['threads'][0]['unread_count']==2
+    assert reopened.read_thread(thread,messages[0]['ref_seq'])['unread_count']==1
+    assert reopened.read_thread(thread,messages[1]['ref_seq'])['unread_count']==0
+    assert reopened.accept(thread,'client-A','same 原文')[1] is False
+    assert len(reopened.history_page(thread,core)['messages'])==2
+
+def test_exact_fallback_promotes_input_in_place_and_keeps_original_id(tmp_path):
+    store,thread=_store(tmp_path)
+    owner,_=store.accept(thread,'owner','held')
+    store.claim_next(thread)
+    item,_=store.accept(thread,'boundary','normal fallback')
+    store.claim_busy_text(thread)
+    core=tmp_path/'core.db'
+    with sqlite3.connect(core) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,'
+                   'platform_message_id TEXT,content TEXT,display_kind TEXT,tool_calls TEXT)')
+        db.execute('INSERT INTO messages VALUES (1,?,?,?,?,?,?)',
+                   ('session','user',item['id'],'normal fallback',None,None))
+    before=store.history_page(thread,core)['messages'][0]
+    assert store.link_user_from_core(item['id'],core)
+    store.bind_turn('formal','session')
+    store.append_hook_refs(thread,'formal',[('session',1,'user')])
+    after=Store(store.path).history_page(thread,core)['messages'][0]
+    assert (before['id'],before['ref_seq'],before['text'])==(after['id'],after['ref_seq'],after['text'])
+    with store._connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM message_refs').fetchone()[0]==1
+        assert db.execute('SELECT pending_text FROM receipts WHERE id=?',(item['id'],)).fetchone()[0] is None
+
+def test_unreadable_exact_anchor_cannot_discard_input_original(tmp_path):
+    store,thread=_store(tmp_path)
+    owner,_=store.accept(thread,'owner','held')
+    store.claim_next(thread)
+    item,_=store.accept(thread,'boundary','keep this')
+    store.claim_busy_text(thread)
+    core=tmp_path/'core.db'
+    with sqlite3.connect(core) as db:
+        db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,'
+                   'platform_message_id TEXT,content TEXT,display_kind TEXT,tool_calls TEXT)')
+        db.execute('INSERT INTO messages VALUES (1,?,?,?,?,?,?)',
+                   ('session','user',item['id'],'internal','hidden',None))
+    assert not store.link_user_from_core(item['id'],core)
+    with store._connect() as db:
+        assert db.execute('SELECT pending_text FROM receipts WHERE id=?',(item['id'],)).fetchone()[0]=='keep this'
+    assert store.history_page(thread,core)['messages'][0]['text']=='keep this'
+
+@pytest.mark.parametrize('partial',[False,True])
+def test_old_ref_schema_migration_preserves_issued_cursors_and_read_marker(tmp_path,partial):
+    store,thread=_store(tmp_path)
+    store.begin_turn(thread,'old-turn')
+    store.record_turn(thread,'old-turn',[('session',11,'user'),('session',12,'assistant')])
+    store.read_thread(thread,1)
+    prior=store.sync_page()['events']
+    with sqlite3.connect(store.path) as db:
+        db.execute('DROP TRIGGER published_ref')
+        db.execute('DROP INDEX refs_page')
+        db.execute('ALTER TABLE message_refs RENAME TO retired_refs')
+        db.execute('CREATE TABLE message_refs (seq INTEGER PRIMARY KEY AUTOINCREMENT, '
+                   'thread_id TEXT NOT NULL REFERENCES threads(id), '
+                   'turn_id TEXT NOT NULL REFERENCES turns(turn_id), session_id TEXT NOT NULL, '
+                   'row_id INTEGER UNIQUE'+(
+                       ', input_receipt_id TEXT UNIQUE REFERENCES receipts(id), role TEXT NOT NULL, '
+                       'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' if partial else
+                       ' NOT NULL, role TEXT NOT NULL')+')')
+        db.execute('INSERT INTO message_refs(seq,thread_id,turn_id,session_id,row_id,role) '
+                   'SELECT seq,thread_id,turn_id,session_id,row_id,role FROM retired_refs')
+        db.execute('DROP TABLE retired_refs')
+        db.execute('CREATE INDEX refs_page ON message_refs(thread_id,seq)')
+        db.execute("CREATE TRIGGER published_ref AFTER INSERT ON message_refs BEGIN "
+                   "INSERT INTO sync_events(kind,thread_id,ref,version) "
+                   "VALUES ('message',NEW.thread_id,CAST(NEW.seq AS TEXT),1); END")
+    reopened=Store(store.path)
+    assert reopened.sync_page()['events']==prior
+    assert reopened.snapshot()['threads'][0]['read_ref']==1
+    assert reopened.read_thread(thread,1)['unread_count']==1
+    with reopened._connect() as db:
+        assert [(r['seq'],r['row_id']) for r in db.execute(
+            'SELECT seq,row_id FROM message_refs ORDER BY seq')]==[(1,11),(2,12)]
+    reopened.begin_turn(thread,'new-turn')
+    reopened.record_turn(thread,'new-turn',[('session',13,'user')])
+    assert reopened.snapshot()['threads'][0]['last_ref']==3
 
 
 def test_queue_limit_sync_pagination_and_foreign_cursor(tmp_path):
@@ -165,6 +368,7 @@ def test_empty_claim_accept_wakeup_and_owner_callback_identity(tmp_path,monkeypa
         adapter._events_changed=asyncio.Event()
         adapter._gateway_starting=lambda:False
         adapter._source=lambda *args:None
+        adapter._gateway_owner=lambda:SimpleNamespace(_effective_busy_input_mode=lambda source:'interrupt')
         adapter._session_tasks={}
         adapter._event_session_key=lambda event:'owner'
         seen=[]
@@ -201,6 +405,49 @@ def test_empty_claim_accept_wakeup_and_owner_callback_identity(tmp_path,monkeypa
         hold.set()
         await newer
     asyncio.run(asyncio.wait_for(scenario(), 8))
+
+
+def test_queued_before_primary_active_drains_native_fifo(tmp_path):
+    async def scenario():
+        store,thread=_store(tmp_path)
+        first,_=store.accept(thread,'first','first')
+        second,_=store.accept(thread,'second','second')
+        third,_=store.accept(thread,'third','third')
+        adapter=object.__new__(HermesAppAdapter)
+        adapter._store=store
+        adapter._stopping=False
+        adapter._queue_wakes={}
+        adapter._queue_tasks={}
+        adapter._events_changed=asyncio.Event()
+        adapter._gateway_starting=lambda:False
+        adapter._gateway_owner=lambda:SimpleNamespace(_effective_busy_input_mode=lambda source:'steer')
+        adapter._source=lambda *args:None
+        adapter._session_tasks={}
+        adapter._event_session_key=lambda event:'owner'
+        adapter._active_receipts={}
+        adapter._session_threads={}
+        adapter._stop_receipts=set()
+        adapter._generation='test'
+        adapter._followup_tasks=set()
+        adapter._reconcile_followup=lambda *args:asyncio.sleep(0)
+        adapter._settle_ingress=lambda *args,**kwargs:asyncio.sleep(0)
+        store.link_user_from_core=lambda *args:True
+        seen=[]
+        async def handle(event):
+            seen.append(event.message_id)
+            if event.message_id==first['id']:
+                event._gateway_accepted=True
+                adapter._session_tasks['owner']=asyncio.create_task(asyncio.sleep(.03))
+        adapter.handle_message=handle
+        assert adapter._active_receipts=={}
+        await adapter._dispatch_busy_text(thread)
+        assert seen==[]
+        await asyncio.wait_for(adapter._queue_loop(thread),5)
+        await asyncio.gather(*adapter._followup_tasks)
+        assert seen==[first['id'],second['id'],third['id']]
+        assert [store.receipt(r['id'])['admission'] for r in (second,third)]==['followup','followup']
+        assert [store.receipt(r['id'])['state'] for r in (second,third)]==['running','running']
+    asyncio.run(scenario())
 
 
 def test_channel_reconcile_versions_and_restart_gap(tmp_path):

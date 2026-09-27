@@ -90,6 +90,26 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
 const user = key => ({ key, role: 'user', text: key });
 const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, toolCalls });
 
+test('empty composer explicitly shrinks after long send without replacing the native input', () => {
+  const h = mount({ keyboard: true });
+  const style = () => Object.assign({}, ...h.input.style.filter(Boolean));
+  h.draft('long line\n'.repeat(80), () => {});
+  const nativeID = h.input.nativeID, key = h.input.key;
+  assert.equal(style().maxHeight, 120);
+  assert.equal(style().height, undefined, 'nonempty input retains native auto sizing');
+  h.draft('', () => {});
+  assert.equal(style().height, 42, 'cleared text must explicitly restore one line');
+  h.dock(150); h.rerender();
+  assert.equal(style().height, 42, 'late old dock measurement cannot stretch the empty input');
+  assert.equal(h.input.nativeID, nativeID); assert.equal(h.input.key, key);
+  assert.equal(h.input.multiline, true);
+  h.draft('new draft', () => {});
+  assert.equal(style().height, undefined, 'new typing restores native multiline growth');
+  assert.equal(h.input.nativeID, nativeID); assert.equal(h.input.key, key);
+  h.draft('   ', () => {});
+  assert.equal(style().height, undefined, 'whitespace is still an unsent draft');
+});
+
 test('clipboard text replaces composer selection without sending or scrolling', () => {
   const h = mount({ keyboard: true }); let draft;
   h.draft('hello world', value => { draft = value; });
@@ -254,6 +274,33 @@ test('App send invokes the production animated follow handle after enqueue', asy
   await send.exports.send();
   assert.equal(enqueued.length, 1);
   assert.deepEqual(h.calls, [{ animated: true }]);
+});
+
+test('send clears and shrinks only a durably saved unchanged draft', async () => {
+  const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const start = appSource.indexOf('  const send = () => run(async () => {');
+  const snippet = appSource.slice(start, appSource.indexOf('  const answer = (item:', start));
+  for (const scenario of ['saved', 'failed', 'edited']) {
+    const h = mount({ keyboard: true });
+    const original = 'paragraph\n'.repeat(80); let draft = original;
+    h.draft(draft, () => {});
+    let finish, fail;
+    const gate = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+    const output = { exports: {} };
+    runInNewContext(ts.transpileModule(snippet + '\nexports.send = send;', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
+      { exports: output.exports, run: callback => callback(), outboxRef: { current: { storage: { connectionId: 'conn' }, enqueue: () => gate } },
+        config: { id: 'conn' }, threadId: 'th', text: original, newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
+        timelineRef: h.ref, setText: update => { draft = update(draft); h.draft(draft, () => {}); }, attachmentsBusy: false, draftAttachments: [],
+        composerScope: 'conn:th', currentComposer: { current: 'conn:th' }, setAttachmentDraft() {}, setAttachmentClearKey() {} });
+    const sending = output.exports.send();
+    assert.equal(draft, original, 'never clear before enqueue commits');
+    if (scenario === 'edited') { draft = 'new unsent draft'; h.draft(draft, () => {}); }
+    if (scenario === 'failed') { fail(new Error('storage')); await assert.rejects(sending, /storage/); }
+    else { finish(); await sending; }
+    assert.equal(draft, scenario === 'saved' ? '' : scenario === 'edited' ? 'new unsent draft' : original);
+    const style = Object.assign({}, ...h.input.style.filter(Boolean));
+    assert.equal(style.height, scenario === 'saved' ? 42 : undefined);
+  }
 });
 
 test('initial/restored follows do not animate; reader and reduced motion prevent append follow', () => {

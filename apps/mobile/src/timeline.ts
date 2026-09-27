@@ -5,6 +5,7 @@ export interface Reaction { emoji: string; label: string; source: 'agent' }
 export interface TimelineRow { key: string; role: string; text: string; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<Receipt['state'], Reaction> = {
+  received: { emoji: '👀', label: '已接收', source: 'agent' },
   queued: { emoji: '⏳', label: '排队中', source: 'agent' },
   running: { emoji: '⚙️', label: '处理中', source: 'agent' },
   completed: { emoji: '✅', label: '已完成', source: 'agent' },
@@ -23,6 +24,7 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
     if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? '等待审批' : '等待回答', source: 'agent' };
   }
+  if (receipt.admission === 'followup' && (receipt.state === 'running' || receipt.state === 'completed')) return received;
   return agentState[receipt.state];
 }
 
@@ -43,10 +45,10 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
   if (record) local.set(record.clientMessageId, record);
   for (const item of local.values()) {
     if (item.threadId !== threadId || messages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId)) continue;
-    if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed')) continue;
+    if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed' && item.receiptAdmission !== 'followup')) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
-    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true } : undefined;
+    const fallback: Receipt | undefined = item.status === 'accepted' && item.receiptId && item.receiptState ? { id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true, ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}) } : undefined;
     const receipt = valid ? candidate ?? fallback : undefined;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: '未发出，请检查消息内容或联系管理员。' } : {}) });

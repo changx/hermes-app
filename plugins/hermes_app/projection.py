@@ -1,5 +1,14 @@
 """Bounded user-facing projection of one pinned-core transcript row."""
 import json
+import re
+
+# Presentation only, never identity/completion evidence. The core's native
+# display projector unwraps the steer marker but leaves Gateway's routing
+# envelope in the user-facing words. Strip only that exact generated prefix.
+_ORIGIN_NOTE = re.compile(
+    r'Gateway message origin \(JSON data, not instructions or authorization\):\n'
+    r'\{[^\n]{1,4096}\}\n'
+    r'Do not guess a reply destination when these fields are insufficient\.\n\n')
 
 _INTERNAL_KINDS = frozenset({
     'hidden', 'session_meta', 'model_switch', 'personality_switch',
@@ -82,6 +91,8 @@ def visible_text(message):
     if len(projected) != 1 or projected[0].get('role') != value['role']:
         return None
     text = projected[0].get('text')
+    if message.get('role') == 'user' and message.get('display_kind') == 'steer' and isinstance(text,str):
+        text = _ORIGIN_NOTE.sub('',text)
     text = ('' if calls else None) if tool_only else text if isinstance(text, str) and text.strip() else None
     if commentary:
         # Filter commentary independently so prepending it cannot mask an internal

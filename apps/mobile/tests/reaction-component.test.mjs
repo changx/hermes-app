@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { projectTimeline } from '../src/timeline.ts';
-import { parseMessageMarkdown, messageNeedsViewport } from '../src/messageMarkdown.ts';
+import { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl } from '../src/messageMarkdown.ts';
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ width: 390, height: 844 }) };
@@ -21,7 +21,8 @@ const modules = {
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
-  './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport },
+  './MessageContent': { MessageContent: 'MessageContent' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl },
+  './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
   'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
   'react-native-webview': 'WebView', './markdownWeb': { renderMarkdownHtml: (kind, source) => `${kind}:${source}` }
@@ -262,16 +263,18 @@ test('latest-message action lives in composer flow and never covers message cont
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === '回到最新 ↓'), false);
 });
 
-test('composer swaps send for stop only in current running thread, preserves draft and empty stop', () => {
+test('composer keeps send while running with an independent stop that preserves draft', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   for (const draft of ['', 'keep this draft']) {
     const h = mount(rows, [receipt('running')], [], { text: draft });
     const buttons = named(h.tree, 'Pressable');
-    assert.equal(buttons.some(n => n.props.accessibilityLabel === '发送'), false);
+    const send = buttons.find(n => n.props.accessibilityLabel === '发送');
+    assert.ok(send); assert.equal(send.props.disabled, draft === '');
     const stop = buttons.find(n => n.props.accessibilityLabel === '停止');
     assert.equal(stop.props.disabled, false);
     click(h.tree, '停止');
     assert.deepEqual(h.calls, [['stop']]);
+    if (draft) { click(h.tree, '发送'); assert.deepEqual(h.calls, [['stop'], ['send']]); }
     assert.equal(named(h.tree, 'TextInput')[0].props.value, draft);
   }
   for (const state of ['queued', 'completed', 'failed', 'interrupted', 'unknown']) {

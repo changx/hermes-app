@@ -1,0 +1,156 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { HermesClient, ProtocolError } from '../../../packages/client/dist/index.js';
+import { projectTimeline } from '../src/timeline.ts';
+import { MobileOutbox, OutboxStore } from '../src/outbox.ts';
+import { accepted, newSend } from '../src/send.ts';
+
+const config = { id: 'connection', baseUrl: 'https://example.com', token: 'test' };
+const id = 'mob_12345678-1234-1234-1234-123456789abc';
+const receipt = (state = 'running') => ({ id: 'r', client_message_id: id, thread_id: 'th', state, durable: true, admission: 'followup' });
+const message = { id: 'm', ref_seq: 1, role: 'user', text: '补充', client_message_id: id, receipt_id: 'r' };
+const reaction = r => projectTimeline([message], null, 'th', undefined, true, [], new Map([['r', r]]))[0].reaction;
+
+test('native followup shows received; primary completion cannot finish it', () => {
+  const r = receipt();
+  const cache = new Map([['r', r], ['primary', { ...r, id: 'primary', client_message_id: 'other', state: 'completed', admission: undefined }]]);
+  assert.deepEqual(projectTimeline([message], null, 'th', undefined, true, [], cache)[0].reaction, { emoji: '👀', label: '已接收', source: 'agent' });
+  assert.equal(reaction(receipt('completed')).label, '已接收');
+  assert.equal(reaction({ ...r, admission: undefined }).label, '处理中');
+  for (const [state, label] of [['queued', '排队中'], ['failed', '执行失败'], ['interrupted', '已停止'], ['unknown', '结果待确认']]) assert.equal(reaction(receipt(state)).label, label);
+  assert.equal(reaction({ ...r, thread_id: 'foreign' }), undefined);
+});
+
+test('SDK validates admission from authenticated server without inventing it for old receipts', async () => {
+  let value = receipt();
+  const client = new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { receipt: value } }; } }, socket: { connect() {} } });
+  assert.equal((await client.getReceipt('r')).admission, 'followup');
+  value = { ...value, admission: undefined };
+  assert.equal((await client.getReceipt('r')).admission, undefined);
+  value = { ...value, admission: 'completed-steer' };
+  await assert.rejects(client.getReceipt('r'), ProtocolError);
+});
+
+test('durable followup marker survives cold outbox restoration and truthful unknown update', async () => {
+  const data = new Map();
+  const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
+  const store = new OutboxStore(kv, config);
+  await store.load();
+  const record = newSend(config, 'th', '补充', id);
+  await store.enqueue(record);
+  await store.update(accepted(record, receipt()));
+  const cold = new OutboxStore(kv, config);
+  const records = await cold.load();
+  assert.equal(records[0].receiptAdmission, 'followup');
+  const rows = projectTimeline([], null, 'th', undefined, true, records);
+  assert.equal(rows[0].reaction.emoji, '👀');
+  assert.equal(rows[0].status, 'accepted');
+  await cold.update(accepted(records[0], receipt('unknown')));
+  const again = new OutboxStore(kv, config);
+  const restored = await again.load();
+  assert.equal(projectTimeline([], null, 'th', undefined, true, restored)[0].reaction.label, '结果待确认');
+});
+
+test('received input remains visible until exact authoritative identity arrives', async () => {
+  const local = accepted(newSend(config, 'th', '补充一', id), receipt('received'));
+  const pending = projectTimeline([], null, 'th', undefined, true, [local]);
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].text, '补充一');
+  assert.equal(pending[0].reaction.label, '已接收');
+  const foreign = { ...message, client_message_id: 'another', text: '补充一' };
+  assert.equal(projectTimeline([foreign], null, 'th', undefined, true, [local]).length, 2, 'equal text is not identity');
+  const input = { id: 'receipt:r', ref_seq: 8, role: 'user', text: '补充一', client_message_id: id, receipt_id: 'r' };
+  const client = new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { messages: [input], next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } }, socket: { connect() {} } });
+  await client.history('th');
+  const result = projectTimeline(client.messages.get('th'), null, 'th', undefined, true, [local], new Map([['r', receipt('received')]]));
+  assert.equal(result.length, 1);
+  assert.equal(result[0].key, pending[0].key, 'confirmation preserves the optimistic row identity');
+  assert.equal(result[0].reaction.label, '已接收');
+  assert.equal(result[0].receipt.id, 'r');
+  const data = new Map();
+  const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
+  const store = new OutboxStore(kv, config); await store.load(); await store.enqueue(local);
+  await store.removeConfirmed(id);
+  assert.equal((await new OutboxStore(kv, config).load()).length, 0);
+});
+
+test('interleaved input/output keeps server order across replay, cold history and equal inputs', async () => {
+  const id2 = 'mob_22345678-1234-1234-1234-123456789abc';
+  const inputs = [
+    { id: 'receipt:r', ref_seq: 12, role: 'user', text: '相同补充', client_message_id: id, receipt_id: 'r' },
+    { id: 'receipt:r2', ref_seq: 14, role: 'user', text: '相同补充', client_message_id: id2, receipt_id: 'r2' }
+  ];
+  const stream = [
+    { id: 'a1', ref_seq: 11, role: 'assistant', text: '开始处理' }, inputs[0],
+    { id: 'a2', ref_seq: 13, role: 'assistant', text: '', tool_calls: [{ id: 'call', name: 'read_file', label: '读取文件' }] }, inputs[1],
+    { id: 'a3', ref_seq: 15, role: 'assistant', text: '按补充继续' }
+  ];
+  let page = stream.slice(0, 3);
+  const makeClient = () => new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { messages: page, next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } }, socket: { connect() {} } });
+  const client = makeClient(); await client.history('th');
+  page = stream.slice(2); await client.history('th'); await client.history('th');
+  const pending = [id, id2].map((key, index) => accepted(newSend(config, 'th', '相同补充', key), { ...receipt('received'), id: index ? 'r2' : 'r', client_message_id: key }));
+  const project = c => projectTimeline(c.messages.get('th'), null, 'th', undefined, true, pending);
+  const rows = project(client);
+  assert.deepEqual(rows.map(r => r.refSeq), [11, 12, 13, 14, 15]);
+  assert.deepEqual(rows.filter(r => r.role === 'user').map(r => r.key), [`local:${id}`, `local:${id2}`]);
+  assert.equal(rows[2].toolCalls[0].id, 'call');
+  page = stream; const cold = makeClient(); await cold.history('th');
+  assert.deepEqual(project(cold), rows);
+  const unresolved = accepted(newSend(config, 'th', '尚无原文引用', id), receipt('completed'));
+  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction.label, '已接收');
+});
+
+test('received followup survives successful history sync until its exact input is available', async () => {
+  const data = new Map();
+  const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
+  const store = new OutboxStore(kv, config); await store.load();
+  await store.enqueue(accepted(newSend(config, 'th', '停止前的补充', id), receipt('received')));
+  let syncs = 0;
+  const sdk = { receipts: new Map([['r', receipt('received')]]), messages: new Map(), supportsLatest: true,
+    async getReceipt() { return receipt('received'); },
+    async send() { assert.fail('received input must never be sent again'); },
+    async historyTail() { syncs++; }
+  };
+  const flush = async () => { for (let n = 0; n < 20; n++) await new Promise(resolve => setImmediate(resolve)); };
+  const box = new MobileOutbox(store, sdk, () => {}, () => 1000);
+  try {
+    await box.start(); box.setConnection('online'); await flush();
+    assert.ok(syncs > 0);
+    assert.equal(box.records.length, 1, 'a receipt and empty successful sync cannot erase the only original');
+    assert.equal((await new OutboxStore(kv, config).load())[0].text, '停止前的补充');
+    sdk.messages.set('th', [{ ...message, id: 'receipt:r', text: '停止前的补充' }]);
+    box.reconcile(); await flush();
+    assert.equal(box.records.length, 0, 'exact published input permits local cleanup');
+    assert.equal((await new OutboxStore(kv, config).load()).length, 0);
+  } finally { await box.stop(); }
+});
+
+test('same-state admission update is persisted immediately, including normal fallback', async () => {
+  const data = new Map();
+  const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
+  const store = new OutboxStore(kv, config);
+  await store.load();
+  await store.enqueue(accepted(newSend(config, 'th', '补充', id), receipt()));
+  let queries = 0;
+  const sdk = {
+    receipts: new Map([['r', receipt()]]), messages: new Map(), supportsLatest: true,
+    async getReceipt() { queries++; return sdk.receipts.get('r'); },
+    async send() { assert.fail('accepted messages must never resend'); },
+    async historyTail() {},
+  };
+  const flush = async () => { for (let n = 0; n < 20; n++) await new Promise(resolve => setImmediate(resolve)); };
+  const box = new MobileOutbox(store, sdk, () => {}, () => 1000);
+  try {
+    await box.start(); box.setConnection('online'); await flush();
+    const before = queries;
+    sdk.receipts.set('r', { ...receipt(), admission: undefined });
+    box.reconcile(); await flush();
+    assert.equal(box.records[0].receiptAdmission, undefined);
+    assert.equal(queries, before, 'event metadata update must not wait for polling');
+    assert.equal((await new OutboxStore(kv, config).load())[0].receiptAdmission, undefined);
+    sdk.receipts.set('r', receipt()); box.reconcile(); await flush();
+    assert.equal(box.records[0].receiptAdmission, 'followup');
+    assert.equal((await new OutboxStore(kv, config).load())[0].receiptAdmission, 'followup');
+  } finally { await box.stop(); }
+});

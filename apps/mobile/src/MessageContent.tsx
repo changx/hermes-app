@@ -7,6 +7,8 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
 import { renderMarkdownHtml } from './markdownWeb';
+import { ARTICLE_TEXT_LIMIT, renderArticleHtml } from './articleHtml';
+import { safeLinkUrl } from './messageMarkdown';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
 
@@ -285,6 +287,42 @@ function ToolCalls({ calls, onInteraction }: { calls?: readonly ToolCall[]; onIn
   })}</View>;
 }
 
+function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { text: string; blocks: Block[]; toolCalls?: readonly ToolCall[]; onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object> }) {
+  const page = useMemo(() => {
+    if (text.length > ARTICLE_TEXT_LIMIT) return null;
+    const result = renderArticleHtml(blocks, toolCalls);
+    return result.html.length <= 8_000_000 ? result : null; // includes the local engine bundles
+  }, [text, blocks, toolCalls]);
+  const [failed, setFailed] = useState(false);
+  if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+    <Text style={styles.articleFailure}>{!page ? '文章较长，已改用普通阅读模式。' : '文章暂时无法加载，已改用普通阅读模式。'}</Text>
+    <RenderBlocks blocks={blocks} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} suspended />
+    <ToolCalls calls={toolCalls} onInteraction={() => {}} />
+  </ScrollView>;
+  return <WebView style={styles.articleWeb} source={{ html: page.html }} originWhitelist={['*']}
+    onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
+    onMessage={event => {
+      const match = /^(expand|link):(0|[1-9][0-9]{0,8})$/.exec(event.nativeEvent.data);
+      if (!match) return;
+      const index = Number(match[2]);
+      // Only typed indices into this message's AST; no URL or arbitrary command bridge.
+      if (match[1] === 'expand') {
+        const target = page.expansions[index];
+        if (target && target.block.kind === target.kind) onExpand(target);
+      } else {
+        const href = page.links[index];
+        if (href && safeLinkUrl(href) === href) void Linking.openURL(href).catch(() => Alert.alert('链接无法打开'));
+      }
+    }}
+    onError={() => setFailed(true)} onHttpError={() => setFailed(true)}
+    onContentProcessDidTerminate={() => setFailed(true)} onRenderProcessGone={() => setFailed(true)}
+    renderError={() => <View />}
+    javaScriptEnabled domStorageEnabled={false} allowFileAccess={false} allowFileAccessFromFileURLs={false}
+    allowUniversalAccessFromFileURLs={false} mixedContentMode="never" setSupportMultipleWindows={false}
+    javaScriptCanOpenWindowsAutomatically={false} cacheEnabled={false} incognito
+    sharedCookiesEnabled={false} thirdPartyCookiesEnabled={false} />;
+}
+
 /** Native renderer: validated remote images load automatically in a fixed frame. */
 export const MessageContent = memo(function MessageContent({ text, toolCalls, pending = false, canExpand = false }: { text: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
@@ -349,10 +387,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
           </Pressable>
         </View>
         {target.kind === 'message'
-          ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
-              <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} />
-              <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
-            </ScrollView>
+          ? <ArticleContent text={text} blocks={parsed} toolCalls={toolCalls} onExpand={setTarget} tone={tone} allowed={allowed} />
           : target.kind === 'table' && target.block.kind === 'table'
             ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
                 <MarkdownTable block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreen />
@@ -407,6 +442,8 @@ const styles = StyleSheet.create({
   modalClose: { color: '#215ca7', fontSize: 15, padding: 6 },
   modalScroll: { flex: 1, minWidth: 0 },
   modalScrollContent: { paddingBottom: 16 },
+  articleWeb: { flex: 1, backgroundColor: '#fff' },
+  articleFailure: { color: '#52657c', fontSize: 13, paddingBottom: 10 },
   quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },
   list: { gap: 5, minWidth: 0 },
   listRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },

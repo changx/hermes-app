@@ -58,7 +58,17 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     } },
     'react-native-webview': 'WebView',
     './markdownWeb': { renderMarkdownHtml: (kind, source, display) => `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}` },
-    './messageMarkdown': { parseMessageMarkdown } };
+    './messageMarkdown': { parseMessageMarkdown, safeLinkUrl: href => { try { const u = new URL(href); return /^https?:$/.test(u.protocol) && !u.username && !u.password && !/[\s\\]/.test(href) ? u.href : null; } catch { return null; } } } };
+  const articleOutput = { exports: {} };
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  }).outputText, { module: articleOutput, exports: articleOutput.exports, require: name => {
+    if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(42) };
+    if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' };
+    if (name === './messageMarkdown') return modules[name];
+    throw Error(name);
+  } });
+  modules['./articleHtml'] = articleOutput.exports;
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/MessageContent.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
@@ -108,28 +118,27 @@ function doubleTapArticle(h) {
   }
 }
 
-test('fullscreen article keeps native selectable text and blocks entry gestures without capturing selection', () => {
+test('fullscreen article uses one default-menu WebView, without native paragraph-copy claims', () => {
   const h = mount('# 标题\n\n正文 **重点**\n\n| A | B |\n|---|---|\n|值|内容|', { canExpand: true });
   doubleTapArticle(h);
   const nodes = h.walk(h.render());
   const modal = nodes.find(n => n.type === 'Modal');
   assert.equal(modal.props.visible, true);
-  const content = h.walk(modal.children);
-  const paragraphs = content.filter(n => n.type === 'Animated.Text' && n.props.selectable);
-  assert.ok(paragraphs.length >= 5);
-  assert.ok(content.some(n => n.type === 'ScrollView' && n.props.keyboardShouldPersistTaps === 'always'));
-  const root = content.find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.onTouchStart);
+  const article = h.walk(modal.children).find(n => n.type === 'WebView');
+  assert.ok(article);
+  assert.match(article.props.source.html, /<h1>标题<\/h1>[\s\S]*<strong>重点<\/strong>[\s\S]*<table>/);
+  assert.equal(article.props.menuItems, undefined);
+  assert.equal(article.props.suppressMenuItems, undefined);
+  assert.doesNotMatch(article.props.source.html, /user-select:\s*none|preventDefault\(\).*selection|contextmenu|document\.execCommand|clipboard\.writeText/i);
+  assert.equal(article.props.onShouldStartLoadWithRequest({ url: 'https://example.com' }), false);
+  assert.equal(article.props.onShouldStartLoadWithRequest({ url: 'about:blank' }), true);
+  const root = h.walk(modal.children).find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.onTouchStart);
   let stopped = false;
   root.props.onTouchStart({ stopPropagation() { stopped = true; } });
   assert.equal(stopped, true);
-  assert.equal(root.props.onStartShouldSetResponder, undefined);
-  assert.equal(root.props.onTouchEnd, undefined);
-  const timelineRoot = nodes.find(n => n.type === 'View' && n.props.onTouchEnd);
-  const event = { nativeEvent: { target: 42, pageX: 80, pageY: 100, touches: [] } };
-  timelineRoot.props.onTouchStart(event); timelineRoot.props.onTouchEnd(event);
-  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, true);
   modal.props.onRequestClose();
   assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 0);
   h.unmount();
 });
 
@@ -145,9 +154,11 @@ test('public tool summaries persist in article mode, never interpret command det
   nodes = h.walk(h.render());
   const modal = nodes.find(n => n.type === 'Modal');
   assert.equal(modal.props.visible, true);
-  assert.ok(flatten(modal).includes('先检查 项目。'));
-  assert.ok(flatten(modal).includes('运行命令'));
-  assert.ok(flatten(modal).includes(toolCalls[0].detail));
+  const html = h.walk([modal]).find(n => n.type === 'WebView').props.source.html;
+  assert.match(html, /先检查 <strong>项目<\/strong>。/);
+  assert.ok(html.includes('运行命令'));
+  assert.ok(html.includes('[literal](https://example.com) &amp;&amp; printf &quot;**text**&quot;'));
+  assert.doesNotMatch(html, /<a[^>]+literal/);
   modal.props.onRequestClose();
   assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
   assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
@@ -253,7 +264,7 @@ test('tool text uses native copy without an extra window, press responder or sav
   h.unmount();
 });
 
-test('full article tools keep native copy and do not stack a toolbar modal', () => {
+test('full article tools remain HTML text, no copy bridge or extra toolbar modal', () => {
   const calls = [{ id: 'safe', name: 'terminal', label: '运行命令', detail: 'printf "safe"' }];
   const h = mount('正文\n\n```sh\nprintf ok\n```', { canExpand: true, toolCalls: calls });
   const nodes = () => h.walk(h.render(false));
@@ -261,15 +272,12 @@ test('full article tools keep native copy and do not stack a toolbar modal', () 
   const article = nodes().find(n => n.type === 'Modal');
   assert.equal(article.props.visible, true);
   const inside = h.walk([article]);
-  const group = inside.find(n => n.type === 'View' && n.props.style?.gap === 4);
-  group.props.onTouchStart({ stopPropagation() {} });
-  const texts = h.walk([group]).filter(n => n.type === 'Text');
-  assert.equal(texts.length, 2);
-  assert.ok(texts.every(n => n.props.selectable));
-  assert.equal(texts[1].children.join(''), calls[0].detail);
-  assert.equal(h.walk([nodes().find(n => n.type === 'Modal')]).filter(n => n.type === 'Modal').length, 1);
-  inside.find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
-  assert.deepEqual(h.copied, ['printf ok\n']);
+  const web = inside.find(n => n.type === 'WebView');
+  assert.match(web.props.source.html, /<pre><code>printf ok\n<\/code><\/pre>/);
+  assert.match(web.props.source.html, /<pre>printf &quot;safe&quot;<\/pre>/);
+  assert.equal(inside.filter(n => n.type === 'Modal').length, 1);
+  web.props.onMessage({ nativeEvent: { data: 'copy:0' } });
+  assert.deepEqual(h.copied, []);
   article.props.onRequestClose();
   assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false);
   h.unmount();
@@ -314,14 +322,13 @@ test('production controls open one safe-area modal for article, table and Mermai
       doubleTapArticle(h);
       assert.equal(modal().props.visible, true);
       assert.equal(nodes().filter(n => n.type === 'Modal').length, 1);
-      assert.equal(nodes().filter(n => n.type === 'WebView').length, 0, 'underlying WebView is suspended until modal content measures');
+      assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'underlying renderer suspended; article WebView mounted');
       const article = inside();
-      const leaves = value => Array.isArray(value) ? value.map(leaves).join('') : value && typeof value === 'object' ? leaves(value.children ?? value.props?.children) : String(value ?? '');
-      const words = article.filter(n => n.type === 'Animated.Text').map(n => leaves(n.children)).join('');
-      assert.ok(words.includes('开头。') && words.includes('结尾。') && words.includes('甲'));
-      assert.ok(article.some(n => n.props.accessibilityLabel === '全屏查看表格'));
-      assert.ok(article.some(n => n.props.accessibilityLabel === '全屏查看图表'));
-      button(article, '全屏查看表格');
+      const articleWeb = article.find(n => n.type === 'WebView');
+      const html = articleWeb.props.source.html;
+      assert.match(html, /开头。[\s\S]*<td>甲<\/td>[\s\S]*结尾。/);
+      assert.match(html, /data-expand="0"[\s\S]*data-expand="1"/);
+      articleWeb.props.onMessage({ nativeEvent: { data: 'expand:0' } });
       assert.equal(inside().filter(n => n.type === 'Modal').length, 1, 'switches target rather than nesting dialogs');
       assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
       modal().props.onRequestClose();
@@ -349,6 +356,39 @@ test('production controls open one safe-area modal for article, table and Mermai
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'expanded instance releases; underlying reading resumes');
     h.unmount();
   }
+});
+
+test('article bridge accepts only bounded own-message indices and fails back to readable native blocks', () => {
+  const text = '[安全链接](https://a.test/)\n\n| A | B |\n|---|---|\n| 一 | 二 |\n\n```mermaid\nflowchart LR\nA-->B\n```';
+  const h = mount(text, { canExpand: true, toolCalls: [{ id: 'x', name: 'terminal', label: '运行命令', detail: 'safe' }] });
+  doubleTapArticle(h);
+  const inside = () => h.walk([h.walk(h.render(false)).find(n => n.type === 'Modal')]);
+  const web = inside().find(n => n.type === 'WebView');
+  for (const prop of ['domStorageEnabled', 'allowFileAccess', 'allowFileAccessFromFileURLs', 'allowUniversalAccessFromFileURLs', 'setSupportMultipleWindows', 'javaScriptCanOpenWindowsAutomatically', 'sharedCookiesEnabled', 'thirdPartyCookiesEnabled']) assert.equal(web.props[prop], false, prop);
+  assert.deepEqual(Array.from(web.props.originWhitelist), ['*']);
+  for (const data of ['copy:0', 'link:https://evil.test', 'link:1', 'link:01', 'expand:-1', 'expand:999', 'expand:000', 'expand:0;open', 'expand:9999999999']) web.props.onMessage({ nativeEvent: { data } });
+  assert.deepEqual(h.opened, []);
+  assert.deepEqual(h.copied, []);
+  assert.ok(inside().some(n => n.type === 'WebView' && n.props.source.html === web.props.source.html));
+  web.props.onMessage({ nativeEvent: { data: 'link:0' } });
+  assert.deepEqual(h.opened, ['https://a.test/']);
+  web.props.onMessage({ nativeEvent: { data: 'expand:1' } });
+  assert.equal(inside().some(n => n.props.accessibilityLabel === '重置'), false);
+  assert.ok(inside().some(n => n.props.onLayout && n.props.style?.flex === 1), 'diagram target switches within same modal');
+  h.walk(h.render(false)).find(n => n.type === 'Modal').props.onRequestClose();
+  doubleTapArticle(h);
+  const failed = inside().find(n => n.type === 'WebView');
+  failed.props.onRenderProcessGone();
+  assert.equal(inside().some(n => n.type === 'WebView'), false);
+  assert.ok(inside().some(n => n.type === 'Text' && n.children.includes('文章暂时无法加载，已改用普通阅读模式。')));
+  assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), 'table not dropped on failure');
+  h.unmount();
+  const huge = mount('文'.repeat(200001), { canExpand: true });
+  doubleTapArticle(huge);
+  const nodes = huge.walk(huge.render(false));
+  assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
+  assert.ok(nodes.some(n => n.type === 'Text' && n.children.includes('文章较长，已改用普通阅读模式。')));
+  huge.unmount();
 });
 
 test('article double tap needs same still text target; movement, cancellation and links do not open it', () => {
@@ -545,6 +585,28 @@ test('installed WebView navigation wrapper never opens external apps with actual
   await Promise.resolve();
   assert.deepEqual(attempted, []);
   assert.deepEqual(decisions.map(item => item[1]), [true, false, false, false, false]);
+});
+
+test('article WebView wrapper rejects all external navigation without Linking fallback', async () => {
+  const h = mount('[外链](https://example.com)', { canExpand: true });
+  doubleTapArticle(h);
+  const props = h.walk(h.render()).find(n => n.type === 'WebView').props;
+  const output = { exports: {} }, attempted = [], decisions = [];
+  const require = createRequire(import.meta.url);
+  const source = readFileSync(new URL('../node_modules/react-native-webview/src/WebViewShared.tsx', import.meta.url), 'utf8');
+  runInNewContext(ts.transpileModule(source + '\nexport { createOnShouldStartLoadWithRequest };', {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
+  }).outputText, { module: output, exports: output.exports, require: name => {
+    if (name === 'escape-string-regexp') return require(name);
+    if (name === 'react-native') return { Linking: { canOpenURL: async url => { attempted.push(url); return true; }, openURL: async url => attempted.push(url) } };
+    return {};
+  } });
+  const handler = output.exports.createOnShouldStartLoadWithRequest((allowed, url) => decisions.push([url, allowed]), props.originWhitelist, props.onShouldStartLoadWithRequest);
+  for (const url of ['about:blank', 'https://example.com', 'file:///private/test', 'javascript:alert(1)', 'mailto:a@example.com']) handler({ nativeEvent: { url, lockIdentifier: 1 } });
+  await Promise.resolve();
+  assert.deepEqual(attempted, []);
+  assert.deepEqual(decisions.map(item => item[1]), [true, false, false, false, false]);
+  h.unmount();
 });
 
 test('formula budget is shared across inline, nested list, table and display content without losing text', () => {

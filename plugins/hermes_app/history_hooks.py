@@ -39,6 +39,7 @@ def pre_llm_call(**kwargs):
         store=_store()
         thread_id=store.bind_turn(turn_id, session_id, _compression_parent(session_id))
         _link_core_user(store,thread_id)
+        store.link_followup_core_users(thread_id,get_hermes_home() / 'state.db')
     return None
 
 
@@ -148,6 +149,7 @@ def post_llm_call(**kwargs):
     store = _store()
     thread_id = store.bind_turn(turn_id, session_id)
     _link_core_user(store,thread_id)
+    store.link_followup_core_users(thread_id,get_hermes_home() / 'state.db')
     if thread_id is None:
         log.error('unmapped Hermes App post_llm_call session=%s turn=%s', session_id, turn_id)
         return None
@@ -160,7 +162,7 @@ def post_llm_call(**kwargs):
     from .projection import visible_text
     candidates = [m for m in history[users[-1]:] if isinstance(m, dict) and
                   m.get('role') in ('user', 'assistant')]
-    visible = [m for m in candidates if visible_text(m) is not None]
+    visible = [m for m in candidates if m.get('display_kind') != 'steer' and visible_text(m) is not None]
     if not visible or visible[0].get('role') != 'user':
         return _complete_compacted_tail(store, thread_id, turn_id, session_id, history)
     ids = [m.get('_row_id') for m in visible]
@@ -184,7 +186,7 @@ def post_llm_call(**kwargs):
 
 
 def _complete_compacted_tail(store, thread_id, turn_id, session_id, history):
-    """The final post hook can contain only a copied protected tail after compression."""
+    """Append the final; individual steer originals already have receipt refs."""
     from .projection import visible_text
     old = store.turn_refs(turn_id)
     candidates = [m for m in history if isinstance(m, dict) and m.get('role') == 'assistant'
@@ -198,11 +200,13 @@ def _complete_compacted_tail(store, thread_id, turn_id, session_id, history):
         log.error('Hermes App turn %s final row is not after captured interim', turn_id)
         return None
     with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
+        db.row_factory=sqlite3.Row
         row = db.execute('SELECT session_id,role,tool_calls FROM messages WHERE id=?', (final_id,)).fetchone()
-    if not row or row[:2] != (session_id, 'assistant') or row[2] not in (None, '[]'):
+
+    if not row or (row['session_id'],row['role']) != (session_id, 'assistant') or row['tool_calls'] not in (None, '[]'):
         log.error('Hermes App turn %s final row is unavailable', turn_id)
         return None
-    store.append_hook_refs(thread_id, turn_id, [(session_id, final_id, 'assistant')], complete=True)
+    store.append_hook_refs(thread_id, turn_id, [(session_id,final_id,'assistant')], complete=True)
     return None
 
 
