@@ -12,4 +12,10 @@
 - Agent 设置已接入聊天页独立 Modal；关闭、返回不卸载聊天。按连接保存显示名，读取失败可重试，保存失败保留草稿；清空后恢复 Agent。
 - 加号位于输入框左侧同一行，空附件不渲染预览条；菜单和已有附件仍由同一个上传组件维护。
 - 主控独立复验：干净离线安装、移动 183/183、TypeScript、iOS/Android Expo 导出、diff 检查通过。生产组件回调覆盖设置入口、读取重试、保留聊天和附件、名称文案及原生关闭。
-- 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-agent-settings/` 的 install/tests/types/export 日志。公网发布结果另行记录；iPhone 键盘、实际布局和系统菜单手感尚待真机确认。
+- 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-agent-settings/` 的 install/tests/types/export 日志；iPhone 键盘、实际布局和系统菜单手感尚待真机确认。
+
+## 开发发布
+
+- 已发布代码 `147e7bf6b48cdc47d0a8a41af2190788aa300131`，只更新隔离 Expo；两个 Gateway 的 PID、启动时间与活动状态保持不变。
+- 重启后首个公网检查返回 502，服务就绪后独立重查成功；iOS/Android 公网实际包均包含设置入口、名称存储、running 文案和同排附件接线，旧 typing 文案已移除。验证见上述目录 `verification.json`。
+- 回滚基线 `521dfda991e85cef2cc0f91a0347869f7bfac7d7` 已保留于 Git 历史；未更改插件、核心或认证。
