@@ -137,6 +137,25 @@ export function appendedAtEnd(previous: readonly string[], next: readonly string
   return previous.length > 0 && next.length > previous.length && previous.every((key, index) => next[index] === key);
 }
 
+// A latest-page window can slide while keeping the same length. Compare the
+// actual public Agent output, not array length or a new projection's identity.
+export function agentOutputAdded(previous: readonly TimelineRow[], next: readonly TimelineRow[]): boolean {
+  const oldTail = previous[previous.length - 1];
+  const tail = next[next.length - 1];
+  if (!oldTail || !tail || tail.role !== 'assistant') return false;
+  if (oldTail.key !== tail.key) {
+    // A prepend, history replacement or switching to an older window is not
+    // new output; a genuine append retains the former tail before the new one.
+    return next.slice(0, -1).some(row => row.key === oldTail.key);
+  }
+  if (oldTail.text !== tail.text) return true;
+  const before = oldTail.toolCalls ?? [];
+  const after = tail.toolCalls ?? [];
+  return before.length !== after.length || after.some((call, index) =>
+    call.id !== before[index].id || call.name !== before[index].name ||
+    call.label !== before[index].label || call.detail !== before[index].detail);
+}
+
 // Forward-only API: never fetch until exhaustion without a fixed bound.
 // The caller must explicitly request each additional page after this budget.
 export async function locateLatest(

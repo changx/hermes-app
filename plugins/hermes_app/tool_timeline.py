@@ -49,6 +49,30 @@ def _command_detail(arguments):
     return clean
 
 
+def _search_label(arguments):
+    """Expose only the query, checked before truncation; never raw arguments."""
+    if not isinstance(arguments, dict):
+        return None
+    query = arguments.get('query')
+    if not isinstance(query, str) or not query.strip() or _utf16_length(query) > 4000:
+        return None
+    if any((ord(c) < 32 and c not in '\n\r\t') or
+           0xD800 <= ord(c) <= 0xDFFF or 0x202A <= ord(c) <= 0x202E or
+           0x2066 <= ord(c) <= 0x2069 for c in query):
+        return None
+    # Core redaction intentionally preserves web URL query/userinfo for OAuth.
+    # Search labels must not echo credentials from those ambiguous URL parts.
+    if re.search(r'://\S*[?@#]', query):
+        return None
+    clean = redact_for_egress(query)
+    if clean == REDACTION_UNAVAILABLE or clean != query:
+        return None
+    label = '搜索网页：' + ' '.join(clean.split())
+    if _utf16_length(label) > 240:
+        label = label.encode('utf-16-le')[:478].decode('utf-16-le', errors='ignore') + '…'
+    return label
+
+
 def public_tool_calls(message):
     """Keep IDs/order of valid calls. Last slot honestly accounts for overflow."""
     result = []
@@ -67,15 +91,18 @@ def public_tool_calls(message):
             continue
         label = _LABELS.get(name, _LABELS.get(name.removeprefix('functions.'), name))
         record = {'id': ident, 'name': name, 'label': label[:240]}
-        if name in _TERMINAL:
+        if name in _TERMINAL or name in {'web_search', 'functions.web_search'}:
             raw = function.get('arguments')
             try:
                 args = json.loads(raw) if isinstance(raw, str) else raw
             except (ValueError, TypeError):
                 args = None
-            detail = _command_detail(args)
-            if detail:
-                record['detail'] = detail
+            if name in _TERMINAL:
+                detail = _command_detail(args)
+                if detail:
+                    record['detail'] = detail
+            else:
+                record['label'] = _search_label(args) or label
         result.append(record)
     # Count valid omitted calls, rather than silently truncating a model batch.
     if valid_count > 128:

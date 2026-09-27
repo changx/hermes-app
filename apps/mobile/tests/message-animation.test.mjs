@@ -12,7 +12,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', im
   { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: timeline, exports: timeline.exports });
 
 function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}) {
-  const calls = [], frames = [], hooks = [], subscriptions = {};
+  const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
   let index = 0, flatList, sticky, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
   const ref = { current: null };
@@ -22,7 +22,14 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     useRef: initial => { const slot = index++; return hooks[slot] ??= { current: initial }; },
     useState: initial => { const slot = index++; hooks[slot] ??= { current: initial }; return [hooks[slot].current, value => { hooks[slot].current = value; }]; },
     useCallback: fn => { index++; return fn; },
-    useEffect: fn => { const slot = index++; if (!hooks[slot]) { hooks[slot] = true; fn(); } },
+    useEffect: (fn, deps) => {
+      const slot = index++;
+      const previous = hooks[slot]?.deps;
+      if (!previous || !deps || deps.some((value, i) => !Object.is(value, previous[i]))) {
+        hooks[slot] = { deps };
+        effects.push(fn);
+      }
+    },
     useImperativeHandle: (target, create) => { index++; target.current = create(); }
   };
   const native = {
@@ -44,7 +51,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; },
       requestAnimationFrame: cb => { frames.push(cb); return frames.length; }, cancelAnimationFrame: () => {} });
   const props = {
-    threadId: 'th', rows: rows.map(key => ({ key, role: 'user', text: key })), startRef: null, hasOlder: false,
+    threadId: 'th', rows: rows.map(row => typeof row === 'string' ? { key: row, role: 'user', text: row } : row), startRef: null, hasOlder: false,
     onOlder() {}, onPosition() {}, onVisibleRef() {}, text: '', onText() {}, onSend() {}, records: [], receipts: [], interactions: [], answers: {},
     onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false, position
   };
@@ -58,6 +65,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     const tree = output.exports.ChatTimeline(props, ref);
     flatList = find(tree, 'FlatList').props;
     sticky = find(tree, 'KeyboardStickyView').props;
+    while (effects.length) effects.shift()();
   };
   render();
   // React applies the FlatList ref during commit.
@@ -69,11 +77,86 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     layout: height => flatList.onLayout({ nativeEvent: { layout: { height } } }),
     dock: height => sticky.onLayout({ nativeEvent: { layout: { height } } }),
     append: key => { props.rows = [...props.rows, { key, role: 'user', text: key }]; render(); },
+    rows: next => { props.rows = next; render(); },
+    rerender: () => render(),
     keyboard: moving => { if (moving) keyboardHandler.onStart(); else keyboardHandler.onEnd(); },
     interactive: () => keyboardHandler.onInteractive(),
     visible: value => { visible = value; }, motion: value => subscriptions.motion(value), app: state => subscriptions.app(state)
   };
 }
+
+const user = key => ({ key, role: 'user', text: key });
+const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, toolCalls });
+
+test('new Agent output follows with same-height layout and sliding latest window', () => {
+  const h = mount({ rows: [user('old'), user('recent')] });
+  h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
+  h.rows([user('recent'), agent('reply', 'Hello')]); // fixed-count latest page
+  h.flush();
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.calls.length = 0;
+  h.rows([user('recent'), agent('reply', 'Hello again')]);
+  h.flush(); // no onContentSizeChange (same rendered height)
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.calls.length = 0;
+  h.rows([user('recent'), agent('reply', 'Hello again', [{ id: 'tool-1', name: 'web_search', label: '搜索' }])]);
+  h.flush();
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.calls.length = 0;
+  h.rows([user('recent'), agent('reply', 'Hello again', [{ id: 'tool-1', name: 'web_search', label: '搜索' }])]);
+  h.rerender(); h.flush();
+  assert.deepEqual(h.calls, [], 'a fresh projection with identical output is not a new scroll');
+});
+
+test('Agent append follows when onScroll reports the new extent before onContentSizeChange', () => {
+  const h = mount({ rows: [user('question')] });
+  h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
+  h.rows([user('question'), agent('answer', 'Answer')]);
+  h.flatList.onScroll({ nativeEvent: { contentOffset: { y: 500 }, contentSize: { height: 1100 }, layoutMeasurement: { height: 500 } } });
+  h.content(1100); h.flush();
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.content(1150); h.flush();
+  assert.deepEqual(h.calls.at(-1), { animated: true }, 'late geometry correction retains animation');
+});
+
+test('Agent changes preserve reader and prepend anchors; keyboard movement defers output', () => {
+  const h = mount({ rows: [user('u'), agent('a', 'first')] });
+  h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
+  h.ref.current.holdPosition();
+  h.rows([user('older'), user('u'), agent('a', 'first')]); h.content(1050); h.flush();
+  assert.deepEqual(h.calls, [], 'prepend is not new Agent output');
+  h.ref.current.followLatest(false); h.calls.length = 0;
+  h.keyboard(true);
+  h.rows([user('u'), agent('a', 'first'), agent('tool', '', [{ id: 'call', name: 'web_search', label: '搜索' }])]);
+  h.content(1100); h.flush();
+  assert.deepEqual(h.calls, [], 'keyboard moving cannot scroll immediately');
+  h.keyboard(false); h.flush();
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.calls.length = 0;
+  h.ref.current.holdPosition();
+  h.rows([user('u'), agent('a', 'first'), agent('tool', 'Done', [{ id: 'call', name: 'web_search', label: '搜索' }])]);
+  h.content(1120); h.flush();
+  assert.deepEqual(h.calls, [], 'reader position is never forced to latest');
+});
+
+test('timeline content has real bottom padding without flex filler; native end owns offset', () => {
+  const h = mount();
+  assert.equal(h.flatList.contentContainerStyle.paddingTop, 12);
+  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 48);
+  assert.equal(h.flatList.contentContainerStyle.flexGrow, undefined);
+  h.layout(500); h.content(1048); h.flush();
+  assert.deepEqual(h.calls, [{ animated: false }]);
+});
+
+test('Agent output honors reduced motion and does not animate first restored mount', () => {
+  const h = mount({ rows: [agent('history', 'first')] });
+  h.layout(500); h.content(1000); h.flush();
+  assert.deepEqual(h.calls, [{ animated: false }]);
+  h.calls.length = 0;
+  h.motion(true);
+  h.rows([agent('history', 'first'), agent('answer', 'next')]); h.flush();
+  assert.deepEqual(h.calls, [{ animated: false }]);
+});
 
 test('static open keyboard permits native animated send/latest and actual append', () => {
   const h = mount({ keyboard: true });
@@ -134,6 +217,9 @@ test('user drag cancels an in-flight follow and retains reader mode', () => {
   h.flatList.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } });
   h.append('c'); h.content(1300); h.flush();
   assert.equal(h.calls.length, 1);
+  h.rows([user('a'), user('b'), user('c'), agent('response', 'Answer')]);
+  h.content(1400); h.flush();
+  assert.equal(h.calls.length, 1, 'real upscroll keeps reader mode through Agent output');
 });
 
 test('App send invokes the production animated follow handle after enqueue', async () => {

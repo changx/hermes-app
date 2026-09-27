@@ -36,7 +36,7 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
     home, core, store, tid, token = setup(tmp_path)
     try:
         user = core.append_message('s', 'user', '请查资料', platform_message_id='rc-one')
-        calls = [call('c1', 'web_search', {'query': 'private input'}),
+        calls = [call('c1', 'web_search', {'query': 'Sensor Tower API'}),
                  call('c2', 'terminal', {'command': 'uv run pytest -q'})]
         interim = core.append_message('s', 'assistant', '先查资料。', tool_calls=calls,
                                       finish_reason='tool_calls', reasoning='not public')
@@ -46,14 +46,14 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
                       tool_name='web_search', platform='other_platform')
         assert store.history_page(tid, home/'state.db')['messages'] == []
         pre_tool_call(turn_id='turn-one', session_id='s', tool_call_id='c1',
-                      tool_name='web_search', args={'query':'private input'})
+                      tool_name='web_search', args={'query':'Sensor Tower API'})
         first = store.history_page(tid, home/'state.db')
         assert [m['id'] for m in first['messages']] == [str(user), str(interim)]
         assert first['messages'][1]['text'] == '先查资料。'
         assert first['messages'][1]['tool_calls'] == [
-            {'id':'c1','name':'web_search','label':'搜索网页'},
+            {'id':'c1','name':'web_search','label':'搜索网页：Sensor Tower API'},
             {'id':'c2','name':'terminal','label':'运行命令','detail':'uv run pytest -q'}]
-        assert 'private input' not in json.dumps(first, ensure_ascii=False)
+        assert 'query' not in json.dumps(first, ensure_ascii=False)  # no raw argument object
         assert 'not public' not in json.dumps(first, ensure_ascii=False)
         pre_tool_call(turn_id='turn-one', session_id='s', tool_call_id='c2')
         post_tool_call(turn_id='turn-one', session_id='s', tool_call_id='c1', result='private result')

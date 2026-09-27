@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendedAtEnd, followDuringDrag, latestOffset, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange } from '../src/timeline.ts';
+import { agentOutputAdded, appendedAtEnd, followDuringDrag, latestOffset, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange } from '../src/timeline.ts';
+
+test('Agent output detection distinguishes sliding window, changed tools, and prepends', () => {
+  const u = key => ({ key, role: 'user', text: key });
+  const a = (key, text, toolCalls) => ({ key, role: 'assistant', text, toolCalls });
+  const tools = [{ id: 'call', name: 'web_search', label: '搜索', detail: 'query' }];
+  assert.equal(agentOutputAdded([u('a'), u('b')], [u('b'), a('c', 'result')]), true);
+  assert.equal(agentOutputAdded([u('a'), u('b')], [u('old'), u('a'), u('b')]), false);
+  assert.equal(agentOutputAdded([u('a'), a('b', 'one')], [u('a'), a('b', 'two')]), true);
+  assert.equal(agentOutputAdded([u('a'), a('b', '', [])], [u('a'), a('b', '', tools)]), true);
+  assert.equal(agentOutputAdded([a('b', '', tools)], [a('b', '', [{ ...tools[0] }])]), false);
+  assert.equal(agentOutputAdded([a('b', '', tools)], [a('b', '', [{ ...tools[0], label: '新搜索' }])]), true);
+  assert.equal(agentOutputAdded([u('a')], [a('unrelated', 'history')]), false);
+  assert.equal(agentOutputAdded([], [a('initial', 'history')]), false);
+  assert.equal(agentOutputAdded([a('old', 'history')], [u('new')]), false);
+});
 
 test('exact native ScrollView end wins over heterogeneous last-cell estimate', () => {
   const calls = [];

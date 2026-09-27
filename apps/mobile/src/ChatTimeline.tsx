@@ -5,7 +5,7 @@ import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKey
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
-import { appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
+import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
 import { messageNeedsViewport } from './messageMarkdown';
 
@@ -150,6 +150,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     setShowLatest(true); savePosition();
   } }), [followLatest, savePosition]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
+  const previousRows = useRef<readonly TimelineRow[]>([]);
+  useEffect(() => {
+    const newOutput = agentOutputAdded(previousRows.current, rows);
+    previousRows.current = rows;
+    // Commit the new FlatList data first, then use the native content extent.
+    // Content-size may be unchanged (or onScroll may have observed it already).
+    if (newOutput && following.current) scheduleFollow(true);
+  }, [rows, scheduleFollow]);
   const visible = useRef({ onVisibleRef });
   visible.current.onVisibleRef = onVisibleRef;
   const viewability = useRef(({ viewableItems }: { viewableItems: Array<{ item: TimelineRow }> }) => {
@@ -239,7 +247,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   // Keep the real content height: growing short content to the viewport makes
   // the keyboard controller scroll empty space and push top-aligned rows away.
-  messages: { paddingVertical: 12 },
+  messages: { paddingTop: 12, paddingBottom: 48 },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
