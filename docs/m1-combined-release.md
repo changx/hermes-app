@@ -20,6 +20,12 @@ Jamie 要求“发布”，随后明确“要带上刚才修改的所有东西�
 
 私有发布脚本、备份、验证记录保存在 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-combined-release/`。回滚基线 f48e5aa 和插件原文件保留；必要时停止两个开发服务，以基线创建独立回滚 checkout、安装其锁定依赖并切换 Expo 工作目录，恢复插件后重启。不得 reset/覆盖发布后新增的用户工作，不得改 Jamie 主实例。
 
+## 发布结果
+
+已发布代码 `f7846e016ce23e0014ec798d0dba6fd64230d4c3`。主目录快进合并后按锁文件安装依赖，重新构建共享 SDK；开发插件两文件与仓库一致，开发 Gateway 和 Expo 已启动。公网 iOS/Android manifest、实际包中的附件/typing/outbox 标记及认证 capabilities 均通过。Jamie 主实例 PID/启动时间与固定核心提交、工作树保持不变。
+
+真实公网验收：中文文件名文本与 PNG 上传成功，下载字节完全一致；纯附件消息被权威接收并 completed，同一消息 ID 重试得到同一收据；历史只有一条对应用户消息，两个附件身份/顺序正确。专用验收话题 `th_992ea85c009b411688ed7114` 已归档并回读确认；已提交的小型测试附件保留以维持历史完整。证据为私有目录内 `release-verification.json`、`smoke-result.json`、`before.json` 与 `rollback/`。
+
 ## 未完成的真机验收
 
 Expo Go 普通输入框不支持图片粘贴回调，使用独立系统粘贴按钮；并非输入框长按菜单直接粘贴。图片手势、全屏文本选择、键盘/滚动手感和反复停止后的灰色现象仍需 iPhone 确认。发布通过不等于这些验收通过。
