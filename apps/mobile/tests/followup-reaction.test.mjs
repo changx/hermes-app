@@ -11,11 +11,13 @@ const receipt = (state = 'running') => ({ id: 'r', client_message_id: id, thread
 const message = { id: 'm', ref_seq: 1, role: 'user', text: '补充', client_message_id: id, receipt_id: 'r' };
 const reaction = r => projectTimeline([message], null, 'th', undefined, true, [], new Map([['r', r]]))[0].reaction;
 
-test('native followup shows received; primary completion cannot finish it', () => {
+test('native followup shows processing until its own terminal receipt; primary completion cannot finish it', () => {
   const r = receipt();
   const cache = new Map([['r', r], ['primary', { ...r, id: 'primary', client_message_id: 'other', state: 'completed', admission: undefined }]]);
-  assert.deepEqual(projectTimeline([message], null, 'th', undefined, true, [], cache)[0].reaction, { emoji: '👀', label: '已接收', source: 'agent' });
-  assert.equal(reaction(receipt('completed')).label, '已接收');
+  assert.deepEqual(projectTimeline([message], null, 'th', undefined, true, [], cache)[0].reaction, { emoji: '⚙️', label: '处理中', source: 'agent' });
+  assert.equal(reaction(receipt('received')), undefined);
+  assert.equal(reaction(receipt('completed')), undefined);
+  assert.equal(reaction({ ...receipt('completed'), admission: undefined }).label, '已完成');
   assert.equal(reaction({ ...r, admission: undefined }).label, '处理中');
   for (const [state, label] of [['queued', '排队中'], ['failed', '执行失败'], ['interrupted', '已停止'], ['unknown', '结果待确认']]) assert.equal(reaction(receipt(state)).label, label);
   assert.equal(reaction({ ...r, thread_id: 'foreign' }), undefined);
@@ -43,7 +45,7 @@ test('durable followup marker survives cold outbox restoration and truthful unkn
   const records = await cold.load();
   assert.equal(records[0].receiptAdmission, 'followup');
   const rows = projectTimeline([], null, 'th', undefined, true, records);
-  assert.equal(rows[0].reaction.emoji, '👀');
+  assert.equal(rows[0].reaction.emoji, '⚙️');
   assert.equal(rows[0].status, 'accepted');
   await cold.update(accepted(records[0], receipt('unknown')));
   const again = new OutboxStore(kv, config);
@@ -56,7 +58,7 @@ test('received input remains visible until exact authoritative identity arrives'
   const pending = projectTimeline([], null, 'th', undefined, true, [local]);
   assert.equal(pending.length, 1);
   assert.equal(pending[0].text, '补充一');
-  assert.equal(pending[0].reaction.label, '已接收');
+  assert.equal(pending[0].reaction, undefined);
   const foreign = { ...message, client_message_id: 'another', text: '补充一' };
   assert.equal(projectTimeline([foreign], null, 'th', undefined, true, [local]).length, 2, 'equal text is not identity');
   const input = { id: 'receipt:r', ref_seq: 8, role: 'user', text: '补充一', client_message_id: id, receipt_id: 'r' };
@@ -65,7 +67,7 @@ test('received input remains visible until exact authoritative identity arrives'
   const result = projectTimeline(client.messages.get('th'), null, 'th', undefined, true, [local], new Map([['r', receipt('received')]]));
   assert.equal(result.length, 1);
   assert.equal(result[0].key, pending[0].key, 'confirmation preserves the optimistic row identity');
-  assert.equal(result[0].reaction.label, '已接收');
+  assert.equal(result[0].reaction, undefined);
   assert.equal(result[0].receipt.id, 'r');
   const data = new Map();
   const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
@@ -98,7 +100,7 @@ test('interleaved input/output keeps server order across replay, cold history an
   page = stream; const cold = makeClient(); await cold.history('th');
   assert.deepEqual(project(cold), rows);
   const unresolved = accepted(newSend(config, 'th', '尚无原文引用', id), receipt('completed'));
-  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction.label, '已接收');
+  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction, undefined);
 });
 
 test('received followup survives successful history sync until its exact input is available', async () => {

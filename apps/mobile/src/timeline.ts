@@ -18,13 +18,15 @@ const terminal = (state: Receipt['state']) => !['queued', 'running'].includes(st
 const matching = (receipt: Receipt | undefined, threadId: string, receiptId: string, clientMessageId: string): receipt is Receipt =>
   !!receipt && receipt.id === receiptId && receipt.thread_id === threadId && receipt.client_message_id === clientMessageId;
 
-function statusFor(receipt: Receipt | undefined, interactions: readonly Interaction[]): Reaction {
+function statusFor(receipt: Receipt | undefined, interactions: readonly Interaction[]): Reaction | undefined {
   if (!receipt) return received;
   if (!terminal(receipt.state)) {
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
     if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? '等待审批' : '等待回答', source: 'agent' };
   }
-  if (receipt.admission === 'followup' && (receipt.state === 'running' || receipt.state === 'completed')) return received;
+  // A follow-up tracks the active round, not a separate per-message completion.
+  // Keep its row and status footprint, but clear the temporary reaction at rest.
+  if (receipt.admission === 'followup' && (receipt.state === 'received' || receipt.state === 'completed')) return undefined;
   return agentState[receipt.state];
 }
 

@@ -58,6 +58,26 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
+test('followup reaction clears at round end without removing its row or changing the status footprint', () => {
+  let previous;
+  let footprint;
+  for (const [state, label] of [['queued', '排队中'], ['running', '处理中'], ['received', undefined]]) {
+    const r = { ...receipt(state), admission: 'followup' };
+    const row = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', r]]))[0];
+    const { rowTree } = mount([row]);
+    const slot = named(rowTree, 'View').find(n => n.props.style?.height === 23);
+    assert.ok(slot, 'reserve the same height to avoid scroll jumps');
+    assert.equal(slot.props.accessibilityLabel, label);
+    assert.equal(named(expand(slot), 'Text').map(text).join(''), label ? `${row.reaction.emoji} ${label}${state === 'queued' ? '取消' : ''}` : '');
+    assert.equal(named(rowTree, 'MessageContent')[0].props.text, msg.text);
+    assert.equal(named(rowTree, 'MessageContent')[0].props.pending, false);
+    assert.equal(row.receipt, r);
+    if (previous) assert.equal(row.key, previous.key);
+    if (footprint) assert.deepEqual(slot.props.style, footprint);
+    previous = row; footprint = slot.props.style;
+  }
+});
+
 test('composer accepts ready attachments without text and blocks incomplete uploads; accessories remain in dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   const accessory = controls => ({ type: 'AttachmentComposer', props: { children: controls } }), indicator = { type: 'TypingIndicator', props: {} };
