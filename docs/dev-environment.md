@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+2026-09-26 工具过程版 `6a2eff6` 已发布：公开说明与工具记录按原始顺序展示，安全命令显示为等宽块。仅更新隔离 hermes-app-dev 插件/Gateway 和 Expo；Jamie 主实例 PID/启动时间与固定核心保持不变。主控复验 P1 60 项、手机 125 项、客户端检查、TypeScript、双平台导出通过；公网 capability `tool_call_timeline=true` 与两个平台实际 bundle 已核验。真实开发模型调用终端的验收中，工具记录在收据完成前可读，随后最终回复可读，引用不重复；验收话题已归档。记录及限制见 [工具调用与中间说明](m1-tool-timeline.md)，私有发布、联调证据和回滚在 `workspace/hermes-app/m1-tool-timeline/`。iPhone 实际呈现待确认，下方旧“最新”条目均为历史记录。
+
 最新手机开发版 `dc5a20e`：消息下 Agent 状态 reaction、发送正文浅灰到实色、移除常驻发送汇总和技术性界面信息；只更新 Expo，Gateway/插件未变化。87 项手机测试、TypeScript、双平台导出及公网两平台资源检查通过，iPhone 视觉待验收。见 [Agent reaction 与发布证据](m1-agent-reactions.md)。下方旧发布记录按历史保留。
 
 最新手机修正 `ff41a76`：前后台键盘布局、滑动收键盘与消息滚动联动，已仅更新Expo；两个Gateway和插件未变化。双平台公网包及账号检查通过，真机待验收见 [键盘修正](m1-keyboard-layout.md)。下述可靠性插件部署保持不变。

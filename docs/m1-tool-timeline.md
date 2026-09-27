@@ -31,4 +31,4 @@
 - 命令仅通过保守敏感模式检查及核心强制脱敏后显示；未知工具仅显示名称。并行包装器当前显示“并行执行工具”，不展开原始嵌套参数。最多 128 个展示槽，超出时最后一槽明确说明省略数量。记录表示调用已发出，不表示执行成功。
 - 旧历史里从未建立引用的纯工具行不会追溯插入；已发布行身份和顺序不变。没有逐 token 文本流；公开说明随原始 assistant 行持久化和 hook 发布。
 
-主控复验：tests/p1 60 passed；客户端检查与手机 125 项测试、TypeScript 通过；iOS/Android Expo 导出通过。证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-tool-timeline/`，其中 `p1-parent/runner-timeline.json` 记录调用中可见和完成后不重复。开发入口发布读回另记 `release-verification.json`；iPhone 实际视觉与手势仍需用户确认。
+主控复验：tests/p1 60 passed；客户端检查与手机 125 项测试、TypeScript 通过；iOS/Android Expo 导出通过。证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-tool-timeline/`，其中 `p1-parent/runner-timeline.json` 记录调用中可见和完成后不重复。开发版 `6a2eff6` 已发布，`release-verification.json` 读回公网能力、4 个已有话题保留、双平台新 bundle、插件归档一致和 Jamie/Core 未变。`live-smoke-result.json` 记录真实开发模型终端调用：在收据完成前可见，之后最终回复可见，引用唯一；此次模型未输出调用前说明，不把提示中要求的说明当作实际输出。该测试只创建自己的验收话题，完成后已归档回读。首次公网探针使用 urllib 默认 User-Agent 被入口 403 拒绝；改用已有发布脚本相同 User-Agent 后通过，未更改网络规则。iPhone 实际视觉与手势仍需用户确认。
