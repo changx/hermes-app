@@ -23,6 +23,8 @@
 
 实现后主控独立验证：P1 **81 passed**（含搜索词、异常/敏感查询、UTF-16 长度边界和真实 hook/历史重读）；手机 **131/131** 与 TypeScript 通过，iOS/Android Expo 导出均成功；客户端检查 23+17 项通过。搜索词复用现有 label，无协议扩展；带 URL query/userinfo/fragment 的歧义查询保守退回动作名。自动跟随比较最后一条 Agent 公开输出，在提交新列表后调度原生末尾滚动，不再仅依赖高度改变；同身份/同高度/滑动窗口和上翻不跟随均执行生产回调测试。证据在 `workspace/hermes-app/m1-search-query/`；这些验证不等于 iPhone 手感已验收。
 
+开发发布：`0046702` 已更新隔离开发插件与 Expo；公网读回真实 Sensor Tower 查询显示实际搜索词，消息身份/正文保留、重读一致，iOS/Android launchAsset 均包含底部留白更新。Jamie Gateway PID/启动时间与固定核心未变。回滚代码 `9e2669a`，旧插件与发布前快照保留在上述证据目录，`release-verification.json` 为公网读回记录。手机重新加载开发项目获取新客户端；iPhone 滚动手感仍待确认。
+
 ## 验收
 
 - 文字→多次工具→文字→最终回复按原始顺序呈现；仅工具、混合内容、并行调用、中文与长命令可读。
