@@ -88,6 +88,13 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
 const user = key => ({ key, role: 'user', text: key });
 const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, toolCalls });
 
+test('text taps keep the composer keyboard, while interactive drag dismissal remains native', () => {
+  const h = mount({ keyboard: true });
+  assert.equal(h.flatList.keyboardShouldPersistTaps, 'always');
+  assert.equal(h.flatList.keyboardDismissMode, 'interactive');
+  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 48);
+});
+
 test('new Agent output follows with same-height layout and sliding latest window', () => {
   const h = mount({ rows: [user('old'), user('recent')] });
   h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;

@@ -152,7 +152,7 @@ test('multiple tool calls use compact spacing but ordinary Markdown code keeps i
     const style = Object.assign({}, ...text.props.style);
     assert.equal(style.paddingVertical, 4);
     assert.equal(style.padding, 10, 'horizontal text padding remains readable');
-    assert.equal(text.props.selectable, undefined, 'tool copy belongs to the toolbar, not native selection');
+    assert.equal(text.props.selectable, true, 'tool text uses the same native menu as prose');
     assert.equal(text.props.numberOfLines, 2);
     assert.equal(text.props.ellipsizeMode, 'tail');
   }
@@ -195,64 +195,58 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   assert.deepEqual(h.copied, ['const x = 1;\n']);
 });
 
-test('tool tap opens bounded floating copy, preserving exact safe label/detail instead of visually shortened text', () => {
+test('tool text uses native copy without an extra window, press responder or saved coordinates', () => {
   const calls = [
     { id: 'a', name: 'web_extract', label: '阅读网页', detail: 'https://example.com/very/long/path/…  https://other.example', arguments: { raw: 'never-copy-this' } },
     { id: 'b', name: 'terminal', label: '运行命令', detail: 'git status --short\n  printf "长命令…"\n# server-truncated' },
   ];
-  const h = mount('前言 **可选择**', { canExpand: true, toolCalls: calls, screen: { width: 240, height: 200 } });
+  const screen = { width: 240, height: 200 };
+  const h = mount('前言 **可选择**', { canExpand: true, toolCalls: calls, screen });
   const nodes = () => h.walk(h.render(false));
-  const modal = () => nodes().filter(n => n.type === 'Modal');
-  const row = i => nodes().find(n => n.props.accessibilityLabel === `复制工具调用：${calls[i].label}`);
-  const press = (i, x, y) => row(i).props.onPress({ nativeEvent: { pageX: x, pageY: y } });
-  const toolbar = () => nodes().find(n => n.props.accessibilityLabel === '复制工具调用');
-  assert.equal(modal().length, 1);
-  assert.equal(row(0).children[0].props.selectable, undefined);
-  assert.ok(nodes().some(n => n.type === 'Animated.Text' && n.props.selectable), 'ordinary Markdown remains selectable');
-  press(0, 239, 1);
-  assert.equal(modal().length, 2);
-  assert.equal(modal()[0].props.transparent, true);
-  assert.equal(nodes().find(n => n.props.style?.gap === 4)?.children.length, 3, 'overlay is not part of row height');
-  let geometry = toolbar().props.style[1];
-  assert.ok(geometry.left >= 10 && geometry.left + geometry.width <= 229);
-  assert.ok(geometry.top >= 29 && geometry.top + geometry.height <= 179);
-  assert.equal(h.copied.length, 0, 'opening does not copy');
-  nodes().find(n => n.props.accessibilityLabel === '关闭复制工具条').props.onPress();
-  assert.equal(modal().length, 1, 'outside dismisses');
-  press(1, 0, 199);
-  geometry = toolbar().props.style[1];
-  assert.ok(geometry.left >= 10 && geometry.left + geometry.width <= 229);
-  assert.ok(geometry.top >= 29 && geometry.top + geometry.height <= 179);
-  modal()[0].props.onRequestClose();
-  assert.equal(modal().length, 1, 'Android back dismisses');
-  press(1, 120, 100);
-  toolbar().props.onPress();
-  assert.equal(modal().length, 1, 'copy dismisses');
-  assert.deepEqual(h.copied, [`${calls[1].label}\n${calls[1].detail}`], 'copies only selected server-sanitized fields, including lines hidden by numberOfLines');
-  press(0, 120, 100);
-  toolbar().props.onPress();
-  assert.deepEqual(h.copied, [`${calls[1].label}\n${calls[1].detail}`, `${calls[0].label}\n${calls[0].detail}`]);
-  assert.equal(h.copied.join('').includes('never-copy-this'), false, 'no raw arguments enter clipboard');
+  const group = () => nodes().find(n => n.type === 'View' && n.props.style?.gap === 4);
+  const check = () => {
+    const children = h.walk([group()]);
+    const texts = children.filter(n => n.type === 'Text');
+    assert.equal(texts.length, 3);
+    assert.ok(texts.every(n => n.props.selectable === true));
+    assert.equal(texts[0].children.join(''), `🔧 ${calls[0].label} · ${calls[0].detail.replace(/\s+/g, ' ')}`);
+    assert.equal(texts[2].children.join(''), calls[1].detail, 'full safe command reaches native text, including visually ellipsized lines');
+    assert.equal(JSON.stringify(children).includes('never-copy-this'), false);
+    assert.ok(children.every(n => n.type !== 'Modal' && n.type !== 'Pressable'));
+    assert.ok(children.every(n => !n.props.onPress && !n.props.onLongPress && !n.props.onStartShouldSetResponder));
+    assert.ok(children.every(n => n.props.style?.position !== 'absolute'));
+    assert.equal(nodes().filter(n => n.type === 'Modal').length, 1, 'article is the only modal');
+    assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false);
+    assert.deepEqual(h.copied, [], 'native menu owns copying, not JS clipboard/focus actions');
+  };
+  check();
+  for (let i = 0; i < 2; i++) group().props.onTouchStart({ stopPropagation() {} });
+  check();
+  screen.width = 390; screen.height = 844;
+  check(); // No toolbar position survives a keyboard/viewport change.
+  assert.ok(nodes().some(n => n.type === 'Animated.Text' && n.props.selectable));
   h.unmount();
 });
 
-test('full article tool rows open their toolbar inside the article modal, with code copy intact', () => {
+test('full article tools keep native copy and do not stack a toolbar modal', () => {
   const calls = [{ id: 'safe', name: 'terminal', label: '运行命令', detail: 'printf "safe"' }];
   const h = mount('正文\n\n```sh\nprintf ok\n```', { canExpand: true, toolCalls: calls });
   const nodes = () => h.walk(h.render(false));
   doubleTapArticle(h);
-  let article = nodes().find(n => n.type === 'Modal');
+  const article = nodes().find(n => n.type === 'Modal');
   assert.equal(article.props.visible, true);
-  assert.equal(h.walk([article]).filter(n => n.type === 'Modal').length, 1);
-  h.walk([article]).find(n => n.props.accessibilityLabel === '复制工具调用：运行命令').props.onPress({ nativeEvent: { pageX: 88, pageY: 120 } });
-  article = nodes().find(n => n.type === 'Modal');
   const inside = h.walk([article]);
-  assert.equal(inside.filter(n => n.type === 'Modal').length, 2, 'toolbar is mounted under article native modal');
-  inside.find(n => n.props.accessibilityLabel === '复制工具调用').props.onPress();
-  assert.deepEqual(h.copied, ['运行命令\nprintf "safe"']);
+  const group = inside.find(n => n.type === 'View' && n.props.style?.gap === 4);
+  group.props.onTouchStart({ stopPropagation() {} });
+  const texts = h.walk([group]).filter(n => n.type === 'Text');
+  assert.equal(texts.length, 2);
+  assert.ok(texts.every(n => n.props.selectable));
+  assert.equal(texts[1].children.join(''), calls[0].detail);
   assert.equal(h.walk([nodes().find(n => n.type === 'Modal')]).filter(n => n.type === 'Modal').length, 1);
-  nodes().find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
-  assert.deepEqual(h.copied, ['运行命令\nprintf "safe"', 'printf ok\n']);
+  inside.find(n => n.props.accessibilityLabel === '复制代码').props.onPress();
+  assert.deepEqual(h.copied, ['printf ok\n']);
+  article.props.onRequestClose();
+  assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false);
   h.unmount();
 });
 

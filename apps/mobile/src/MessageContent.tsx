@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -269,41 +269,20 @@ function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspende
 }
 
 function ToolCalls({ calls, onInteraction }: { calls?: readonly ToolCall[]; onInteraction: () => void }) {
-  const [selected, setSelected] = useState<{ call: ToolCall; x: number; y: number } | null>(null);
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   if (!calls?.length) return null;
-  const toolbarWidth = 96, toolbarHeight = 44, margin = 8;
-  const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), Math.max(low, high));
-  const left = selected && clamp(selected.x - toolbarWidth / 2, insets.left + margin, width - insets.right - margin - toolbarWidth);
-  const top = selected && clamp(selected.y - toolbarHeight - margin < insets.top + margin
-    ? selected.y + margin : selected.y - toolbarHeight - margin,
-    insets.top + margin, height - insets.bottom - margin - toolbarHeight);
+  // Native Text owns the long-press menu and its anchor. Do not open another
+  // window or become a responder: that disrupts the composer's keyboard.
   return <View style={styles.toolCalls} onTouchStart={event => { onInteraction(); stopTouch(event); }}>{calls.map(call => {
     const name = call.name.replace(/^functions\./, '');
     const terminal = name === 'terminal';
     const icon = name === 'skill_view' ? '📚' : name === 'read_file' ? '📖' : /search/.test(name) ? '🔎' : terminal || name === 'execute_code' ? '💻' : '🔧';
-    return <Pressable key={call.id} style={styles.toolCall} accessibilityRole="button" accessibilityLabel={`复制工具调用：${call.label}`}
-      onPress={event => {
-        onInteraction();
-        const { pageX, pageY } = event.nativeEvent;
-        setSelected({ call, x: Number.isFinite(pageX) ? pageX : width / 2, y: Number.isFinite(pageY) ? pageY : height / 2 });
-      }}>
-      <Text numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
+    return <View key={call.id} style={styles.toolCall}>
+      <Text selectable numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
       {terminal && !!call.detail && <View style={styles.toolDetail}>
-        <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
+        <Text selectable numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
       </View>}
-    </Pressable>;
-  })}{selected && <Modal transparent visible onRequestClose={() => setSelected(null)} animationType="none">
-    <View style={styles.toolOverlay}>
-      <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="关闭复制工具条" onPress={() => setSelected(null)} />
-      <Pressable style={[styles.toolToolbar, { left, top, width: toolbarWidth, height: toolbarHeight }]}
-        accessibilityRole="button" accessibilityLabel="复制工具调用" onPress={() => {
-          setSelected(null);
-          copy(selected.call.label + (selected.call.detail ? `\n${selected.call.detail}` : ''));
-        }}><Text style={styles.toolToolbarText}>复制</Text></Pressable>
-    </View>
-  </Modal>}</View>;
+    </View>;
+  })}</View>;
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
@@ -392,9 +371,7 @@ const styles = StyleSheet.create({
   toolDetailText: { paddingVertical: 4 },
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#f2f5fa' },
-  toolOverlay: { flex: 1 },
-  toolToolbar: { position: 'absolute', borderRadius: 8, backgroundColor: '#172a40', alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6 },
-  toolToolbarText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
   root: { alignSelf: 'stretch', minWidth: 0 },
   blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
   paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },

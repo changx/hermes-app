@@ -169,7 +169,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     <View style={styles.flex}>
       <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} />}
         renderScrollComponent={renderScrollComponent}
-        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
+        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         initialNumToRender={14} maxToRenderPerBatch={10} windowSize={7} updateCellsBatchingPeriod={60}
         // Keep the native visible-item anchor stable across prepends. Do not
         // toggle it during programmatic follow/keyboard scrolling.
