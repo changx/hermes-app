@@ -28,6 +28,8 @@ Jamie 新增要求：浏览页面显示 URL，尽量显示常用工具实际使�
 
 主控复验：完整 P1 **93 passed**，`git diff --check` 通过。定向测试执行真实 SessionDB、正式 hook 与历史/搜索 API 重读；覆盖专用字段映射、敏感 URL、编码路径、Unicode、长值截断和未知工具不展开。单值最多 160 单位（URL 180）、detail 最多 600 UTF-16 单位；网页提取最多展示前 3 个地址，更多以省略号提示。未改移动客户端，因此不重复打包。首次完整测试为 92 passed/1 failed：重启测试在 ready.json 写完前读到空文件；保留失败日志，不修改该测试，本轮再次完整运行通过。证据和回滚材料在 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-tool-arguments/`；iPhone 实际视觉仍单独确认。
 
+开发发布：`020bfc1` 已更新隔离开发插件，仅重启 hermes-app-dev Gateway。公网历史 API 读回真实 Sensor Tower 话题的 2 条 web_extract 记录均包含 URL，多地址明确省略；原消息 ID、引用顺序、正文及调用 ID 保留，连续重读一致。Expo、Jamie Gateway 的 PID/启动时间与固定核心不变。`release-verification.json` 保存读回证据；旧插件和发布前快照保留用于回滚。无须重新安装手机客户端；此结果验证服务端实际输出，不代替 iPhone 视觉确认。
+
 ## 搜索词与自动跟随补充
 
 - 搜索网页操作行显示实际 `query`（例如“搜索网页：Sensor Tower API”），仅白名单提取该字段，不展示参数 JSON 或结果。先强制检查脱敏，敏感或异常内容退回动作名；长查询在既有 label 限额内用省略号明确截断。
