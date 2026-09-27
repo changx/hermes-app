@@ -207,6 +207,8 @@ export class MobileOutbox {
   private busy = new Set<string>();
   private controllers = new Map<string, AbortController>();
   private checkedAt = new Map<string, number>();
+  private cleanupRetryAt = new Map<string, number>();
+  private cleanupNoticed = new Set<string>();
   private noticed = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
@@ -248,6 +250,7 @@ export class MobileOutbox {
     if (!this.alive || !this.online || this.storageFault) return;
     for (const record of this.records) {
       if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId)) continue;
+      if ((this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
       const cached = this.sdk.receipts.get(record.receiptId);
       if (cached && receiptStage(cached.state) > receiptStage(record.receiptState))
         this.launch(record.clientMessageId, () => this.recordReceipt(record, cached));
@@ -266,8 +269,20 @@ export class MobileOutbox {
       // sync is sufficient even when the bounded latest window omits this ID.
       // Do not treat the old SDK's empty/unanchored tail no-op as a sync.
       try { await this.storage.removeConfirmed(record.clientMessageId); }
-      catch { this.storageFault = true; this.emit('本机已确认记录清理失败；请保留应用数据'); return; }
+      catch {
+        // Removal is idempotent: the entry retains its slot in memory, and a
+        // durable discarding marker (if written) is recovered on cold start.
+        // Do not let this one confirmed entry starve already-durable sends.
+        this.cleanupRetryAt.set(record.clientMessageId, this.clock() + this.pollMs);
+        if (!this.cleanupNoticed.has(record.clientMessageId)) {
+          this.cleanupNoticed.add(record.clientMessageId);
+          this.emit('本机已确认记录清理失败；请保留应用数据');
+        }
+        return;
+      }
       this.checkedAt.delete(record.clientMessageId);
+      this.cleanupRetryAt.delete(record.clientMessageId);
+      this.cleanupNoticed.delete(record.clientMessageId);
       this.noticed.delete(record.clientMessageId);
       this.emit();
     }
@@ -302,6 +317,11 @@ export class MobileOutbox {
           else soonest = Math.min(soonest, entry.nextAttemptAt);
         }
       } else if (record.status === 'accepted' && record.receiptId && !this.busy.has(record.clientMessageId)) {
+        const cleanupRetryAt = this.cleanupRetryAt.get(record.clientMessageId);
+        if (cleanupRetryAt && cleanupRetryAt > this.clock()) {
+          soonest = Math.min(soonest, cleanupRetryAt);
+          continue;
+        }
         const nextCheck = (this.checkedAt.get(record.clientMessageId) ?? -Infinity) + this.pollMs;
         if (nextCheck > this.clock()) soonest = Math.min(soonest, nextCheck);
       }
@@ -326,6 +346,9 @@ export class MobileOutbox {
       catch { this.storageFault = true; this.emit('服务端已接收，但本机确认保存失败；记录已保留，请保留应用数据'); return; }
       if (!this.alive || gen !== this.generation) return;
       this.emit();
+      // A durable ACK releases the thread's submission queue; history catch-up
+      // can take another network timeout and must not hold the next send hostage.
+      this.wake();
       await this.refreshHistory(next);
     } catch (e) {
       if (!this.alive || gen !== this.generation || abort.signal.aborted) return;
