@@ -32,6 +32,8 @@
 
 验收：真实 SessionDB + 正式 pre_tool_call 在执行前输出公开说明与调用，历史/搜索/重读一致且不重复；隐藏/压缩/错误结构/analysis 不泄露。开发实例真实联网查询显示说明→搜索/提取→最终答案，并验证无需手机重装；iPhone 视觉仍单独验收。
 
+修正 `bd9a6bb` 已发布到开发插件。新增回归先复现 2 failed/1 passed，修正后 P1 全套 63 passed；最后空白过滤微调后定向 16 passed。首次全测被外层 180 秒超时中断，确认子进程退出后以足够预算重跑，全套用时约 190 秒。真实公网复验记录到公开说明、3 次 web_search、1 次 web_extract 和最终回复；说明与调用在执行中可读，重读内容一致、引用唯一、已有消息 ID 保留。测试话题“搜索过程验收”保留供 Jamie 手机检查。证据、原配置/插件回滚和脚本在 `workspace/hermes-app/m1-search-timeline/`，关键文件 `verified-result.json`、`verified-observations.json`、`p1-tests-final.log`。只重启开发 Gateway；Expo、Jamie Gateway 和固定核心未变化，未重新打包客户端；iPhone 视觉待确认。
+
 已实现；主卡 t_0768069c，插件执行卡 t_651fbe99。Jamie 已明确授权验证后更新隔离 hermes-app-dev 插件/Gateway 与 Expo，不动 Jamie 主实例或固定核心。
 
 - 插件在正式 pre_tool_call 发布已持久化的 assistant 原始行，post_tool_call 保留幂等后备。固定核心真实 GatewayRunner + 合成模型/工具集成测试已证明工具处理器尚未返回时 API 可读到纯工具行；这不是付费模型联调或 iPhone 验收。

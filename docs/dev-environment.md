@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+搜索过程修正 `bd9a6bb` 已发布：开发 profile 显式使用 Exa 匿名普通搜索/提取（保留内置免费后端回退），避免自动选择服务端内置搜索后无法生成普通调用记录。开发 SOUL.md 补充真实查证与简短公开进展要求；插件读取明确的公开 commentary，不暴露内部思考。真实公网验证说明→搜索/阅读→最终答案、执行中可见和重读一致；只更新开发插件并重启开发 Gateway，Expo 与 Jamie 主实例不动。详情及回滚见 [工具调用与中间说明](m1-tool-timeline.md)。
+
 2026-09-26 工具过程版 `6a2eff6` 已发布：公开说明与工具记录按原始顺序展示，安全命令显示为等宽块。仅更新隔离 hermes-app-dev 插件/Gateway 和 Expo；Jamie 主实例 PID/启动时间与固定核心保持不变。主控复验 P1 60 项、手机 125 项、客户端检查、TypeScript、双平台导出通过；公网 capability `tool_call_timeline=true` 与两个平台实际 bundle 已核验。真实开发模型调用终端的验收中，工具记录在收据完成前可读，随后最终回复可读，引用不重复；验收话题已归档。记录及限制见 [工具调用与中间说明](m1-tool-timeline.md)，私有发布、联调证据和回滚在 `workspace/hermes-app/m1-tool-timeline/`。iPhone 实际呈现待确认，下方旧“最新”条目均为历史记录。
 
 最新手机开发版 `dc5a20e`：消息下 Agent 状态 reaction、发送正文浅灰到实色、移除常驻发送汇总和技术性界面信息；只更新 Expo，Gateway/插件未变化。87 项手机测试、TypeScript、双平台导出及公网两平台资源检查通过，iPhone 视觉待验收。见 [Agent reaction 与发布证据](m1-agent-reactions.md)。下方旧发布记录按历史保留。
