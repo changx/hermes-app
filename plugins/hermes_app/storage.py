@@ -570,8 +570,11 @@ class Store:
         if role == 'user':
             existing=db.execute('SELECT seq,turn_id FROM message_refs WHERE row_id=? AND thread_id=?',
                                 (row_id,thread_id)).fetchone()
-            if existing and existing['turn_id'].startswith('input:'):
-                db.execute('UPDATE message_refs SET turn_id=? WHERE seq=?',(turn_id,existing['seq']))
+            if existing:
+                if existing['turn_id'].startswith('input:'):
+                    db.execute('UPDATE message_refs SET turn_id=? WHERE seq=?',(turn_id,existing['seq']))
+                # A continuation may reference this user again, but must not
+                # take its established owner away from the completed turn.
                 return
             linked=db.execute('SELECT r.seq FROM receipts c JOIN message_refs r '
                               'ON r.input_receipt_id=c.id WHERE c.thread_id=? AND c.user_row_id=?',
