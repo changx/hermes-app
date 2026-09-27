@@ -14,8 +14,9 @@ const action = (title: string, onPress: () => void, disabled = false, muted = fa
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean }) {
   const own = row.role === 'user';
+  const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
-  const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? styles.agentMessage : styles.bubble}>
+  const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
     {!row.continuation && <Text style={styles.byline}>{own ? '我' : row.role === 'assistant' ? 'Hermes' : '消息'}{!row.optimistic && !row.refSeq ? ' · 草稿' : ''}</Text>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
@@ -249,6 +250,7 @@ const styles = StyleSheet.create({
   // the keyboard controller scroll empty space and push top-aligned rows away.
   messages: { paddingTop: 12, paddingBottom: 48 },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
+  toolMessage: { marginVertical: 2 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   own: { maxWidth: '80%', marginHorizontal: 0, backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },

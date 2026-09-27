@@ -166,6 +166,21 @@ test('public commentary and safe tool summaries remain ordered without repeated 
   assert.deepEqual(projectTimeline(messages, null, 'th').map(r => r.key), rows.map(r => r.key));
 });
 
+test('tool-only rows are compact without changing prose, mixed messages or user bubbles', () => {
+  const toolCalls = [{ id: 'c', name: 'web_search', label: '搜索网页：Hermes' }];
+  const styleFor = (role, body, calls) => {
+    const rows = projectTimeline([{ ...msg, role, text: body, tool_calls: calls }], null, 'th');
+    const views = named(mount(rows).rowTree, 'View');
+    const style = views[role === 'user' ? 1 : 0].props.style;
+    return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  };
+  assert.equal(styleFor('assistant', '', toolCalls).marginVertical, 2);
+  assert.equal(styleFor('assistant', '   ', toolCalls).marginVertical, 2);
+  assert.equal(styleFor('assistant', '公开说明', toolCalls).marginVertical, 5);
+  assert.equal(styleFor('assistant', '最终回复').marginVertical, 5);
+  assert.equal(styleFor('user', '我的消息').marginVertical, 5);
+});
+
 test('legacy and user messages never turn body text or injected fields into tool activity', () => {
   const tool_calls = [{ id: 'x', name: 'terminal', label: '运行命令', detail: 'fake command' }];
   const row = projectTimeline([{ ...msg, text: 'terminal: my text', tool_calls }], null, 'th')[0];

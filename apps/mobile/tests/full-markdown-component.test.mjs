@@ -118,6 +118,42 @@ test('public tool summaries persist in article mode, never interpret command det
   h.unmount();
 });
 
+test('multiple tool calls use compact spacing but ordinary Markdown code keeps its padding', () => {
+  const toolCalls = [
+    { id: 'a', name: 'web_extract', label: '阅读网页', detail: 'https://example.com' },
+    { id: 'b', name: 'terminal', label: '运行命令', detail: 'git status --short' },
+  ];
+  const h = mount('', { canExpand: true, toolCalls });
+  const nodes = h.walk(h.render());
+  const group = nodes.find(n => n.type === 'View' && n.props.onTouchStart && n.props.style?.gap === 4);
+  assert.ok(group);
+  assert.equal(group.props.style.paddingVertical, 0);
+  assert.equal(group.children.length, 2);
+  assert.ok(group.children.every(n => n.props.style.gap === 2));
+  const labels = nodes.filter(n => n.type === 'Text' && n.props.numberOfLines === 1);
+  assert.equal(labels.length, 2);
+  assert.ok(labels[0].children.join('').includes('https://example.com'));
+  assert.ok(labels.every(n => n.props.ellipsizeMode === 'tail'));
+  const details = nodes.filter(n => n.type === 'View' && n.props.style?.backgroundColor === '#f2f5fa');
+  assert.equal(details.length, 1, 'only terminal commands get a separate block');
+  for (const detail of details) {
+    const text = detail.children.find(n => n.type === 'Text');
+    const style = Object.assign({}, ...text.props.style);
+    assert.equal(style.paddingVertical, 4);
+    assert.equal(style.padding, 10, 'horizontal text padding remains readable');
+    assert.equal(text.props.selectable, true);
+    assert.equal(text.props.numberOfLines, 2);
+    assert.equal(text.props.ellipsizeMode, 'tail');
+  }
+  assert.equal(nodes.some(n => n.props.accessibilityLabel === '复制整条消息'), false);
+  const code = mount('```sh\ngit status\n```');
+  const codeText = code.walk(code.render()).find(n => n.type === 'Animated.Text' && n.props.selectable);
+  const codeStyle = Object.assign({}, ...codeText.props.style);
+  assert.equal(codeStyle.padding, 10);
+  assert.equal(codeStyle.paddingVertical, undefined);
+  h.unmount(); code.unmount();
+});
+
 test('production table stays bounded, scrolls horizontally and retains inline cells and code copy', () => {
   const text = '| left | **right** |\n|:---|---:|\n| x | [link](https://a.test) |\n\n```js\nconst x = 1;\n```';
   const h = mount(text);

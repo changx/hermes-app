@@ -270,12 +270,17 @@ function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspende
 
 function ToolCalls({ calls }: { calls?: readonly ToolCall[] }) {
   if (!calls?.length) return null;
-  return <View style={styles.toolCalls} onTouchStart={stopTouch}>{calls.map(call => <View key={call.id} style={styles.toolCall}>
-    <Text selectable style={styles.toolLabel}>{/read_file|skill_view/.test(call.name) ? '📖' : /search/.test(call.name) ? '🔎' : /terminal|execute_code/.test(call.name) ? '💻' : '🔧'} {call.label}</Text>
-    {!!call.detail && <ScrollView horizontal nestedScrollEnabled style={styles.toolDetail}>
-      <Text selectable style={styles.codeText}>{call.detail}</Text>
-    </ScrollView>}
-  </View>)}</View>;
+  return <View style={styles.toolCalls} onTouchStart={stopTouch}>{calls.map(call => {
+    const name = call.name.replace(/^functions\./, '');
+    const terminal = name === 'terminal';
+    const icon = name === 'skill_view' ? '📚' : name === 'read_file' ? '📖' : /search/.test(name) ? '🔎' : terminal || name === 'execute_code' ? '💻' : '🔧';
+    return <View key={call.id} style={styles.toolCall}>
+      <Text selectable numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
+      {terminal && !!call.detail && <View style={styles.toolDetail}>
+        <Text selectable numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
+      </View>}
+    </View>;
+  })}</View>;
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
@@ -362,8 +367,9 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
 });
 
 const styles = StyleSheet.create({
-  toolCalls: { minWidth: 0, gap: 7, paddingVertical: 6 },
-  toolCall: { minWidth: 0, gap: 4 },
+  toolCalls: { minWidth: 0, gap: 4, paddingVertical: 0 },
+  toolCall: { minWidth: 0, gap: 2 },
+  toolDetailText: { paddingVertical: 4 },
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#f2f5fa' },
   root: { alignSelf: 'stretch', minWidth: 0 },
