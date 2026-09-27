@@ -24,6 +24,14 @@
 
 ## 进展
 
+### 搜索与公开说明修正
+
+真实开发查询复现两个独立缺口：开发 profile 自动选择 `openai-native`，Codex transport 将普通 `web_search` 替换为服务端内置工具；固定核心未将 `web_search_call` 保存为普通调用，所以不能从空 `tool_calls` 推断没有搜索。另一次真实查询确实输出了公开说明，但它保存在 `codex_message_items` 的 `assistant/message/commentary/output_text` 中，当前投影只读取 `content` 而丢失说明。
+
+修正范围：开发配置显式选择普通 Exa 匿名搜索/提取（内置免费后端可回退）；不复制其他 profile 密钥、不修改核心。开发 `SOUL.md` 要求实际查证和简短公开进展。插件只读取已完成、明确标为 `commentary` 的 assistant message 文本，保留现有核心可见性过滤；不读取 `analysis`、reasoning 或其他工具结果。普通正文和 final_answer 不重复拼接。
+
+验收：真实 SessionDB + 正式 pre_tool_call 在执行前输出公开说明与调用，历史/搜索/重读一致且不重复；隐藏/压缩/错误结构/analysis 不泄露。开发实例真实联网查询显示说明→搜索/提取→最终答案，并验证无需手机重装；iPhone 视觉仍单独验收。
+
 已实现；主卡 t_0768069c，插件执行卡 t_651fbe99。Jamie 已明确授权验证后更新隔离 hermes-app-dev 插件/Gateway 与 Expo，不动 Jamie 主实例或固定核心。
 
 - 插件在正式 pre_tool_call 发布已持久化的 assistant 原始行，post_tool_call 保留幂等后备。固定核心真实 GatewayRunner + 合成模型/工具集成测试已证明工具处理器尚未返回时 API 可读到纯工具行；这不是付费模型联调或 iPhone 验收。
