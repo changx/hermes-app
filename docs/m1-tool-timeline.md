@@ -31,6 +31,8 @@ Jamie 真机反馈：自制复制 Modal 会打断输入焦点、收起键盘，�
 
 本轮本地验证：手机测试 137/137、TypeScript、iOS/Android Expo export 和 diff 检查通过。生产组件测试覆盖原生 selectable、安全命令全文不被 UI 截断改写、无工具 Modal/Pressable、屏幕变化无缓存坐标、全屏内同样使用系统复制和代码复制保留。生产时间线确认 always 点击策略、interactive 拖动与 48pt 底部留白。读取当前 RN 的 RCTParagraphComponentView.mm 确认 iOS 16+ 通过 UIEditMenuInteraction 在文字视图局部坐标呈现系统菜单；这不是 iPhone 真机焦点验收。证据保留于 workspace/hermes-app/m1-native-tool-copy/。
 
+开发入口已更新至 `e3fc856`。公网 iOS/Android 实际 launchAsset 均读回确认原生 selectable、always 点击策略、自制工具条移除，以及表格/图表独立全屏入口保留；两个 Gateway 的 PID/启动时间不变。首次发布检查的正则未兼容非压缩包空白，检查实际包后修正探针并通过，未因此更改产品代码。发布证据与旧提交记录位于同目录 release-verification.json / before.json；iPhone 长按时的键盘与菜单实际行为仍待真机反馈。
+
 ## 按需复制操作（旧实现，已由系统长按取代）
 
 Jamie 要求去掉常驻“复制消息”按钮，点击工具调用区域后再出现复制浮动工具条。每条工具记录可点按，显示靠近点击位置的小型“复制”操作；点外部、系统返回或执行复制后收起，不占用消息流高度。复制该条记录已有的安全 label/detail，不读取原始参数，不以屏幕单行/两行省略后的内容代替完整安全摘要。普通代码块复制、Markdown 文字选择及 Agent 双击全屏阅读保持；全屏文章中的工具同样可操作。按 Jamie 最新要求，同时去掉整条消息常驻的“全屏阅读/全屏查看消息”按钮，以双击 Agent 正文进入文章阅读；表格与 Mermaid 的独立全屏入口保留。
