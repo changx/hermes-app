@@ -25,6 +25,13 @@
 - 用户保留原气泡及背景，正文与 Agent 共用 `MessageContent`，不按角色限制语法。验证用户消息从时间线进入真实解析器和组件，覆盖标题、列表、引用、代码、链接、表格、图片、视频、行内/块级公式与 Mermaid；发送中的颜色规则保持。
 - 此轮不新增语法或调整资源上限；113/113 手机测试、TypeScript、iOS/Android Expo 导出通过。生产用户/Agent 时间线到真实解析与组件生成相同渲染树；仅用户外围气泡不同。证据 `markdown-verification/parity-tests.log`、`parity-ts.log`、`parity-export.log`。公网资源核验与 iPhone 实测分开，前一轮 Mermaid 真机待确认仍不冒充已解决。
 
+## 用户消息满宽与纯图表零宽修正
+
+- 用户明确：靠右保留，但不限制为屏幕 90%。用户行以左右 14 点边距形成确定宽度，气泡在行内靠右并使用 100% 可用宽度；颜色/圆角保留，不再让 WebView 的百分比宽度反推自动收缩气泡的固有尺寸。Agent 无框布局保持。
+- 已用 Yoga 3.2.1 执行从生产 `ChatTimeline`/`MessageContent` 提取的实际样式，对旧提交 `4e464bd` 与候选作对照。仅含图表的消息，在 320/390/768 宽视口旧版 WebView 均为 0 宽；新实现分别为 264/334/712 宽、220 高。此为真实布局引擎的重现，文本测量为固定样本，不等同 iPhone 截图验收。
+- 只读核对开发实例里用户最近一条 Mermaid 消息：围栏格式正确，使用原图表进入生产 HTML 渲染器，Chromium 成功产出 SVG。私有样本不进仓库，未修改消息或后端。包括该样本在内的 10 项浏览器验证通过。
+- 手机全测、TS、双平台 Expo 导出通过。证据在私有 `markdown-verification/yoga-production-width.mjs`、`yoga-production-results.json`、`width-tests.log`、`width-ts.log`、`width-export.log` 和 `width-browser/browser-results.json`。手机实际显示待确认；已证实并修正零宽缺陷，不把此前不明根因追溯说成早已确定。
+
 ## 验收
 
 1. 用真实解析函数验证上述各类语法，包括转义竖线、空/混排单元格、嵌套列表任务误判、引用/链接安全和不完整输入。

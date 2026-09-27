@@ -59,7 +59,12 @@ const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(
 test('assistant fills available width without a bubble; user bubble remains unchanged', () => {
   const rowStyle = role => {
     const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);
-    const style = named(mount(rows).rowTree, 'View')[0].props.style;
+    const views = named(mount(rows).rowTree, 'View');
+    if (role === 'user') {
+      assert.equal(views[0].props.style.alignSelf, 'stretch');
+      assert.equal(views[0].props.style.marginHorizontal, 14);
+    }
+    const style = views[role === 'user' ? 1 : 0].props.style;
     return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
   };
   const agent = rowStyle('assistant');
@@ -72,7 +77,9 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(agent.borderRadius, undefined);
   const user = rowStyle('user');
   assert.equal(user.alignSelf, 'flex-end');
-  assert.equal(user.maxWidth, '90%');
+  assert.equal(user.width, '100%');
+  assert.equal(user.maxWidth, '100%');
+  assert.equal(user.marginHorizontal, 0, 'gutters belong to the definite-width parent');
   assert.equal(user.padding, 13);
   assert.equal(user.backgroundColor, '#e6f0ff');
   assert.equal(user.borderColor, '#d0e2fb');
