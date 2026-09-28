@@ -43,6 +43,10 @@ Jamie 要求应用导航统一使用 Expo Router。替换原先在 `App.tsx` 中
 - 完整日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/expo-router/`。
 - 已发布客户端提交 `2c7dce2`。公网 iOS/Android manifest 与各自实际 launchAsset 均下载成功，SDK 57、`transform.routerRoot=src/app` 与新版路由标识已核验；后端和 Jamie 主实例 PID/启动时间未变，原字体文件及入口配置哈希未变。发布回读见 `release-verification.json`。
 
+## 键盘回归反馈
+
+迁移后 Jamie 反馈聊天输入区落入安全区、被键盘遮挡及拖动不能收键盘。已确认聊天路由遗漏其他页面已有的 bottom/left/right SafeAreaView；候选恢复该边界并启用已安装键盘库的 iOS 留白触摸兼容项。修正与验证单独记录在 [Router 聊天键盘回归](m1-router-keyboard.md)，当前未发布，真机仍待验收。
+
 ## 官方依据
 
 - 安装与 SDK 依赖：https://docs.expo.dev/router/installation/
