@@ -6,9 +6,11 @@
 - 修正空输入框 placeholder 的纵向对齐，保留输入后的原生多行增长和清空复位。
 - 保留返回最新所在透明行、消息底部 96pt 留白和现有键盘跟随。
 
-## 外层居中修订（当前隔离候选）
+## 外层居中修订（已发布，真机待验）
 
-卡片 `t_ddd5e38f`；Jamie 已确认实施，尚未授权发布本次候选。
+卡片 `t_ddd5e38f`；Jamie 明确授权发布后，已从干净的 `d91e06b` fast-forward 至 `1d3a68b3d3586dcc1fd9d6dbe849fce4d81b4cbc`，发布到 `exps://agent.tuly.space`。仅停止/启动 Expo；发布后 TypeScript 通过，公网 iOS/Android manifest 及精确 launchAsset 均已核验外层居中、内部 padding=0、平台行数差异、共用阴影、透明最新行及 96pt 留白。两个 Gateway 的 PID/启动时间与插件哈希不变，未修改聊天数据。
+
+发布证据：私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/composer-outer-center/` 中 `release-before.json`、`release-verification.json`、双平台 manifest 和 `release.py`。Metro 对 Platform.OS 做平台常量折叠，验证脚本按 iOS 空内容一行、Android undefined 分别核验。保留原提交和候选分支用于回滚；实现工作树及复制依赖已清理。
 
 - 外层 Pressable 承载边框、圆角、42pt 最低高度和上下 8pt 留白，用 `justifyContent: center` 居中内部输入框；点击空白区域调用原输入框 focus，外层不合并或抢占输入框的辅助阅读节点。
 - 内部保留原生 multiline/placeholder，清除 padding，不设固定高度、行高或字体偏移；由原生内容测量高度。总高度上限仍为 120pt，扣除边框和外层留白后，内部 maxHeight 为 102pt，保留长文内部滚动。
@@ -18,7 +20,7 @@
 
 本地验证：TypeScript 通过；手机测试串行 283/283 通过；iOS/Android Metro export 均成功。新增外壳点击聚焦和 Android 不固定行数测试，更新空内容一行测量/非空解限、发送失败与新草稿保护、边框留白与高度约束测试。沿用既有阴影/附件/键盘/阅读位置回归。证据：私有 `workspace/hermes-app/composer-outer-center/` 下 `check.log`、`tests.log`、双平台 export 日志与 `checks.json`。
 
-组件检查使用 RN 替身，不测 UIKit 字体或原生滚动；不能把字号参数循环当作真机大字体通过。真机仍需覆盖空占位、输入一行/多行、长文滚动与发送清空、应用和系统大字体、点击留白/选字。未发布，运行中的 Expo 和后端未改。
+组件检查使用 RN 替身，不测 UIKit 字体或原生滚动；不能把字号参数循环当作真机大字体通过。真机仍需覆盖空占位、输入一行/多行、长文滚动与发送清空、应用和系统大字体、点击留白/选字。发布核验不代表设备视觉验收。
 
 ## 原生排版修订（已发布）
 
