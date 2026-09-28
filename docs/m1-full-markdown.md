@@ -15,7 +15,8 @@
 - 原生代码文字与公式/图表源码回退在 iOS 使用 Menlo，Android 使用 monospace；全文阅读的 code/pre 与源码回退使用 ui-monospace、Menlo、Consolas、monospace 字体栈。普通引用、列表、表格文字仍使用正文字体。
 - 只调整展示样式，不修改源文本、复制、横向滚动、发送状态和字号偏好。全文代码块内不重复套行内底色和内边距。
 - 本轮在隔离分支实现；自动验证与 iPhone 真机体验分开，更新运行中的 Expo 需要另行发布授权。
-- 验证：277/277 手机测试、TypeScript、iOS/Android Metro JS 导出及 diff 检查通过。新增 iOS/Android 组件断言覆盖行内、单行/多行围栏、缩进代码、命令和源码回退的字体，保留换行的复制及水平滚动；HTML 测试覆盖一致底色和块内行内装饰清除。测试日志与候选导出保存在私有 `workspace/hermes-app/code-typography-verification/`；没有 iPhone 真机视觉验收，也未发布到测试入口。
+- 发布前验证：277/277 手机测试、TypeScript、iOS/Android Metro JS 导出及 diff 检查通过。新增 iOS/Android 组件断言覆盖行内、单行/多行围栏、缩进代码、命令和源码回退的字体，保留换行的复制及水平滚动；HTML 测试覆盖一致底色和块内行内装饰清除。测试日志与候选导出保存在私有 `workspace/hermes-app/code-typography-verification/`；没有 iPhone 真机视觉验收。
+- Jamie 随后授权发布，客户端提交 `45b1ba1` 已快进到运行目录并重启 Expo，测试入口保持 `exps://agent.tuly.space`。公网 iOS/Android manifest 与其实际 bundle 已核验新底色、iOS Menlo / Android monospace 及全文 CSS；Metro 按平台折叠字体分支，验证按最终平台字体断言。重启后首次请求短暂 502，重试恢复；末轮两平台完整通过。两个 Gateway 的 PID/启动时间及已安装开发插件文件哈希不变。证据为同目录 `release-before.json` 与 `release-verification.json`，回滚基线 `96f45d1`；iPhone 实际视觉仍待确认。
 
 ## 手机反馈修正：Mermaid 与消息外层布局
 
