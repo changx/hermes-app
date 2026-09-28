@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, AppState, StyleSheet, View } from 'react-native';
 import { Text } from './FontSize';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
+import { isReceiptRunning } from './receiptState';
 
 export function isAgentTyping(threadId: string, receipts: readonly Receipt[], interactions: readonly Interaction[], online: boolean): boolean {
-  return online && receipts.some(receipt => receipt.thread_id === threadId && receipt.state === 'running'
-    && (receipt.processing == null || receipt.processing === 'running')
+  return online && receipts.some(receipt => receipt.thread_id === threadId && isReceiptRunning(receipt)
     && !interactions.some(item => item.thread_id === threadId && item.receipt_id === receipt.id && item.state === 'pending'));
 }
 

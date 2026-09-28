@@ -11,6 +11,7 @@ import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd
 import { MessageContent } from './MessageContent';
 import { MessageTime } from './MessageTime';
 import { messageNeedsViewport } from './messageMarkdown';
+import { hasRunningReceipt } from './receiptState';
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
@@ -211,7 +212,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
         style={styles.composeInput} underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       </Pressable>
-      {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
+      {hasRunningReceipt(props.threadId, props.receipts) &&
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>

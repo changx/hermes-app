@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as messageTime from '../src/messageTime.ts';
+import { hasRunningReceipt } from '../src/receiptState.ts';
 
 // Invoke the production component and its real event callbacks. React/RN are
 // stubbed; this does not measure UIKit animation frames or run on a device.
@@ -47,7 +48,8 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
-    './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false }
+    './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false },
+    './receiptState': { hasRunningReceipt }
   };
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText,

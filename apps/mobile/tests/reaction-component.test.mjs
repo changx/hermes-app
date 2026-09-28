@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { projectTimeline } from '../src/timeline.ts';
 import { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl } from '../src/messageMarkdown.ts';
+import { hasRunningReceipt } from '../src/receiptState.ts';
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }) };
@@ -24,7 +25,7 @@ const modules = {
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
-  './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl },
+  './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
   './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
   'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },

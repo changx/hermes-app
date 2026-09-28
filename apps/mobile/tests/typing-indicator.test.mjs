@@ -25,10 +25,14 @@ function harness() {
     AppState: { currentState: 'active', addEventListener: (_, fn) => { listeners.app = fn; return { remove() { delete listeners.app; } }; } },
   };
   const out = { exports: {} };
+  const receiptState = { exports: {} };
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/receiptState.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText, { module: receiptState, exports: receiptState.exports });
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/TypingIndicator.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
-  }).outputText, { module: out, exports: out.exports, require: name => name === 'react' ? { ...react, default: react } : name === './FontSize' ? { Text: native.Text } : native });
-  return { ...out.exports, animations, listeners, render(active, name) { index = 0; const tree = out.exports.TypingIndicator({ active, name }); effects.splice(0).forEach(f => f()); return tree; },
+  }).outputText, { module: out, exports: out.exports, require: name => name === 'react' ? { ...react, default: react } : name === './FontSize' ? { Text: native.Text } : name === './receiptState' ? receiptState.exports : native });
+  return { ...out.exports, ...receiptState.exports, animations, listeners, render(active, name) { index = 0; const tree = out.exports.TypingIndicator({ active, name }); effects.splice(0).forEach(f => f()); return tree; },
     unmount() { cells.forEach(c => c.cleanup?.()); } };
 }
 
@@ -43,12 +47,18 @@ test('running label uses configured name or Agent, matching visible and accessib
   assert.equal(h.render(false, 'Tuly'), null); h.unmount();
 });
 
-test('typing derives only from online, current-thread running work, excluding pending interactions', () => {
-  const { isAgentTyping } = harness();
+test('running state honors terminal processing after returning to a thread', () => {
+  const { isAgentTyping, isReceiptRunning, hasRunningReceipt } = harness();
   const receipt = { id: 'r', thread_id: 't', state: 'running' };
   assert.equal(isAgentTyping('t', [receipt], [], true), true);
+  assert.equal(isReceiptRunning(receipt), true, 'legacy receipts remain compatible');
+  assert.equal(isReceiptRunning({ ...receipt, processing: null }), true);
+  assert.equal(isReceiptRunning({ ...receipt, processing: 'running' }), true);
   for (const processing of ['completed', 'failed', 'interrupted', 'unknown']) {
-    assert.equal(isAgentTyping('t', [{ ...receipt, processing }], [], true), false);
+    const finished = { ...receipt, processing };
+    assert.equal(isReceiptRunning(finished), false);
+    assert.equal(hasRunningReceipt('t', [finished]), false);
+    assert.equal(isAgentTyping('t', [finished], [], true), false);
   }
   for (const state of ['queued', 'completed', 'failed', 'interrupted', 'unknown']) assert.equal(isAgentTyping('t', [{ ...receipt, state }], [], true), false);
   assert.equal(isAgentTyping('other', [receipt], [], true), false);

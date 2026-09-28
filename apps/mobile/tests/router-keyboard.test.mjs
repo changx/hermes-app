@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { hasRunningReceipt } from '../src/receiptState.ts';
 
 // Execute production routes/components and the pinned controller's arithmetic.
 // Native views/hooks are substitutes: these are not UIKit gesture/device tests.
@@ -24,6 +25,11 @@ const find = (node, type) => {
   if (Array.isArray(node)) return node.map(child => find(child, type)).find(Boolean) ?? null;
   return node.type === type ? node : find(node.props?.children, type);
 };
+const findByLabel = (node, label) => {
+  if (!node || typeof node !== 'object') return null;
+  if (Array.isArray(node)) return node.map(child => findByLabel(child, label)).find(Boolean) ?? null;
+  return node.props?.accessibilityLabel === label ? node : findByLabel(node.props?.children, label);
+};
 function route(id = 't_one') {
   return load('../src/app/threads/[threadId].tsx', {
     react, 'expo-router': { useLocalSearchParams: () => ({ threadId: id }) },
@@ -32,7 +38,7 @@ function route(id = 't_one') {
     '../../routeId': { routeId: value => value === 't_one' ? value : null },
   }).default();
 }
-function timeline(bottom = 34, os = 'ios') {
+function timeline(bottom = 34, os = 'ios', receipts = []) {
   const tree = load('../src/ChatTimeline.tsx', {
     react,
     'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
@@ -43,11 +49,21 @@ function timeline(bottom = 34, os = 'ios') {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',
       KeyboardStickyView: 'KeyboardStickyView', KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {},
-  }).ChatTimeline({ threadId: 't_one', rows: [], text: '', receipts: [], interactions: [], answers: {} }, {});
+    './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
+  }).ChatTimeline({ threadId: 't_one', rows: [], text: '', receipts, interactions: [], answers: {} }, {});
   const list = find(tree, 'FlatList').props;
   return { tree, list, scroll: list.renderScrollComponent(list), sticky: find(tree, 'KeyboardStickyView').props };
 }
+
+test('stop control disappears when processing is terminal despite stale running lifecycle', () => {
+  const receipt = { id: 'r', client_message_id: 'c', thread_id: 't_one', state: 'running', durable: true };
+  assert.ok(findByLabel(timeline(34, 'ios', [receipt]).tree, 'Stop'));
+  assert.ok(findByLabel(timeline(34, 'ios', [{ ...receipt, processing: 'running' }]).tree, 'Stop'));
+  for (const processing of ['completed', 'failed', 'interrupted', 'unknown']) {
+    assert.equal(findByLabel(timeline(34, 'ios', [{ ...receipt, processing }]).tree, 'Stop'), null);
+  }
+  assert.equal(findByLabel(timeline(34, 'ios', [{ ...receipt, thread_id: 'other' }]).tree, 'Stop'), null);
+});
 
 test('thread route owns bottom and landscape safe area, without duplicating native header space', () => {
   const page = route();
