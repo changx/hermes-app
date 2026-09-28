@@ -27,3 +27,17 @@ Jamie 已在 Discord 线程 `1553991302557863988` 明确要求“收尾交付”
 客户端初步验证：移动端 266 项通过，SDK 标准检查通过，双方 TypeScript 与 iOS/Android Metro export 通过。隔离 worktree 原有 node_modules 符号链接不在 Metro 观察路径内，首次 export 未解析 expo-router；改为工作树独立 `npm ci` 后两平台通过，未修改运行目录依赖。完整后端验收与发布结果以本页后续记录为准。
 
 私有测试日志、发布脚本与回滚：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/native-command-delivery/`。真机视觉单独记录，不用 bundle 校验冒充 iPhone 实测。
+
+## 本次交付结果
+
+运行代码提交：`00d5bb0b7b06827823108aa0e53f85e3344cb98d`。已快进合入运行主目录、更新 `hermes-app-dev` 插件并重启开发 Gateway/Expo。公网入口仍为 `https://agent.tuly.space`，未改开发配置、固定核心或 Jamie 主 Gateway；主 Gateway PID/启动时间前后相同。
+
+- 主控重新运行 `tests/p1`：212 passed，7 条 aiohttp 推荐使用 AppKey/RequestKey 的 warning，无失败。日志：私有目录 `backend/parent-p1.log`。
+- SDK 完整检查、移动端 266 项、TypeScript、iOS/Android export 通过；公网分别取得两平台 manifest 所指向的实际 launchAsset，包含本次直接回复及保留的模型设置功能。
+- 原生代表命令真实执行；shared/idle 命令集合逐项经过真实 Gateway 分派，危险副作用在测试内替换，不在现场执行。隔离本地合成 provider 覆盖普通模型不重复、`/retry`、`/btw`、`/new`、`/branch`、跨话题恢复拒绝、运行中回复和 `/save md` 附件下载。
+- 直接回复编辑保留身份/时间。SDK 收到编辑事件后精确读取旧引用，不仅补取尾部；失败不推进游标，重复事件不新增气泡。
+- 当前开发 metadata 的私有副本迁移通过：322 条既有引用完整保留，SQLite integrity/foreign-key 检查通过；副本检查后删除，现场数据未在迁移预演中修改。
+- 公网实际发送 `/commands`、`/usage`、`/status`、`/version`，全部返回非空直接回复并完成收据；同 ID 重试不重复、冷读一致、搜索和精确引用读取通过。专用验收话题的模型 messages 数量为 0。
+- 专用验收话题 `th_a553c4ab70c74928b438f8d2` 已归档，保留作交付证据。发布结果、命令证据和插件/metadata 回滚备份保留在上述私有目录，生成式回归证据另保留在命名 Git stash，未混入产品源码。
+
+原生命令的可执行范围仍由 Hermes 自身权限、平台和配置决定；分派覆盖不等于对危险操作或每个参数组合做真实执行。手机实际视觉/操作尚未人工验收，本次没有生成独立签名安装包。更新后的客户端可在既有 Expo 入口重新加载；修复前被旧插件丢弃的命令输出无法凭空补回，需要重新发送命令。
