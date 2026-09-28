@@ -22,15 +22,9 @@ function harness() {
     busy: false, channelId: null, openingRef: { current: 0 }, agentName: { name: 'Tuly', ready: true, error: '', saving: false, save: async () => true, reload: () => calls.push(['reload']) },
     isAgentTyping: () => true,
   };
-  for (const name of ['View', 'Text', 'Button', 'NavigationMotion', 'ChatTimeline', 'TypingIndicator', 'AttachmentComposer', 'ChannelScreens', 'KeyboardAvoidingView', 'Modal', 'SafeAreaView', 'AgentSettings', 'FontSizeSettings', 'ModelSettings']) context[name] = name;
+  for (const name of ['View', 'Text', 'Button', 'ChatTimeline', 'TypingIndicator', 'AttachmentComposer', 'ChannelScreens', 'KeyboardAvoidingView', 'Modal', 'SafeAreaView', 'AgentSettings', 'FontSizeSettings', 'ModelSettings']) context[name] = name;
   for (const name of ['setEditing', 'setThreadId', 'setPageCursor', 'locateNext', 'loadOlder', 'visibleRef', 'setText', 'send', 'renderAttachments', 'onAttachmentsChange', 'setAnswers', 'answer', 'run', 'setChannelId', 'openThread']) context[name] = () => {};
   context.setSettingsOpen = value => { context.settingsOpen = value; };
-  context.navLock = { current: false };
-  context.navDirection = 'forward'; context.reduceMotion = false;
-  context.back = () => { context.settingsOpen = false; };
-  context.onAgentBlocked = () => {}; context.onModelBlocked = () => {}; context.onModelSaving = () => {}; context.onChannelBlocked = () => {};
-  context.channelBlocked = { current: false }; context.agentBlocked = { current: false }; context.modelBlocked = { current: false };
-  context.font = { saving: false };
   const render = runInNewContext(code, context);
   return { context, calls, render: () => walk(render()) };
 }

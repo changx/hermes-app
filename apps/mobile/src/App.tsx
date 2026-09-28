@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { FontSizeProvider, FontSizeSettings, Text, TextInput, useFontSize } from './FontSize';
+import { AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FontSizeProvider, FontSizeSettings, Text, TextInput } from './FontSize';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
@@ -21,7 +21,6 @@ import { AttachmentComposer, MessageAttachments } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
-import { NavigationMotion } from './NavigationMotion';
 import type { TimelineRow } from './timeline';
 
 const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
@@ -35,14 +34,6 @@ function Screen() {
   const [config, setConfig] = useState<Connection | null>(null);
   const agentName = useAgentName(config?.id ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const [navDirection, setNavDirection] = useState<'forward' | 'back'>('forward');
-  const navLock = useRef(false), channelBlocked = useRef(false), agentBlocked = useRef(false), modelBlocked = useRef(false), modelSaving = useRef(false);
-  const font = useFontSize();
-  const onChannelBlocked = useCallback((value: boolean) => { channelBlocked.current = value; }, []);
-  const onAgentBlocked = useCallback((value: boolean) => { agentBlocked.current = value; }, []);
-  const onModelBlocked = useCallback((value: boolean) => { modelBlocked.current = value; }, []);
-  const onModelSaving = useCallback((value: boolean) => { modelSaving.current = value; }, []);
   const [ready, setReady] = useState(false), [editing, setEditing] = useState(false);
   const [base, setBase] = useState(DEFAULT_BASE), [pairingCode, setPairingCode] = useState('');
   const [pendingPairing, setPendingPairing] = useState<PendingPairing | null>(null);
@@ -80,13 +71,6 @@ function Screen() {
   const busyRef = useRef(false), markedRef = useRef(new Map<string, number>());
   const openingRef = useRef(0);
   const appActive = useRef(AppState.currentState === 'active');
-
-  useEffect(() => {
-    let live = true, changed = false;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (live && !changed) setReduceMotion(value); }).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { changed = true; setReduceMotion(value); });
-    return () => { live = false; sub.remove(); };
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -161,7 +145,7 @@ function Screen() {
     });
     outboxRef.current = box;
     setClient(sdk); setStatus('connecting'); setLoading(true); setError('');
-    ++openingRef.current; navLock.current = false; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear(); markedRef.current.clear(); setRecords([]);
+    ++openingRef.current; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear(); markedRef.current.clear(); setRecords([]);
     (async () => {
       try {
         await box.start();
@@ -239,44 +223,6 @@ function Screen() {
     } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (opening === openingRef.current) setHistoryBusy(false); }
   };
-  const chooseChannel = (id: string | null) => {
-    if (navLock.current || channelId === id) return;
-    if (id === null && channelBlocked.current) return;
-    navLock.current = true; setNavDirection(id ? 'forward' : 'back'); setChannelId(id);
-  };
-  const chooseThread = (id: string) => {
-    if (navLock.current || threadId) return;
-    navLock.current = true; setNavDirection('forward'); void openThread(id);
-  };
-  const back = () => {
-    if (navLock.current) return;
-    if (settingsOpen) {
-      if (agentName.saving || font.saving || modelSaving.current) return;
-      setSettingsOpen(false); return;
-    }
-    if (editing) {
-      if (busy || pairingBusy) return;
-      setEditing(false); if (config) setBase(config.baseUrl); return;
-    }
-    if (threadId) {
-      navLock.current = true; setNavDirection('back'); ++openingRef.current;
-      setThreadId(null); setPageCursor(null); setHistoryBusy(false); return;
-    }
-    if (channelId && !channelBlocked.current) chooseChannel(null);
-  };
-  const backState = useRef({ ready, connected: !!config, editing, settingsOpen, threadId, channelId });
-  backState.current = { ready, connected: !!config, editing, settingsOpen, threadId, channelId };
-  const latestBack = useRef(back);
-  latestBack.current = back;
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      const state = backState.current;
-      if (!state.ready || (!state.connected && !state.editing)) return false;
-      if (!state.settingsOpen && !state.editing && !state.threadId && !state.channelId) return false;
-      latestBack.current(); return true;
-    });
-    return () => sub.remove();
-  }, []);
   const locateNext = async () => {
     if (!client || !threadId || !pageCursor || historyBusy) return;
     const opening = openingRef.current, id = threadId, cursor = pageCursor;
@@ -365,26 +311,20 @@ function Screen() {
   }, [connectionEpoch]);
 
   if (!ready) return <View style={styles.center}><Text>Opening…</Text></View>;
-  if (!config || editing) return <NavigationMotion pageKey="connection" direction="back"
-    canBack={() => !!config && !busy && !pairingBusy} onBack={back}><ConnectionScreen code={pairingCode} onCode={setPairingCode}
+  if (!config || editing) return <ConnectionScreen code={pairingCode} onCode={setPairingCode}
     connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
-    onPair={saveConnection} onBack={back} onForget={forget} /></NavigationMotion>;
+    onPair={saveConnection} onBack={() => { setEditing(false); if (config) setBase(config.baseUrl); }} onForget={forget} />;
 
   return <View style={styles.flex}>
     <View style={styles.header}>
       <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
-      <Button title="Connection" secondary onPress={() => { if (!navLock.current) setEditing(true); }} />
-      <Button title="Agent settings" secondary onPress={() => { if (!navLock.current) setSettingsOpen(true); }} />
+      <Button title="Connection" secondary onPress={() => setEditing(true)} />
+      <Button title="Agent settings" secondary onPress={() => setSettingsOpen(true)} />
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}
     {loading && <Text style={styles.hint}>Opening…</Text>}
-    {client && <NavigationMotion pageKey={threadId ? `thread:${threadId}` : channelId ? `channel:${channelId}` : 'channels'}
-      direction={navDirection} onSettled={() => { navLock.current = false; }}
-      canBack={() => !navLock.current && (!!threadId || !!channelId && !channelBlocked.current)} onBack={back}
-      backPage={threadId ? <ChannelScreens client={client} channelId={channelId} onChannel={() => {}} onThread={() => {}} />
-        : channelId ? <ChannelScreens client={client} channelId={null} onChannel={() => {}} onThread={() => {}} /> : undefined}>
-    {threadId ? <>
-      <View style={styles.row}><Button title="‹ Topics" secondary onPress={back} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || 'Conversation'}</Text></View>
+    {threadId && client ? <>
+      <View style={styles.row}><Button title="‹ Topics" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || 'Conversation'}</Text></View>
       <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
         startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
         locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
@@ -399,21 +339,18 @@ function Screen() {
         onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
         onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
         onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
-    </> : <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
-      <ChannelScreens client={client} channelId={channelId} onChannel={chooseChannel} onThread={chooseThread} onNavigationBlocked={onChannelBlocked} />
-    </KeyboardAvoidingView>}
-    </NavigationMotion>}
-    {settingsOpen && <Modal animationType={reduceMotion ? 'none' : 'slide'} presentationStyle="fullScreen" onRequestClose={back}>
-      <NavigationMotion pageKey="settings" direction="back" canBack={() => !agentName.saving && !font.saving && !agentBlocked.current && !modelBlocked.current} onBack={back}>
+    </> : client ? <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+      <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />
+    </KeyboardAvoidingView> : null}
+    {settingsOpen && <Modal animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setSettingsOpen(false)}>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
-          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => back()} onNavigationBlocked={onAgentBlocked}>
-            {client && <ModelSettings key={config.id} client={client} onNavigationBlocked={onModelBlocked} onNavigationSaving={onModelSaving} />}
+          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => setSettingsOpen(false)}>
+            {client && <ModelSettings key={config.id} client={client} />}
             <FontSizeSettings />
           </AgentSettings>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      </NavigationMotion>
     </Modal>}
   </View>;
 }

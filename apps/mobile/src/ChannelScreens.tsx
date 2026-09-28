@@ -4,19 +4,17 @@ import { Text, TextInput } from './FontSize';
 import type { HermesClient, ThreadSummary } from '../../../packages/client/src/index';
 import { channelPatch, threadPatch } from './channel-edits';
 
-type Props = { client: HermesClient; channelId: string | null; onChannel: (id: string | null) => void; onThread: (id: string) => void; onNavigationBlocked?: (blocked: boolean) => void };
+type Props = { client: HermesClient; channelId: string | null; onChannel: (id: string | null) => void; onThread: (id: string) => void };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[s.action, secondary && s.secondary, disabled && s.disabled]}><Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text></Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, onChannel, onThread, onNavigationBlocked }: Props) {
+export function ChannelScreens({ client, channelId, onChannel, onThread }: Props) {
   const [creating, setCreating] = useState(false), [editing, setEditing] = useState(false);
   const [name, setName] = useState(''), [description, setDescription] = useState('');
   const [title, setTitle] = useState(''), [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const working = useRef(false), generation = useRef(0);
-  const navigationBlocked = busy || creating || editing || renaming !== null || !!title.trim();
-  useEffect(() => { onNavigationBlocked?.(navigationBlocked); return () => onNavigationBlocked?.(false); }, [navigationBlocked, onNavigationBlocked]);
   useEffect(() => {
     generation.current++;
     setCreating(false); setEditing(false); setRenaming(null); setName(''); setDescription(''); setTitle(''); setError('');
@@ -51,7 +49,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNavig
   </View>;
   return <View style={s.fill}>
     <View style={s.top}>
-      {channelId && <Action label="‹ Channels" secondary disabled={navigationBlocked} onPress={() => onChannel(null)} />}
+      {channelId && <Action label="‹ Channels" secondary disabled={busy} onPress={() => onChannel(null)} />}
       <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || 'Channel' : 'Channels'}</Text>
       <Action label={channelId ? 'Edit' : 'New'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
     </View>
