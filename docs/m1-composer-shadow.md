@@ -13,11 +13,14 @@
 
 ## 验证与发布边界
 
-卡片 `t_7a83add6`。隔离候选，尚未发布。
+卡片 `t_7a83add6`。Jamie 明确授权后，已将实现提交 `fd0570f21f956b8c96d524571855b470dbbfe88e` 发布到手机开发入口 `exps://agent.tuly.space`；真机视觉另验。
 
 - 最终版本手机测试串行 281/281 通过，TypeScript 检查通过。
 - iOS/Android Metro export 均通过，导出的实际 JS 资源包含阴影样式；资源哈希与日志保存在私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/composer-shadow/`。
 - 组件测试覆盖单一共用阴影容器、附件菜单开合、返回最新行不被纳入实色阴影面板，以及四档应用字号与三档系统字号下的对称 padding、多行增长、清空复位。原有键盘与阅读位置回归通过。
 - 初次 Metro 导出因工作树 node_modules 符号链接指向 watchFolders 之外而找不到 expo-router/entry；改用隔离的本地依赖副本后通过，未改项目 Metro 配置或运行目录。
-- 保留候选工作树及其依赖/双平台构建产物以备发布，不重启任何服务。
+- 发布前基线为 `5e81956`；运行目录以 fast-forward 合入，仅停止/启动 `hermes-app-expo.service`。两个 Gateway 的 PID/启动时间及已安装插件文件哈希保持不变。
+- 公网 iOS/Android manifest 与各自精确 launchAsset 已核验：共用阴影、按应用/系统字体倍率计算的 placeholder padding、透明最新行及 96pt 留白均包含在实际资源内。重启期间首次请求短暂 502，自动重试后双平台成功。
+- 发布证据：上述私有目录的 `release-before.json`、`release-verification.json`、双平台 manifest 与 `release.py`。回滚应针对实现提交创建明确 revert，不覆盖用户数据。
+- 双平台导出已保留为私有目录下 `verified-exports.tar.gz`；本次已合并且干净的隔离工作树及复制依赖已移除，分支与提交保留。其他工作树未改动。
 - 真机阴影观感、iOS 字体基线与系统大字体效果需设备验收，自动测试不能代替。
