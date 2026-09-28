@@ -37,4 +37,8 @@ Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊�
 - 第二轮日志在上述证据目录 `forms/` 子目录。首次 TS 检查发现新工作树未生成 Markdown 离线资源，按项目生成脚本补齐后检查通过，没有修改依赖或线上资源。
 - iOS / Android Metro JS 导出通过；没有构建 IPA/APK，也没有真机触摸或键盘验收。
 - 完整日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/router-keyboard-safe-area/`。
-- 候选位于隔离分支 `jamie/router-keyboard-safe-area`，尚未合入活动 Expo 目录或发布。现有开发服务和两个 Gateway 均未重启；本轮手机入口更新等待明确发布指令。
+- 已按 Jamie“发布”授权将 `40a215a`（含 `91adfbf`）快进合入 main 并更新原入口 `exps://agent.tuly.space`，仅重启 Expo；发布目录 TypeScript 与相关 11 项回归通过。
+- 两平台公网 manifest 与其精确 launchAsset 已下载，均核验聊天 route 的 bottom/left/right 安全区、应用层触摸兼容开关、表单焦点/键盘可见性条件、SDK57 与原 Expo 账号。普通 urllib 请求收到 403，改用 curl/Expo UA 后 200；没有改变边缘安全规则。验证脚本首次误命中库的属性声明，改为核验应用组件上下文后通过，没有重复部署。
+- 开发 Gateway、Jamie 主实例的 PID/启动时间保持不变；插件源文件、字体和依赖/入口配置哈希均与发布前一致。
+- 发布证据：上述目录 `release/verification.json`、manifest、代码片段与操作日志。回滚分支 `rollback/router-keyboard-before-40a215a` 指向 `2b47eda`；下载 bundle 在记录哈希与核验片段后清理，源码与日志保留。
+- 发布验证不等于 iPhone 手势验收；卡片保持 review，待 Jamie 重载后验证中文键盘、拖动和开着键盘返回频道的实际表现。
