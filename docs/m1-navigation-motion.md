@@ -29,7 +29,7 @@ Jamie 要求为 App 增加页面切换动画与手势支持。本轮在现有 Ex
 
 ## 发布边界
 
-当前仅隔离分支实现及验证，未授权部署。运行中的 Expo 源目录、开发 Gateway 与 Jamie 主实例均不变。后续获发布授权再集成至手机测试入口。
+实现阶段仅隔离分支验证；Jamie 随后明确要求“发布”，授权发布结果见文末。发布范围仅为既有 Expo 客户端，不修改 Gateway、插件或其他实例。
 
 ## 实际结果
 
@@ -50,4 +50,13 @@ Jamie 要求为 App 增加页面切换动画与手势支持。本轮在现有 Ex
 
 日志和双端 bundle 保留在私有路径 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/navigation-motion/`：`parent-tests.log`、`parent-export.log`、`export/metadata.json`。最终 exports 是 JS 验证产物，不是独立安装包或真机验收。iPhone/Android 设备手感、系统文字选择及键盘打开时的实际交互仍待发布后验证。
 
-运行主目录仍为干净的 `19b6715`，无服务变更或发布。候选保存在 `jamie/navigation-motion` 分支。
+实现验收时运行主目录为干净的 `19b6715`，候选保存在 `jamie/navigation-motion` 分支。
+
+## 授权发布结果
+
+- 发布卡 `default / t_8edb2f96`。运行目录 fast-forward 到 `4c44bb07b8db2e3c1c684aa72e56180967036f85`，再次运行 246 项手机测试和 TypeScript 检查，仅重启 `hermes-app-expo.service`。
+- 公网 `https://agent.tuly.space/` 的 iOS/Android manifest 与各自精确 launchAsset 均成功下载，runtime 为 SDK 57；实际 bundle 包含页面身份、边缘 responder、返回阈值和设置保存保护。`/status` 返回 `packager-status:running`，未认证 API 仍为 401。
+- `hermes-gateway-hermes-app-dev.service` 与 `hermes-gateway-jamie.service` 的 PID/启动时刻/运行状态逐项与发布前一致；开发配置哈希不变。未安装插件、未改核心、未重启 Gateway。
+- 验证记录：私有 `workspace/hermes-app/navigation-motion/release-verification.json`，发布前记录 `release-before.json`，双端 manifest、实际 bundle 与发布测试日志同目录保留。首次 Python urllib 探针为 403，改用 curl 后公网两平台均验证通过。
+- Git 回退基线 `19b6715` 保留。若需回退，先核对后续改动，再对 `4c44bb0` 创建反向提交并仅重启 Expo；不回退数据库或重启后端。
+- 手机继续使用 `exps://agent.tuly.space`，重新加载 Expo Go 获取新包。真机手感、键盘与系统手势仍待实际设备确认。
