@@ -25,6 +25,8 @@ from .storage import Store, HistoryPending, MissingOriginal
 from . import device_pairing
 from .history_hooks import pre_llm_call, pre_tool_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
+from .reply_context import reply_scope
+
 log = logging.getLogger(__name__)
 
 
@@ -220,6 +222,23 @@ class HermesAppAdapter(BasePlatformAdapter):
     async def get_chat_info(self, chat_id):
         return {'name': chat_id, 'type': 'thread'}
 
+    def _reply_target(self, chat_id, reply_to=None, metadata=None):
+        scope = reply_scope.get()
+        event = scope['event'] if scope else None
+        receipt_id = reply_to or (event.message_id if event else None)
+        receipt = self._store.receipt(receipt_id) if receipt_id else None
+        if not receipt:
+            return None
+        thread = self._store.get_thread(receipt['thread_id'])
+        if not thread or thread['project_id'] != chat_id:
+            return None
+        thread_hint = (metadata or {}).get('thread_id')
+        if thread_hint is not None and str(thread_hint) != thread['id']:
+            return None
+        if event and (event.source.chat_id != chat_id or event.source.thread_id != thread['id']):
+            return None
+        return thread['id'], receipt_id
+
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         # Only ACKs emitted inside this exact busy admission belong to the input.
         # Ordinary agent output still comes exclusively from SessionDB below.
@@ -232,11 +251,36 @@ class HermesAppAdapter(BasePlatformAdapter):
                     '⏳ Queued for the next turn', '⚡ Interrupting current task')):
                 if await asyncio.to_thread(self._store.record_feedback,reply_to,target[1],feedback):
                     self._events_changed.set()
-        # Normal agent finals are already authoritative SessionDB rows. Cron is
-        # delivered through this same adapter, but has no inbound turn to mirror.
+                return SendResult(success=True, message_id='feedback:'+reply_to)
+        # Cron has its own established delivery identity and persistence path.
         if metadata and metadata.get('job_id'):
             await self._deliver_background(chat_id, content, metadata)
-        return SendResult(success=True, message_id=uuid.uuid4().hex)
+            return SendResult(success=True, message_id=uuid.uuid4().hex)
+        target = self._reply_target(chat_id, reply_to, metadata)
+        if target:
+            thread_id, receipt_id = target
+            source = get_hermes_home() / 'state.db'
+            # An exact persisted model input proves this output belongs to the
+            # existing SessionDB projection. No slash-name or text dedup guesses.
+            modeled = source.exists() and await asyncio.to_thread(
+                self._store.link_user_from_core, receipt_id, source)
+            if modeled or (reply_scope.get() or {}).get('model_turn'):
+                return SendResult(success=True, message_id='core:'+receipt_id)
+            message_id = await asyncio.to_thread(
+                self._store.create_direct_message, thread_id, receipt_id, content)
+            self._events_changed.set()
+            return SendResult(success=True, message_id=message_id)
+        return SendResult(success=False, error='No exact App reply destination', retryable=False)
+
+    async def edit_message(self, chat_id, message_id, content, *, finalize=False, metadata=None):
+        target = await asyncio.to_thread(self._store.direct_message_thread, message_id)
+        if not target or target['project_id'] != chat_id or (
+                metadata and metadata.get('thread_id') not in (None, target['thread_id'])):
+            return SendResult(success=False, error='Unknown App message', retryable=False)
+        if await asyncio.to_thread(self._store.update_direct_message,target['thread_id'],message_id,content):
+            self._events_changed.set()
+            return SendResult(success=True, message_id=message_id)
+        return SendResult(success=False, error='App message was not updated', retryable=False)
 
     async def _send_exec_approval_prompt(self, prompt):
         from tools.approval import list_gateway_approvals
@@ -279,7 +323,11 @@ class HermesAppAdapter(BasePlatformAdapter):
         # internal event. Plugin receipts own recovery for this platform only.
         if event.internal and not event.text and event.message_id is None:
             return
-        return await super().handle_message(event)
+        token = reply_scope.set({'event': event})
+        try:
+            return await super().handle_message(event)
+        finally:
+            reply_scope.reset(token)
 
     def _gateway_starting(self):
         # Pinned baseline boundary: run_adapters._standalone_scoped wraps a
@@ -452,6 +500,9 @@ class HermesAppAdapter(BasePlatformAdapter):
         return self.__dict__.setdefault('_ingress_locks',{}).setdefault(thread_id, asyncio.Lock())
 
     async def on_processing_start(self, event: MessageEvent) -> None:
+        # Native FIFO continuations can reuse an owner task: refresh its input
+        # scope here instead of inheriting the previous turn's reply destination.
+        reply_scope.set({'event': event})
         await asyncio.to_thread(self._store.record_processing,event.message_id,event.source.thread_id,'running')
         self._events_changed.set()
 
@@ -459,6 +510,10 @@ class HermesAppAdapter(BasePlatformAdapter):
         state = {ProcessingOutcome.SUCCESS:'completed', ProcessingOutcome.FAILURE:'failed',
                  ProcessingOutcome.CANCELLED:'interrupted'}[outcome]
         await asyncio.to_thread(self._store.record_processing,event.message_id,event.source.thread_id,state)
+        source = get_hermes_home() / 'state.db'
+        modeled = source.exists() and await asyncio.to_thread(self._store.link_user_from_core,event.message_id,source)
+        if not modeled:
+            await asyncio.to_thread(self._store.finish_direct_receipt,event.message_id,state)
         self._events_changed.set()
 
     async def _dispatch_busy_text(self, thread_id):
@@ -606,6 +661,8 @@ class HermesAppAdapter(BasePlatformAdapter):
                     await asyncio.to_thread(self._store.finish_receipt,receipt_id,'interrupted')
                     continue
                 await self.handle_message(event)
+                if self._store.receipt(receipt_id)['state'] != 'running':
+                    continue  # An actual native command lifecycle already settled it.
                 # Messages durably accepted before _active_receipts was installed
                 # missed the HTTP-side busy dispatch. The Gateway guard now exists:
                 # drain that FIFO prefix into the same native busy handler.
@@ -644,12 +701,13 @@ class HermesAppAdapter(BasePlatformAdapter):
                         break
                     except asyncio.TimeoutError:
                         continue
-                await self._settle_ingress(thread_id, 'ingress:'+receipt_id, receipt_id,
-                                           owner_finished=True)
-                state = self._store.turn_state('ingress:'+receipt_id)
-                await asyncio.to_thread(self._store.finish_receipt, receipt_id,
-                                         {'complete':'completed','failed':'failed',
-                                          'interrupted':'interrupted'}.get(state,'unknown'))
+                if self._store.receipt(receipt_id)['state'] == 'running':
+                    await self._settle_ingress(thread_id, 'ingress:'+receipt_id, receipt_id,
+                                               owner_finished=True)
+                    state = self._store.turn_state('ingress:'+receipt_id)
+                    await asyncio.to_thread(self._store.finish_receipt, receipt_id,
+                                             {'complete':'completed','failed':'failed',
+                                              'interrupted':'interrupted'}.get(state,'unknown'))
             except asyncio.CancelledError:
                 raise
             except Exception:

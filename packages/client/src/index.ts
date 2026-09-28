@@ -9,7 +9,7 @@ export interface Attachment { id: string; thread_id: string; name?: string; mime
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -89,7 +89,7 @@ const validToolCalls = (value: unknown): ToolCall[] => {
       ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
   });
 };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
+const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.role === 'assistant' && x.display_kind === 'direct' ? {display_kind: 'direct' as const} : {}), ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);

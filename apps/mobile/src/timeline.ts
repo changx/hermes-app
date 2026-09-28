@@ -51,7 +51,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const timestamp = validTimestampSeconds(serverTime) ? serverTime : item?.createdAt;
     return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
       ...(validTimestampSeconds(timestamp) ? { timestamp } : {}),
-      ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: index > 0 && messages[index - 1].role === 'assistant' } : {}),
+      ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: m.display_kind !== 'direct' && index > 0 && messages[index - 1].role === 'assistant' && messages[index - 1].display_kind !== 'direct' } : {}),
       ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
       ...(valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {}) };
   });

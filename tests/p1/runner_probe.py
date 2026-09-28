@@ -118,6 +118,11 @@ async def main():
         manager.discover_and_load()
         assert platform_registry.get('hermes_app').plugin_name == 'hermes-app'
         runner = GatewayRunner()
+        # This fixture already has a home target; native onboarding notices are
+        # tested separately rather than altering every model-history assertion.
+        from gateway.config import HomeChannel
+        runner.config.platforms[Platform('hermes_app')].home_channel = HomeChannel(
+            Platform('hermes_app'), 'synthetic-home', 'Synthetic home')
         if os.environ.get('P1_DISABLED') == '1':
             assert not runner.config.platforms[Platform('hermes_app')].enabled
             assert await asyncio.wait_for(runner.start(), 45)

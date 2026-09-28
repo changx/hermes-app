@@ -57,8 +57,11 @@ class Store:
                     turn_id TEXT NOT NULL REFERENCES turns(turn_id),
                     session_id TEXT NOT NULL, row_id INTEGER UNIQUE,
                     input_receipt_id TEXT UNIQUE REFERENCES receipts(id),
+                    direct_message_id TEXT UNIQUE REFERENCES direct_messages(id),
                     role TEXT NOT NULL,
-                    CHECK (row_id IS NOT NULL OR input_receipt_id IS NOT NULL));
+                    CHECK ((direct_message_id IS NULL AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL))
+                           OR (direct_message_id IS NOT NULL AND row_id IS NULL
+                               AND input_receipt_id IS NULL AND role = 'assistant')));
                 CREATE INDEX IF NOT EXISTS refs_page ON message_refs(thread_id, seq);
                 CREATE TABLE IF NOT EXISTS receipts (
                     id TEXT PRIMARY KEY, client_message_id TEXT NOT NULL UNIQUE,
@@ -68,6 +71,11 @@ class Store:
                     admission TEXT NOT NULL DEFAULT 'owner',
                     created_at INTEGER NOT NULL DEFAULT (unixepoch()));
                 CREATE INDEX IF NOT EXISTS receipt_queue ON receipts(thread_id,state,created_at);
+                CREATE TABLE IF NOT EXISTS direct_messages (
+                    id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
+                    receipt_id TEXT NOT NULL REFERENCES receipts(id), text TEXT NOT NULL,
+                    created_at INTEGER NOT NULL DEFAULT (unixepoch()));
+                CREATE INDEX IF NOT EXISTS direct_messages_receipt ON direct_messages(receipt_id);
                 CREATE TABLE IF NOT EXISTS sync_events (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
                     thread_id TEXT NOT NULL, ref TEXT NOT NULL, version INTEGER NOT NULL);
@@ -104,7 +112,7 @@ class Store:
             if not any(r['name'] == 'feedback' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute('ALTER TABLE receipts ADD COLUMN feedback TEXT')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
-            if ('input_receipt_id' not in ref_sql or
+            if ('direct_message_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
                 # Rebuild only the ref table. Keep issued seq identities, event log,
                 # read positions, and the original insert trigger semantics intact.
@@ -114,8 +122,11 @@ class Store:
                            'thread_id TEXT NOT NULL REFERENCES threads(id), '
                            'turn_id TEXT NOT NULL REFERENCES turns(turn_id), '
                            'session_id TEXT NOT NULL, row_id INTEGER UNIQUE, '
-                           'input_receipt_id TEXT UNIQUE REFERENCES receipts(id), role TEXT NOT NULL, '
-                           'CHECK (row_id IS NOT NULL OR input_receipt_id IS NOT NULL))')
+                           'input_receipt_id TEXT UNIQUE REFERENCES receipts(id), '
+                           'direct_message_id TEXT UNIQUE REFERENCES direct_messages(id), role TEXT NOT NULL, '
+                           'CHECK ((direct_message_id IS NULL AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL)) '
+                           "OR (direct_message_id IS NOT NULL AND row_id IS NULL AND input_receipt_id IS NULL "
+                           "AND role = 'assistant')))")
                 if 'input_receipt_id' in ref_sql:
                     db.execute('INSERT INTO message_refs_new(seq,thread_id,turn_id,session_id,row_id,input_receipt_id,role) '
                                'SELECT seq,thread_id,turn_id,session_id,row_id,input_receipt_id,role FROM message_refs')
@@ -128,6 +139,64 @@ class Store:
                 db.execute("CREATE TRIGGER published_ref AFTER INSERT ON message_refs BEGIN "
                            "INSERT INTO sync_events(kind,thread_id,ref,version) "
                            "VALUES ('message',NEW.thread_id,CAST(NEW.seq AS TEXT),1); END")
+
+    def create_direct_message(self, thread_id, receipt_id, text, *, message_id=None) -> str:
+        """Publish a native direct reply without writing to the model transcript."""
+        if not isinstance(text, str):
+            raise ValueError('invalid direct message text')
+        if message_id is not None and (not isinstance(message_id, str) or
+                not message_id.startswith('dm_') or len(message_id) > 128 or
+                not all(c.isascii() and (c.isalnum() or c in '-_') for c in message_id)):
+            raise ValueError('invalid direct message id')
+        message_id = message_id or 'dm_' + secrets.token_hex(16)
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            prior = db.execute('SELECT thread_id,receipt_id,text FROM direct_messages WHERE id=?',
+                               (message_id,)).fetchone()
+            if prior:
+                if (prior['thread_id'],prior['receipt_id'],prior['text']) != (thread_id,receipt_id,text):
+                    raise ValueError('direct message id conflict')
+                return message_id
+            owner = db.execute('SELECT r.thread_id,t.session_id FROM receipts r '
+                               'JOIN threads t ON t.id=r.thread_id WHERE r.id=?', (receipt_id,)).fetchone()
+            if not owner or owner['thread_id'] != thread_id or not db.execute(
+                    'SELECT 1 FROM message_refs WHERE thread_id=? AND input_receipt_id=?',
+                    (thread_id,receipt_id)).fetchone():
+                raise ValueError('direct message requires an accepted input in this thread')
+            db.execute('INSERT INTO direct_messages(id,thread_id,receipt_id,text) VALUES (?,?,?,?)',
+                       (message_id,thread_id,receipt_id,text))
+            db.execute('INSERT INTO message_refs(thread_id,turn_id,session_id,direct_message_id,role) '
+                       "VALUES (?,?,?,?,'assistant')",
+                       (thread_id,'input:'+receipt_id,owner['session_id'],message_id))
+        return message_id
+
+    def update_direct_message(self, thread_id, message_id, text) -> bool:
+        if not isinstance(text, str):
+            raise ValueError('invalid direct message text')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT m.text,r.seq FROM direct_messages m '
+                             'JOIN message_refs r ON r.direct_message_id=m.id AND r.thread_id=m.thread_id '
+                             'WHERE m.id=? AND m.thread_id=?', (message_id,thread_id)).fetchone()
+            if not row or row['text'] == text:
+                return False
+            db.execute('UPDATE direct_messages SET text=? WHERE id=?',(text,message_id))
+            version = db.execute("SELECT COALESCE(MAX(version),0)+1 FROM sync_events "
+                                 "WHERE kind='message' AND thread_id=? AND ref=?",
+                                 (thread_id,str(row['seq']))).fetchone()[0]
+            self._event(db,'message',thread_id,str(row['seq']),version)
+            return True
+
+    def direct_message_thread(self, message_id):
+        with self._connect() as db:
+            row=db.execute('SELECT m.thread_id,t.project_id FROM direct_messages m '
+                           'JOIN threads t ON t.id=m.thread_id WHERE m.id=?', (message_id,)).fetchone()
+            return dict(row) if row else None
+
+    def direct_receipt_has_output(self, receipt_id) -> bool:
+        with self._connect() as db:
+            return db.execute('SELECT 1 FROM direct_messages WHERE receipt_id=? LIMIT 1',
+                              (receipt_id,)).fetchone() is not None
 
     @contextmanager
     def _connect(self):
@@ -440,6 +509,33 @@ class Store:
             # The accepted input is already visible even without a core row.
             db.execute('UPDATE receipts SET state=? WHERE id=?', (state,receipt_id))
             self._event(db,'receipt',row['thread_id'],receipt_id,3)
+
+    def finish_direct_receipt(self, receipt_id, state) -> bool:
+        """Settle only a direct-only ingress, never an ACK for model work."""
+        if state not in ('completed','failed','interrupted'):
+            raise ValueError('invalid direct receipt outcome')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            receipt=db.execute('SELECT thread_id,state,user_row_id FROM receipts WHERE id=?',
+                               (receipt_id,)).fetchone()
+            if not receipt or receipt['state']!='running' or receipt['user_row_id'] is not None:
+                return False
+            ingress='ingress:'+receipt_id
+            turn=db.execute('SELECT state FROM turns WHERE turn_id=? AND thread_id=?',
+                            (ingress,receipt['thread_id'])).fetchone()
+            if (turn and turn['state']!='pending') or db.execute(
+                    'SELECT 1 FROM ingress_links WHERE ingress_id=?', (ingress,)).fetchone() or db.execute(
+                    'SELECT 1 FROM message_refs WHERE input_receipt_id=? AND row_id IS NOT NULL',
+                    (receipt_id,)).fetchone() or not db.execute(
+                    'SELECT 1 FROM direct_messages WHERE receipt_id=? AND thread_id=? LIMIT 1',
+                    (receipt_id,receipt['thread_id'])).fetchone():
+                return False
+            db.execute('UPDATE receipts SET state=? WHERE id=?',(state,receipt_id))
+            if turn:
+                db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=?',
+                           ('complete' if state=='completed' else state,ingress,receipt['thread_id']))
+            self._event(db,'receipt',receipt['thread_id'],receipt_id,3)
+            return True
 
     def cancel_queued(self, thread_id, receipt_id):
         with self._connect() as db:
@@ -804,6 +900,24 @@ class Store:
                 return parent['thread_id']
             return None
 
+    def bind_direct_session(self, thread_id, session_id) -> bool:
+        """Keep native session switches mapped to the same App thread."""
+        if not isinstance(session_id,str) or not session_id:
+            raise ValueError('invalid session id')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute('SELECT 1 FROM threads WHERE id=?', (thread_id,)).fetchone():
+                raise ValueError('unknown thread')
+            old=db.execute('SELECT thread_id FROM session_links WHERE session_id=?',
+                           (session_id,)).fetchone()
+            if old:
+                if old['thread_id']!=thread_id:
+                    raise ValueError('session belongs to another thread')
+                return False
+            db.execute('INSERT INTO session_links(session_id,thread_id) VALUES (?,?)',
+                       (session_id,thread_id))
+            return True
+
     def begin_turn(self, thread_id, turn_id):
         """A busy Thread has no queue in P1-02; reject concurrent ingress."""
         with self._connect() as db:
@@ -1115,6 +1229,23 @@ class Store:
             raise MissingOriginal('input text unavailable without replacement')
         return message
 
+    @staticmethod
+    def _direct_messages(db, page):
+        ids=[r['direct_message_id'] for r in page if r['direct_message_id'] is not None]
+        if not ids:
+            return {}
+        return {r['id']:r for r in db.execute(
+            'SELECT id,thread_id,text,created_at FROM direct_messages WHERE id IN '
+            f'({",".join("?" for _ in ids)})',ids)}
+
+    @staticmethod
+    def _direct_display(ref, direct):
+        row=direct.get(ref['direct_message_id'])
+        if row is None or row['thread_id']!=ref['thread_id'] or ref['role']!='assistant':
+            raise MissingOriginal('direct message unavailable')
+        return {'id':row['id'],'ref_seq':ref['seq'],'role':'assistant','text':row['text'],
+                'display_kind':'direct',**_message_time(row['created_at']),'attachments':[]}
+
     def _is_followup_copy(self, ref, row):
         """Hide only a generated continuation whose original inputs are published."""
         from .projection import _ORIGIN_NOTE
@@ -1173,11 +1304,11 @@ class Store:
                 "AND turn_id NOT LIKE 'ingress:%' ORDER BY rowid LIMIT 20", (thread_id,))]
             if backward:
                 if before is None:
-                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,role FROM message_refs '
+                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
                                       'WHERE thread_id=? ORDER BY seq DESC LIMIT ?',
                                       (thread_id, limit + 1)).fetchall()
                 else:
-                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,role FROM message_refs '
+                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
                                       'WHERE thread_id=? AND seq<? ORDER BY seq DESC LIMIT ?',
                                       (thread_id, cursor, limit + 1)).fetchall()
                 page = list(reversed(refs[:limit]))
@@ -1187,7 +1318,7 @@ class Store:
                                                  (thread_id, page[-1]['seq'])).fetchone())
                 next_cursor = self._cursor(thread_id, page[-1]['seq']) if newer else None
             else:
-                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,role FROM message_refs '
+                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
                                   'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT ?',
                                   (thread_id, cursor, limit + 1)).fetchall()
                 page = refs[:limit]
@@ -1196,6 +1327,7 @@ class Store:
             ids = [r['row_id'] for r in page if r['row_id'] is not None]
             inputs = {r['seq']:self._input_message(db,r) for r in page
                       if r['input_receipt_id'] is not None}
+            direct = self._direct_messages(db,page)
             linked = {}
             if ids:
                 for receipt in db.execute(
@@ -1210,16 +1342,21 @@ class Store:
         if not page:
             return {'messages': [], 'next_cursor': None, 'older_cursor': None,
                     'incomplete_turns': pending, 'turn_outcomes': outcomes}
-        with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
-            source.row_factory = sqlite3.Row
-            rows = {r['id']: r for r in source.execute(
-                f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
+        rows = {}
+        if ids:
+            with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
+                source.row_factory = sqlite3.Row
+                rows = {r['id']: r for r in source.execute(
+                    f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
         from .projection import visible_text
         from .tool_timeline import public_tool_calls
         messages = []
         for ref in page:
             if ref['seq'] in inputs:
                 messages.append(self._input_display(inputs[ref['seq']],ref,rows))
+                continue
+            if ref['direct_message_id'] is not None:
+                messages.append(self._direct_display(ref,direct))
                 continue
             row = rows.get(ref['row_id'])
             if row is None or row['session_id'] != ref['session_id'] or row['role'] != ref['role']:
@@ -1260,7 +1397,7 @@ class Store:
             if after is not None and not db.execute(
                     'SELECT 1 FROM message_refs WHERE thread_id=? AND seq=?',(thread_id,cursor)).fetchone():
                 raise ValueError('invalid cursor')
-            refs=db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,role FROM message_refs '
+            refs=db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
                             'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT 501',
                             (thread_id,cursor)).fetchall()
         page=refs[:500]
@@ -1272,6 +1409,7 @@ class Store:
         with self._connect() as db:
             inputs={r['seq']:self._input_message(db,r) for r in page
                     if r['input_receipt_id'] is not None}
+            direct=self._direct_messages(db,page)
             linked = {}
             if ids:
                 for receipt in db.execute(
@@ -1294,6 +1432,10 @@ class Store:
                 message=self._input_display(inputs[ref['seq']],ref,rows)
                 content=message['text']
                 calls=[]
+            elif ref['direct_message_id'] is not None:
+                message=self._direct_display(ref,direct)
+                content=message['text']
+                calls=[]
             else:
                 row=rows.get(ref['row_id'])
                 if row is None or row['session_id']!=ref['session_id'] or row['role']!=ref['role']:
@@ -1307,7 +1449,7 @@ class Store:
             scanned=ref['seq']
             if needle in content.casefold() or any(needle in c['label'].casefold() or
                                                     needle in c['name'].casefold() for c in calls):
-                if ref['seq'] not in inputs:
+                if ref['seq'] not in inputs and ref['direct_message_id'] is None:
                     message = {'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content,
                                **_message_time(linked[row['id']]['created_at'] if ref['role']=='user' and
                                                linked.get(row['id']) is not None else
