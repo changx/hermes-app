@@ -6,7 +6,13 @@
 - 修正空输入框 placeholder 的纵向对齐，保留输入后的原生多行增长和清空复位。
 - 保留返回最新所在透明行、消息底部 96pt 留白和现有键盘跟随。
 
-## 实现方案
+## 原生排版修订（待发布）
+
+Jamie 反馈 placeholder 仍未视觉居中，确认撤去额外字体排版干预：移除显式行高、includeFontPadding/textAlignVertical 覆盖，以及按应用/系统字体倍率计算高度和留白的逻辑。继续使用原生 placeholder 和字体度量，不新增占位层；保留原先 8pt 上下内边距、空输入 42pt 高度复位、非空多行增长和 120pt 高度上限。应用字号仍由已有 FontSize 包装器处理。
+
+卡片 `t_1f0a1c12`。仅本地隔离候选，不改运行目录、不发布。TypeScript 与手机端串行测试 281/281 通过，日志：私有 `workspace/hermes-app/composer-native-text/tests.log`。新工作树先生成已有 Markdown renderer 与 client bundle，再运行完整检查；未增加依赖。组件测试验证没有额外字体排版覆盖及输入/清空行为；真机视觉与系统大字体是否受既有 42pt 高度限制仍需设备验收，不能以样式断言代替。
+
+## 原发布实现方案（以下为历史记录）
 
 - 在 ChatTimeline 为实际输入区域增加一个共用白色阴影容器，包住普通输入行或整个 AttachmentComposer（含菜单、提示、附件预览）。返回最新行留在容器外。使用现有 React Native boxShadow，向上偏移，不新增依赖。
 - 保留原平台字号，明确行高；空输入的上下 padding 根据应用及系统字体倍率等量计算，输入高度至少 42pt，并为大字体保留上下空间。Android 关闭额外字体 padding。多行输入仍从上方开始，不固定非空输入高度。

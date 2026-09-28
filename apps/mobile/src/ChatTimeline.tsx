@@ -1,6 +1,6 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Text, TextInput, useFontSize } from './FontSize';
+import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
@@ -66,10 +66,7 @@ interface Props {
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, startRef, position, onPosition, onVisibleRef } = props;
   const { bottom } = useSafeAreaInsets();
-  const { scale } = useFontSize();
-  const { fontScale } = useWindowDimensions();
-  const composeLineHeight = 22 * scale * fontScale;
-  const emptyInputHeight = Math.max(42, Math.ceil(composeLineHeight + 18));
+
   const dockHeight = useRef(0);
   const [composerHeight, setComposerHeight] = useState(0);
   const [latestRowHeight, setLatestRowHeight] = useState(0);
@@ -186,7 +183,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
-  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="Message text" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && { height: emptyInputHeight, maxHeight: Math.max(120, emptyInputHeight), paddingVertical: (emptyInputHeight - 2 - composeLineHeight) / 2, textAlignVertical: 'center' }]} placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="Message text" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
@@ -298,8 +295,9 @@ const styles = StyleSheet.create({
   // Clearing a controlled multiline value must also invalidate its old native height.
   stopButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e6edf7' },
   stopIcon: { color: '#425874', fontSize: 17 },
+  emptyComposeInput: { height: 42 },
   // One shadow around the whole input surface, including the expanded + menu.
   composerSurface: { backgroundColor: '#fff', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
   composer: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }, composeInput: { flex: 1, maxHeight: 120, lineHeight: 22, includeFontPadding: false, textAlignVertical: 'top' }
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }, composeInput: { flex: 1, maxHeight: 120 }
 });

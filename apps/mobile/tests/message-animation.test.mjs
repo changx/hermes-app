@@ -89,22 +89,24 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   };
 }
 
-test('placeholder has symmetric scaled line padding; typing restores top-aligned multiline growth', () => {
+test('composer leaves font metrics native and preserves multiline growth and empty reset', () => {
   for (const scale of [1, 1.1, 1.15, 1.3]) for (const fontScale of [1, 1.5, 2]) {
     const h = mount({ scale, fontScale });
     const style = () => Object.assign({}, ...h.input.style.filter(Boolean));
     const empty = style();
     assert.equal(empty.fontSize, undefined, 'keep the existing platform font baseline');
-    assert.equal(empty.lineHeight, 22);
-    assert.equal(empty.includeFontPadding, false);
-    assert.equal(empty.textAlignVertical, 'center');
-    assert.ok(Math.abs(empty.paddingVertical * 2 + 2 + empty.lineHeight * scale * fontScale - empty.height) < 0.001);
-    assert.ok(empty.height >= 42);
-    assert.ok(empty.paddingVertical >= 8);
+    assert.equal(empty.lineHeight, undefined);
+    assert.equal(empty.includeFontPadding, undefined);
+    assert.equal(empty.textAlignVertical, undefined);
+    assert.equal(empty.height, 42);
+    assert.equal(empty.paddingVertical, 8);
     assert.equal(h.input.placeholder, 'Message…');
     h.draft('first line\nsecond line', () => {});
     assert.equal(style().height, undefined);
-    assert.equal(style().textAlignVertical, 'top');
+    assert.equal(style().lineHeight, undefined);
+    assert.equal(style().includeFontPadding, undefined);
+    assert.equal(style().textAlignVertical, undefined);
+    assert.equal(style().paddingVertical, empty.paddingVertical);
     assert.equal(style().maxHeight, 120);
     assert.equal(h.input.multiline, true);
     h.draft('', () => {});
