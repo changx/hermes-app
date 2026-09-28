@@ -54,6 +54,7 @@ Jamie 确认 `409479b` 已修复父页半高，但开着键盘返回后，第一
 - 上游相近报告：https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1283 。它是支持性证据，不证明 Jamie 的实际 UIKit 事件次序；本轮仅确证默认关闭及原生转发路径。若真机仍失败，下一步需事件追踪，而非继续猜测添加焦点补丁。
 - 验收：实际 root 配置执行测试、固定依赖转发源码契约、全量手机/TS/双平台导出；iPhone 按钮返回、侧滑完成/取消、第一次重进点输入、跨聊天/设置返回与草稿保留另验。
 - 本地结果：配置回归修正前 1 failed / 1 passed，修正后 2/2；全量手机 265/265，0 failed/skipped，TypeScript 和 iOS/Android Metro 导出通过。日志 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/chat-keyboard-refocus/`。这些检查不是 UIKit 焦点复现或真机验收。
+- 已发布 `cef0ff6` 到原 Expo 入口；两平台公网精确 launchAsset 已核验 `NativeRoutes` 内 `keyboardHandlingEnabled:true`，并确认 RN padding 高度修正保留。SDK/账号一致，两 Gateway PID/启动时间未变。`verification.json` 为发布证据，回滚分支 `rollback/chat-keyboard-before-cef0ff6` 保留 `12bb928`。下载包已清理，哈希/manifest/源码片段保留；卡片保持 review 等待完整 Reload 后的 iPhone 复测。
 
 ## 验证结果
 
