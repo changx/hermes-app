@@ -8,7 +8,7 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1 } = {}) {
+function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1, platform = 'ios' } = {}) {
   const copied = [], opened = [], players = [], paused = [];
   const webCalls = [], font = { scale: fontScale };
   const hooks = new Map(), playerBySrc = new Map();
@@ -37,6 +37,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     },
   };
   const native = {
+    Platform: { OS: platform },
     Animated: { Text: 'Animated.Text', Value: class {
       interpolate(config) { return config; }
       setValue() {} stopAnimation() {}
@@ -114,6 +115,31 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     close: () => { const route = viewerStack.pop(); route?.onClose?.(); render(); },
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
 }
+
+for (const platform of ['ios', 'android']) test(`${platform}: code surfaces use explicit monospace fonts and distinct backgrounds`, () => {
+  const h = mount('Prose `inline`\n\n```sh\nprintf single\n```\n\n```text\nii WW\n12 34\n```\n\n    indented\n\n> ordinary quote\n\n```mermaid\nflowchart LR\nA-->B\n```', {
+    platform, toolCalls: [{ id: 'cmd', name: 'terminal', label: 'Run command', detail: 'printf tool' }],
+  });
+  const nodes = h.walk(h.render());
+  const style = node => Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean));
+  const font = platform === 'ios' ? 'Menlo' : 'monospace';
+  for (const value of ['inline', 'printf single\n', 'ii WW\n12 34\n', 'indented\n', 'printf tool', 'flowchart LR\nA-->B\n']) {
+    const node = nodes.find(n => ['Text', 'Animated.Text'].includes(n.type) && n.children.includes(value));
+    assert.ok(node, value);
+    assert.equal(style(node).fontFamily, font, value);
+    if (value === 'inline') assert.equal(style(node).backgroundColor, '#dce5f0');
+    else assert.equal(node.props.selectable, true, value);
+  }
+  const boxes = nodes.filter(n => style(n).backgroundColor === '#e8eef6');
+  assert.equal(boxes.length, 4, 'three code boxes and one tool command');
+  assert.equal(nodes.filter(n => n.type === 'ScrollView' && n.props.horizontal).length, 3);
+  const copies = nodes.filter(n => n.props.accessibilityLabel === 'Copy code');
+  copies.forEach(n => n.props.onPress());
+  assert.deepEqual(h.copied, ['printf single\n', 'ii WW\n12 34\n', 'indented\n']);
+  const prose = nodes.find(n => n.children.includes('ordinary quote'));
+  assert.equal(style(prose).fontFamily, undefined);
+  h.unmount();
+});
 
 function findStyle(tree, predicate) {
   return tree.find(n => predicate(n.props?.style));
@@ -201,7 +227,7 @@ test('multiple tool calls use compact spacing but ordinary Markdown code keeps i
   assert.equal(labels.length, 2);
   assert.ok(labels[0].children.join('').includes('https://example.com'));
   assert.ok(labels.every(n => n.props.ellipsizeMode === 'tail'));
-  const details = nodes.filter(n => n.type === 'View' && n.props.style?.backgroundColor === '#f2f5fa');
+  const details = nodes.filter(n => n.type === 'View' && n.props.style?.backgroundColor === '#e8eef6');
   assert.equal(details.length, 1, 'only terminal commands get a separate block');
   for (const detail of details) {
     const text = detail.children.find(n => n.type === 'Text');

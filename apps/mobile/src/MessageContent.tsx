@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
   toolCall: { minWidth: 0, gap: 2 },
   toolDetailText: { paddingVertical: 4 },
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
-  toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#f2f5fa' },
+  toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#e8eef6' },
 
   root: { alignSelf: 'stretch', minWidth: 0 },
   blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   h3: { fontSize: 17, lineHeight: 25 }, h4: { fontSize: 16, lineHeight: 24 }, h5: { fontSize: 15, lineHeight: 23 }, h6: { fontSize: 14, lineHeight: 22 },
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },
   link: { color: '#215ca7', textDecorationLine: 'underline' },
-  inlineCode: { fontFamily: 'monospace', backgroundColor: '#edf2f7', color: '#20314a', fontSize: 14 },
+  inlineCode: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: '#dce5f0', color: '#20314a', fontSize: 14 },
   richText: { minWidth: 0 },
   imageFrame: { width: '100%', maxWidth: 280, height: 168, borderWidth: 1, borderRadius: 8, borderColor: '#d6e0ed', backgroundColor: '#f2f5fa', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
@@ -456,11 +456,11 @@ const styles = StyleSheet.create({
   bullet: { width: 26, flexShrink: 0, color: '#425874', fontSize: 15, lineHeight: 23 },
   listBody: { flex: 1, minWidth: 0 },
   rule: { height: 1, backgroundColor: '#d7e0eb', width: '100%' },
-  codeBox: { width: '100%', minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: '#d6e0ed', backgroundColor: '#f2f5fa', overflow: 'hidden' },
+  codeBox: { width: '100%', minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: '#d6e0ed', backgroundColor: '#e8eef6', overflow: 'hidden' },
   codeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, gap: 8, backgroundColor: '#e5ecf5' },
   codeLanguage: { color: '#52657c', fontSize: 12, flexShrink: 1 }, copyCode: { color: '#215ca7', fontSize: 12, fontWeight: '600' },
   codeScroll: { width: '100%', maxWidth: '100%' },
-  codeText: { fontFamily: 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
+  codeText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
   tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
   tableScroll: { width: '100%', maxWidth: '100%' },
   tableBody: { alignSelf: 'flex-start', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },

@@ -28,13 +28,25 @@ test('article CSS scales body, headings, code inheritance, controls and captions
   assert.match(large, /html,body\{[^}]*font:19\.5px\/1\.55/);
   assert.match(large, /h1\{font-size:29\.9[\d]*px\}/);
   assert.equal((large.match(/h1\{font-size:/g) || []).length, 1);
-  assert.match(large, /code,pre\{font-family:ui-monospace,monospace\}/);
+  assert.match(large, /code,pre,\.original\{font-family:ui-monospace,Menlo,Consolas,monospace\}/);
   assert.match(large, /button\{[^}]*font:16\.9\d*px system-ui/);
   assert.match(large, /figcaption\{font-size:15\.6\d*px/);
   assert.match(large, /themeVariables:\{fontSize:'20\.8px'\}/);
   assert.match(output.exports.renderArticleHtml(blocks, [], 1).html, /font:15px\/1\.55/);
   assert.match(output.exports.renderArticleHtml(blocks, [], 1.1).html, /font:16\.5px\/1\.55/);
   assert.match(output.exports.renderArticleHtml(blocks, [], Infinity).html, /--interface-scale:1\}/);
+});
+
+test('inline and block code have distinct backgrounds without nesting inline decoration in blocks', () => {
+  const html = render('Prose `inline`\n\n```sh\nprintf single\n```\n\n```text\nii WW\n12 34\n```\n\n    indented', [
+    { id: 'cmd', name: 'terminal', label: 'Run command', detail: 'printf tool' },
+  ]).html;
+  assert.match(html, /code\{background:#dce5f0;color:#20314a;border-radius:3px;padding:1px 4px\}/);
+  assert.match(html, /\.code,\.tool pre\{background:#e8eef6;/);
+  assert.match(html, /\.code pre code\{background:transparent;border-radius:0;padding:0\}/);
+  assert.match(html, /\.code pre,\.tool pre\{overflow:auto;white-space:pre;/);
+  for (const text of ['printf single', 'ii WW\n12 34', 'indented']) assert.ok(html.includes(`<pre><code>${text}\n</code></pre>`));
+  assert.ok(html.includes('<pre>printf tool</pre>'));
 });
 
 test('article serializes complete semantic blocks, selectable adjacent inline prose, local math and diagram', () => {
@@ -89,7 +101,7 @@ test('nonce CSP isolates local engines and preserves browser default text select
 test('one WebView bounds engine initialization and retains original source on overflow', () => {
   const html = render(`$a$ $b$ $c$ $d$\n\n\`\`\`mermaid\n${'X'.repeat(6001)}\n\`\`\``).html;
   assert.equal((html.match(/data-render="math"/g) || []).length, 3);
-  assert.match(html, /<span class="fallback">\$d\$<\/span>/);
+  assert.match(html, /<span class="fallback original">\$d\$<\/span>/);
   assert.match(html, /Content too long; showing the original/);
   assert.equal(html.includes('window.mermaid'), false);
   assert.equal(html.includes('window.katex'), true);

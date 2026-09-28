@@ -23,6 +23,7 @@ function mount(initialPending, reduced = false) {
     }
   };
   const native = {
+    Platform: { OS: 'ios' },
     Animated: {
       Text: 'Animated.Text',
       Value: class {
