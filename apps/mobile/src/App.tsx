@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
@@ -422,6 +422,16 @@ export function Notice({ text }: { text: string }) {
   return <View style={styles.center}><Text style={styles.hint}>{text}</Text></View>;
 }
 
+export function FormKeyboardAvoidingView({ children }: { children: React.ReactNode }) {
+  const focused = useIsFocused();
+  const keyboardVisible = useKeyboardState(state => state.isVisible);
+  // Native Stack retains covered screens. Do not let another route's keyboard
+  // shrink them, or retain an animated height after the native did-hide event.
+  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset enabled={focused && keyboardVisible}>
+    {children}
+  </KeyboardAvoidingView>;
+}
+
 export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
   const { ready, config, client, loading, error } = useApp();
   const router = useRouter();
@@ -436,10 +446,10 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
     {loading && <Text style={styles.hint}>Opening…</Text>}
-    <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+    <FormKeyboardAvoidingView>
       <ChannelScreens client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
         onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })} />
-    </KeyboardAvoidingView>
+    </FormKeyboardAvoidingView>
   </View>;
 }
 
@@ -448,25 +458,25 @@ export function ConnectionRoute() {
     saveConnection, forget, cancelPairing, setEditing } = useApp();
   const router = useRouter();
   if (!ready) return <Notice text="Opening…" />;
-  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+  return <FormKeyboardAvoidingView>
     <ConnectionScreen code={pairingCode} onCode={setPairingCode}
       connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
       onPair={saveConnection} onBack={() => { if (pendingPairing) cancelPairing(); else { setEditing(false); if (router.canGoBack()) router.back(); else router.replace('/'); } }}
       onForget={forget} />
-  </KeyboardAvoidingView>;
+  </FormKeyboardAvoidingView>;
 }
 
 export function SettingsRoute() {
   const { config, client, agentName } = useApp();
   const router = useRouter();
   if (!config || !client) return <Notice text="Opening settings…" />;
-  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+  return <FormKeyboardAvoidingView>
     <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
       saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => router.back()}>
       <ModelSettings key={config.id} client={client} />
       <FontSizeSettings />
     </AgentSettings>
-  </KeyboardAvoidingView>;
+  </FormKeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({

@@ -32,7 +32,7 @@ test('channels push native routes; settings remains independent from chat', () =
   const router = { push: path => calls.push(path), back: () => calls.push('back') };
   const channels = renderReturn('ChannelsScreen', {
     ready: true, config: { id: 'conn' }, client, channelId: null, error: '', loading: false, router,
-    View: 'View', Text: 'Text', Button: 'Button', KeyboardAvoidingView: 'KeyboardAvoidingView', ChannelScreens: 'ChannelScreens', Notice: 'Notice',
+    View: 'View', Text: 'Text', Button: 'Button', FormKeyboardAvoidingView: 'FormKeyboardAvoidingView', ChannelScreens: 'ChannelScreens', Notice: 'Notice',
   });
   channels.find(n => n.type === 'Button' && n.props.title === 'Agent settings').props.onPress();
   channels.find(n => n.type === 'Button' && n.props.title === 'Connection').props.onPress();
@@ -43,7 +43,7 @@ test('channels push native routes; settings remains independent from chat', () =
     { pathname: '/threads/[threadId]', params: { threadId: 't_one' } }]);
   const agentName = { name: 'Tuly', ready: true, error: '', saving: false, save: async () => true, reload() {} };
   const settings = renderReturn('SettingsRoute', { config: { id: 'conn' }, client, agentName, router,
-    KeyboardAvoidingView: 'KeyboardAvoidingView', AgentSettings: 'AgentSettings', ModelSettings: 'ModelSettings', FontSizeSettings: 'FontSizeSettings', Notice: 'Notice' });
+    FormKeyboardAvoidingView: 'FormKeyboardAvoidingView', AgentSettings: 'AgentSettings', ModelSettings: 'ModelSettings', FontSizeSettings: 'FontSizeSettings', Notice: 'Notice' });
   const form = settings.find(n => n.type === 'AgentSettings');
   assert.equal(form.props.name, 'Tuly'); assert.equal(form.props.onSave, agentName.save);
   assert.equal(settings.find(n => n.type === 'ModelSettings').props.client, client);
