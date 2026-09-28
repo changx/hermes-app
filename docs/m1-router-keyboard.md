@@ -45,6 +45,16 @@ Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊�
 - 已将 `409479b` 发布原入口 `exps://agent.tuly.space`。两平台公网 manifest 与精确 launchAsset 均确认应用使用 RN KAV/padding、header offset 与 focus/visibility 条件；SDK/账号不变。只重启 Expo，两 Gateway 的 PID/启动时间与本轮发布前一致。
 - 发布核验：上述证据目录 `verification.json`；回滚分支 `rollback/router-keyboard-before-409479b` 保留 `1dea030`。下载包已清理，manifest/hash/代码片段/测试日志保留。需要完整 Reload 清掉旧原生视图，而非只依赖 Fast Refresh；iPhone 开键盘直接返回尚待用户验收。
 
+## 返回后首次重进无法弹键盘
+
+Jamie 确认 `409479b` 已修复父页半高，但开着键盘返回后，第一次重进聊天点输入框只有光标、键盘不出现，需要再次退出重进。
+
+- 当前 Expo Router 57.0.23 native-stack 的 `keyboardHandlingEnabled` 默认 false（已安装 `native-stack/types.d.ts`），应用未设置。其值转发为 RNS `hideKeyboardOnSwipe`，iOS `RNSScreen.notifyWillDisappear` 仅在开启时调用 `[self endEditing:YES]`。现有高度修正只恢复布局，没有开启导航离开时的原生输入收尾。
+- 最小修正：在根 Stack 显式设置 `keyboardHandlingEnabled: true`，由原生导航在页面离开时结束输入。保留原生返回按钮/侧滑/取消手势、现有高度修正和聊天键盘跟手逻辑，不新增全局 Keyboard.dismiss、延时、强制 focus/blur 重试或重挂 key。
+- 上游相近报告：https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1283 。它是支持性证据，不证明 Jamie 的实际 UIKit 事件次序；本轮仅确证默认关闭及原生转发路径。若真机仍失败，下一步需事件追踪，而非继续猜测添加焦点补丁。
+- 验收：实际 root 配置执行测试、固定依赖转发源码契约、全量手机/TS/双平台导出；iPhone 按钮返回、侧滑完成/取消、第一次重进点输入、跨聊天/设置返回与草稿保留另验。
+- 本地结果：配置回归修正前 1 failed / 1 passed，修正后 2/2；全量手机 265/265，0 failed/skipped，TypeScript 和 iOS/Android Metro 导出通过。日志 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/chat-keyboard-refocus/`。这些检查不是 UIKit 焦点复现或真机验收。
+
 ## 验证结果
 
 - 修正前运行新增回归：4 项中 3 项失败，分别对应路由安全区缺失、留白触摸兼容项未开启、输入区几何偏移；修正后 4/4 通过。测试辅助查找函数的空结果统一为 null 后，全量稳定通过。
