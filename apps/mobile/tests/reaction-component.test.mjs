@@ -47,7 +47,7 @@ const named = (nodes, type) => nodes.filter(node => node.type === type);
 const text = node => { const all = v => Array.isArray(v) ? v.map(all).join('') : v && typeof v === 'object' ? typeof v.type === 'function' ? all(v.type(v.props)) : all(v.props?.children) : String(v ?? ''); return all(node.props.children); };
 const msg = { id: 'm', ref_seq: 1, role: 'user', text: 'hello', receipt_id: 'r', client_message_id: 'c' };
 const receipt = state => ({ id: 'r', thread_id: 'th', client_message_id: 'c', state, durable: true });
-const record = status => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'c', text: 'hello', status, receiptId: status === 'accepted' ? 'r' : undefined, receiptState: status === 'accepted' ? 'queued' : undefined });
+const record = status => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'c', text: 'hello', status, receiptId: status === 'accepted' ? 'r' : undefined, receiptRefSeq: status === 'accepted' ? 1 : undefined, receiptState: status === 'accepted' ? 'queued' : undefined });
 function mount(rows, receipts = [], interactions = [], overrides = {}) {
   const calls = [];
   const props = { threadId: 'th', rows, startRef: 1, hasOlder: false, onOlder() {}, onPosition() {}, onVisibleRef() {},

@@ -8,7 +8,7 @@ import { HermesClient } from '../../../packages/client/dist/index.js';
 
 const message = (clientId, receiptId, ref = 1, thread = 'th') => ({ id: `m${ref}`, ref_seq: ref, role: 'user', text: 'same', thread_id: thread, client_message_id: clientId, receipt_id: receiptId });
 const receipt = (id, clientId, state, thread = 'th') => ({ id, client_message_id: clientId, thread_id: thread, state, durable: true });
-const record = (status, receiptState) => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'a', receiptId: status === 'accepted' ? 'ra' : undefined, receiptState, text: 'same', status });
+const record = (status, receiptState) => ({ connectionId: 'conn', threadId: 'th', clientMessageId: 'a', receiptId: status === 'accepted' ? 'ra' : undefined, receiptRefSeq: status === 'accepted' ? 1 : undefined, receiptState, text: 'same', status });
 const rows = (messages, recs = [], cache = new Map(), interactions = []) => projectTimeline(messages, null, 'th', undefined, true, recs, cache, interactions);
 
 for (const [processing, label, emoji] of [['running', 'Working', '👀'], ['completed', 'Completed', '✅'], ['failed', 'Failed', '❌'], ['unknown', 'Outcome unknown', '⚠️']]) {

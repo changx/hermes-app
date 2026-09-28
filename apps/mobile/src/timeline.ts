@@ -17,6 +17,7 @@ const matching = (receipt: Receipt | undefined, threadId: string, receiptId: str
   !!receipt && receipt.id === receiptId && receipt.thread_id === threadId && receipt.client_message_id === clientMessageId;
 const localReceipt = (item: SendRecord | undefined): Receipt | undefined => item?.status === 'accepted' && item.receiptId && item.receiptState ? {
   id: item.receiptId, thread_id: item.threadId, client_message_id: item.clientMessageId, state: item.receiptState, durable: true,
+  ...(item.receiptRefSeq !== undefined ? { ref_seq: item.receiptRefSeq } : {}),
   ...(item.receiptAdmission ? { admission: item.receiptAdmission } : {}), ...(item.receiptHandedOff ? { handed_off: item.receiptHandedOff } : {}),
   ...(item.receiptProcessing !== undefined ? { processing: item.receiptProcessing } : {}), ...(item.receiptFeedback ? { feedback: item.receiptFeedback } : {})
 } : undefined;
@@ -35,7 +36,7 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
 
 // Only explicit server identity can reconcile a send; never match equal text.
 // Legacy servers have no such identity and retain the conservative fallback.
-export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string, supportsIdentity = false, pending: readonly SendRecord[] = [], receipts: ReadonlyMap<string, Receipt> = new Map(), interactions: readonly Interaction[] = []): TimelineRow[] {
+export function projectTimeline(messages: readonly Message[], record: SendRecord | null, threadId: string, draft?: string, supportsIdentity = false, pending: readonly SendRecord[] = [], receipts: ReadonlyMap<string, Receipt> = new Map(), interactions: readonly Interaction[] = [], knownMessages: readonly Message[] = messages): TimelineRow[] {
   const local = new Map(pending.map(r => [r.clientMessageId, r]));
   if (record) local.set(record.clientMessageId, record);
   const rows: TimelineRow[] = messages.map((m, index) => {
@@ -56,14 +57,23 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
       ...(valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {}) };
   });
   for (const item of local.values()) {
-    if (item.threadId !== threadId || messages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId)) continue;
-    if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId || item.receiptState === 'completed' && item.receiptAdmission !== 'followup')) continue;
+    if (item.threadId !== threadId || knownMessages.some(m => m.role === 'user' && m.client_message_id === item.clientMessageId)) continue;
+    if (item.status === 'accepted' && (!supportsIdentity || !item.receiptId)) continue;
     const candidate = item.receiptId ? receipts.get(item.receiptId) : undefined;
     const valid = !!item.receiptId && (!candidate || matching(candidate, threadId, item.receiptId, item.clientMessageId));
     const receipt = valid ? displayReceipt(candidate, localReceipt(item)) : undefined;
+    const refSeq = receipt?.ref_seq ?? (valid ? item.receiptRefSeq : undefined);
+    // An accepted input has a server-owned position, irrespective of outcome.
+    // Old local records await exact receipt/history hydration, never a tail slot.
+    if (item.status === 'accepted' && (refSeq === undefined || messages.length > 0 && refSeq < messages[0].ref_seq)) continue;
     rows.push({ key: `local:${item.clientMessageId}`, role: 'user', text: item.text, attachments: item.attachments, optimistic: true, status: item.status, reactionSlot: true,
+      ...(refSeq !== undefined ? { refSeq } : {}),
       ...(validTimestampSeconds(item.createdAt) ? { timestamp: item.createdAt } : {}),
       ...(item.status === 'accepted' ? valid ? { reaction: statusFor(receipt, interactions), ...(receipt?.feedback ? { feedback: receipt.feedback } : {}), ...(receipt ? { receipt } : {}) } : {} : item.status === 'blocked' ? { sendError: 'Not sent. Check your message or contact your administrator.' } : {}) });
+  }
+  rows.sort((a, b) => (a.refSeq ?? Infinity) - (b.refSeq ?? Infinity));
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].continuation && rows[i - 1]?.role !== 'assistant') rows[i].continuation = false;
   }
   // Only actual ephemeral client state can supply a draft. Durable events are
   // invalidations, not token frames; do not simulate a streaming response.

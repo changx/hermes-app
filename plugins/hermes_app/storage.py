@@ -299,7 +299,7 @@ class Store:
             if row:
                 if row['thread_id'] != thread_id or row['payload_hash'] != digest:
                     raise ValueError('client_message_id conflict')
-                return self._receipt(row), False
+                return self._receipt(db,row), False
             thread = db.execute('SELECT archived,session_id FROM threads WHERE id=?', (thread_id,)).fetchone()
             if thread is None:
                 raise ValueError('unknown thread')
@@ -326,13 +326,24 @@ class Store:
                        "VALUES (?,?,?,?,'user')",(thread_id,turn_id,thread['session_id'],receipt_id))
             self._event(db, 'receipt', thread_id, receipt_id)
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
-            return self._receipt(row), True
+            return self._receipt(db,row), True
 
     @staticmethod
-    def _receipt(row):
+    def _receipt(db, row):
+        # Read an already published USER position; never allocate a ref or
+        # borrow the position of an assistant reply / another receipt.
+        ref=db.execute("SELECT seq FROM message_refs WHERE thread_id=? AND role='user' "
+                       'AND input_receipt_id=?', (row['thread_id'],row['id'])).fetchone()
+        if (ref is None and 'user_row_id' in row.keys() and row['user_row_id'] is not None
+                and not db.execute('SELECT 1 FROM receipts WHERE id!=? AND user_row_id=? LIMIT 1',
+                                   (row['id'],row['user_row_id'])).fetchone()):
+            ref=db.execute("SELECT seq FROM message_refs WHERE thread_id=? AND role='user' "
+                           'AND row_id=? AND (input_receipt_id IS NULL OR input_receipt_id=?)',
+                           (row['thread_id'],row['user_row_id'],row['id'])).fetchone()
         return {'id':row['id'], 'client_message_id':row['client_message_id'],
                 'thread_id':row['thread_id'], 'state':row['state'], 'durable':True,
                 'processing':row['processing'],
+                **({'ref_seq':ref['seq']} if ref else {}),
                 **({'feedback':row['feedback']} if row['feedback'] else {}),
                 **({'admission':'followup'} if row['admission']=='followup' else {}),
                 **({'handed_off':True} if row['handed_off'] else {})}
@@ -340,7 +351,7 @@ class Store:
     def receipt(self, receipt_id):
         with self._connect() as db:
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
-            return self._receipt(row) if row else None
+            return self._receipt(db,row) if row else None
 
     def record_processing(self, receipt_id, thread_id, state):
         """Persist actual platform lifecycle callbacks, not history inference."""
@@ -931,13 +942,13 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
-                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing,feedback FROM receipts "
+                active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing,feedback,user_row_id FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
                                   "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()
                 # Admission permits 32 queued/running receipts in total.
                 if len(active)>32:
                     raise OverflowError('active receipt snapshot bound exceeded')
-                item['active_receipts']=[self._receipt(r) for r in active]
+                item['active_receipts']=[self._receipt(db,r) for r in active]
                 interactions=db.execute("SELECT * FROM interactions WHERE thread_id=? AND state='pending' "
                                         "ORDER BY rowid LIMIT 21",(item['id'],)).fetchall()
                 if len(interactions)>20:

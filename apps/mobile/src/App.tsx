@@ -362,7 +362,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   const visibleMessages = located ? messages.slice(first) : [];
   const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
   const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
-  const rows = projectTimeline(visibleMessages, null, threadId, client?.drafts.get(threadId), client?.supportsSendIdentity, records, client?.receipts, interactions);
+  const rows = projectTimeline(visibleMessages, null, threadId, client?.drafts.get(threadId), client?.supportsSendIdentity, records, client?.receipts, interactions, messages);
 
   const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
     .map(m => [m.receipt_id, m.client_message_id]));

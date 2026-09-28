@@ -14,6 +14,7 @@ export interface SendRecord {
   status: SendState;
   receiptId?: string;
   receiptState?: Receipt['state'];
+  receiptRefSeq?: number;
   receiptAdmission?: Receipt['admission'];
   receiptHandedOff?: Receipt['handed_off'];
   receiptProcessing?: Receipt['processing'];
@@ -67,9 +68,10 @@ export function retrySend(config: Connection, record: SendRecord): SendRecord {
 }
 export function accepted(record: SendRecord, receipt: Receipt): SendRecord {
   if (receipt.client_message_id !== record.clientMessageId || receipt.thread_id !== record.threadId) throw new Error('The confirmation does not match this message.');
+  if (receipt.ref_seq !== undefined && (!Number.isSafeInteger(receipt.ref_seq) || receipt.ref_seq <= 0 || record.receiptRefSeq !== undefined && record.receiptRefSeq !== receipt.ref_seq)) throw new Error('The confirmation reference does not match this message.');
   const keepCallback = receipt.processing === undefined ||
     ['completed', 'failed', 'interrupted'].includes(record.receiptProcessing ?? '');
-  return { ...record, status: 'accepted', receiptId: receipt.id, receiptState: receipt.state, receiptAdmission: receipt.admission, receiptHandedOff: receipt.handed_off, receiptProcessing: keepCallback ? record.receiptProcessing : receipt.processing, receiptFeedback: receipt.feedback ?? record.receiptFeedback };
+  return { ...record, status: 'accepted', receiptId: receipt.id, receiptState: receipt.state, receiptRefSeq: receipt.ref_seq ?? record.receiptRefSeq, receiptAdmission: receipt.admission, receiptHandedOff: receipt.handed_off, receiptProcessing: keepCallback ? record.receiptProcessing : receipt.processing, receiptFeedback: receipt.feedback ?? record.receiptFeedback };
 }
 export function restoreSend(raw: string | null, config: Connection): SendRecord | null {
   if (!raw) return null;
@@ -78,6 +80,7 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   const r = value as Partial<SendRecord>;
   if (r.connectionId !== config.id) return null;
   if (r.createdAt !== undefined && !validTimestampSeconds(r.createdAt)) throw new Error('The saved message is damaged.');
+  if (r.receiptRefSeq !== undefined && (!Number.isSafeInteger(r.receiptRefSeq) || r.receiptRefSeq <= 0)) throw new Error('The saved message reference is damaged.');
   if (typeof r.threadId !== 'string' || typeof r.clientMessageId !== 'string' || typeof r.text !== 'string' ||
       !/^mob_[a-f0-9-]{36}$/i.test(r.clientMessageId) || !['queued','sending','ambiguous','accepted','blocked'].includes(r.status || '')) throw new Error('The saved message is damaged.');
   let attachments: Attachment[];

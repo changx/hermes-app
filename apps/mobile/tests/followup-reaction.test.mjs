@@ -7,13 +7,13 @@ import { accepted, newSend } from '../src/send.ts';
 
 const config = { id: 'connection', baseUrl: 'https://example.com', token: 'test' };
 const id = 'mob_12345678-1234-1234-1234-123456789abc';
-const receipt = (state = 'running') => ({ id: 'r', client_message_id: id, thread_id: 'th', state, durable: true, admission: 'followup' });
-const message = { id: 'm', ref_seq: 1, role: 'user', text: '补充', client_message_id: id, receipt_id: 'r' };
+const receipt = (state = 'running') => ({ id: 'r', client_message_id: id, thread_id: 'th', state, durable: true, ref_seq: 8, admission: 'followup' });
+const message = { id: 'm', ref_seq: 8, role: 'user', text: '补充', client_message_id: id, receipt_id: 'r' };
 const reaction = r => projectTimeline([message], null, 'th', undefined, true, [], new Map([['r', r]]))[0].reaction;
 
 test('multiple followups without callbacks never borrow the primary completion', () => {
   const r = receipt();
-  const second = { ...message, id: 'm2', ref_seq: 2, client_message_id: 'second', receipt_id: 'r2' };
+  const second = { ...message, id: 'm2', ref_seq: 9, client_message_id: 'second', receipt_id: 'r2' };
   const cache = new Map([['r', { ...r, handed_off: true }], ['r2', { ...r, id: 'r2', client_message_id: 'second', state: 'completed', processing: null }], ['primary', { ...r, id: 'primary', client_message_id: 'other', state: 'completed', processing: 'completed', admission: undefined }]]);
   const rows = projectTimeline([message, second], null, 'th', undefined, true, [], cache);
   assert.deepEqual(rows.map(row => row.reaction), [undefined, undefined]);
@@ -67,7 +67,7 @@ test('received input remains visible until exact authoritative identity arrives'
   assert.equal(pending.length, 1);
   assert.equal(pending[0].text, '补充一');
   assert.equal(pending[0].reaction, undefined);
-  const foreign = { ...message, client_message_id: 'another', text: '补充一' };
+  const foreign = { ...message, ref_seq: 7, client_message_id: 'another', text: '补充一' };
   assert.equal(projectTimeline([foreign], null, 'th', undefined, true, [local]).length, 2, 'equal text is not identity');
   const input = { id: 'receipt:r', ref_seq: 8, role: 'user', text: '补充一', client_message_id: id, receipt_id: 'r' };
   const client = new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { messages: [input], next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } }, socket: { connect() {} } });
@@ -99,7 +99,7 @@ test('interleaved input/output keeps server order across replay, cold history an
   const makeClient = () => new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { messages: page, next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } }, socket: { connect() {} } });
   const client = makeClient(); await client.history('th');
   page = stream.slice(2); await client.history('th'); await client.history('th');
-  const pending = [id, id2].map((key, index) => accepted(newSend(config, 'th', '相同补充', key), { ...receipt('received'), id: index ? 'r2' : 'r', client_message_id: key }));
+  const pending = [id, id2].map((key, index) => accepted(newSend(config, 'th', '相同补充', key), { ...receipt('received'), id: index ? 'r2' : 'r', client_message_id: key, ref_seq: index ? 14 : 12 }));
   const project = c => projectTimeline(c.messages.get('th'), null, 'th', undefined, true, pending);
   const rows = project(client);
   assert.deepEqual(rows.map(r => r.refSeq), [11, 12, 13, 14, 15]);

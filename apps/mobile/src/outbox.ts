@@ -13,7 +13,7 @@ const CHUNK_BYTES = 768;
 const MAX_BYTES = 65536;
 // A code point may leave up to three bytes unused at a chunk boundary.
 const MAX_CHUNKS = Math.ceil(MAX_BYTES / (CHUNK_BYTES - 3));
-const FINAL = new Set(['completed', 'failed', 'interrupted', 'received']);
+const FINAL = new Set(['completed', 'failed', 'interrupted', 'received', 'unknown']);
 const receiptStage = (state?: Receipt['state']) => state === 'queued' ? 0 : state === 'running' ? 1 : state ? 2 : -1;
 const callbackChanged = (record: SendRecord, receipt: Receipt) => receipt.processing !== undefined &&
   receipt.processing !== record.receiptProcessing &&
@@ -107,7 +107,7 @@ export class OutboxStore {
         }
         const restored = restoreSend(JSON.stringify({
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
-          status: meta.status, createdAt: meta.createdAt, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
+          status: meta.status, createdAt: meta.createdAt, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptRefSeq: meta.receiptRefSeq, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('Saved message identity conflict.');
         this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
@@ -142,7 +142,7 @@ export class OutboxStore {
     await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
     for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
     const meta: Stored = { connectionId: saved.connectionId, threadId: saved.threadId, clientMessageId: saved.clientMessageId,
-      status: saved.status, createdAt: saved.createdAt, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
+      status: saved.status, createdAt: saved.createdAt, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptRefSeq: saved.receiptRefSeq, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
       version, chunks: parts.length, hash: hash(data), order, attempts: 0, nextAttemptAt: 0 };
     await this.store.setItemAsync(key, JSON.stringify(meta));
     this.entries.set(record.clientMessageId, { slot, order, version, record: saved, attempts: 0, nextAttemptAt: 0 });
@@ -156,7 +156,7 @@ export class OutboxStore {
         throw new Error('The saved message identity or text has changed.');
       const data = entry.version === 2 ? entry.record.text : payload(entry.record);
       const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
-        status: record.status, createdAt: record.createdAt, receiptId: record.receiptId, receiptState: record.receiptState, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
+        status: record.status, createdAt: record.createdAt, receiptId: record.receiptId, receiptState: record.receiptState, receiptRefSeq: record.receiptRefSeq, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
         version: entry.version, chunks: pieces(data).length, hash: hash(data), order: entry.order,
         attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt };
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));
@@ -258,7 +258,7 @@ export class MobileOutbox {
       if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId)) continue;
       if ((this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
       const cached = this.sdk.receipts.get(record.receiptId);
-      if (cached && (receiptStage(cached.state) > receiptStage(record.receiptState) ||
+      if (cached && (receiptStage(cached.state) > receiptStage(record.receiptState) || record.receiptState === 'unknown' && FINAL.has(cached.state) && cached.state !== 'unknown' || cached.ref_seq !== undefined && record.receiptRefSeq === undefined ||
           cached.state === record.receiptState && (cached.admission !== record.receiptAdmission || cached.handed_off !== record.receiptHandedOff || callbackChanged(record, cached) || feedbackChanged(record, cached))))
         this.launch(record.clientMessageId, () => this.recordReceipt(record, cached));
       else if (FINAL.has(record.receiptState || '') && this.sdk.messages.get(record.threadId)?.some((m: Message) => m.role === 'user' && m.client_message_id === record.clientMessageId))
@@ -271,11 +271,15 @@ export class MobileOutbox {
   }
   private async confirmHistory(record: SendRecord, authoritative = false, synced = false) {
     const found = this.sdk.messages.get(record.threadId)?.some((m: Message) => m.role === 'user' && m.client_message_id === record.clientMessageId);
-    const requiresInput = record.receiptAdmission === 'followup' || record.receiptState === 'received';
-    if (FINAL.has(record.receiptState || '') && (found || !requiresInput && authoritative && synced)) {
+    const oldest = this.sdk.messages.get(record.threadId)?.[0]?.ref_seq;
+    const beforeWindow = record.receiptRefSeq !== undefined && oldest !== undefined && record.receiptRefSeq < oldest;
+    const requiresInput = record.receiptAdmission === 'followup' || record.receiptState === 'received' || record.receiptState === 'unknown' || record.receiptRefSeq !== undefined;
+    if (FINAL.has(record.receiptState || '') && (found || beforeWindow || !requiresInput && authoritative && synced)) {
       // A followup receipt proves admission, not that history contains its original.
       // Keep the local copy until its exact published client identity is available.
-      // Normal completed turns retain the bounded-tail cleanup compatibility path.
+      // A receipt's stable reference also proves the original exists outside the
+      // loaded window. Unknown without either proof stays saved, never replayed.
+      // Old normal completed turns retain their bounded-tail compatibility path.
       try { await this.storage.removeConfirmed(record.clientMessageId); }
       catch {
         // Removal is idempotent: the entry retains its slot in memory, and a

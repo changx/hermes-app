@@ -118,7 +118,7 @@ test('outbox metadata retains one send time across status changes and cold boots
   await assert.rejects(first.update({ ...record, createdAt: 1 }), /identity/);
   const second = new OutboxStore(storage, config);
   assert.equal((await second.load())[0].createdAt, 0);
-  await second.update({ ...second.records[0], status: 'accepted', receiptId: 'r', receiptState: 'queued' });
+  await second.update({ ...second.records[0], status: 'accepted', receiptId: 'r', receiptState: 'queued', receiptRefSeq: 1 });
   const third = new OutboxStore(storage, config);
   assert.equal((await third.load())[0].createdAt, 0);
   assert.equal(projectTimeline([], third.records[0], 'thread', undefined, true)[0].timestamp, 0);
