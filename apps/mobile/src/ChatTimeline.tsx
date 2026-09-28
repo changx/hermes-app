@@ -71,6 +71,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const [composerHeight, setComposerHeight] = useState(0);
   const [latestRowHeight, setLatestRowHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
+  const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
   const onContentInsetChange = useCallback((insets: { bottom: number }) => { reportedInset.current = insets.bottom; }, []);
@@ -183,7 +184,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
-  const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="Message text" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+  const composerControls = <><Pressable accessible={false} focusable={false} style={styles.composeField} onPress={() => composerInput.current?.focus()}>
+      <TextInput ref={composerInput} nativeID={composerID} accessibilityLabel="Message text" multiline
+        // Fabric iOS: reset empty measurement without fixing font height.
+        // Android setLines also fixes the widget's height, so leave it unset there.
+        numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
+        style={styles.composeInput} underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+      </Pressable>
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
@@ -292,12 +299,13 @@ const styles = StyleSheet.create({
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
 
-  // Clearing a controlled multiline value must also invalidate its old native height.
   stopButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e6edf7' },
   stopIcon: { color: '#425874', fontSize: 17 },
-  emptyComposeInput: { height: 42 },
+  // Center the content-sized native input, not text inside a fixed-height UITextView.
+  composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  composeInput: { maxHeight: 102, padding: 0, color: '#172a40' },
   // One shadow around the whole input surface, including the expanded + menu.
   composerSurface: { backgroundColor: '#fff', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
   composer: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }, composeInput: { flex: 1, maxHeight: 120 }
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }
 });

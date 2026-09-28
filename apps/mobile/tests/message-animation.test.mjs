@@ -12,9 +12,9 @@ const timeline = { exports: {} };
 runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: timeline, exports: timeline.exports, require: name => name === './messageTime.ts' ? messageTime : assert.fail(name) });
 
-function mount({ rows = ['a'], position, motion = false, keyboard = false, scale = 1, fontScale = 1 } = {}) {
+function mount({ rows = ['a'], position, motion = false, keyboard = false, scale = 1, fontScale = 1, platform = 'ios' } = {}) {
   const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
-  let index = 0, flatList, sticky, input, tree, keyboardHandler, visible = keyboard;
+  let index = 0, flatList, sticky, input, field, tree, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
   const ref = { current: null };
   const react = {
@@ -36,7 +36,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   const native = {
     AccessibilityInfo: { isReduceMotionEnabled: () => Promise.resolve(motion), addEventListener: (_, fn) => { subscriptions.motion = fn; return { remove() {} }; } },
     AppState: { addEventListener: (_, fn) => { subscriptions.app = fn; return { remove() {} }; } },
-    FlatList: 'FlatList', Keyboard: { isVisible: () => visible }, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ fontScale }),
+    FlatList: 'FlatList', Keyboard: { isVisible: () => visible }, Platform: { OS: platform }, useWindowDimensions: () => ({ fontScale }),
     Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { create: styles => styles },
     Text: 'Text', TextInput: 'TextInput', View: 'View'
   };
@@ -68,6 +68,13 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     flatList = find(tree, 'FlatList').props;
     sticky = find(tree, 'KeyboardStickyView').props;
     input = find(tree, 'TextInput').props;
+    const findField = node => {
+      if (!node || typeof node !== 'object') return null;
+      if (Array.isArray(node)) return node.map(findField).find(Boolean) ?? null;
+      return node.type === 'Pressable' && node.props.children?.some(child => child?.props?.nativeID === input.nativeID)
+        ? node.props : findField(node.props?.children);
+    };
+    field = findField(tree);
     while (effects.length) effects.shift()();
   };
   render();
@@ -75,7 +82,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   flatList.ref.current = list;
   const flush = () => { while (frames.length) frames.shift()(); };
   return {
-    calls, ref, get flatList() { return flatList; }, get sticky() { return sticky; }, get input() { return input; }, get tree() { return tree; }, flush,
+    calls, ref, get flatList() { return flatList; }, get sticky() { return sticky; }, get input() { return input; }, get field() { return field; }, get tree() { return tree; }, flush,
     draft(text, onText) { props.text = text; props.onText = onText; render(); },
     content: height => flatList.onContentSizeChange(0, height),
     layout: height => flatList.onLayout({ nativeEvent: { layout: { height } } }),
@@ -89,28 +96,76 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   };
 }
 
-test('composer leaves font metrics native and preserves multiline growth and empty reset', () => {
+test('composer centers a content-sized native input inside its bordered shell', () => {
   for (const scale of [1, 1.1, 1.15, 1.3]) for (const fontScale of [1, 1.5, 2]) {
     const h = mount({ scale, fontScale });
-    const style = () => Object.assign({}, ...h.input.style.filter(Boolean));
+    const style = () => h.input.style;
     const empty = style();
     assert.equal(empty.fontSize, undefined, 'keep the existing platform font baseline');
     assert.equal(empty.lineHeight, undefined);
     assert.equal(empty.includeFontPadding, undefined);
     assert.equal(empty.textAlignVertical, undefined);
-    assert.equal(empty.height, 42);
-    assert.equal(empty.paddingVertical, 8);
+    assert.equal(empty.height, undefined);
+    assert.equal(empty.minHeight, undefined);
+    assert.equal(empty.flex, undefined, 'input must not fill the shell vertically');
+    assert.equal(empty.padding, 0);
+    assert.equal(empty.borderWidth, undefined);
+    assert.equal(h.field.style.minHeight, 42);
+    assert.equal(h.field.style.height, undefined, 'large native fonts can grow the shell');
+    assert.equal(h.field.style.justifyContent, 'center');
+    assert.equal(h.field.style.borderWidth, 1);
+    assert.equal(h.field.style.paddingVertical, 8);
+    assert.equal(empty.maxHeight + 2 * h.field.style.paddingVertical + 2 * h.field.style.borderWidth, 120);
+    assert.equal(h.field.style.maxHeight, 120);
+    assert.equal(h.input.numberOfLines, 1);
     assert.equal(h.input.placeholder, 'Message…');
     h.draft('first line\nsecond line', () => {});
     assert.equal(style().height, undefined);
     assert.equal(style().lineHeight, undefined);
     assert.equal(style().includeFontPadding, undefined);
     assert.equal(style().textAlignVertical, undefined);
-    assert.equal(style().paddingVertical, empty.paddingVertical);
-    assert.equal(style().maxHeight, 120);
+    assert.equal(style().padding, 0);
+    assert.equal(style().maxHeight, 102);
+    assert.equal(h.input.numberOfLines, undefined);
+    assert.notEqual(h.input.scrollEnabled, false, 'long content retains native scrolling');
     assert.equal(h.input.multiline, true);
     h.draft('', () => {});
     assert.deepEqual(style(), empty);
+    assert.equal(h.input.numberOfLines, 1);
+  }
+});
+
+test('composer shell whitespace focuses the same input without becoming an accessibility group', () => {
+  const h = mount(); let focused = 0, changed;
+  h.input.ref.current = { focus: () => { focused++; } };
+  const ref = h.input.ref;
+  h.field.onPress();
+  assert.equal(focused, 1);
+  assert.equal(h.field.accessible, false);
+  assert.equal(h.field.focusable, false);
+  assert.equal(h.field.onStartShouldSetResponderCapture, undefined, 'do not intercept native selection touches');
+  assert.equal(h.input.accessibilityLabel, 'Message text');
+  assert.equal(h.input.underlineColorAndroid, 'transparent');
+  h.draft('draft', value => { changed = value; });
+  h.input.onChangeText('draft\nnext');
+  assert.equal(changed, 'draft\nnext');
+  assert.equal(h.input.ref, ref);
+  h.field.onPress();
+  assert.equal(focused, 2);
+  assert.deepEqual(h.calls, [], 'focus does not send or force timeline scrolling');
+  h.input.ref.current = null;
+  assert.doesNotThrow(() => h.field.onPress());
+});
+
+test('Android composer leaves line count and height native through edit and clear', () => {
+  const h = mount({ platform: 'android' });
+  for (const text of ['', 'first\nsecond', '', 'next']) {
+    h.draft(text, () => {});
+    assert.equal(h.input.numberOfLines, undefined, 'do not fix Android EditText lines');
+    assert.equal(h.input.style.height, undefined);
+    assert.equal(h.input.multiline, true);
+    assert.equal(h.input.style.maxHeight, 102);
+    assert.equal(h.field.style.justifyContent, 'center');
   }
 });
 
@@ -161,22 +216,25 @@ const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, to
 
 test('empty composer explicitly shrinks after long send without replacing the native input', () => {
   const h = mount({ keyboard: true });
-  const style = () => Object.assign({}, ...h.input.style.filter(Boolean));
+  const style = () => h.input.style;
   h.draft('long line\n'.repeat(80), () => {});
   const nativeID = h.input.nativeID, key = h.input.key;
-  assert.equal(style().maxHeight, 120);
+  assert.equal(style().maxHeight, 102);
   assert.equal(style().height, undefined, 'nonempty input retains native auto sizing');
   h.draft('', () => {});
-  assert.equal(style().height, 42, 'cleared text must explicitly restore one line');
+  assert.equal(style().height, undefined, 'empty font height remains native');
+  assert.equal(h.input.numberOfLines, 1, 'cleared text explicitly restores one-line native measurement');
   h.dock(150); h.rerender();
-  assert.equal(style().height, 42, 'late old dock measurement cannot stretch the empty input');
+  assert.equal(h.input.numberOfLines, 1, 'late old dock measurement cannot remove the empty line constraint');
   assert.equal(h.input.nativeID, nativeID); assert.equal(h.input.key, key);
   assert.equal(h.input.multiline, true);
   h.draft('new draft', () => {});
   assert.equal(style().height, undefined, 'new typing restores native multiline growth');
+  assert.equal(h.input.numberOfLines, undefined);
   assert.equal(h.input.nativeID, nativeID); assert.equal(h.input.key, key);
   h.draft('   ', () => {});
   assert.equal(style().height, undefined, 'whitespace is still an unsent draft');
+  assert.equal(h.input.numberOfLines, undefined);
 });
 
 test('clipboard text replaces composer selection without sending or scrolling', () => {
@@ -367,8 +425,8 @@ test('send clears and shrinks only a durably saved unchanged draft', async () =>
     if (scenario === 'failed') { fail(new Error('storage')); await assert.rejects(sending, /storage/); }
     else { finish(); await sending; }
     assert.equal(draft, scenario === 'saved' ? '' : scenario === 'edited' ? 'new unsent draft' : original);
-    const style = Object.assign({}, ...h.input.style.filter(Boolean));
-    assert.equal(style.height, scenario === 'saved' ? 42 : undefined);
+    assert.equal(h.input.numberOfLines, scenario === 'saved' ? 1 : undefined);
+    assert.equal(h.input.style.height, undefined);
   }
 });
 

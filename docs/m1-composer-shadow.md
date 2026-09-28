@@ -6,6 +6,20 @@
 - 修正空输入框 placeholder 的纵向对齐，保留输入后的原生多行增长和清空复位。
 - 保留返回最新所在透明行、消息底部 96pt 留白和现有键盘跟随。
 
+## 外层居中修订（当前隔离候选）
+
+卡片 `t_ddd5e38f`；Jamie 已确认实施，尚未授权发布本次候选。
+
+- 外层 Pressable 承载边框、圆角、42pt 最低高度和上下 8pt 留白，用 `justifyContent: center` 居中内部输入框；点击空白区域调用原输入框 focus，外层不合并或抢占输入框的辅助阅读节点。
+- 内部保留原生 multiline/placeholder，清除 padding，不设固定高度、行高或字体偏移；由原生内容测量高度。总高度上限仍为 120pt，扣除边框和外层留白后，内部 maxHeight 为 102pt，保留长文内部滚动。
+- iOS 清空时以原生 `numberOfLines=1` 限制测量为一行，不再固定 42pt 内部高度；非空时解除行数限制。Android 不设置该属性，其原生 `setLines` 同时固定高度，保持原生内容测量。始终使用同一 multiline 输入框，不重挂、不切单行、不模糊再聚焦。RN 0.86.3 Fabric iOS 支持 numberOfLines 的原生段落测量；实际清空收缩及大字体仍需设备回归。
+- 字体倍率继续由既有 FontSize 组件处理；保留共用阴影、附件菜单、返回最新行、发送/停止和键盘跟随。
+- 参考：[外层居中案例](https://stackoverflow.com/a/66753499)、[清除内部 padding 案例](https://stackoverflow.com/a/76521323)。社区案例与组件样式测试不等同于本项目 iPhone 视觉验收。
+
+本地验证：TypeScript 通过；手机测试串行 283/283 通过；iOS/Android Metro export 均成功。新增外壳点击聚焦和 Android 不固定行数测试，更新空内容一行测量/非空解限、发送失败与新草稿保护、边框留白与高度约束测试。沿用既有阴影/附件/键盘/阅读位置回归。证据：私有 `workspace/hermes-app/composer-outer-center/` 下 `check.log`、`tests.log`、双平台 export 日志与 `checks.json`。
+
+组件检查使用 RN 替身，不测 UIKit 字体或原生滚动；不能把字号参数循环当作真机大字体通过。真机仍需覆盖空占位、输入一行/多行、长文滚动与发送清空、应用和系统大字体、点击留白/选字。未发布，运行中的 Expo 和后端未改。
+
 ## 原生排版修订（已发布）
 
 Jamie 授权后，提交 `8fe48074982a21cafc686b89389a3a8c45901219` 已发布至 `exps://agent.tuly.space`。发布从干净的 `3373445` fast-forward，仅停止/启动 Expo 服务。发布后 TypeScript 通过；公网 iOS/Android manifest 的精确 launchAsset 均核验包含原生排版样式（无动态行高/留白计算、保留 42pt 空输入复位及 120pt 上限）、共用阴影、透明最新行与 96pt 留白。两个 Gateway 的 PID/启动时间及插件哈希保持不变。
