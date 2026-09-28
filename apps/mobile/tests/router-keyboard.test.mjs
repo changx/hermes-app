@@ -36,8 +36,8 @@ function timeline(bottom = 34, os = 'ios') {
   const tree = load('../src/ChatTimeline.tsx', {
     react,
     'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
-      Platform: { OS: os }, StyleSheet: { create: styles => styles } },
-    './FontSize': { Text: 'Text', TextInput: 'TextInput' },
+      Platform: { OS: os }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ fontScale: 1 }) },
+    './FontSize': { Text: 'Text', TextInput: 'TextInput', useFontSize: () => ({ scale: 1 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom }) },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',
       KeyboardStickyView: 'KeyboardStickyView', KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },

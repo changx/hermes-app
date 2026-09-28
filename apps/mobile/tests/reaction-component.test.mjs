@@ -7,7 +7,7 @@ import { projectTimeline } from '../src/timeline.ts';
 import { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl } from '../src/messageMarkdown.ts';
 
 const native = { Animated: { Text: 'Text', Value: class { constructor(value) { this.value = value; } interpolate({ outputRange }) { return outputRange[this.value]; } }, }, AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: () => ({ remove() {} }) },
-  Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ width: 390, height: 844 }) };
+  Platform: { OS: 'ios' }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }) };
 for (const key of ['FlatList', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View', 'Modal']) native[key] = key;
 const react = {
   Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -376,6 +376,14 @@ test('latest action sits above the composer at the right in its shared keyboard 
   assert.ok(expand(row).includes(latest));
   const composer = accessory ? named(h.tree, 'Accessory')[0] : named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
   assert.ok(expand(sticky).includes(composer));
+  const surfaces = named(h.tree, 'View').filter(n => n.props.style?.boxShadow);
+  assert.equal(surfaces.length, 1, 'one shadow for the complete composer, not one per row');
+  const surface = surfaces[0];
+  assert.equal(surface.props.style.backgroundColor, '#fff');
+  assert.match(surface.props.style.boxShadow, /^0 -4px 10px -4px rgba/);
+  assert.ok(expand(surface).includes(composer), 'the entire accessory, including its menu, is inside the shadow');
+  assert.ok(!expand(surface).includes(latest), 'latest row must remain transparent outside the shadow surface');
+  assert.notEqual(surface.props.style.overflow, 'hidden');
   assert.ok(!expand(composer).includes(latest), 'button must not consume input-row width');
   assert.ok(expand(sticky).indexOf(latest) < expand(sticky).indexOf(composer));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);

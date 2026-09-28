@@ -92,6 +92,28 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
     setImages(fn) { imagePick = fn; }, setFiles(fn) { documentPick = fn; }, setClipboard(fn) { clipboardRead = fn; } };
 }
 
+test('plus menu opens inside the shared composer surface, without a separate nested shadow', () => {
+  const h = harness();
+  const input = { type: 'TextInput', props: { accessibilityLabel: 'Message text' } };
+  const closed = h.start('AttachmentComposer', { children: input });
+  assert.equal(closed[0].type, 'View');
+  assert.equal(closed[0].props.style.backgroundColor, '#fff');
+  assert.equal(closed.some(n => n.props.accessibilityLabel === 'Choose file'), false);
+  h.press('Add attachment', closed);
+  const opened = h.render();
+  assert.equal(opened[0].props.style, closed[0].props.style);
+  const menu = opened[0].props.children[0];
+  assert.equal(menu.type, 'View');
+  const labels = opened.map(n => n.props.accessibilityLabel);
+  for (const label of ['Choose file', 'Photo library', 'Take photo', 'Paste']) {
+    assert.ok(labels.includes(label));
+    assert.ok(labels.indexOf(label) < labels.indexOf('Message text'));
+  }
+  assert.equal(opened.some(n => n.props.style?.boxShadow), false, 'parent owns the only shadow');
+  h.press('Add attachment', opened);
+  assert.equal(h.render().some(n => n.props.accessibilityLabel === 'Choose file'), false);
+});
+
 test('plus shares the input row while menu and previews remain above it', async () => {
   const h = harness(); let height;
   const input = { type: 'TextInput', props: { accessibilityLabel: 'Message text' } };

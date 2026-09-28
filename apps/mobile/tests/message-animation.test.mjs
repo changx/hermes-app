@@ -12,7 +12,7 @@ const timeline = { exports: {} };
 runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: timeline, exports: timeline.exports, require: name => name === './messageTime.ts' ? messageTime : assert.fail(name) });
 
-function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}) {
+function mount({ rows = ['a'], position, motion = false, keyboard = false, scale = 1, fontScale = 1 } = {}) {
   const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
   let index = 0, flatList, sticky, input, tree, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
@@ -36,13 +36,13 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
   const native = {
     AccessibilityInfo: { isReduceMotionEnabled: () => Promise.resolve(motion), addEventListener: (_, fn) => { subscriptions.motion = fn; return { remove() {} }; } },
     AppState: { addEventListener: (_, fn) => { subscriptions.app = fn; return { remove() {} }; } },
-    FlatList: 'FlatList', Keyboard: { isVisible: () => visible }, Platform: { OS: 'ios' },
+    FlatList: 'FlatList', Keyboard: { isVisible: () => visible }, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ fontScale }),
     Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { create: styles => styles },
     Text: 'Text', TextInput: 'TextInput', View: 'View'
   };
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
-    './FontSize': { Text: native.Text, TextInput: native.TextInput },
+    './FontSize': { Text: native.Text, TextInput: native.TextInput, useFontSize: () => ({ scale }) },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
@@ -88,6 +88,29 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     visible: value => { visible = value; }, motion: value => subscriptions.motion(value), app: state => subscriptions.app(state)
   };
 }
+
+test('placeholder has symmetric scaled line padding; typing restores top-aligned multiline growth', () => {
+  for (const scale of [1, 1.1, 1.15, 1.3]) for (const fontScale of [1, 1.5, 2]) {
+    const h = mount({ scale, fontScale });
+    const style = () => Object.assign({}, ...h.input.style.filter(Boolean));
+    const empty = style();
+    assert.equal(empty.fontSize, undefined, 'keep the existing platform font baseline');
+    assert.equal(empty.lineHeight, 22);
+    assert.equal(empty.includeFontPadding, false);
+    assert.equal(empty.textAlignVertical, 'center');
+    assert.ok(Math.abs(empty.paddingVertical * 2 + 2 + empty.lineHeight * scale * fontScale - empty.height) < 0.001);
+    assert.ok(empty.height >= 42);
+    assert.ok(empty.paddingVertical >= 8);
+    assert.equal(h.input.placeholder, 'Message…');
+    h.draft('first line\nsecond line', () => {});
+    assert.equal(style().height, undefined);
+    assert.equal(style().textAlignVertical, 'top');
+    assert.equal(style().maxHeight, 120);
+    assert.equal(h.input.multiline, true);
+    h.draft('', () => {});
+    assert.deepEqual(style(), empty);
+  }
+});
 
 test('transparent latest row overlaps by its measured height and resets when hidden', () => {
   const h = mount();
