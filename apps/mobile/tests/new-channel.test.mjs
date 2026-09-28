@@ -14,8 +14,9 @@ test('Channels uses a safe-area floating new-channel button instead of a top New
 test('new-channel editor slides up with the existing fields and creation path', () => {
   assert.match(channel, /<Modal visible=\{creating\} transparent animationType="slide"/);
   assert.match(channel, /accessibilityLabel="Close new channel editor"/);
-  assert.match(channel, /accessibilityLabel="Channel name"[^>]*autoFocus/);
-  assert.match(channel, /accessibilityLabel="Channel description"[^>]*multiline/);
+  assert.match(channel, /accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b"[^>]*autoFocus/);
+  assert.match(channel, /accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines \(optional\)" placeholderTextColor="#65758b"[^>]*multiline/);
+  assert.match(channel, /description: \{ minHeight: 140, maxHeight: 260, textAlignVertical: 'top' \}/);
   assert.match(channel, /client\.createChannel\(patch\.name, patch\.description\)/);
   assert.match(channel, /setCreating\(false\); onChannel\(made\.id\)/);
 });
