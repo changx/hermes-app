@@ -127,6 +127,10 @@ async def main():
         callbacks=manager.iter_hook_callbacks('post_llm_call')
         assert callbacks and callbacks[0].__name__=='after_final', [getattr(cb,'__name__','') for cb in callbacks]
         runner=GatewayRunner()
+        # This fixture tests delivery rather than first-run home-channel onboarding.
+        from gateway.config import HomeChannel
+        runner.config.platforms[Platform('hermes_app')].home_channel = HomeChannel(
+            Platform('hermes_app'), 'synthetic-home', 'Synthetic home')
         assert await asyncio.wait_for(runner.start(),45)
         adapter=runner.adapters[Platform('hermes_app')]
         (HOME/'ready.json').write_text(json.dumps({'port':adapter.port,'hook_order_verified':True}))

@@ -45,6 +45,14 @@ def test_direct_only_pagination_search_sync_edit_and_cold_reload(tmp_path):
     assert all('created_at' in m for m in messages)
     assert [m['ref_seq'] for m in messages] == sorted(m['ref_seq'] for m in messages)
     assert cold.history_page(thread, source, limit=2)['messages'] == messages[:2]
+    assert cold.history_page(thread, source, ref_seq=messages[1]['ref_seq'])['messages'] == [messages[1]]
+    for bad in (0, -1, '1', messages[1]['ref_seq'] + 1000):
+        with pytest.raises(ValueError, match='ref seq'):
+            cold.history_page(thread, source, ref_seq=bad)
+    with pytest.raises(ValueError, match='ref seq'):
+        cold.history_page(other, source, ref_seq=messages[1]['ref_seq'])
+    with pytest.raises(ValueError, match='exclusive'):
+        cold.history_page(thread, source, ref_seq=messages[1]['ref_seq'], latest=True)
     next_cursor = cold.history_page(thread, source, limit=2)['next_cursor']
     assert cold.history_page(thread, source, after=next_cursor)['messages'] == messages[2:]
     tail = cold.history_page(thread, source, latest=True, limit=2)
@@ -61,7 +69,7 @@ def test_direct_only_pagination_search_sync_edit_and_cold_reload(tmp_path):
     original_time = messages[1]['created_at']
     cursor = cold.sync_page()['next_cursor']
     assert not cold.update_direct_message(other, message_id, 'foreign')
-    assert not cold.update_direct_message(thread, message_id, 'Native 帮助')
+    assert cold.update_direct_message(thread, message_id, 'Native 帮助')
     assert cold.update_direct_message(thread, message_id, 'Edited 帮助')
     assert cold.update_direct_message(thread, message_id, 'Edited again')
     updates = cold.sync_page(cursor=cursor)['events']
@@ -70,6 +78,7 @@ def test_direct_only_pagination_search_sync_edit_and_cold_reload(tmp_path):
     edited = Store(store.path).history_page(thread, source)['messages'][1]
     assert (edited['id'], edited['ref_seq'], edited['created_at']) == (message_id, messages[1]['ref_seq'], original_time)
     assert edited['text'] == 'Edited again'
+    assert cold.history_page(thread, source, ref_seq=edited['ref_seq'])['messages'] == [edited]
     assert Store(store.path).search_page(thread, source, 'edited')['messages'] == [edited]
     assert Store(store.path).search_page(thread, source, 'Native 帮助')['messages'] == []
     assert not source.exists()  # No need to open, create, or mutate SessionDB.

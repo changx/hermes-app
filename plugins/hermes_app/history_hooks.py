@@ -5,6 +5,7 @@ import json
 from contextlib import closing
 
 from .storage import Store
+from .reply_context import reply_scope
 from hermes_constants import get_hermes_home
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,12 @@ def pre_llm_call(**kwargs):
     if turn_id and session_id:
         store=_store()
         thread_id=store.bind_turn(turn_id, session_id, _compression_parent(session_id))
+        # The hook may run in a copied executor context. Mutate the inherited
+        # input scope, rather than setting a ContextVar only in that worker.
+        scope=reply_scope.get()
+        if scope and thread_id == scope['event'].source.thread_id:
+            scope['model_turn'] = True
+            scope['model_turn_id'] = turn_id
         _link_core_user(store,thread_id)
         store.link_followup_core_users(thread_id,get_hermes_home() / 'state.db')
     return None
@@ -48,6 +55,18 @@ def _link_core_user(store,thread_id):
     ingress=store.pending_ingress_id(thread_id) if thread_id else None
     if ingress:
         store.link_user_from_core(ingress,get_hermes_home() / 'state.db')
+
+
+def pre_command(**kwargs):
+    """Native retry rewrites core rows; freeze published display originals first."""
+    if kwargs.get('platform') != 'hermes_app' or kwargs.get('command') != 'retry':
+        return None
+    scope=reply_scope.get() or {}
+    event=scope.get('event')
+    if event is not None and event.message_id and event.source.thread_id and scope.get('session_before'):
+        _store().snapshot_rewound_refs(event.source.thread_id,scope['session_before'],
+                                       get_hermes_home()/'state.db')
+    return None
 
 
 def pre_tool_call(**kwargs):

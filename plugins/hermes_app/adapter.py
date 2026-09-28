@@ -24,7 +24,7 @@ from hermes_cli import projects_db
 from .storage import Store, HistoryPending, MissingOriginal
 from . import device_pairing
 from . import model_settings
-from .history_hooks import pre_llm_call, pre_tool_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
+from .history_hooks import pre_command, pre_llm_call, pre_tool_call, post_tool_call, pre_auxiliary_call, post_llm_call, on_session_end
 
 from .reply_context import reply_scope
 
@@ -262,6 +262,25 @@ class HermesAppAdapter(BasePlatformAdapter):
         target = self._reply_target(chat_id, reply_to, metadata)
         if target:
             thread_id, receipt_id = target
+            scope = reply_scope.get()
+            if scope and scope.get('event') and not scope.get('model_turn'):
+                # Native /new, /resume and /branch --here switch the gateway's
+                # SessionStore before their reply is delivered. Bind only this
+                # event's actual session, never a sibling App thread's session.
+                event = scope['event']
+                entry = await self._gateway_owner().async_session_store.get_or_create_session(event.source)
+                owner = self._store.thread_for_session(entry.session_id)
+                if owner and owner != thread_id:
+                    previous = scope.get('session_before')
+                    if not previous or self._store.thread_for_session(previous) != thread_id:
+                        return SendResult(success=False, error='Session belongs to another App thread', retryable=False)
+                    restored = await self._gateway_owner().async_session_store.switch_session(
+                        self._event_session_key(event), previous)
+                    if not restored:
+                        return SendResult(success=False, error='Session switch could not be restored', retryable=False)
+                    content = 'Session belongs to another App thread; switch was not kept.'
+                else:
+                    await asyncio.to_thread(self._store.bind_direct_session, thread_id, entry.session_id)
             source = get_hermes_home() / 'state.db'
             # An exact persisted model input proves this output belongs to the
             # existing SessionDB projection. No slash-name or text dedup guesses.
@@ -284,6 +303,49 @@ class HermesAppAdapter(BasePlatformAdapter):
             self._events_changed.set()
             return SendResult(success=True, message_id=message_id)
         return SendResult(success=False, error='App message was not updated', retryable=False)
+
+    async def send_document(self, chat_id, file_path, caption=None, file_name=None,
+                            reply_to=None, metadata=None, **kwargs):
+        """Persist a bounded native document before /save removes its temp file."""
+        target = self._reply_target(chat_id, reply_to, metadata)
+        if not target:
+            raise RuntimeError('No exact App document destination')
+        thread_id, receipt_id = target
+        name = file_name or Path(file_path).name
+        if (not isinstance(name, str) or not 1 <= len(name) <= 180 or
+                any(c in name for c in ('/', '\\', '\x00', '\r', '\n')) or name in ('.', '..')):
+            raise RuntimeError('Invalid document name')
+        attachment_id = 'att_' + uuid.uuid4().hex
+        dest = self._attachment_path(attachment_id)
+        temporary = self._attachment_root() / ('.partial-' + uuid.uuid4().hex)
+        try:
+            # Reject links/nonregular files, and do not retain exports beyond the
+            # same 10 MiB upload bound. The source belongs to the native command.
+            fd = os.open(file_path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, 'rb') as source:
+                info = os.fstat(source.fileno())
+                if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 10 * 1024 * 1024:
+                    raise ValueError('Document size or type unsupported')
+                with open(temporary, 'xb') as output:
+                    os.chmod(temporary, 0o600)
+                    while chunk := source.read(65536):
+                        output.write(chunk)
+                    output.flush()
+                    os.fsync(output.fileno())
+            os.replace(temporary, dest)
+            mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+            if mime in ('text/html', 'image/svg+xml', 'application/javascript'):
+                mime = 'application/octet-stream'
+            await asyncio.to_thread(self._store.create_direct_document, thread_id, receipt_id,
+                                    attachment_id, name, mime, info.st_size, caption or '')
+        except (OSError, ValueError, OverflowError):
+            temporary.unlink(missing_ok=True)
+            dest.unlink(missing_ok=True)
+            # Native /save ignores SendResult.success and otherwise claims
+            # "Export complete". Raising is its documented failure path.
+            raise RuntimeError('Document could not be stored') from None
+        self._events_changed.set()
+        return SendResult(success=True, message_id=attachment_id)
 
     async def _send_exec_approval_prompt(self, prompt):
         from tools.approval import list_gateway_approvals
@@ -326,7 +388,9 @@ class HermesAppAdapter(BasePlatformAdapter):
         # internal event. Plugin receipts own recovery for this platform only.
         if event.internal and not event.text and event.message_id is None:
             return
-        token = reply_scope.set({'event': event})
+        key = self._event_session_key(event)
+        entry = self._session_store._entries.get(key)
+        token = reply_scope.set({'event': event, 'session_before': entry.session_id if entry else None})
         try:
             return await super().handle_message(event)
         finally:
@@ -557,7 +621,13 @@ class HermesAppAdapter(BasePlatformAdapter):
     async def on_processing_start(self, event: MessageEvent) -> None:
         # Native FIFO continuations can reuse an owner task: refresh its input
         # scope here instead of inheriting the previous turn's reply destination.
-        reply_scope.set({'event': event})
+        scope = reply_scope.get()
+        if not scope or scope.get('event') is not event:
+            entry = None
+            if self.__dict__.get('_session_store') is not None:
+                key = self._event_session_key(event)
+                entry = self._session_store._entries.get(key)
+            reply_scope.set({'event': event, 'session_before': entry.session_id if entry else None})
         await asyncio.to_thread(self._store.record_processing,event.message_id,event.source.thread_id,'running')
         self._events_changed.set()
 
@@ -568,7 +638,12 @@ class HermesAppAdapter(BasePlatformAdapter):
         source = get_hermes_home() / 'state.db'
         modeled = source.exists() and await asyncio.to_thread(self._store.link_user_from_core,event.message_id,source)
         if not modeled:
-            await asyncio.to_thread(self._store.finish_direct_receipt,event.message_id,state)
+            scope = reply_scope.get() or {}
+            if scope.get('event') is event and scope.get('model_turn_id'):
+                await asyncio.to_thread(self._store.finish_unanchored_model_receipt,
+                                        event.message_id,scope['model_turn_id'],state)
+            else:
+                await asyncio.to_thread(self._store.finish_direct_receipt,event.message_id,state)
         self._events_changed.set()
 
     async def _dispatch_busy_text(self, thread_id):
@@ -606,6 +681,11 @@ class HermesAppAdapter(BasePlatformAdapter):
                 # Busy success normally leaves _gateway_accepted False. Gateway may
                 # instead take a normal owner or enqueue a native FIFO fallback.
                 await asyncio.to_thread(self._store.mark_handed_off, receipt_id)
+                # Inline native command dispatch has no owner lifecycle callback.
+                # Its actual direct output, not an early busy ACK, proves it ran.
+                if await asyncio.to_thread(self._store.finish_direct_receipt,receipt_id,'completed'):
+                    self._events_changed.set()
+                    continue
                 self._events_changed.set()
                 task=asyncio.create_task(self._reconcile_followup(thread_id,receipt_id,event))
                 self._followup_tasks.add(task)
@@ -844,13 +924,15 @@ class HermesAppAdapter(BasePlatformAdapter):
         try:
             limit = int(request.query.get('limit', '50'))
             after_ref = request.query.get('after_ref_seq')
+            exact_ref = request.query.get('ref_seq')
             latest = request.query.get('latest')
             if latest is not None and latest != 'true':
                 raise ValueError('latest must be true')
             result = await asyncio.to_thread(self._store.history_page, tid,
                 get_hermes_home() / 'state.db', limit=limit, after=request.query.get('after'),
                 after_ref_seq=int(after_ref) if after_ref is not None else None,
-                latest=latest == 'true', before=request.query.get('before'))
+                latest=latest == 'true', before=request.query.get('before'),
+                ref_seq=int(exact_ref) if exact_ref is not None else None)
         except (ValueError, TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from exc
         except HistoryPending as exc:
@@ -1216,6 +1298,7 @@ class HermesAppAdapter(BasePlatformAdapter):
 
 def register(ctx):
     ctx.register_system_prompt_section('hermes_app.channel', _initial_description, max_chars=4000)
+    ctx.register_hook('pre_command', pre_command)
     ctx.register_hook('pre_llm_call', pre_llm_call)
     ctx.register_hook('pre_tool_call', pre_tool_call)
     ctx.register_hook('post_tool_call', post_tool_call)

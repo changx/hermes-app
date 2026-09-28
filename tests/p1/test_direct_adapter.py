@@ -2,6 +2,7 @@
 import asyncio
 import sqlite3
 from types import SimpleNamespace
+import pytest
 
 from hermes_app import adapter as module
 from hermes_app.adapter import HermesAppAdapter, reply_scope
@@ -16,6 +17,10 @@ def setup(tmp_path, monkeypatch):
     app = object.__new__(HermesAppAdapter)
     app._store = store
     app._events_changed = asyncio.Event()
+    async def current(source):
+        return SimpleNamespace(session_id=store.get_thread(source.thread_id)['session_id'])
+    app._gateway_owner = lambda: SimpleNamespace(async_session_store=SimpleNamespace(
+        get_or_create_session=current))
     return app, store, thread
 
 
@@ -35,6 +40,7 @@ def test_direct_output_and_edits_do_not_create_session(tmp_path, monkeypatch):
             response = await app.send('project', 'Checking usage', metadata={'thread_id': thread})
             assert response.success and response.message_id.startswith('dm_')
             assert (await app.edit_message('project', response.message_id, 'Usage: 42 tokens')).success
+            assert (await app.edit_message('project', response.message_id, 'Usage: 42 tokens', finalize=True)).success
             assert not (await app.edit_message('other', response.message_id, 'wrong')).success
             await app.on_processing_complete(event, ProcessingOutcome.SUCCESS)
         finally:
@@ -87,3 +93,46 @@ def test_exact_model_input_keeps_existing_projection_no_duplicate(tmp_path, monk
     assert not store.direct_receipt_has_output(receipt['id'])
     with sqlite3.connect(tmp_path/'state.db') as core:
         assert core.execute('SELECT COUNT(*) FROM messages').fetchone()[0] == 1
+
+
+def test_native_switch_to_sibling_session_is_rolled_back(tmp_path, monkeypatch):
+    app, store, thread = setup(tmp_path, monkeypatch)
+    other = store.create_thread('project', 'sibling', 'foreign', '')
+    receipt, event = event_for(store, thread, 'resume')
+    entry = SimpleNamespace(session_id='foreign')
+    switched = []
+    async def current(source):
+        return entry
+    async def switch(key, session_id):
+        switched.append((key, session_id))
+        entry.session_id = session_id
+        return entry
+    app._gateway_owner = lambda: SimpleNamespace(async_session_store=SimpleNamespace(
+        get_or_create_session=current, switch_session=switch))
+    app._event_session_key = lambda ev: ev.source.thread_id
+    async def run():
+        token = reply_scope.set({'event':event,'session_before':'session'})
+        try:
+            assert (await app.send('project', 'Resumed foreign')).success
+        finally:
+            reply_scope.reset(token)
+    asyncio.run(run())
+    assert switched == [(thread, 'session')]
+    assert entry.session_id == 'session' and store.thread_for_session('foreign') == other
+    page = store.history_page(thread, tmp_path/'state.db')['messages']
+    assert page[-1]['text'] == 'Session belongs to another App thread; switch was not kept.'
+    assert store.receipt(receipt['id'])['state'] == 'running'
+
+
+def test_document_failure_never_claims_success(tmp_path, monkeypatch):
+    app, store, thread = setup(tmp_path, monkeypatch)
+    _, event = event_for(store, thread, 'save')
+    async def run():
+        token = reply_scope.set({'event':event})
+        try:
+            with pytest.raises(RuntimeError, match='Document could not be stored'):
+                await app.send_document('project', str(tmp_path/'absent'), file_name='export.md')
+        finally:
+            reply_scope.reset(token)
+    asyncio.run(run())
+    assert store.history_page(thread, tmp_path/'state.db')['messages'][-1]['role'] == 'user'

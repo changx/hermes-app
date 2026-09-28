@@ -444,6 +444,11 @@ async def main():
                     if resp.status == 200 and len(page['messages']) == len(expected) and not page['incomplete_turns']:
                         break
                 await asyncio.sleep(.2)
+            def model_messages(page):
+                # Native preflight warnings are real direct replies, not model
+                # transcript rows; keep checking both kinds separately.
+                return [m for m in page['messages'] if
+                        COMPACT_MODE != 'preflight' or m.get('display_kind') != 'direct']
             for index in range(6):
                 bulk = f'P1_BULK_{index} ' + 'alpha beta gamma delta '*60
                 async with a.post(root+f"/v1/threads/{one['id']}/messages", json={'client_message_id':uuid.uuid4().hex,'text':bulk}) as resp:
@@ -452,17 +457,17 @@ async def main():
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                         page = await resp.json()
-                        if resp.status == 200 and len(page['messages']) == len(expected) and not page['incomplete_turns']:
+                        if resp.status == 200 and len(model_messages(page)) == len(expected) and not page['incomplete_turns']:
                             break
                     await asyncio.sleep(.2)
             for _ in range(100):
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                     if resp.status == 200:
                         before_page = await resp.json()
-                        if len(before_page['messages']) == len(expected) and not before_page['incomplete_turns']:
+                        if len(model_messages(before_page)) == len(expected) and not before_page['incomplete_turns']:
                             break
                 await asyncio.sleep(.2)
-            assert [(m['role'],m['text']) for m in before_page['messages']] == expected, before_page
+            assert [(m['role'],m['text']) for m in model_messages(before_page)] == expected, before_page
             preflight_model_calls = len(model.requests)-10
             if COMPACT_MODE == 'preflight':
                 from run_agent import AIAgent
@@ -479,11 +484,11 @@ async def main():
                 for _ in range(100):
                     async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                         after_auto = await resp.json()
-                        if (resp.status == 200 and len(after_auto['messages']) == len(expected)+2
+                        if (resp.status == 200 and len(model_messages(after_auto)) == len(expected)+2
                                 and not after_auto['incomplete_turns']):
                             break
                     await asyncio.sleep(.2)
-                assert [(m['role'],m['text']) for m in after_auto['messages']] == expected + [
+                assert [(m['role'],m['text']) for m in model_messages(after_auto)] == expected + [
                     ('user','P1_AFTER_AUTO'),('assistant','SYNTHETIC_P1_FINAL')]
                 assert len({m['id'] for m in after_auto['messages']}) == len(after_auto['messages'])
                 with sqlite3.connect(HOME/'state.db') as raw:

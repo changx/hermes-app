@@ -74,8 +74,11 @@ class Store:
                 CREATE TABLE IF NOT EXISTS direct_messages (
                     id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
                     receipt_id TEXT NOT NULL REFERENCES receipts(id), text TEXT NOT NULL,
+                    attachment_id TEXT REFERENCES attachments(id),
                     created_at INTEGER NOT NULL DEFAULT (unixepoch()));
                 CREATE INDEX IF NOT EXISTS direct_messages_receipt ON direct_messages(receipt_id);
+                CREATE TABLE IF NOT EXISTS core_ref_snapshots (
+                    row_id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sync_events (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
                     thread_id TEXT NOT NULL, ref TEXT NOT NULL, version INTEGER NOT NULL);
@@ -111,6 +114,8 @@ class Store:
                 db.execute('ALTER TABLE receipts ADD COLUMN processing TEXT')
             if not any(r['name'] == 'feedback' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute('ALTER TABLE receipts ADD COLUMN feedback TEXT')
+            if not any(r['name'] == 'attachment_id' for r in db.execute('PRAGMA table_info(direct_messages)')):
+                db.execute('ALTER TABLE direct_messages ADD COLUMN attachment_id TEXT REFERENCES attachments(id)')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
             if ('direct_message_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
@@ -170,6 +175,60 @@ class Store:
                        (thread_id,'input:'+receipt_id,owner['session_id'],message_id))
         return message_id
 
+    def create_direct_document(self, thread_id, receipt_id, attachment_id, name, mime, size, caption):
+        """Atomically publish an outbound document and its display-only reference."""
+        message_id = 'dm_' + secrets.token_hex(16)
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            owner = db.execute('SELECT r.thread_id,t.session_id FROM receipts r '
+                               'JOIN threads t ON t.id=r.thread_id WHERE r.id=?', (receipt_id,)).fetchone()
+            if not owner or owner['thread_id'] != thread_id or not db.execute(
+                    'SELECT 1 FROM message_refs WHERE thread_id=? AND input_receipt_id=?',
+                    (thread_id, receipt_id)).fetchone():
+                raise ValueError('document requires an accepted input in this thread')
+            db.execute('INSERT INTO attachments(id,thread_id,name,mime,size,receipt_id) '
+                       'VALUES (?,?,?,?,?,?)', (attachment_id,thread_id,name,mime,size,receipt_id))
+            db.execute('INSERT INTO direct_messages(id,thread_id,receipt_id,text,attachment_id) '
+                       'VALUES (?,?,?,?,?)', (message_id,thread_id,receipt_id,caption,attachment_id))
+            db.execute('INSERT INTO message_refs(thread_id,turn_id,session_id,direct_message_id,role) '
+                       "VALUES (?,?,?,?,'assistant')",
+                       (thread_id,'input:'+receipt_id,owner['session_id'],message_id))
+            self._event(db,'attachment',thread_id,attachment_id)
+        return message_id
+
+    def snapshot_rewound_refs(self, thread_id, session_id, source_db):
+        """Keep published display rows before native /retry rewrites its session."""
+        from .projection import visible_text
+        from .tool_timeline import public_tool_calls
+        with self._connect() as db:
+            refs = db.execute('SELECT row_id,session_id,role FROM message_refs WHERE thread_id=? '
+                              'AND session_id=? AND row_id IS NOT NULL ORDER BY seq',
+                              (thread_id,session_id)).fetchall()
+            if not refs:
+                return
+            with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
+                source.row_factory = sqlite3.Row
+                db.execute('BEGIN IMMEDIATE')
+                for ref in refs:
+                    if db.execute('SELECT 1 FROM core_ref_snapshots WHERE row_id=?',
+                                  (ref['row_id'],)).fetchone():
+                        continue
+                    row = source.execute('SELECT * FROM messages WHERE id=? AND session_id=? AND role=?',
+                                         (ref['row_id'],ref['session_id'],ref['role'])).fetchone()
+                    if row is None or visible_text(dict(row)) is None:
+                        raise MissingOriginal('cannot preserve rewound original')
+                    payload = {'id':row['id'], 'session_id':row['session_id'],
+                        'role':row['role'], 'display_kind':row['display_kind'],
+                        'platform_message_id':row['platform_message_id'],
+                        'timestamp':row['timestamp'],
+                        'snapshot_text':visible_text(dict(row)),
+                        'snapshot_tool_calls':public_tool_calls(dict(row)) if row['role']=='assistant' else [],
+                        # Origin envelopes are needed only for exact generated
+                        # follow-up suppression, not for model replay.
+                        'content':row['content'] if row['role']=='user' else None}
+                    db.execute('INSERT INTO core_ref_snapshots(row_id,payload) VALUES (?,?)',
+                               (ref['row_id'],json.dumps(payload,ensure_ascii=False)))
+
     def update_direct_message(self, thread_id, message_id, text) -> bool:
         if not isinstance(text, str):
             raise ValueError('invalid direct message text')
@@ -178,8 +237,10 @@ class Store:
             row = db.execute('SELECT m.text,r.seq FROM direct_messages m '
                              'JOIN message_refs r ON r.direct_message_id=m.id AND r.thread_id=m.thread_id '
                              'WHERE m.id=? AND m.thread_id=?', (message_id,thread_id)).fetchone()
-            if not row or row['text'] == text:
+            if not row:
                 return False
+            if row['text'] == text:
+                return True
             db.execute('UPDATE direct_messages SET text=? WHERE id=?',(text,message_id))
             version = db.execute("SELECT COALESCE(MAX(version),0)+1 FROM sync_events "
                                  "WHERE kind='message' AND thread_id=? AND ref=?",
@@ -535,6 +596,26 @@ class Store:
                 db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=?',
                            ('complete' if state=='completed' else state,ingress,receipt['thread_id']))
             self._event(db,'receipt',receipt['thread_id'],receipt_id,3)
+            return True
+
+    def finish_unanchored_model_receipt(self, receipt_id, turn_id, state) -> bool:
+        """Settle a native command whose inner model event has no platform ID."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT r.thread_id,r.state,r.user_row_id,t.state AS turn_state '
+                           'FROM receipts r JOIN ingress_links l ON l.ingress_id=? '
+                           'JOIN turns t ON t.turn_id=l.turn_id AND t.thread_id=r.thread_id '
+                           'WHERE r.id=? AND l.turn_id=?', ('ingress:'+receipt_id,receipt_id,turn_id)).fetchone()
+            if not row or row['state']!='running' or row['user_row_id'] is not None:
+                return False
+            if state=='completed' and row['turn_state']!='complete':
+                return False
+            if state!='completed' and row['turn_state'] not in ('failed','interrupted'):
+                return False
+            db.execute('UPDATE receipts SET state=? WHERE id=?',(state,receipt_id))
+            db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=? AND state=\'pending\'',
+                       ('complete' if state=='completed' else state,'ingress:'+receipt_id,row['thread_id']))
+            self._event(db,'receipt',row['thread_id'],receipt_id,3)
             return True
 
     def cancel_queued(self, thread_id, receipt_id):
@@ -1221,7 +1302,7 @@ class Store:
             row=rows.get(ref['row_id'])
             if not row or row['session_id']!=ref['session_id'] or row['role']!='user' or row['platform_message_id']!=ref['input_receipt_id']:
                 raise MissingOriginal('exact input anchor unavailable')
-            text=visible_text(dict(row))
+            text=row['snapshot_text'] if 'snapshot_text' in row.keys() else visible_text(dict(row))
             if text is None:
                 raise MissingOriginal('input anchor not visible')
             message['text']=text
@@ -1235,16 +1316,21 @@ class Store:
         if not ids:
             return {}
         return {r['id']:r for r in db.execute(
-            'SELECT id,thread_id,text,created_at FROM direct_messages WHERE id IN '
+            'SELECT id,thread_id,text,attachment_id,created_at FROM direct_messages WHERE id IN '
             f'({",".join("?" for _ in ids)})',ids)}
 
-    @staticmethod
-    def _direct_display(ref, direct):
+    def _direct_display(self, ref, direct):
         row=direct.get(ref['direct_message_id'])
         if row is None or row['thread_id']!=ref['thread_id'] or ref['role']!='assistant':
             raise MissingOriginal('direct message unavailable')
+        attached=[]
+        if row['attachment_id']:
+            item=self.attachment(ref['thread_id'],row['attachment_id'])
+            if not item:
+                raise MissingOriginal('direct document unavailable')
+            attached=[self.attachment_view(item)]
         return {'id':row['id'],'ref_seq':ref['seq'],'role':'assistant','text':row['text'],
-                'display_kind':'direct',**_message_time(row['created_at']),'attachments':[]}
+                'display_kind':'direct',**_message_time(row['created_at']),'attachments':attached}
 
     def _is_followup_copy(self, ref, row):
         """Hide only a generated continuation whose original inputs are published."""
@@ -1281,13 +1367,16 @@ class Store:
         return True
 
     def history_page(self, thread_id, source_db, *, limit=50, after=None, after_ref_seq=None,
-                     latest=False, before=None):
+                     latest=False, before=None, ref_seq=None):
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError('limit must be 1..100')
         if type(latest) is not bool or (int(after is not None) + int(after_ref_seq is not None)
-                                        + int(bool(latest)) + int(before is not None)) > 1:
+                                        + int(bool(latest)) + int(before is not None)
+                                        + int(ref_seq is not None)) > 1:
             raise ValueError('history directions are exclusive')
         if after_ref_seq is not None and (type(after_ref_seq) is not int or after_ref_seq <= 0):
+            raise ValueError('invalid ref seq')
+        if ref_seq is not None and (type(ref_seq) is not int or ref_seq <= 0):
             raise ValueError('invalid ref seq')
         backward = latest or before is not None
         cursor = (self._parse_older_cursor(thread_id, before) if before is not None else
@@ -1302,7 +1391,13 @@ class Store:
             outcomes = [{'turn_id': r['turn_id'], 'state': r['state']} for r in db.execute(
                 "SELECT turn_id,state FROM turns WHERE thread_id=? AND state IN ('failed','interrupted','unknown') "
                 "AND turn_id NOT LIKE 'ingress:%' ORDER BY rowid LIMIT 20", (thread_id,))]
-            if backward:
+            if ref_seq is not None:
+                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+                                  'WHERE thread_id=? AND seq=?', (thread_id,ref_seq)).fetchall()
+                if not refs:
+                    raise ValueError('unknown ref seq for thread')
+                page, older_cursor, next_cursor = refs, None, None
+            elif backward:
                 if before is None:
                     refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
                                       'WHERE thread_id=? ORDER BY seq DESC LIMIT ?',
@@ -1328,6 +1423,9 @@ class Store:
             inputs = {r['seq']:self._input_message(db,r) for r in page
                       if r['input_receipt_id'] is not None}
             direct = self._direct_messages(db,page)
+            snapshots = {r['row_id']:json.loads(r['payload']) for r in db.execute(
+                'SELECT row_id,payload FROM core_ref_snapshots WHERE row_id IN ('+
+                ','.join('?' for _ in ids)+')',ids)} if ids else {}
             linked = {}
             if ids:
                 for receipt in db.execute(
@@ -1348,6 +1446,7 @@ class Store:
                 source.row_factory = sqlite3.Row
                 rows = {r['id']: r for r in source.execute(
                     f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})", ids)}
+        rows = {**snapshots, **rows}  # Live core rows always win.
         from .projection import visible_text
         from .tool_timeline import public_tool_calls
         messages = []
@@ -1365,7 +1464,7 @@ class Store:
                 continue
             value = dict(row)
             value['_row_id'] = row['id']
-            text = visible_text(value)
+            text = value['snapshot_text'] if 'snapshot_text' in value else visible_text(value)
             if text is None:
                 raise MissingOriginal(f"original row {ref['row_id']} is not visible")
             message = {'id': str(row['id']), 'ref_seq': ref['seq'],
@@ -1376,7 +1475,7 @@ class Store:
             if row['role']=='user' and row['display_kind']=='steer':
                 message['display_kind']='steer'  # Only the actual core typed row.
             if row['role'] == 'assistant':
-                calls = public_tool_calls(value)
+                calls = value['snapshot_tool_calls'] if 'snapshot_tool_calls' in value else public_tool_calls(value)
                 if calls:
                     message['tool_calls'] = calls
             if row['role'] == 'user' and linked.get(row['id']) is not None:
@@ -1410,6 +1509,9 @@ class Store:
             inputs={r['seq']:self._input_message(db,r) for r in page
                     if r['input_receipt_id'] is not None}
             direct=self._direct_messages(db,page)
+            snapshots={r['row_id']:json.loads(r['payload']) for r in db.execute(
+                'SELECT row_id,payload FROM core_ref_snapshots WHERE row_id IN ('+
+                ','.join('?' for _ in ids)+')',ids)} if ids else {}
             linked = {}
             if ids:
                 for receipt in db.execute(
@@ -1423,6 +1525,7 @@ class Store:
                 source.row_factory=sqlite3.Row
                 rows={r['id']:r for r in source.execute(
                     f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in ids)})",ids)}
+        rows={**snapshots,**rows}
         matches=[]
         scanned=cursor
         needle=query.casefold()
@@ -1442,10 +1545,11 @@ class Store:
                     raise MissingOriginal(f"original row {ref['row_id']} unavailable")
                 if self._is_followup_copy(ref, row):
                     continue
-                content=visible_text(dict(row))
+                content=row['snapshot_text'] if 'snapshot_text' in row.keys() else visible_text(dict(row))
                 if content is None:
                     raise MissingOriginal(f"original row {ref['row_id']} is not visible")
-                calls = public_tool_calls(dict(row)) if ref['role'] == 'assistant' else []
+                calls = (row['snapshot_tool_calls'] if 'snapshot_tool_calls' in row.keys()
+                         else public_tool_calls(dict(row))) if ref['role'] == 'assistant' else []
             scanned=ref['seq']
             if needle in content.casefold() or any(needle in c['label'].casefold() or
                                                     needle in c['name'].casefold() for c in calls):

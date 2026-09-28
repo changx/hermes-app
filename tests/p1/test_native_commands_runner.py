@@ -58,10 +58,132 @@ def test_real_native_command_replies_are_history_only():
                         covered.append(name)
                     finally: setattr(runner,method,original)
                 assert core_rows()==before,'Dispatch probe polluted model session'
+                async def full_page():
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?latest=true&limit=100") as response:
+                        assert response.status==200,await response.text()
+                        return await response.json()
+                # A duplicate HTTP POST with the exact client id has one input
+                # and one command reply, even after a cold metadata read.
+                prior=await full_page()
+                async with b.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'client_message_id':'native-real-help','text':'/help'}) as response:
+                    assert response.status==202
+                same=await full_page()
+                assert same==prior,'Idempotent POST published another reply'
+                target=same['messages'][-1]
+                async with b.get(root+f"/v1/threads/{one['id']}/messages?ref_seq={target['ref_seq']}") as response:
+                    exact=await response.json()
+                    assert response.status==200 and exact['messages']==[target] and exact['next_cursor'] is None
+                for bad in ('0','-1','junk',str(10**9)):
+                    async with b.get(root+f"/v1/threads/{one['id']}/messages?ref_seq={bad}") as response:
+                        assert response.status==400,(bad,response.status)
+                async with b.get(root+f"/v1/threads/{two['id']}/messages?ref_seq={target['ref_seq']}") as response:
+                    assert response.status==400
+                export=await send_command('save md','native-save-md')
+                exported=(await full_page())['messages'][-2]
+                assert exported['attachments'] and exported['attachments'][0]['state']=='available',exported
+                att=exported['attachments'][0]
+                async with b.get(root+f"/v1/threads/{one['id']}/attachments/{att['id']}") as response:
+                    content=await response.read()
+                    assert response.status==200 and b'P1_FIRST' in content
+                assert 'Export complete' in export['text']
+                assert (await send_command('compress --preview','native-compress-preview'))['text']
+                async with a.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'client_message_id':'native-busy-owner','text':'P1_TIMELINE'}) as response:
+                    assert response.status==202
+                for _ in range(100):
+                    if (HOME/'timeline-tool-entered').exists(): break
+                    await asyncio.sleep(.05)
+                assert (HOME/'timeline-tool-entered').exists()
+                try:
+                    busy=[]
+                    for command in ('/status','/model'):
+                        async with b.post(root+f"/v1/threads/{one['id']}/messages",
+                                          json={'client_message_id':'native-busy-'+command[1:],
+                                                'text':command}) as response:
+                            assert response.status==202
+                            busy.append((command,(await response.json())['receipt']['id']))
+                    for command,rid in busy:
+                        for _ in range(100):
+                            async with b.get(root+'/v1/receipts/'+rid) as response:
+                                receipt=(await response.json())['receipt']
+                            if receipt['state'] not in ('queued','running'): break
+                            await asyncio.sleep(.03)
+                        assert receipt['state']=='completed',(command,receipt)
+                        assert adapter._store.direct_receipt_has_output(rid),(command,receipt)
+                    during=await full_page()
+                    assert any('running' in m['text'].lower() or "can't run" in m['text'].lower()
+                               for m in during['messages'][-4:] if m.get('display_kind')=='direct'),during['messages'][-5:]
+                finally:
+                    (HOME/'timeline-tool-release').write_text('1')
+                for _ in range(200):
+                    finished=await full_page()
+                    if not finished['incomplete_turns'] and finished['messages'][-1]['text']=='SYNTHETIC_P1_FINAL': break
+                    await asyncio.sleep(.03)
+                assert not finished['incomplete_turns']
+                branched=await send_command('branch --here native-check','native-branch')
+                assert branched['text'] and adapter._store.thread_for_session(
+                    (await runner.async_session_store.get_or_create_session(adapter._source(channel['id'],one['id']))).session_id)==one['id']
+                switched=await send_command('new','native-new')
+                assert switched['text'] and adapter._store.thread_for_session(
+                    (await runner.async_session_store.get_or_create_session(adapter._source(channel['id'],one['id']))).session_id)==one['id']
+                session_before_resume=(await runner.async_session_store.get_or_create_session(
+                    adapter._source(channel['id'],one['id']))).session_id
+                # A session already owned by the sibling App thread cannot be
+                # imported into this thread, including via a native --all resume.
+                forbidden=await send_command('resume '+two['session_id']+' --all','native-foreign-resume')
+                assert forbidden['text'] and adapter._store.thread_for_session(two['session_id'])==two['id']
+                now=await runner.async_session_store.get_or_create_session(adapter._source(channel['id'],one['id']))
+                assert now.session_id==session_before_resume and adapter._store.thread_for_session(now.session_id)==one['id']
+                async with a.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'client_message_id':'native-model-after-switch','text':'MODEL_AFTER_SWITCH'}) as response:
+                    assert response.status==202
+                for _ in range(200):
+                    later=await full_page()
+                    if later['messages'][-1]['text']=='SYNTHETIC_P1_FINAL' and not later['incomplete_turns']:
+                        break
+                    await asyncio.sleep(.03)
+                assert [m['text'] for m in later['messages'][-2:]]==['MODEL_AFTER_SWITCH','SYNTHETIC_P1_FINAL'],later
+                assert later['messages'][-1].get('display_kind')!='direct'
+                assert not adapter._store.direct_receipt_has_output(later['messages'][-2]['receipt_id'])
+                before_btw=core_rows()
+                started=await send_command('btw what is the answer','native-btw-real')
+                for _ in range(200):
+                    side=await full_page()
+                    if len([m for m in side['messages'] if m.get('display_kind')=='direct'
+                            and m['ref_seq']>started['ref_seq']])>=1:
+                        break
+                    await asyncio.sleep(.03)
+                answers=[m for m in side['messages'] if m.get('display_kind')=='direct'
+                         and m['ref_seq']>started['ref_seq']]
+                assert len(answers)==1 and answers[0]['text'] and core_rows()==before_btw,answers
+                assert answers[0]['ref_seq']>started['ref_seq']
+                async with a.post(root+f"/v1/threads/{one['id']}/messages",
+                                  json={'client_message_id':'native-retry-real','text':'/retry'}) as response:
+                    assert response.status==202
+                    retry_receipt=(await response.json())['receipt']
+                for _ in range(200):
+                    retry_page=await full_page()
+                    async with b.get(root+'/v1/receipts/'+retry_receipt['id']) as response:
+                        retry_receipt=(await response.json())['receipt']
+                    if retry_receipt['state'] not in ('queued','running') and not retry_page['incomplete_turns']:
+                        break
+                    await asyncio.sleep(.03)
+                assert retry_receipt['state']=='completed',(retry_receipt,retry_page['messages'][-5:],
+                    adapter._store.turn_state('ingress:'+retry_receipt['id']))
+                assert not adapter._store.direct_receipt_has_output(retry_receipt['id'])
+                assert retry_page['messages'][-1]['text']=='SYNTHETIC_P1_FINAL',retry_page
+                assert retry_page['messages'][-1].get('display_kind')!='direct'
+                async with b.get(root+f"/v1/threads/{one['id']}/search?q=MODEL_AFTER_SWITCH") as response:
+                    found=await response.json()
+                    assert response.status==200 and len(found['messages'])>=2,found
+                async with b.get(root+f"/v1/threads/{one['id']}/messages?ref_seq={later['messages'][-1]['ref_seq']}") as response:
+                    old=await response.json()
+                    assert response.status==200 and old['messages']==[later['messages'][-1]],old
                 # Native background-free output remains on a cold history read.
                 cold=type(adapter._store)(HOME/'hermes-app/metadata.sqlite').history_page(one['id'],HOME/'state.db',latest=True,limit=100)
-                assert cold['messages'][-1]['text']=='DIRECT_DISPATCH:'+covered[-1]
-                (HOME.parent/'command-result.json').write_text(json.dumps({'real':real,'dispatch':covered,'model_session_unchanged':True}))
+                assert cold['messages'][-1]['text']=='SYNTHETIC_P1_FINAL'
+                (HOME.parent/'command-result.json').write_text(json.dumps({'real':real,'dispatch':covered,'model_session_unchanged':True,'save_download_bytes':len(content),'exact_ref':target['ref_seq'],'retry_receipt':retry_receipt['state'],'cross_thread_reply':forbidden['text']}))
                 return
 ''' + source[end:]
     scratch = Path('/home/hermes/.hermes/profiles/jamie/cache/scratch')
