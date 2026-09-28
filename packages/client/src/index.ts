@@ -259,9 +259,10 @@ export class HermesClient {
   async download(threadId:string,id:string,signal?:AbortSignal):Promise<Uint8Array> {if(!this.options.http.download)throw new ProtocolError('binary download unavailable');const reply=await bounded(s=>this.options.http.download!('/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id),this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,undefined,'download');return reply.body}
   async deleteUnattached(threadId:string,id:string):Promise<void> {const x=await this.call('DELETE','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id));if(x.deleted!==true)throw new ProtocolError('delete not confirmed');this.attachments.set(id,{id,thread_id:threadId,state:'deleted'});this.changed()}
   async search(threadId:string,text:string,after?:string,limit=20,signal?:AbortSignal) {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/search'+query({q:text,after,limit}),undefined,signal);return {messages:arr(x.messages).map(validMessage),next_cursor:optionalCursor(x.next_cursor)}}
-  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number) {
-    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,limit}),undefined,signal);
+  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number, refSeq?:number) {
+    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,ref_seq:refSeq,limit}),undefined,signal);
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
+    if (refSeq!==undefined && (page.length!==1 || page[0].ref_seq!==refSeq)) throw new ProtocolError('message reference mismatch');
     if(!page.length && !existing.length && after===undefined && afterRefSeq===undefined && x.next_cursor===null) this.knownEmptyThreads.add(threadId);
     if(page.length) this.knownEmptyThreads.delete(threadId);
     const byRef=new Map(existing.map(m=>[m.ref_seq,m])); page.forEach(m=>byRef.set(m.ref_seq,m));
@@ -348,7 +349,16 @@ export class HermesClient {
     if (event.version>(this.versions.get(key)||0)) {
       if (event.kind==='channel') await this.listChannels(signal);
       else if (event.kind==='thread') await this.getThread(event.thread_id,event.event_id,signal);
-      else if (event.kind==='message') { await this.historyTail(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal) }
+      else if (event.kind==='message') {
+        // An edit can target an older row, outside both the tail and latest page.
+        // Refresh its exact owned reference before acknowledging this version.
+        if (event.version>1) {
+          const ref=Number(event.ref);
+          if (!Number.isSafeInteger(ref) || ref<=0) throw new ProtocolError('invalid message reference');
+          await this.history(event.thread_id,undefined,1,signal,undefined,ref);
+        }
+        await this.historyTail(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal);
+      }
       else if (event.kind==='receipt') await this.getReceipt(event.ref,signal);
       else if (event.kind==='interaction') await this.getInteraction(event.thread_id,event.ref,signal);
       else if (event.kind==='attachment') await this.getAttachment(event.thread_id,event.ref,signal);

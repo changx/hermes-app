@@ -18,4 +18,12 @@ Hermes 直接回复显示给用户、持久进入 App 可见历史与同步，�
 
 原生命令注册/分派清单覆盖，实际 GatewayRunner 的代表命令、运行中回复、同ID重试、冷读、分页、搜索、编辑、模型session不污染及普通AI不重复。危险/账户/部署命令只测试分派与回执机制，不在真实环境执行。自动化与真机验证分开记录。
 
-主卡 `t_ba8d7eda`，命令路径审计 `t_0e379fcc`，存储 `t_3aaea74f`。隔离分支 `jamie/native-command-output`。本轮只实现验证；未获本轮发布授权，不更改现有 Expo 运行目录、开发实例或固定核心。
+主卡 `t_ba8d7eda`，命令路径审计 `t_0e379fcc`，存储 `t_3aaea74f`。隔离分支 `jamie/native-command-output`。
+
+## 收尾交付范围
+
+Jamie 已在 Discord 线程 `1553991302557863988` 明确要求“收尾交付”：完成候选、回归验证并发布到既有 App 开发入口。只更新必要客户端及 `hermes-app-dev` 插件；保留最新模型设置、字体、路由和键盘改动，不改 Jamie 主实例或固定 Hermes 核心。发布前确认开发执行空闲、保存插件与 metadata 回滚数据，发布后经公网实际发送原生命令并冷读核对，不以离线测试替代交付验证。
+
+客户端初步验证：移动端 266 项通过，SDK 标准检查通过，双方 TypeScript 与 iOS/Android Metro export 通过。隔离 worktree 原有 node_modules 符号链接不在 Metro 观察路径内，首次 export 未解析 expo-router；改为工作树独立 `npm ci` 后两平台通过，未修改运行目录依赖。完整后端验收与发布结果以本页后续记录为准。
+
+私有测试日志、发布脚本与回滚：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/native-command-delivery/`。真机视觉单独记录，不用 bundle 校验冒充 iPhone 实测。
