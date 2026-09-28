@@ -354,15 +354,27 @@ test('pill is under corresponding user message with stable footprint; controls r
   assert.equal(named(changed.rowTree, 'View').find(v => v.props.accessibilityLabel === 'Completed').props.style.height, 23);
   assert.equal(completed[0].key, projected[0].key);
 });
-test('latest-message action lives in composer flow and never covers message content', () => {
+test('latest action sits above the composer at the right in its shared keyboard dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
-  const h = mount(rows, [], [], { position: { offset: 20, following: false } });
+  for (const accessory of [false, true]) {
+  const h = mount(rows, [], [], { position: { offset: 20, following: false },
+    ...(accessory ? { composerAccessory: controls => react.createElement('Accessory', {}, controls) } : {}) });
   const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Jump to latest ↓');
   assert.ok(latest);
   assert.equal(latest.props.style.position, undefined);
-  const composer = named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
-  assert.ok(expand(composer.props.children).includes(latest));
+  const sticky = named(h.tree, 'KeyboardStickyView')[0];
+  assert.equal(named(h.tree, 'KeyboardStickyView').length, 1);
+  const row = sticky.props.children[0];
+  assert.equal(row.type, 'View');
+  assert.equal(row.props.style.alignItems, 'flex-end');
+  assert.ok(row.props.style.paddingHorizontal > 0);
+  assert.ok(expand(row).includes(latest));
+  const composer = accessory ? named(h.tree, 'Accessory')[0] : named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
+  assert.ok(expand(sticky).includes(composer));
+  assert.ok(!expand(composer).includes(latest), 'button must not consume input-row width');
+  assert.ok(expand(sticky).indexOf(latest) < expand(sticky).indexOf(composer));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);
+  }
 });
 
 test('composer keeps send while running with an independent stop that preserves draft', () => {

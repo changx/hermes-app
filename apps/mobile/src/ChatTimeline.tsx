@@ -182,9 +182,6 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
   });
   const composerControls = <><TextInput nativeID={composerID} accessibilityLabel="Message text" multiline style={[styles.input, styles.composeInput, props.text.length === 0 && styles.emptyComposeInput]} placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
-      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => followLatest()} style={styles.latest}>
-        <Text style={styles.latestText}>↓</Text>
-      </Pressable>}
       {props.receipts.some(r => r.thread_id === props.threadId && r.state === 'running') &&
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
@@ -246,6 +243,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         if (hadDock && restored.current && following.current && !keyboardMoving.current) scheduleFollow();
       }
     }}>
+    {showLatest && <View style={styles.latestRow}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => followLatest()} style={styles.latest}>
+        <Text style={styles.latestText}>↓</Text>
+      </Pressable>
+    </View>}
     {!!props.interactions.length && <ScrollView style={styles.interactions} keyboardShouldPersistTaps="handled">{props.interactions.map(i => <View key={i.id} style={styles.interaction}>
       <Text style={styles.controlText}>{i.kind === 'approval' ? 'Please confirm' : 'Please answer'} · {i.prompt}</Text>
       <View style={styles.controlRow}>{i.choices.map(choice => <React.Fragment key={choice}>{action(choice, () => props.onAnswer(i, choice), props.busy, true)}</React.Fragment>)}</View>
@@ -266,7 +268,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   // Keep the real content height: growing short content to the viewport makes
   // the keyboard controller scroll empty space and push top-aligned rows away.
-  messages: { paddingTop: 12, paddingBottom: 48 },
+  messages: { paddingTop: 12, paddingBottom: 96 },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
@@ -279,6 +281,7 @@ const styles = StyleSheet.create({
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },
   older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 },
+  latestRow: { alignItems: 'flex-end', paddingHorizontal: 14, paddingVertical: 6 },
   latest: { minWidth: 40, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e7eef7' }, latestText: { color: '#294e7b', fontSize: 20 },
   controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }, controlText: { color: '#233b56', fontSize: 13, flexShrink: 1 },
   interactions: { maxHeight: 170 },

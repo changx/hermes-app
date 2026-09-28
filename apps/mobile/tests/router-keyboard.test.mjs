@@ -72,7 +72,7 @@ test('real timeline forwards native dismissal and blank-area touch fix to its sc
     assert.notEqual(scroll.props.automaticallyAdjustKeyboardInsets, true);
     assert.equal(scroll.props.keyboardLiftBehavior, 'whenAtEnd');
     assert.equal(list.contentContainerStyle.flexGrow, undefined);
-    assert.equal(list.contentContainerStyle.paddingBottom, 48);
+    assert.equal(list.contentContainerStyle.paddingBottom, 96);
     assert.equal(find(tree, 'KeyboardGestureArea').props.textInputNativeID, find(tree, 'TextInput').props.nativeID);
     assert.equal(find(tree, 'KeyboardAvoidingView'), null);
   }

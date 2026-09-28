@@ -14,7 +14,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', im
 
 function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}) {
   const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
-  let index = 0, flatList, sticky, input, keyboardHandler, visible = keyboard;
+  let index = 0, flatList, sticky, input, tree, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
   const ref = { current: null };
   const react = {
@@ -64,7 +64,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
   };
   const render = () => {
     index = 0;
-    const tree = output.exports.ChatTimeline(props, ref);
+    tree = output.exports.ChatTimeline(props, ref);
     flatList = find(tree, 'FlatList').props;
     sticky = find(tree, 'KeyboardStickyView').props;
     input = find(tree, 'TextInput').props;
@@ -75,7 +75,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
   flatList.ref.current = list;
   const flush = () => { while (frames.length) frames.shift()(); };
   return {
-    calls, ref, get flatList() { return flatList; }, get input() { return input; }, flush,
+    calls, ref, get flatList() { return flatList; }, get input() { return input; }, get tree() { return tree; }, flush,
     draft(text, onText) { props.text = text; props.onText = onText; render(); },
     content: height => flatList.onContentSizeChange(0, height),
     layout: height => flatList.onLayout({ nativeEvent: { layout: { height } } }),
@@ -88,6 +88,31 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     visible: value => { visible = value; }, motion: value => subscriptions.motion(value), app: state => subscriptions.app(state)
   };
 }
+
+test('latest button follows the shared dock, preserves reading on resize and restores following on tap', () => {
+  const h = mount();
+  const latest = node => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) return node.map(latest).find(Boolean) ?? null;
+    return node.props?.accessibilityLabel === 'Jump to latest ↓' ? node : latest(node.props?.children);
+  };
+  h.layout(500); h.content(1600); h.flush(); h.calls.length = 0;
+  assert.equal(latest(h.tree), null);
+  h.ref.current.holdPosition(); h.rerender();
+  assert.ok(latest(h.tree));
+  h.dock(120); h.dock(200); h.layout(420); h.flush();
+  assert.deepEqual(h.calls, [], 'composer/button resizing cannot force a reader to latest');
+  h.keyboard(true); h.rerender();
+  assert.ok(latest(h.tree), 'button remains available during keyboard movement');
+  latest(h.tree).props.onPress(); h.rerender(); h.flush();
+  assert.equal(latest(h.tree), null);
+  assert.deepEqual(h.calls, [], 'tap respects the existing moving-keyboard scheduler');
+  h.keyboard(false); h.flush();
+  assert.deepEqual(h.calls, [{ animated: true }]);
+  h.dock(80); h.layout(540); h.flush();
+  assert.equal(latest(h.tree), null);
+  assert.ok(h.calls.length > 1, 'removing button row reuses dock geometry correction');
+});
 
 const user = key => ({ key, role: 'user', text: key });
 const agent = (key, text = '', toolCalls) => ({ key, role: 'assistant', text, toolCalls });
@@ -125,7 +150,7 @@ test('text taps keep the composer keyboard, while interactive drag dismissal rem
   const h = mount({ keyboard: true });
   assert.equal(h.flatList.keyboardShouldPersistTaps, 'always');
   assert.equal(h.flatList.keyboardDismissMode, 'interactive');
-  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 48);
+  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 96);
 });
 
 test('new Agent output follows with same-height layout and sliding latest window', () => {
@@ -182,7 +207,7 @@ test('Agent changes preserve reader and prepend anchors; keyboard movement defer
 test('timeline content has real bottom padding without flex filler; native end owns offset', () => {
   const h = mount();
   assert.equal(h.flatList.contentContainerStyle.paddingTop, 12);
-  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 48);
+  assert.equal(h.flatList.contentContainerStyle.paddingBottom, 96);
   assert.equal(h.flatList.contentContainerStyle.flexGrow, undefined);
   h.layout(500); h.content(1048); h.flush();
   assert.deepEqual(h.calls, [{ animated: false }]);
