@@ -31,6 +31,16 @@ Jamie 明确要求“发布”后，`15c2c8f495d8bd1a411cd2f2a4412d5f3949389a` �
 
 返回最新所在行显式透明，沿用同一 KeyboardStickyView，并以行的实际测量高度抵消占位，让消息可在透明区域后方滚动；不把按钮移出父级触摸边界。行和 dock 使用 box-none，空白区域不拦截消息手势。按钮底色和点击行为不变，行高适应字体变化，隐藏后取消重叠。
 
-定向组件、滚动、键盘与附件测试 52/52 通过，TypeScript 检查通过。首次类型检查缺少独立工作树的生成渲染器，执行既有 build:markdown-renderer 后通过。此候选尚未发布、未做真机视觉/触摸验收；卡片 `t_80d8ff5c`。
+定向组件、滚动、键盘与附件测试 52/52 通过，TypeScript 检查通过。首次类型检查缺少独立工作树的生成渲染器，执行既有 build:markdown-renderer 后通过。候选阶段未发布；卡片 `t_80d8ff5c`。
+
+### 透明面板授权发布
+
+Jamie 再次要求“发布”后，`42a20a9adaf9ff5d0842515db1cd3c17adec2706` 已 fast-forward 至运行目录，并仅重启 Expo。入口仍为 `exps://agent.tuly.space`。
+
+- 公网 iOS/Android manifest 及其精确 launchAsset 验证通过：透明行、按实际行高抵消占位、box-none、行高测量回调及 96pt 留白均在实际资源中。
+- 开发与 Jamie Gateway 的 PID/启动时间、已安装插件文件哈希均保持不变。
+- Expo 启动期间首次探测返回一次 502，自动重试后双平台成功。
+- 发布脚本、发布前状态、manifest 和资源 SHA-256 保存在私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/latest-panel-transparent/`。回滚基线 `9ba1f15` 保留在 Git；如需回滚使用明确回滚提交。
+- 真机视觉、透明区域手势穿透与按钮点击仍未验收；公网资源核验不代替设备测试。
 
 卡片：`t_774c8f06`。
