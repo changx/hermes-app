@@ -50,6 +50,13 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
   const threads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived).sort((a, b) => b.last_ref - a.last_ref || a.title.localeCompare(b.title));
   const startEdit = () => { if (!channel) return; setName(channel.name); setDescription(channel.description || ''); setEditing(true); setCreating(false); setError(''); };
+  const startCreate = () => { setName(''); setDescription(''); setEditing(false); setError(''); setCreating(true); };
+  const cancelChannelForm = () => { setCreating(false); setEditing(false); setError(''); };
+  const submitChannel = () => void run(async current => {
+    const patch = channelPatch(name, description);
+    if (editing && channelId) { await client.updateChannel(channelId, patch); if (current()) setEditing(false); }
+    else { const made = await client.createChannel(patch.name, patch.description); if (current()) { setCreating(false); onChannel(made.id); } }
+  });
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
   const openComposer = () => {
     draftThreadId.current = newId('th_'); draftMessageId.current = newId('mob_');
@@ -80,36 +87,48 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     await client.getThread(threadId);
     if (current()) { resetComposer(); onThread(threadId); }
   });
-  const channelForm = (editing || creating) && <View style={s.form}>
-    <Text style={s.heading}>{editing ? 'Edit channel' : 'New channel'}</Text>
+  const channelForm = editing && <View style={s.form}>
+    <Text style={s.heading}>Edit channel</Text>
     <TextInput accessibilityLabel="Channel name" placeholder="Channel name" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
     <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
     <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
     <View style={s.row}>
-      <Action label={busy ? 'Saving…' : editing ? 'Save' : 'Create channel'} disabled={busy || !name.trim()} onPress={() => void run(async current => {
-        const patch = channelPatch(name, description);
-        if (editing && channelId) { await client.updateChannel(channelId, patch); if (current()) setEditing(false); }
-        else { const made = await client.createChannel(patch.name, patch.description); if (current()) { setCreating(false); onChannel(made.id); } }
-      })} />
-      <Action label="Cancel" secondary disabled={busy} onPress={() => { setCreating(false); setEditing(false); }} />
+      <Action label={busy ? 'Saving…' : 'Save'} disabled={busy || !name.trim()} onPress={submitChannel} />
+      <Action label="Cancel" secondary disabled={busy} onPress={cancelChannelForm} />
     </View>
   </View>;
   return <View style={s.fill}>
     <View style={s.top}>
       <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || 'Channel' : 'Channels'}</Text>
-      <Action label={channelId ? 'Edit' : 'New'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
+      {!!channelId && <Action label="Edit" secondary disabled={busy} onPress={startEdit} />}
     </View>
-    {busy && !composing && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
-    {!!error && !composing && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+    {busy && !composing && !creating && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
+    {!!error && !composing && !creating && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelId ? <FlatList keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
       ListHeaderComponent={<>{channelForm}{!!channel?.description && !editing && <Text selectable style={s.summary}>{channel.description}</Text>}</>}
       renderItem={({ item }) => <View style={s.card}>
         {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><Text style={s.hint}>{item.unread_count ? `${item.unread_count} unread` : 'Open conversation'}</Text></Pressable><Action label="Rename" secondary disabled={busy} onPress={() => rename(item)} /></View>}
       </View>}
-      ListEmptyComponent={<Text style={s.empty}>No topics yet. Tap + to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={s.list} ListHeaderComponent={channelForm || null}
+      ListEmptyComponent={<Text style={s.empty}>No topics yet. Tap + to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text><Text numberOfLines={2} style={s.hint}>{item.description || 'A space for a project or ongoing conversations'}</Text></Pressable>}
       ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
     {!!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New topic" disabled={busy} onPress={openComposer} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
+    {!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New channel" disabled={busy} onPress={startCreate} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
+    <Modal visible={creating} transparent animationType="slide" onRequestClose={cancelChannelForm}>
+      <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close new channel editor" style={s.backdrop} disabled={busy} onPress={cancelChannelForm} />
+        <View style={[s.composer, { paddingBottom: Math.max(14, insets.bottom) }]}>
+          <View style={s.top}><Text style={[s.heading, s.fill]}>New channel</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelChannelForm} /></View>
+          {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+          <View style={s.sheetForm}>
+            <TextInput accessibilityLabel="Channel name" placeholder="Channel name" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} autoFocus />
+            <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
+            <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
+            <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'} disabled={busy || !name.trim()} onPress={submitChannel} /></View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
     <Modal visible={composing} transparent animationType="fade" onRequestClose={cancelComposer}>
       <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close new topic composer" style={s.backdrop} disabled={busy} onPress={cancelComposer} />
@@ -130,7 +149,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
 const s = StyleSheet.create({
   fill: { flex: 1 }, top: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }, row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   list: { paddingHorizontal: 12, paddingBottom: 24 }, heading: { fontSize: 17, fontWeight: '600', color: '#172a40' }, hint: { color: '#65758b', fontSize: 13, lineHeight: 19, marginTop: 4 }, summary: { color: '#42566f', lineHeight: 22, marginBottom: 12 },
-  form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 85, maxHeight: 160, textAlignVertical: 'top' }, message: { minHeight: 130, maxHeight: 280, marginHorizontal: 12, textAlignVertical: 'top' },
+  form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, sheetForm: { paddingHorizontal: 12, paddingBottom: 4, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 85, maxHeight: 160, textAlignVertical: 'top' }, message: { minHeight: 130, maxHeight: 280, marginHorizontal: 12, textAlignVertical: 'top' },
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8, gap: 8 }, action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, actionText: { color: '#fff', fontWeight: '600' }, secondary: { backgroundColor: '#e7eef8' }, secondaryText: { color: '#2b4e81' }, disabled: { opacity: 0.5 },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 },
   fab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2960ad', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 }, fabText: { color: '#fff', fontSize: 32, lineHeight: 36 },
