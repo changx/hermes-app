@@ -42,6 +42,9 @@ Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊�
 - 新版执行已安装 RN 0.86.3 KAV 与 controller visibility hook 源码，专项 8/8，全量手机 263/263（0 failed/skipped）；TS、iOS/Android Metro 导出通过。导航生命周期测试同步了新增 hook 的替身，没有改变断线、消息或草稿逻辑。
 - 构建/测试日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/router-keyboard-height-reset/`。这些是 Node 原生边界替身测试和 JS 导出，不是 iPhone UI 实测，卡片须保留 review。
 
+- 已将 `409479b` 发布原入口 `exps://agent.tuly.space`。两平台公网 manifest 与精确 launchAsset 均确认应用使用 RN KAV/padding、header offset 与 focus/visibility 条件；SDK/账号不变。只重启 Expo，两 Gateway 的 PID/启动时间与本轮发布前一致。
+- 发布核验：上述证据目录 `verification.json`；回滚分支 `rollback/router-keyboard-before-409479b` 保留 `1dea030`。下载包已清理，manifest/hash/代码片段/测试日志保留。需要完整 Reload 清掉旧原生视图，而非只依赖 Fast Refresh；iPhone 开键盘直接返回尚待用户验收。
+
 ## 验证结果
 
 - 修正前运行新增回归：4 项中 3 项失败，分别对应路由安全区缺失、留白触摸兼容项未开启、输入区几何偏移；修正后 4/4 通过。测试辅助查找函数的空结果统一为 null 后，全量稳定通过。
