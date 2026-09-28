@@ -34,4 +34,16 @@ Jamie 最终确认的本地范围仅为：排序与执行状态解耦、收据�
 
 证据目录：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/command-state-order/`，最终日志为 `final-p1-rerun.log`、`final-client.log`、`final-mobile.log`，P1 工件为 `final-p1-artifacts/`。较早日志与 `backend-evidence/` 是过程证据，不代表最终范围。
 
-限制：未更新运行目录、开发入口或现场数据库，未做 iPhone 真机验收。旧收据仍可能显示 unknown；本次只保证它不改变消息位置，不补造旧执行结果。
+以上为发布前本地验收记录。旧收据仍可能显示 unknown；本次只保证它不改变消息位置，不补造旧执行结果。
+
+## 授权发布与公网验收
+
+Jamie 随后明确要求“发布”。开发版 `e25d81262b3a8bd7b09f8c7bfd953f2c6934624b` 已快进到运行目录，安装必要的 `storage.py` 插件改动，并仅重启开发 Gateway 与 Expo。入口仍为 `exps://agent.tuly.space`；固定 Hermes 核心、Jamie 主 Gateway 的 PID/启动时间及开发配置均未变。
+
+- 公网认证 API、模型配置接口及 WebSocket 连接通过，安装插件源码与发布提交一致。
+- iOS/Android manifest 指向的实际 bundle 均包含本次位置字段和校验逻辑，Expo 账号为 `jamsben`。
+- 公网实际发送 `/status`、`/version`：均 completed，收据位置分别精确对应本条用户消息；同 ID 重试不重复，重新读取历史一致。
+- 发布前 8 条旧 unknown 收据全部保持 unknown；其中 5 条有可核验的既有用户引用，已逐条通过公网读取核对，其余未强行补位置或改写状态。
+- 本次验收话题 `th_878d2912253749b1a1ae4f5d` 已归档并回读确认。
+
+发布卡 `t_0402d746`。私有证据在上述目录：`release-before.json`、`release-verification.json`、`live-smoke-state.json`；`rollback/` 保留发布前插件及 metadata 备份，Git 回滚基线 `7659d02`。本次无数据库修复或历史状态恢复。iPhone 实际视觉与操作仍待 Jamie 验收；没有生成独立签名包。
