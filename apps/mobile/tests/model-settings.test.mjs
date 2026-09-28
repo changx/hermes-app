@@ -6,7 +6,7 @@ import ts from 'typescript';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => {resolve=a; reject=b;}); return {promise,resolve,reject}; };
 const initial = {provider:'one',model:'m1',providers:[{id:'one',name:'Provider One',models:['m1','m2']},{id:'two',name:'Provider Two',models:['m3']}]};
-function harness(client) {
+function harness(client, onNavigationBlocked, onNavigationSaving) {
   const cells=[]; let cursor=0, effects=[];
   const slot = init => cells[cursor++] ??= {value: typeof init==='function'?init():init};
   const react = {
@@ -21,10 +21,19 @@ function harness(client) {
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/ModelSettings.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,
     {module:output,exports:output.exports,require:k=>{assert.ok(k in mods,k);return mods[k];},AbortController});
   const walk=node=>Array.isArray(node)?node.flatMap(walk):node&&typeof node==='object'?[node,...walk(node.props?.children)]:[];
-  const render=()=>{cursor=0;effects=[];const tree=output.exports.ModelSettings({client});effects.forEach(f=>f());return walk(tree);};
+  const render=()=>{cursor=0;effects=[];const tree=output.exports.ModelSettings({client,onNavigationBlocked,onNavigationSaving});effects.forEach(f=>f());return walk(tree);};
   const button=label=>{const n=render().find(n=>n.type==='Pressable'&&n.props.accessibilityLabel===label);assert.ok(n,`missing ${label}`);return n;};
   return {render,button,field:()=>render().find(n=>n.type==='TextInput'),unmount:()=>cells.forEach(c=>c.cleanup?.())};
 }
+test('model draft and in-flight save block route exit until the authoritative result',async()=>{
+  const gate=deferred(), blocks=[], saving=[];
+  const h=harness({getModelSettings:async()=>initial,setModelSettings:()=>gate.promise}, value=>blocks.push(value), value=>saving.push(value));
+  h.render();await tick();h.render();assert.equal(blocks.at(-1),false);
+  h.field().props.onChangeText('m2');h.render();assert.equal(blocks.at(-1),true);assert.equal(saving.at(-1),false);
+  h.button('Save model').props.onPress();h.render();assert.equal(blocks.at(-1),true);assert.equal(saving.at(-1),true);
+  gate.resolve({...initial,model:'m2'});await tick();h.render();assert.equal(blocks.at(-1),false);assert.equal(saving.at(-1),false);
+  h.unmount();assert.equal(blocks.at(-1),false);
+});
 test('loads authoritative model; provider selection and explicit save use returned server value',async()=>{
   const saves=[]; const client={getModelSettings:async()=>initial,setModelSettings:async(...args)=>{saves.push(args);return {...initial,provider:'two',model:'m3'};}};
   const h=harness(client);h.render();await tick();

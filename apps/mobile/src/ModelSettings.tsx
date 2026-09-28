@@ -8,7 +8,7 @@ export type ModelSettingsApi = {
 };
 
 /** The parent keys this component by connection. Never persists a local model override. */
-export function ModelSettings({ client }: { client: ModelSettingsApi }) {
+export function ModelSettings({ client, onNavigationBlocked, onNavigationSaving }: { client: ModelSettingsApi; onNavigationBlocked?: (blocked: boolean) => void; onNavigationSaving?: (saving: boolean) => void }) {
   const [current, setCurrent] = useState<ModelPreferences | null>(null);
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
@@ -21,6 +21,10 @@ export function ModelSettings({ client }: { client: ModelSettingsApi }) {
   const [modelQuery, setModelQuery] = useState('');
   const request = useRef<AbortController | null>(null);
   const alive = useRef(false);
+  const blocked = (busy && !!current) || !!confirmation || !!open || (!!current && (provider !== current.provider || model.trim() !== current.model));
+  useEffect(() => { onNavigationBlocked?.(blocked); return () => onNavigationBlocked?.(false); }, [blocked, onNavigationBlocked]);
+  const saving = busy && !!current;
+  useEffect(() => { onNavigationSaving?.(saving); return () => onNavigationSaving?.(false); }, [saving, onNavigationSaving]);
   useEffect(() => {
     alive.current = true;
     const controller = new AbortController();

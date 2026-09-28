@@ -107,16 +107,18 @@ export function useAgentName(connectionId: string | null): {
 
 type Props = {
   name: string; ready: boolean; error: string; saving: boolean;
-  onSave(value: string): Promise<boolean>; onClose(): void; onRetry?(): void;
+  onSave(value: string): Promise<boolean>; onClose(saved?: boolean): void; onRetry?(): void; onNavigationBlocked?: (blocked: boolean) => void;
   children?: React.ReactNode;
 };
 
 /** Parent owns the Modal and safe area; keep this mounted only while it is open. */
-export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry, children }: Props) {
+export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry, onNavigationBlocked, children }: Props) {
   const [draft, setDraft] = useState(name === DEFAULT_NAME ? '' : name);
   const edited = useRef(false);
   const inFlight = useRef(false);
   const mounted = useRef(true);
+  const blocked = saving || draft !== (name === DEFAULT_NAME ? '' : name);
+  useEffect(() => { onNavigationBlocked?.(blocked); return () => onNavigationBlocked?.(false); }, [blocked, onNavigationBlocked]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!edited.current && ready) setDraft(name === DEFAULT_NAME ? '' : name);
@@ -125,7 +127,7 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
     if (inFlight.current || saving || (!ready && !error) || (!ready && !edited.current)) return;
     inFlight.current = true;
     try {
-      if (await onSave(draft) && mounted.current) onClose();
+      if (await onSave(draft) && mounted.current) onClose(true);
     } finally { inFlight.current = false; }
   };
   return <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
@@ -142,7 +144,7 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
       <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save'}</Text>
     </Pressable>
     {children}
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={[styles.button, styles.secondary]}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" disabled={saving} onPress={() => onClose()} style={[styles.button, styles.secondary, saving && styles.disabled]}>
       <Text style={styles.secondaryText}>Close</Text>
     </Pressable>
   </ScrollView>;

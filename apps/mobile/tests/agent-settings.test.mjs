@@ -54,6 +54,28 @@ function harness(store = new Map()) {
 const view = async (h, id) => { h.render(id); await tick(); return h.render(id); };
 const props = (state, onClose) => ({ ...state, onSave: state.save, onClose });
 
+test('edited settings block accidental swipe but explicit Close stays available; saving blocks both', async () => {
+  const h = harness(), gate = deferred(), blocks = [], closes = [];
+  let state = await view(h, 'guard');
+  const formProps = { ...props(state, saved => closes.push(saved)), onNavigationBlocked: blocked => blocks.push(blocked) };
+  let tree = h.form(formProps);
+  assert.equal(h.button(tree, 'Close').props.disabled, false);
+  h.field(tree).props.onChangeText('Unsent name');
+  tree = h.form(formProps);
+  assert.equal(h.button(tree, 'Close').props.disabled, false);
+  assert.equal(blocks.at(-1), true);
+  // A deliberate Close remains an escape from an invalid or unsaved name.
+  assert.deepEqual(closes, []);
+  h.setPut(() => gate.promise);
+  h.button(tree, 'Save').props.onPress();
+  await tick(); state = h.render('guard');
+  tree = h.form({ ...formProps, ...props(state, formProps.onClose) });
+  assert.equal(h.button(tree, 'Close').props.disabled, true);
+  gate.resolve(); await tick(); await tick();
+  assert.deepEqual(closes, [true]);
+  h.unmountForm(); assert.equal(blocks.at(-1), false);
+});
+
 test('blank/custom durable round trip and cold restart, with collision-free per-connection keys', async () => {
   const store = new Map(), h = harness(store);
   let state = await view(h, 'ab'); assert.equal(state.name, 'Agent'); assert.equal(state.ready, true);
