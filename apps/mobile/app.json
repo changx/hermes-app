@@ -6,8 +6,17 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": { "supportsTablet": true, "bundleIdentifier": "space.tuly.hermesapp.dev" },
-    "android": { "package": "space.tuly.hermesapp.dev" },
-    "plugins": ["expo-secure-store"]
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "space.tuly.hermesapp.dev"
+    },
+    "android": {
+      "package": "space.tuly.hermesapp.dev"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-router",
+      "expo-status-bar"
+    ]
   }
 }

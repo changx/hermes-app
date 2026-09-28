@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { FontSizeProvider, FontSizeSettings, Text, TextInput } from './FontSize';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
+import { FontSizeSettings, Text } from './FontSize';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
-import type { Attachment, Interaction, ThreadSummary } from '../../../packages/client/src/index';
+import type { Attachment, Interaction } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
 import { ConnectionScreen } from './ConnectionScreen';
@@ -30,46 +30,49 @@ const sendNotice = (notice: string) => notice.includes('permissions') || notice.
 function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button, secondary && styles.secondary, disabled && styles.disabled]}><Text style={[styles.buttonText, secondary && styles.secondaryText]}>{title}</Text></Pressable>;
 }
-function Screen() {
+export function HeaderActions({ onConnection, onSettings }: { onConnection: () => void; onSettings: () => void }) {
+  return <View style={styles.headerActions}>
+    <Pressable accessibilityRole="button" onPress={onConnection}><Text style={styles.headerLink}>Connection</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={onSettings}><Text style={styles.headerLink}>Settings</Text></Pressable>
+  </View>;
+}
+type AppContextValue = {
+  ready: boolean; config: Connection | null; client: HermesClient | null;
+  agentName: ReturnType<typeof useAgentName>; identity: number; revision: number;
+  records: SendRecord[]; connectionEpoch: number; loading: boolean; status: NetworkState; error: string;
+  base: string; pairingCode: string; pendingPairing: PendingPairing | null; pairingBusy: boolean;
+  pairingStatus: string; busy: boolean; editing: boolean;
+  setPairingCode: (value: string) => void; setEditing: (value: boolean) => void;
+  saveConnection: () => void; forget: () => void; cancelPairing: () => void;
+  positions: React.RefObject<Map<string, TimelinePosition>>; textDrafts: React.RefObject<Map<string, string>>; locatedThreads: React.RefObject<Set<string>>;
+  olderCursors: React.RefObject<Map<string, string | null>>; outboxRef: React.RefObject<MobileOutbox | null>;
+};
+const AppContext = createContext<AppContextValue | null>(null);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [config, setConfig] = useState<Connection | null>(null);
   const agentName = useAgentName(config?.id ?? null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [ready, setReady] = useState(false), [editing, setEditing] = useState(false);
   const [base, setBase] = useState(DEFAULT_BASE), [pairingCode, setPairingCode] = useState('');
   const [pendingPairing, setPendingPairing] = useState<PendingPairing | null>(null);
   const [pairingBusy, setPairingBusy] = useState(false), [pairingStatus, setPairingStatus] = useState('');
   const [pairingEpoch, setPairingEpoch] = useState(0);
   const pairingTask = useRef<{ controller: AbortController; promise: Promise<unknown> } | null>(null);
-  const [client, setClient] = useState<HermesClient | null>(null);
+  const [session, setSession] = useState<{ config: Connection; client: HermesClient } | null>(null);
+  const client = session?.config === config ? session.client : null;
+  const [identity, setIdentity] = useState(0);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
-  const [channelId, setChannelId] = useState<string | null>(null), [threadId, setThreadId] = useState<string | null>(null);
-  const [text, setText] = useState(''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
-  const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
-  const [attachmentClearKey, setAttachmentClearKey] = useState(0);
-  const composerScope = `${config?.id || ''}:${threadId || ''}`;
-  const currentComposer = useRef(composerScope);
-  currentComposer.current = composerScope;
-  const onAttachmentsChange = useCallback((items: Attachment[], uploading: boolean) => {
-    if (currentComposer.current === composerScope) setAttachmentDraft({ scope: composerScope, items, busy: uploading });
-  }, [composerScope]);
-  const draftAttachments = attachmentDraft.scope === composerScope ? attachmentDraft.items : [];
-  const attachmentsBusy = attachmentDraft.scope === composerScope && attachmentDraft.busy;
-  const renderAttachments = useCallback((row: TimelineRow) => client && threadId && row.attachments?.length
-    ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
-  const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
-  const timelineRef = useRef<ChatTimelineHandle>(null);
-  const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
-  if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
+  // Retained across a popped thread route, but scoped to this connection identity.
   const positions = useRef(new Map<string, TimelinePosition>());
+  const textDrafts = useRef(new Map<string, string>());
   const locatedThreads = useRef(new Set<string>());
   const olderCursors = useRef(new Map<string, string | null>());
   const [records, setRecords] = useState<SendRecord[]>([]);
   const outboxRef = useRef<MobileOutbox | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const busyRef = useRef(false), markedRef = useRef(new Map<string, number>());
-  const openingRef = useRef(0);
+  const busyRef = useRef(false);
   const appActive = useRef(AppState.currentState === 'active');
 
   useEffect(() => {
@@ -81,6 +84,7 @@ function Screen() {
         if (!parsed || typeof parsed !== 'object') throw new Error('Saved connection is invalid');
         const c = parsed as Connection;
         const valid = connection(c.baseUrl, c.token, c.id);
+        // Do not remount the Stack on cold restore: keep an incoming deep link alive.
         setConfig(valid); setBase(valid.baseUrl);
       }
       const pending = restorePairing(savedPairing);
@@ -114,8 +118,9 @@ function Screen() {
     })).then(saved => {
       if (!active) return;
       setPairingBusy(false);
-      setConfig(saved); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
+      setSession(null); setConfig(saved); setIdentity(n => n + 1); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
       setPendingPairing(null); setPairingStatus('');
+      router.replace('/');
     }).catch(() => {
       if (active && !controller.signal.aborted) { setPairingStatus(''); setError('Could not pair. Check the pairing code or contact your admin.'); }
     }).finally(() => { if (active) setPairingBusy(false); });
@@ -124,7 +129,8 @@ function Screen() {
   }, [pendingPairing, pairingEpoch]);
 
   useEffect(() => {
-    if (!config) { setClient(null); return; }
+    positions.current.clear(); textDrafts.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear();
+    if (!config) { setSession(null); return; }
     let active = true;
     const transport = nativeTransport(config.baseUrl);
     let box: MobileOutbox | null = null;
@@ -144,15 +150,15 @@ function Screen() {
       if (notice) setError(sendNotice(notice));
     });
     outboxRef.current = box;
-    setClient(sdk); setStatus('connecting'); setLoading(true); setError('');
-    ++openingRef.current; setChannelId(null); setThreadId(null); setPageCursor(null); setLocated(false); setStartRef(null); positions.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear(); markedRef.current.clear(); setRecords([]);
+    setSession({ config, client: sdk }); setStatus('connecting'); setLoading(true); setError('');
+    setRecords([]);
     (async () => {
       try {
         await box.start();
         if (active && appActive.current) await sdk.connect();
       } catch { if (active) { setLoading(false); setError("Could not load your messages. Don't clear this app's data; reopen the app."); } }
     })();
-    return () => { active = false; ++openingRef.current; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
+    return () => { active = false; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
   }, [config]);
 
   useEffect(() => {
@@ -189,19 +195,92 @@ function Screen() {
     const old = outboxRef.current;
     if (old) { await old.stop(); await old.storage.clear(); }
     await SecureStore.deleteItemAsync(CONFIG_KEY);
-    setRecords([]); setConfig(null); setClient(null); setPairingCode(''); setEditing(false); setStatus('suspended');
+    setRecords([]); setSession(null); setConfig(null); setIdentity(n => n + 1); setPairingCode(''); setEditing(false); setStatus('suspended');
+    router.replace('/connection');
   });
+  const cancelPairing = () => run(async () => {
+    pairingTask.current?.controller.abort();
+    await pairingTask.current?.promise.catch(() => {});
+    await SecureStore.deleteItemAsync(PAIRING_KEY);
+    setPendingPairing(null); setPairingStatus(''); setPairingCode(''); setEditing(false);
+    if (router.canGoBack()) router.back(); else router.replace('/');
+  });
+  const value: AppContextValue = { ready, config, client, agentName, identity, revision, records, connectionEpoch,
+    loading, status, error, base, pairingCode, pendingPairing, pairingBusy, pairingStatus, busy, editing,
+    setPairingCode, setEditing, saveConnection, forget, cancelPairing, positions, textDrafts, locatedThreads, olderCursors, outboxRef };
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+export function useApp() {
+  const context = useContext(AppContext);
+  if (!context) throw new Error('AppProvider is required');
+  return context;
+}
+
+export function ThreadScreen({ threadId }: { threadId: string }) {
+  const router = useRouter();
+  const { config, client, agentName, revision, records, connectionEpoch, status, error: connectionError,
+    loading, positions, textDrafts, locatedThreads, olderCursors, outboxRef } = useApp();
+  const focused = useIsFocused();
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
+  const [text, setText] = useState(() => textDrafts.current.get(threadId) || ''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
+  useEffect(() => {
+    if (text) textDrafts.current.set(threadId, text);
+    else textDrafts.current.delete(threadId);
+  }, [text, threadId, textDrafts]);
+  const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
+  const [attachmentClearKey, setAttachmentClearKey] = useState(0);
+  const composerScope = `${config?.id || ''}:${threadId}`;
+  const currentComposer = useRef(composerScope);
+  currentComposer.current = composerScope;
+  useEffect(() => {
+    currentComposer.current = composerScope;
+    return () => { currentComposer.current = ''; };
+  }, [composerScope]);
+  const onAttachmentsChange = useCallback((items: Attachment[], uploading: boolean) => {
+    if (currentComposer.current === composerScope) setAttachmentDraft({ scope: composerScope, items, busy: uploading });
+  }, [composerScope]);
+  const draftAttachments = attachmentDraft.scope === composerScope ? attachmentDraft.items : [];
+  const attachmentsBusy = attachmentDraft.scope === composerScope && attachmentDraft.busy;
+  const renderAttachments = useCallback((row: TimelineRow) => client && row.attachments?.length
+    ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
+  const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
+  const timelineRef = useRef<ChatTimelineHandle>(null);
+  const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
+  if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const busyRef = useRef(false), markedRef = useRef(0);
+  const openingRef = useRef(0);
+  const appActive = useRef(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; });
+    return () => sub.remove();
+  }, []);
+  useFocusEffect(useCallback(() => {
+    focusedRef.current = true;
+    return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); receiptHydrator.current?.cancel(); };
+  }, []));
+  const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError('');
+    // This state belongs only to this route; a hidden retained chat still needs
+    // its failure/busy state settled when the user returns from settings.
+    try { await fn(); } catch { setError(fallback); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
   const openThread = async (id: string) => {
-    if (!client) return;
+    if (!client || !focusedRef.current) return;
     const opening = ++openingRef.current;
-    setThreadId(id); setPageCursor(null); setHistoryBusy(true);
+    setPageCursor(null); setHistoryBusy(true);
     const cached = locatedThreads.current.has(id);
     setLocated(cached); setStartRef(positions.current.get(id)?.startRef ?? null);
     if (cached) { setPageCursor(olderCursors.current.get(id) ?? null); setHistoryBusy(false); return; }
     try {
       if (client.supportsLatest) {
         const page = await client.historyWindow(id);
-        if (opening !== openingRef.current) return;
+        if (!focusedRef.current || opening !== openingRef.current) return;
         olderCursors.current.set(id, page.older_cursor);
         setPageCursor(page.older_cursor); setLocated(true); locatedThreads.current.add(id);
         client.resumeTail(id);
@@ -210,8 +289,8 @@ function Screen() {
       }
       // The older server only exposes forward pages. Auto-scan a strictly bounded
       // prefix; never present an oldest page as if it were the latest page.
-      const cursor = await locateLatest(after => client.history(id, after, 100), 3, () => opening === openingRef.current);
-      if (opening === openingRef.current) {
+      const cursor = await locateLatest(after => client.history(id, after, 100), 3, () => focusedRef.current && opening === openingRef.current);
+      if (focusedRef.current && opening === openingRef.current) {
         setPageCursor(cursor); setLocated(!cursor);
         if (!cursor) {
           client.resumeTail(id);
@@ -220,16 +299,16 @@ function Screen() {
           setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
         }
       }
-    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
-    finally { if (opening === openingRef.current) setHistoryBusy(false); }
+    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
+    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const locateNext = async () => {
-    if (!client || !threadId || !pageCursor || historyBusy) return;
+    if (!client || !focusedRef.current || !pageCursor || historyBusy) return;
     const opening = openingRef.current, id = threadId, cursor = pageCursor;
     setHistoryBusy(true);
     try {
       const page = await client.history(id, cursor, 100);
-      if (opening !== openingRef.current) return;
+      if (!focusedRef.current || opening !== openingRef.current) return;
       setPageCursor(page.next_cursor); setLocated(!page.next_cursor);
       if (!page.next_cursor) {
         client.resumeTail(id);
@@ -237,11 +316,11 @@ function Screen() {
         const loaded = client.messages.get(id) || [];
         setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
       }
-    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
-    finally { if (opening === openingRef.current) setHistoryBusy(false); }
+    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
+    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const loadOlder = async () => {
-    if (!client || !threadId || historyBusy) return;
+    if (!client || !focusedRef.current || historyBusy) return;
     timelineRef.current?.holdPosition();
     if (first > 0) { setStartRef(olderStart(messages, visibleMessages[0]?.ref_seq ?? null)); return; }
     if (!client.supportsLatest || !pageCursor) return;
@@ -249,18 +328,19 @@ function Screen() {
     setHistoryBusy(true);
     try {
       const page = await client.historyWindow(id, pageCursor);
-      if (opening !== openingRef.current) return;
+      if (!focusedRef.current || opening !== openingRef.current) return;
       olderCursors.current.set(id, page.older_cursor); setPageCursor(page.older_cursor);
       setStartRef(page.messages[0]?.ref_seq ?? startRef);
-    } catch { if (opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
-    finally { if (opening === openingRef.current) setHistoryBusy(false); }
+    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
+    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const send = () => run(async () => {
     const box = outboxRef.current;
-    if (!config || !threadId || !box || box.storage.connectionId !== config.id) return;
+    if (!config || !focusedRef.current || !box || box.storage.connectionId !== config.id) return;
     if (attachmentsBusy) return;
     const original = text, scope = composerScope;
     await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID(), draftAttachments));
+    if (outboxRef.current === box && textDrafts.current.get(threadId) === original) textDrafts.current.delete(threadId);
     if (currentComposer.current === scope) {
       timelineRef.current?.followLatest();
       setText((old: string) => old === original ? '' : old);
@@ -269,101 +349,132 @@ function Screen() {
     }
   }, "Message not saved or sent. Don't clear this app's data; try again.");
   const answer = (item: Interaction, choice: string) => run(async () => {
-    if (!client) return;
+    if (!client || !focusedRef.current) return;
     const current = await client.getInteraction(item.thread_id, item.id);
     if (current.state !== 'pending' || current.generation !== item.generation) throw new Error('Request is no longer active');
-    await client.answerInteraction(current, choice);
+    if (focusedRef.current) await client.answerInteraction(current, choice);
   });
 
-  const messages = threadId ? client?.messages.get(threadId) || [] : [];
+  const messages = client?.messages.get(threadId) || [];
   const first = windowStart(messages, startRef);
   const visibleMessages = located ? messages.slice(first) : [];
-  const receipts = client && threadId ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
-  const interactions = client && threadId ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
-  const rows = projectTimeline(visibleMessages, null, threadId || '', threadId ? client?.drafts.get(threadId) : undefined, client?.supportsSendIdentity, records, client?.receipts, interactions);
+  const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
+  const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
+  const rows = projectTimeline(visibleMessages, null, threadId, client?.drafts.get(threadId), client?.supportsSendIdentity, records, client?.receipts, interactions);
 
   const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
     .map(m => [m.receipt_id, m.client_message_id]));
   useEffect(() => {
-    if (client && threadId && located && client.connectionState === 'online') receiptHydrator.current?.update(client, threadId, visibleMessages, connectionEpoch);
+    if (focused && client && located && client.connectionState === 'online') receiptHydrator.current?.update(client, threadId, visibleMessages, connectionEpoch);
     else receiptHydrator.current?.cancel();
     return () => receiptHydrator.current?.cancel();
-  }, [client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
-  const selected = client?.threads.get(threadId || '') as ThreadSummary | undefined;
+  }, [focused, client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
 
   const visibleRef = (ref: number) => {
-    if (!client || !threadId || !appActive.current) return;
-    if (ref <= (markedRef.current.get(threadId) || 0)) return;
-    markedRef.current.set(threadId, ref);
+    if (!client || !focusedRef.current || !appActive.current) return;
+    if (ref <= markedRef.current) return;
+    markedRef.current = ref;
     client.markRead(threadId, ref).catch(() => {
-      if (markedRef.current.get(threadId) === ref) markedRef.current.delete(threadId);
+      if (markedRef.current === ref) markedRef.current = 0;
     });
   };
   useEffect(() => {
-    if (client && threadId && located && client.tailIncomplete.has(threadId)) {
+    if (focused && client && located && client.tailIncomplete.has(threadId)) {
       locatedThreads.current.delete(threadId);
       setLocated(false);
       void openThread(threadId);
     }
-  }, [revision, client, threadId, located]);
+  }, [focused, revision, client, threadId, located]);
   useEffect(() => {
-    if (status === 'online' && client && threadId && !located && !historyBusy && !pageCursor) void openThread(threadId);
-  }, [connectionEpoch]);
+    if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor) void openThread(threadId);
+  }, [focused, client, threadId, revision, connectionEpoch]);
+  useEffect(() => {
+    return () => { ++openingRef.current; receiptHydrator.current?.cancel(); };
+  }, [client, threadId]);
 
-  if (!ready) return <View style={styles.center}><Text>Opening…</Text></View>;
-  if (!config || editing) return <ConnectionScreen code={pairingCode} onCode={setPairingCode}
-    connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
-    onPair={saveConnection} onBack={() => { setEditing(false); if (config) setBase(config.baseUrl); }} onForget={forget} />;
-
+  const selected = client?.threads.get(threadId);
+  if (!config || !client) return <Notice text="Opening conversation…" />;
+  if (!selected || selected.archived || !client.channels.has(selected.project_id))
+    return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
   return <View style={styles.flex}>
-    <View style={styles.header}>
-      <View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
-      <Button title="Connection" secondary onPress={() => setEditing(true)} />
-      <Button title="Agent settings" secondary onPress={() => setSettingsOpen(true)} />
-    </View>
-    {!!error && <Text style={styles.error}>{error}</Text>}
+    <Stack.Screen options={{ title: selected.title || 'Conversation',
+      headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
+    {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {loading && <Text style={styles.hint}>Opening…</Text>}
-    {threadId && client ? <>
-      <View style={styles.row}><Button title="‹ Topics" secondary onPress={() => { ++openingRef.current; setThreadId(null); setPageCursor(null); }} /><Text style={styles.heading} numberOfLines={1}>{selected?.title || 'Conversation'}</Text></View>
-      <ChatTimeline key={threadId} ref={timelineRef} threadId={threadId} rows={rows}
-        startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
-        locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
-        onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
-        onOlder={() => { void loadOlder(); }}
-        position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
-        text={text} onText={setText} onSend={send}
-        attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
-        typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
-        composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
-        receipts={receipts} interactions={interactions} answers={answers}
-        onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
-        onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
-        onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
-    </> : client ? <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
-      <ChannelScreens client={client} channelId={channelId} onChannel={setChannelId} onThread={id => { void openThread(id); }} />
-    </KeyboardAvoidingView> : null}
-    {settingsOpen && <Modal animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setSettingsOpen(false)}>
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
-        <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
-          <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error} saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => setSettingsOpen(false)}>
-            {client && <ModelSettings key={config.id} client={client} />}
-            <FontSizeSettings />
-          </AgentSettings>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </Modal>}
+    <ChatTimeline ref={timelineRef} threadId={threadId} rows={rows}
+      startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
+      locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
+      onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
+      onOlder={() => { void loadOlder(); }}
+      position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
+      text={text} onText={setText} onSend={send}
+      attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
+      typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
+      composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
+      receipts={receipts} interactions={interactions} answers={answers}
+      onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
+      onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
+      onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
   </View>;
 }
-export default function App() { return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}><Screen /></SafeAreaView></KeyboardProvider></FontSizeProvider></SafeAreaProvider>; }
+
+export function Notice({ text }: { text: string }) {
+  return <View style={styles.center}><Text style={styles.hint}>{text}</Text></View>;
+}
+
+export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
+  const { ready, config, client, loading, error } = useApp();
+  const router = useRouter();
+  if (!ready) return <Notice text="Opening…" />;
+  if (!config || !client) return <Notice text="Opening…" />;
+  if (channelId && !client.channels.has(channelId))
+    return <Notice text={client.connectionState === 'online' ? 'This channel is unavailable.' : 'Opening channel…'} />;
+  return <View style={styles.flex}>
+    {!channelId && <View style={styles.header}><View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
+      <Button title="Connection" secondary onPress={() => router.push('/connection')} />
+      <Button title="Agent settings" secondary onPress={() => router.push('/settings')} />
+    </View>}
+    {!!error && <Text style={styles.error}>{error}</Text>}
+    {loading && <Text style={styles.hint}>Opening…</Text>}
+    <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+      <ChannelScreens client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
+        onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })} />
+    </KeyboardAvoidingView>
+  </View>;
+}
+
+export function ConnectionRoute() {
+  const { ready, config, pairingCode, setPairingCode, pendingPairing, busy, pairingBusy, pairingStatus, error,
+    saveConnection, forget, cancelPairing, setEditing } = useApp();
+  const router = useRouter();
+  if (!ready) return <Notice text="Opening…" />;
+  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+    <ConnectionScreen code={pairingCode} onCode={setPairingCode}
+      connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
+      onPair={saveConnection} onBack={() => { if (pendingPairing) cancelPairing(); else { setEditing(false); if (router.canGoBack()) router.back(); else router.replace('/'); } }}
+      onForget={forget} />
+  </KeyboardAvoidingView>;
+}
+
+export function SettingsRoute() {
+  const { config, client, agentName } = useApp();
+  const router = useRouter();
+  if (!config || !client) return <Notice text="Opening settings…" />;
+  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+    <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
+      saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => router.back()}>
+      <ModelSettings key={config.id} client={client} />
+      <FontSizeSettings />
+    </AgentSettings>
+  </KeyboardAvoidingView>;
+}
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' }, flex: { flex: 1 }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  form: { flexGrow: 1, justifyContent: 'center', padding: 24, gap: 14 }, header: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderColor: '#e2e8f0' },
-  brand: { fontSize: 30, fontWeight: '700', color: '#14283e' }, brandSmall: { fontSize: 19, fontWeight: '700', color: '#14283e' }, subtitle: { color: '#64748b', fontSize: 12 },
-  heading: { fontSize: 16, fontWeight: '600', color: '#172a40', flexShrink: 1 }, caption: { color: '#607187', fontSize: 12 }, hint: { color: '#607187', fontSize: 12, margin: 9 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 10, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' },
-  button: { backgroundColor: '#2960ad', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', margin: 2 }, secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 }, buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 }, secondaryText: { color: '#2b4e81' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, flexWrap: 'wrap' }, create: { gap: 6, padding: 10 }, listItem: { backgroundColor: '#fff', marginHorizontal: 10, marginVertical: 4, padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
-  card: { backgroundColor: '#fff8e8', borderColor: '#edd8a1', borderWidth: 1, padding: 10, margin: 8, borderRadius: 9, gap: 5 }
-
+  flex: { flex: 1 }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderColor: '#e2e8f0' },
+  brandSmall: { fontSize: 19, fontWeight: '700', color: '#14283e' },
+  hint: { color: '#607187', fontSize: 12, margin: 9 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10 },
+  button: { backgroundColor: '#2960ad', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', margin: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 }, headerLink: { color: '#2b4e81', fontSize: 13, fontWeight: '600' },
+  secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 }, buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 }, secondaryText: { color: '#2b4e81' },
 });

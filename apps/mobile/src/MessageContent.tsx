@@ -1,9 +1,9 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
@@ -12,6 +12,7 @@ import { ARTICLE_TEXT_LIMIT, renderArticleHtml } from './articleHtml';
 import { safeLinkUrl } from './messageMarkdown';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
+import { useViewer } from './Viewers';
 
 const copy = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('Copy failed', 'Could not copy to the clipboard.'));
@@ -89,6 +90,8 @@ function ImagePreview({ image }: { image: Extract<Inline, { kind: 'image' }> }) 
 function PlayingVideo({ src, onFailure }: { src: string; onFailure: () => void }) {
   // Mount only after tap: useVideoPlayer owns/releases the native player on unmount.
   const player = useVideoPlayer(src, instance => { instance.loop = false; instance.pause(); });
+  const focused = useIsFocused();
+  useEffect(() => { if (!focused) player.pause(); }, [focused, player]);
   useEffect(() => {
     const status = player.addListener('statusChange', ({ status: next }) => {
       if (next === 'error') onFailure();
@@ -326,12 +329,34 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
     sharedCookiesEnabled={false} thirdPartyCookiesEnabled={false} />;
 }
 
+function ExpandedContent({ target, text, blocks, toolCalls, onExpand, tone, allowed }: {
+  target: ExpandTarget; text: string; blocks: Block[]; toolCalls?: readonly ToolCall[];
+  onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object>;
+}) {
+  // Native Stack retains this document when a child route covers it, including
+  // its WebView scroll/selection state. Do not unmount it on blur.
+  // ViewerScreen already provides bottom/side safe-area padding.
+  return <View style={styles.viewer}>
+    {target.kind === 'message'
+      ? <ArticleContent text={text} blocks={blocks} toolCalls={toolCalls} onExpand={onExpand} tone={tone} allowed={allowed} />
+      : target.kind === 'table' && target.block.kind === 'table'
+        ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
+            <MarkdownTable block={target.block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} fullscreen />
+          </ScrollView>
+        : target.block.kind === 'diagram'
+          ? <RenderBlock block={target.block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} fullscreenDiagram />
+          : null}
+  </View>;
+}
+
 /** Native renderer: validated remote images load automatically in a fixed frame. */
 export const MessageContent = memo(function MessageContent({ text, toolCalls, pending = false, canExpand = false }: { text: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
   const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
   const allowed = useMemo(() => webViewAllowlist(parsed), [parsed]);
-  const [target, setTarget] = useState<ExpandTarget | null>(null);
-  const insets = useSafeAreaInsets();
+  const focused = useIsFocused();
+  const { openViewer } = useViewer();
+  const expand: OpenExpand = target => openViewer(target.kind === 'message' ? 'Message' : target.kind === 'table' ? 'Table' : 'Diagram',
+    <ExpandedContent target={target} text={text} blocks={parsed} toolCalls={toolCalls} onExpand={expand} tone={tone} allowed={allowed} />);
   // Observe ordinary text taps without becoming a responder (selection and
   // nested links/scroll views retain their native touch handling).
   const gesture = useRef<{ start?: { target: number; x: number; y: number; at: number }; tap?: { target: number; x: number; y: number; at: number } }>({});
@@ -340,7 +365,7 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
     return typeof target === 'number' && Number.isFinite(pageX) && Number.isFinite(pageY) && (!touches || touches.length <= 1)
       ? { target, x: pageX, y: pageY, at: Date.now() } : null;
   };
-  const touchStart = (event: GestureResponderEvent) => { if (!target) gesture.current.start = point(event) || undefined; };
+  const touchStart = (event: GestureResponderEvent) => { if (focused) gesture.current.start = point(event) || undefined; };
   const touchMove = (event: GestureResponderEvent) => {
     const start = gesture.current.start, now = point(event);
     if (!start || !now || Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) gesture.current = {};
@@ -348,10 +373,10 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
   const touchEnd = (event: GestureResponderEvent) => {
     const start = gesture.current.start, now = point(event), previous = gesture.current.tap;
     gesture.current = {};
-    if (target || !canExpand || !start || !now || now.target !== start.target || now.at - start.at > 250 ||
+    if (!focused || !canExpand || !start || !now || now.target !== start.target || now.at - start.at > 250 ||
       Math.abs(start.x - now.x) > 10 || Math.abs(start.y - now.y) > 10) return;
     if (previous && previous.target === now.target && now.at - previous.at <= 350 &&
-      Math.abs(previous.x - now.x) <= 24 && Math.abs(previous.y - now.y) <= 24) setTarget({ kind: 'message' });
+      Math.abs(previous.x - now.x) <= 24 && Math.abs(previous.y - now.y) <= 24) expand({ kind: 'message' });
     else gesture.current.tap = now;
   };
   const progress = useRef(new Animated.Value(pending ? 0 : 1)).current;
@@ -379,27 +404,8 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
   }, [pending, progress]);
   const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
   return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
-    <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} suspended={!!target} />
+    <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={expand} onInteraction={() => { gesture.current = {}; }} />
     <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
-    <Modal visible={!!target} transparent={false} animationType="slide" onRequestClose={() => setTarget(null)}>
-      {target && <View onTouchStart={stopTouch} style={[styles.modal, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>{target.kind === 'message' ? 'Message' : target.kind === 'table' ? 'Table' : 'Diagram'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close fullscreen view" hitSlop={12} onPress={() => setTarget(null)}>
-            <Text style={styles.modalClose}>Close ✕</Text>
-          </Pressable>
-        </View>
-        {target.kind === 'message'
-          ? <ArticleContent text={text} blocks={parsed} toolCalls={toolCalls} onExpand={setTarget} tone={tone} allowed={allowed} />
-          : target.kind === 'table' && target.block.kind === 'table'
-            ? <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} nestedScrollEnabled keyboardShouldPersistTaps="always">
-                <MarkdownTable block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreen />
-              </ScrollView>
-            : target.block.kind === 'diagram'
-              ? <RenderBlock block={target.block} tone={tone} allowed={allowed} onExpand={setTarget} onInteraction={() => { gesture.current = {}; }} fullscreenDiagram />
-              : null}
-      </View>}
-    </Modal>
   </View>;
 });
 
@@ -439,10 +445,7 @@ const styles = StyleSheet.create({
   fullscreenDiagram: { flex: 1, minHeight: 0, width: '100%' },
   expandButton: { alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 },
   expandText: { color: '#215ca7', fontSize: 12 },
-  modal: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
-  modalTitle: { color: '#172a40', fontWeight: '700', fontSize: 18 },
-  modalClose: { color: '#215ca7', fontSize: 15, padding: 6 },
+  viewer: { flex: 1, backgroundColor: '#fff', paddingBottom: 12, paddingHorizontal: 14 },
   modalScroll: { flex: 1, minWidth: 0 },
   modalScrollContent: { paddingBottom: 16 },
   articleWeb: { flex: 1, backgroundColor: '#fff' },

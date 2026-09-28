@@ -111,7 +111,7 @@ type Props = {
   children?: React.ReactNode;
 };
 
-/** Parent owns the Modal and safe area; keep this mounted only while it is open. */
+/** The settings route owns its native header and safe area. */
 export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry, children }: Props) {
   const [draft, setDraft] = useState(name === DEFAULT_NAME ? '' : name);
   const edited = useRef(false);

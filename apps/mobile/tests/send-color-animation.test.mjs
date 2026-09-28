@@ -40,6 +40,7 @@ function mount(initialPending, reduced = false) {
     StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 390, height: 844 }), Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal'
   };
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
+    'expo-router': { useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
     './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
