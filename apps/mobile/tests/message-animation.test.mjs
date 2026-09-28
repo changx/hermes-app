@@ -75,7 +75,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
   flatList.ref.current = list;
   const flush = () => { while (frames.length) frames.shift()(); };
   return {
-    calls, ref, get flatList() { return flatList; }, get input() { return input; }, get tree() { return tree; }, flush,
+    calls, ref, get flatList() { return flatList; }, get sticky() { return sticky; }, get input() { return input; }, get tree() { return tree; }, flush,
     draft(text, onText) { props.text = text; props.onText = onText; render(); },
     content: height => flatList.onContentSizeChange(0, height),
     layout: height => flatList.onLayout({ nativeEvent: { layout: { height } } }),
@@ -88,6 +88,23 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false } = {}
     visible: value => { visible = value; }, motion: value => subscriptions.motion(value), app: state => subscriptions.app(state)
   };
 }
+
+test('transparent latest row overlaps by its measured height and resets when hidden', () => {
+  const h = mount();
+  h.layout(500); h.content(1600); h.flush(); h.calls.length = 0;
+  assert.equal(h.sticky.style.marginTop, 0);
+  h.ref.current.holdPosition(); h.rerender();
+  for (const height of [54, 82]) {
+    h.sticky.children[0].props.onLayout({ nativeEvent: { layout: { height } } });
+    h.rerender(); h.flush();
+    assert.equal(h.sticky.style.marginTop, -height);
+    assert.equal(h.sticky.pointerEvents, 'box-none');
+    assert.equal(h.sticky.children[0].props.pointerEvents, 'box-none');
+    assert.deepEqual(h.calls, [], 'row measurement must preserve the reading position');
+  }
+  h.ref.current.followLatest(); h.rerender();
+  assert.equal(h.sticky.style.marginTop, 0);
+});
 
 test('latest button follows the shared dock, preserves reading on resize and restores following on tap', () => {
   const h = mount();

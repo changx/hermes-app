@@ -367,6 +367,11 @@ test('latest action sits above the composer at the right in its shared keyboard 
   const row = sticky.props.children[0];
   assert.equal(row.type, 'View');
   assert.equal(row.props.style.alignItems, 'flex-end');
+  assert.equal(row.props.style.backgroundColor, 'transparent');
+  assert.equal(row.props.pointerEvents, 'box-none');
+  assert.equal(sticky.props.pointerEvents, 'box-none');
+  assert.equal(typeof row.props.onLayout, 'function');
+  assert.equal(latest.props.style.backgroundColor, '#e7eef7');
   assert.ok(row.props.style.paddingHorizontal > 0);
   assert.ok(expand(row).includes(latest));
   const composer = accessory ? named(h.tree, 'Accessory')[0] : named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');

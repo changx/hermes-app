@@ -68,6 +68,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const { bottom } = useSafeAreaInsets();
   const dockHeight = useRef(0);
   const [composerHeight, setComposerHeight] = useState(0);
+  const [latestRowHeight, setLatestRowHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
@@ -234,7 +235,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         }} scrollEventThrottle={16} />
 
     </View>
-    <KeyboardStickyView offset={{ opened: bottom }} onLayout={e => {
+    <KeyboardStickyView pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
       const height = e.nativeEvent.layout.height;
       if (dockHeight.current !== height) {
         const hadDock = dockHeight.current > 0;
@@ -243,7 +244,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         if (hadDock && restored.current && following.current && !keyboardMoving.current) scheduleFollow();
       }
     }}>
-    {showLatest && <View style={styles.latestRow}>
+    {showLatest && <View pointerEvents="box-none" style={styles.latestRow} onLayout={e => setLatestRowHeight(e.nativeEvent.layout.height)}>
       <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>
@@ -281,7 +282,8 @@ const styles = StyleSheet.create({
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },
   older: { alignItems: 'center', padding: 12 }, locating: { color: '#566a81', lineHeight: 20, textAlign: 'center' }, empty: { textAlign: 'center', color: '#697b90', margin: 24 },
-  latestRow: { alignItems: 'flex-end', paddingHorizontal: 14, paddingVertical: 6 },
+  // Overlap only this measured row with the list; keep it inside the dock hit bounds.
+  latestRow: { backgroundColor: 'transparent', alignItems: 'flex-end', paddingHorizontal: 14, paddingVertical: 6 },
   latest: { minWidth: 40, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e7eef7' }, latestText: { color: '#294e7b', fontSize: 20 },
   controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }, controlText: { color: '#233b56', fontSize: 13, flexShrink: 1 },
   interactions: { maxHeight: 170 },
