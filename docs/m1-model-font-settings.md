@@ -32,3 +32,7 @@ Jamie 随后明确要求“发布”。已将 `4552a8ea71d5202ebf65d365addd7d3e5
 - Jamie Gateway PID/启动时间、固定核心提交及工作树状态、开发实例配置文件哈希均未变。没有切换真实模型或 Provider。
 - 回滚保留于私有 `workspace/hermes-app/agent-settings/release-rollback/`，发布前身份记录为 `release-before.json`，基线提交 `c2be2a3`。代码回退应使用独立回滚提交，并恢复旧插件（删除本次新增 model_settings.py），不直接回退或改写用户数据。
 - 真机排版、系统辅助缩放以及真实 Provider 切换仍未验证；公网加载包验证不代替真机验收。
+
+## Small / Default 字号调整发布
+
+代码 `586c2d8` 已发布到既有 `exps://agent.tuly.space`，仅重启 Expo。Small=1、Default=1.1，较大两档不变；保存的档位名称和存储键保持兼容。247 项手机测试、TypeScript、iOS/Android 导出通过；两平台公网 manifest 和精确 launchAsset 包均确认新倍率。开发及 Jamie Gateway 的 PID/启动时间保持不变。基线 `f0c30e7` 保留于 Git，验证脚本、日志与哈希在私有 `workspace/hermes-app/font-size-rebase/`。首次 urllib 公网探测返回 403，改用 curl 后实际资源读取与断言通过。iPhone 实际排版仍待设备体验确认。
