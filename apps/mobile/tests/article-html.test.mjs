@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { safeFontScale } from '../src/fontScale.ts';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
 
 // Execute the real article serializer against the real Markdown AST, with small
@@ -15,7 +16,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
   if (name === 'expo-crypto') return { getRandomBytes: count => Uint8Array.from({ length: count }, (_, i) => i + 1) };
   if (name === './markdownRenderer.generated') return sampleEngines;
   if (name === './messageMarkdown') return { safeLinkUrl };
-  if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
+  if (name === './fontScale') return { safeFontScale };
   throw Error(name);
 } });
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
@@ -31,7 +32,8 @@ test('article CSS scales body, headings, code inheritance, controls and captions
   assert.match(large, /button\{[^}]*font:16\.9\d*px system-ui/);
   assert.match(large, /figcaption\{font-size:15\.6\d*px/);
   assert.match(large, /themeVariables:\{fontSize:'20\.8px'\}/);
-  assert.match(output.exports.renderArticleHtml(blocks, [], 0.9).html, /--interface-scale:0\.9/);
+  assert.match(output.exports.renderArticleHtml(blocks, [], 1).html, /font:15px\/1\.55/);
+  assert.match(output.exports.renderArticleHtml(blocks, [], 1.1).html, /font:16\.5px\/1\.55/);
   assert.match(output.exports.renderArticleHtml(blocks, [], Infinity).html, /--interface-scale:1\}/);
 });
 

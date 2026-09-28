@@ -58,6 +58,22 @@ function mount(store, os = 'ios') {
   } };
 }
 
+test('saved Small uses the former Default and Default is larger across native text and input', async () => {
+  for (const [saved, scale] of [['Small', 1], ['Default', 1.1], ['Large', 1.15], ['Extra large', 1.3], [null, 1.1], ['invalid', 1.1]]) {
+    const h = mount({ getItemAsync: async () => saved, setItemAsync: async () => {} });
+    h.render(); await flush();
+    assert.equal(h.render().scale, scale);
+    assert.equal(safeFontScale(scale), scale);
+    for (const Component of [h.api.Text, h.api.TextInput]) {
+      const element = Component({ style: { fontSize: 15, lineHeight: 23 } }, null);
+      assert.equal(element.props.style.fontSize, 15 * scale);
+      assert.equal(element.props.style.lineHeight, 23 * scale);
+    }
+    h.unmount();
+  }
+  for (const invalid of [0.9, NaN, Infinity, 100]) assert.equal(safeFontScale(invalid), 1);
+});
+
 test('cold restore is device-wide, invalid values fall back visibly, read failure is not silent', async () => {
   const storage = new Map();
   const store = { getItemAsync: async key => storage.get(key) ?? null, setItemAsync: async (key, value) => { storage.set(key, value); } };

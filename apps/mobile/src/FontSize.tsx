@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { safeFontScale } from './fontScale';
 
 export const FONT_SIZE_KEY = 'hermes.interface_font_size.v1';
-export const FONT_SIZES = { Small: 0.9, Default: 1, Large: 1.15, 'Extra large': 1.3 } as const;
+export const FONT_SIZES = { Small: 1, Default: 1.1, Large: 1.15, 'Extra large': 1.3 } as const;
 export type FontSizeChoice = keyof typeof FONT_SIZES;
 export function validFontSize(value: unknown): FontSizeChoice {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(FONT_SIZES, value) ? value as FontSizeChoice : 'Default';
@@ -38,7 +38,7 @@ type FontContextValue = {
   error: string | null;
   select: (choice: FontSizeChoice) => Promise<void>;
 };
-const FontContext = createContext<FontContextValue>({ choice: 'Default', scale: 1, loading: false, saving: false, error: null, select: async () => {} });
+const FontContext = createContext<FontContextValue>({ choice: 'Default', scale: FONT_SIZES.Default, loading: false, saving: false, error: null, select: async () => {} });
 const NestedText = createContext(false);
 export const useFontSize = () => useContext(FontContext);
 
