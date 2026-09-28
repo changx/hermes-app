@@ -1,5 +1,6 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
@@ -73,6 +74,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const onContentInsetChange = useCallback((insets: { bottom: number }) => { reportedInset.current = insets.bottom; }, []);
   const renderScrollComponent = useCallback((scrollProps: ScrollViewProps) =>
     <KeyboardChatScrollView {...scrollProps} automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
+      // RN 0.81+ otherwise loses drag touches in the contentInset/blank area.
+      applyWorkaroundForContentInsetHitTestBug
       offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
   [bottom, onContentInsetChange]);
   const list = useRef<FlatList<TimelineRow>>(null);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from './FontSize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -9,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
 import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
+import { useViewer } from './Viewers';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
 let fileSequence = 0;
@@ -18,6 +20,32 @@ function Action({ label, title = label, onPress, disabled = false }: { label: st
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.action, disabled && styles.disabled]}><Text style={styles.actionText}>{title}</Text></Pressable>;
 }
 
+function ImageViewer({ uri }: { uri: string }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [scale, setScale] = useState(1);
+  return <View style={styles.viewer}>
+    <ScrollView style={styles.zoom} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent>
+      <Image source={{ uri }} resizeMode="contain" style={{ width: width * scale, height: (height - insets.top - insets.bottom - 70) * scale }} />
+    </ScrollView>
+    {Platform.OS !== 'ios' && <View style={styles.controls}>
+      <Action label="Zoom out" onPress={() => setScale(Math.max(1, scale / 1.5))} />
+      <Action label="Zoom in" onPress={() => setScale(Math.min(4, scale * 1.5))} />
+    </View>}
+  </View>;
+}
+
+// Row-owned files can disappear while a Stack route is still visible. Copy on
+// demand and transfer only this copy's lifecycle to the viewer's onClose.
+async function openImage(uri: string, title: string, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean) {
+  const file = ownedFile();
+  try {
+    await new File(uri).copy(file);
+    if (!stillValid()) { forgetFile(file); return; }
+    openViewer(title, <ImageViewer uri={file.uri} />, () => forgetFile(file));
+  } catch (error) { forgetFile(file); throw error; }
+}
+
 /** Only ready, server-returned Attachment metadata reaches onChange. Failed selections remain visible; busy is true until removed/retried. */
 export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, disabled = false }: {
   client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; disabled?: boolean;
@@ -25,7 +53,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   const [items, setItems] = useState<DraftAttachment[]>([]);
   const [notice, setNotice] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const { openViewer } = useViewer();
   const itemsRef = useRef(items), callbacks = useRef(onChange), epoch = useRef(0), nextKey = useRef(0);
   const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>());
   const identity = useRef({ client, threadId, clearKey });
@@ -42,7 +70,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   };
   useEffect(() => {
     if (identity.current.client !== client || identity.current.threadId !== threadId || identity.current.clearKey !== clearKey) {
-      cleanup(); identity.current = { client, threadId, clearKey }; update([]); setPreview(null); setNotice(''); setMenuOpen(false);
+      cleanup(); identity.current = { client, threadId, clearKey }; update([]); setNotice(''); setMenuOpen(false);
     }
   }, [client, threadId, clearKey]);
   useEffect(() => { callbacks.current([], false); }, []);
@@ -167,6 +195,13 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     update(itemsRef.current.map(entry => entry.key === key ? { ...entry, status: 'uploading', error: undefined } : entry));
     void upload(key, item.source, epoch.current);
   };
+  const previewImage = (item: DraftAttachment) => {
+    if (!item.source.uri) return;
+    const generation = epoch.current;
+    void openImage(item.source.uri, item.source.name, openViewer,
+      () => generation === epoch.current && itemsRef.current.some(entry => entry.key === item.key))
+      .catch(() => { if (generation === epoch.current) setNotice('Could not open the image. Please try again.'); });
+  };
   return <View style={styles.composerRoot}>
       {menuOpen && <View style={[styles.controls, styles.menu]}>
         <Action label="Choose file" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
@@ -177,7 +212,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}
     {!!items.length && <ScrollView horizontal keyboardShouldPersistTaps="always" style={styles.draftStrip}>
     {items.map(item => <View key={item.key} style={[styles.tile, styles.draftTile]}>
-      {isImage(item.source.mime, item.source.name) && item.source.uri && <Pressable accessibilityRole="button" accessibilityLabel={`View image: ${item.source.name}`} onPress={() => setPreview(item.source.uri!)}>
+      {isImage(item.source.mime, item.source.name) && item.source.uri && <Pressable accessibilityRole="button" accessibilityLabel={`View image: ${item.source.name}`} onPress={() => previewImage(item)}>
         <Image source={{ uri: item.source.uri }} style={styles.thumb} />
       </Pressable>}
       <View style={styles.fileText}>
@@ -194,26 +229,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       </Pressable>
       {children}
     </View>
-    <ImageModal uri={preview} onClose={() => setPreview(null)} />
   </View>;
-}
-
-function ImageModal({ uri, onClose }: { uri: string | null; onClose: () => void }) {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const [scale, setScale] = useState(1);
-  return <Modal visible={!!uri} animationType="fade" onRequestClose={onClose} presentationStyle="fullScreen">
-    <View style={[styles.modal, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Action label="Close image" onPress={() => { setScale(1); onClose(); }} />
-      {uri && <ScrollView key={uri} style={styles.zoom} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent>
-        <Image source={{ uri }} resizeMode="contain" style={{ width: width * scale, height: (height - insets.top - insets.bottom - 70) * scale }} />
-      </ScrollView>}
-      {Platform.OS !== 'ios' && <View style={styles.controls}>
-        <Action label="Zoom out" onPress={() => setScale(Math.max(1, scale / 1.5))} />
-        <Action label="Zoom in" onPress={() => setScale(Math.min(4, scale * 1.5))} />
-      </View>}
-    </View>
-  </Modal>;
 }
 
 let activeDownloads = 0;
@@ -235,8 +251,7 @@ async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
 /** Authenticated SDK bytes only; no token-bearing image URLs, external viewers, or eager non-image downloads. */
 export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
   const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
-  const [preview, setPreview] = useState<string | null>(null);
-  const [textPreview, setTextPreview] = useState<string | null>(null);
+  const { openViewer } = useViewer();
   const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, AbortController>()), generation = useRef(0);
   const load = async (attachment: Attachment) => {
     if (attachment.state !== 'available' || pending.current.has(attachment.id) || loaded[attachment.id]?.status === 'ready') return;
@@ -264,7 +279,7 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
     }
   };
   useEffect(() => {
-    setLoaded({}); setPreview(null); setTextPreview(null);
+    setLoaded({});
     return () => {
       generation.current++; pending.current.forEach(controller => controller.abort()); pending.current.clear();
       cache.current.forEach(forgetFile); cache.current.clear();
@@ -276,8 +291,14 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
   const open = (attachment: Attachment) => {
     const entry = loaded[attachment.id];
     if (entry?.status === 'ready') {
-      if (isImage(attachment.mime, attachment.name)) setPreview(entry.uri || null);
-      else setTextPreview(entry.text || 'File downloaded. This format cannot be opened in the app yet.');
+      if (isImage(attachment.mime, attachment.name)) {
+        if (!entry.uri) return;
+        const current = generation.current;
+        void openImage(entry.uri, attachment.name || 'Image', openViewer, () => current === generation.current)
+          .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
+      } else openViewer(attachment.name || 'Attachment', <View style={styles.viewer}>
+        <ScrollView><Text selectable style={styles.previewText}>{entry.text || 'File downloaded. This format cannot be opened in the app yet.'}</Text></ScrollView>
+      </View>);
     } else void load(attachment);
   };
   return <View style={styles.root}>{attachments.map(attachment => {
@@ -292,11 +313,6 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
       </View>
     </Pressable>;
   })}
-    <ImageModal uri={preview} onClose={() => setPreview(null)} />
-    <Modal visible={textPreview !== null} onRequestClose={() => setTextPreview(null)}><View style={styles.modal}>
-      <Action label="Close preview" onPress={() => setTextPreview(null)} />
-      <ScrollView><Text selectable style={styles.previewText}>{textPreview}</Text></ScrollView>
-    </View></Modal>
   </View>;
 }
 
@@ -311,5 +327,5 @@ const styles = StyleSheet.create({
   tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
   thumb: { width: 62, height: 62, borderRadius: 6 }, fileText: { flex: 1, minWidth: 0 }, title: { color: '#172a40', fontSize: 12 },
   detail: { color: '#50647b', fontSize: 11, marginTop: 3 }, error: { color: '#a53238', fontSize: 12, marginTop: 5 },
-  modal: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 }
+  viewer: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 }
 });

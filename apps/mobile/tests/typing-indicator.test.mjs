@@ -27,7 +27,7 @@ function harness() {
   const out = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/TypingIndicator.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
-  }).outputText, { module: out, exports: out.exports, require: name => name === 'react' ? { ...react, default: react } : native });
+  }).outputText, { module: out, exports: out.exports, require: name => name === 'react' ? { ...react, default: react } : name === './FontSize' ? { Text: native.Text } : native });
   return { ...out.exports, animations, listeners, render(active, name) { index = 0; const tree = out.exports.TypingIndicator({ active, name }); effects.splice(0).forEach(f => f()); return tree; },
     unmount() { cells.forEach(c => c.cleanup?.()); } };
 }

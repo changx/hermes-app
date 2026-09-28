@@ -9,16 +9,17 @@ const flush = async () => { await new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 function harness({ platform = 'ios', nativePaste = true } = {}) {
   const disks = new Map([['file://a', Uint8Array.from([1, 2])], ['file://b', Uint8Array.from([3, 4])]]);
-  const removed = [], uploads = [], downloads = [], deletions = [], notices = [], pasted = [];
+  const removed = [], uploads = [], downloads = [], deletions = [], notices = [], pasted = [], viewers = [];
   let clipboardText = '', clipboardUrl = null, hasImage = true;
   let imagePick = async () => ({ canceled: true }), documentPick = async () => ({ canceled: true }), clipboardRead = async () => null;
-  let cameraPick = async () => ({ canceled: true }), cameraPermission = async () => ({ granted: true });
+  let cameraPick = async () => ({ canceled: true }), cameraPermission = async () => ({ granted: true }), copyGate = async () => {};
   let hook = 0, effects = [], props, component, mounted = false;
-  const cells = [], effectCells = [];
+  const cells = [], effectCells = [], viewerCells = [];
+  let activeCells = cells;
   const react = {
     createElement: (type, p, ...children) => ({ type, props: { ...p, children } }),
-    useState(initial) { const at = hook++; if (!(at in cells)) cells[at] = initial; return [cells[at], next => { cells[at] = typeof next === 'function' ? next(cells[at]) : next; }]; },
-    useRef(initial) { const at = hook++; if (!(at in cells)) cells[at] = { current: initial }; return cells[at]; },
+    useState(initial) { const at = hook++; const store = activeCells; if (!(at in store)) store[at] = initial; return [store[at], next => { store[at] = typeof next === 'function' ? next(store[at]) : next; }]; },
+    useRef(initial) { const at = hook++; const store = activeCells; if (!(at in store)) store[at] = { current: initial }; return store[at]; },
     useEffect(fn, deps) {
       const at = hook++;
       const old = effectCells[at];
@@ -35,10 +36,13 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
     write(value) { disks.set(this.uri, value); }
     async bytes() { if (!this.exists) throw new Error('not found'); return disks.get(this.uri); }
     async text() { return new TextDecoder().decode(await this.bytes()); }
+    async copy(destination) { await copyGate(); destination.write(Uint8Array.from(await this.bytes())); }
     delete() { removed.push(this.uri); disks.delete(this.uri); }
   }
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
+    './FontSize': { Text: native.Text },
+    './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewers.push({ title, content, onClose }) }) },
     'expo-image-picker': { launchImageLibraryAsync: (...args) => imagePick(...args), launchCameraAsync: (...args) => cameraPick(...args), requestCameraPermissionsAsync: () => cameraPermission() },
     'expo-document-picker': { getDocumentAsync: (...args) => documentPick(...args) },
     'expo-clipboard': { isPasteButtonAvailable: nativePaste, ClipboardPasteButton: 'ClipboardPasteButton', getImageAsync: (...args) => clipboardRead(...args), hasImageAsync: async () => hasImage, getStringAsync: async () => clipboardText, getUrlAsync: async () => clipboardUrl },
@@ -63,6 +67,7 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
   }
   function render(nextProps) {
     if (nextProps) props = nextProps;
+    activeCells = cells;
     hook = 0; effects = [];
     const nodes = expand(component(props));
     for (const effect of effects) effect();
@@ -79,6 +84,9 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
   };
   const unmount = () => { if (!mounted) return; for (const cell of effectCells) cell?.cleanup?.(); mounted = false; };
   return { start, render, press, unmount, client, disks, uploads, downloads, deletions, removed, notices, pasted,
+    viewers, view() { activeCells = viewerCells[viewers.length - 1] ??= []; hook = 0; return expand(viewers.at(-1).content); },
+    close() { const route = viewers.pop(); route?.onClose?.(); },
+    setCopyGate(fn) { copyGate = fn; },
     setClipboardText(text, url = null) { hasImage = false; clipboardText = text; clipboardUrl = url; },
     setCamera(fn) { cameraPick = fn; }, setPermission(fn) { cameraPermission = fn; },
     setImages(fn) { imagePick = fn; }, setFiles(fn) { documentPick = fn; }, setClipboard(fn) { clipboardRead = fn; } };
@@ -143,7 +151,7 @@ test('picker failure stays visible and busy until retry succeeds; server bytes a
   assert.equal(invalid.uploads.length, 0); assert.equal(JSON.stringify(invalid.notices.at(-1)), JSON.stringify([[], true])); invalid.unmount();
 });
 
-test('explicit iOS menu paste writes owned cache bytes, opens fullscreen, cleans only local cache', async () => {
+test('iOS paste image opens a routed, viewer-owned copy that survives composer cleanup', async () => {
   const h = harness(); h.start('AttachmentComposer');
   let reads = 0;
   h.setClipboard(async () => { reads++; return { data: 'data:image/png;base64,AQID' }; });
@@ -153,13 +161,42 @@ test('explicit iOS menu paste writes owned cache bytes, opens fullscreen, cleans
   assert.equal(reads, 1);
   assert.equal(h.uploads[0].bytes.length, 3);
   h.press('View image: pasted-image.png');
-  let nodes = h.render();
-  assert.equal(nodes.find(x => x.type === 'Modal').props.visible, true);
+  await flush();
+  assert.equal(h.viewers.at(-1).title, 'pasted-image.png');
+  const nodes = h.view();
   assert.equal(nodes.find(x => x.type === 'ScrollView' && x.props.minimumZoomScale === 1).props.maximumZoomScale, 4);
-  h.press('Close image', nodes);
-  assert.equal(h.render().find(x => x.type === 'Modal').props.visible, false);
+  const viewerUri = nodes.find(x => x.type === 'Image').props.source.uri;
+  assert.notEqual(viewerUri, h.render().find(x => x.type === 'Image').props.source.uri);
+  assert.deepEqual([...h.disks.get(viewerUri)], [1, 2, 3]);
   h.unmount();
-  assert.equal(h.removed.length, 1); assert.equal(h.deletions.length, 0);
+  assert.equal(h.removed.length, 1);
+  assert.ok(h.disks.has(viewerUri), 'viewer copy outlives composer');
+  h.close();
+  assert.equal(h.disks.has(viewerUri), false);
+  assert.equal(h.removed.length, 2); assert.equal(h.deletions.length, 0);
+});
+
+test('image copy cannot open after its draft row is removed; Android route retains zoom controls', async () => {
+  const h = harness({ platform: 'android' });
+  h.setImages(async () => ({ canceled: false, assets: [{ uri: 'file://a', fileName: 'x.png', fileSize: 2, mimeType: 'image/png' }] }));
+  h.start('AttachmentComposer'); h.press('Photo library'); await flush();
+  const pending = deferred();
+  h.setCopyGate(() => pending.promise);
+  h.press('View image: x.png');
+  h.press('Remove: x.png');
+  pending.resolve(); await flush();
+  assert.equal(h.viewers.length, 0, 'stale async copy cannot navigate');
+  assert.equal(h.disks.size, 2, 'stale viewer-owned copy deleted');
+  h.press('Photo library'); await flush();
+  h.setCopyGate(async () => {});
+  h.press('View image: x.png'); await flush();
+  const viewer = h.view();
+  const image = () => h.view().find(n => n.type === 'Image');
+  assert.equal(viewer.find(n => n.props.accessibilityLabel === 'Zoom in') !== undefined, true);
+  assert.equal(image().props.style.width, 390);
+  viewer.find(n => n.props.accessibilityLabel === 'Zoom in').props.onPress();
+  assert.equal(image().props.style.width, 585);
+  h.close(); h.unmount();
 });
 
 test('Android fallback reads clipboard only after explicit press', async () => {
@@ -169,7 +206,7 @@ test('Android fallback reads clipboard only after explicit press', async () => {
   h.press('Paste'); await flush(); assert.equal(reads, 1); assert.equal(h.uploads.length, 1); h.unmount();
 });
 
-test('history lazily fetches only mounted images through SDK, retries error and cleans cache', async () => {
+test('history loads images through SDK, routes image/text views and separates viewer copy lifetime', async () => {
   const h = harness();
   const attachments = [{ id: 'att_i', name: 'x.png', mime: 'image/png', size: 2, state: 'available' }, { id: 'att_t', name: 'note.txt', mime: 'text/plain', size: 2, state: 'available' }, { id: 'att_missing', name: 'gone.png', mime: 'image/png', state: 'missing' }];
   h.start('MessageAttachments', { attachments }); await flush();
@@ -177,12 +214,23 @@ test('history lazily fetches only mounted images through SDK, retries error and 
   let nodes = h.render();
   assert.ok(nodes.some(x => x.type === 'Image' && x.props.source.uri.startsWith('file://')));
   h.press('View attachment: x.png', nodes);
-  assert.equal(h.render().find(x => x.type === 'Modal').props.visible, true);
+  await flush();
+  assert.equal(h.viewers.at(-1).title, 'x.png');
+  const imageUri = h.view().find(x => x.type === 'Image').props.source.uri;
+  assert.notEqual(imageUri, nodes.find(x => x.type === 'Image').props.source.uri);
+  assert.deepEqual([...h.disks.get(imageUri)], [7, 8]);
   h.press('View attachment: note.txt'); await flush();
+  assert.deepEqual(h.downloads.map(x => x.id), ['att_i', 'att_t']);
   h.press('View attachment: note.txt');
-  assert.equal(h.render().filter(x => x.type === 'Modal').at(-1).props.visible, true);
+  assert.equal(h.viewers.at(-1).title, 'note.txt');
+  assert.equal(h.view().find(x => x.type === 'Text' && x.props.selectable).props.children[0], '\u0007\b');
+  h.close();
   h.unmount();
-  assert.equal(h.removed.length, 2); assert.equal(h.deletions.length, 0);
+  assert.ok(h.disks.has(imageUri), 'row cache was evicted but image route owns a copy');
+  assert.equal(h.removed.length, 2);
+  h.close();
+  assert.equal(h.disks.has(imageUri), false);
+  assert.equal(h.removed.length, 3); assert.equal(h.deletions.length, 0);
 
 });
 
@@ -245,7 +293,10 @@ test('camera permission is on demand, denial/cancel safe, photo uses upload and 
   granted = true; h.press('Take photo'); await flush(); assert.equal(launches, 1); assert.equal(h.uploads.length, 0);
   h.setCamera(async () => ({ canceled: false, assets: [{ uri: 'file://a', mimeType: 'image/png', fileSize: 2 }] }));
   h.press('Take photo'); await flush(); assert.equal(h.uploads[0].name, 'photo.png');
-  h.press('View image: photo.png'); assert.equal(h.render().find(x => x.type === 'Modal').props.visible, true); h.unmount();
+  h.press('View image: photo.png'); await flush();
+  assert.equal(h.viewers.at(-1).title, 'photo.png');
+  assert.equal(h.view().find(x => x.type === 'ScrollView').props.maximumZoomScale, 4);
+  h.close(); h.unmount();
 });
 
 test('camera permission and image results cannot cross composer lifetime', async () => {

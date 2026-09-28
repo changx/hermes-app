@@ -1,3 +1,2 @@
-import { registerRootComponent } from 'expo';
-import App from './src/App';
-registerRootComponent(App);
+// Expo Router registers the native root and discovers the file routes.
+import 'expo-router/entry';

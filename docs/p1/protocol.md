@@ -83,6 +83,14 @@ P1-03 原始交付未含 P1-04 审批/附件/主动任务投递或 P1-05 TS 客�
 
 `GET /v1/threads/{id}/attachments/{attachment_id}` 严格检查 Thread/元数据、`O_NOFOLLOW`、普通文件与大小；返回 `Content-Disposition: attachment` 和 `nosniff`。`DELETE` 只可删除**尚未附到收据**的上传；已附文件随归档 Thread 保留，不能借此删除原文或其他 Thread 文件。`POST /v1/threads/{id}/messages` 可加 `"attachments":["att_..."]`；接收事务校验同 Thread、未被领取，并绑定收据。重试同一 client ID 必须保持正文及附件 ID 完全相同。派发时将受控本地路径、MIME 和未内联标记放进核心 `MessageEvent.media_urls/media_types/media_text_inlined`，让 Agent 使用现有附件机制。插件仅保存文件元数据和收据引用，不另建聊天正文库。失败未附上传由用户显式 DELETE；启动时仅清理本插件命名且没有元数据的孤立文件和中断上传临时文件（最多检查 10000 项），不自动广泛清理或删除归档历史。
 
+### Agent 默认模型设置（候选，未发布）
+
+- 认证 `GET /v1/agent/model/options` 返回 `{scope:"connected-default",provider,model,providers:[{id,name,models:string[]}]}`。仅投影可选 Provider/Model，不返回 endpoint、密钥或认证元数据。
+- 认证 `PUT /v1/agent/model` 接受 `{scope:"connected-default",provider,model,confirm_selection:boolean}`；成功保存并读回后返回同一设置结构和 `effective:"next-turn"`。不自动重试写请求；响应不明时重新读取。
+- 原生费用或数据策略警告先返回 `{confirmation_required:true,warning,provider,model}`，不写配置。用户明确确认相同选择后才提交 `confirm_selection:true`；修改选择清除前次确认。
+- 默认值属于当前连接的 Hermes profile。已有 session/channel override 保持优先；正在运行的回合不打断。下一次无 override 的回合使用新默认，不为设置操作创建模型回合或会话记录，不重启 Gateway。
+- 复用核心 inventory、switch_model、persist_model_selection 及原生切换锁；固定核心无修改。完整范围与验证见 [模型与字体设置](../m1-model-font-settings.md)。
+
 ### 主动投递与搜索
 
 可见原始 USER 行的 `attachments` 字段由收据的权威 `user_row_id` 映射到附件元数据，包含 ID、文件名、MIME、大小及 `state=available|missing`；压缩复制行不重新认领附件。`GET /v1/threads/{id}/attachments/{attachment_id}/metadata` 供附件失效事件查询；未知或已删除 ID 返回明确 `state=deleted`，跨 Thread 不泄漏元数据。二进制 GET 仅下载现存文件；Agent 入站路径必须先以 `O_NOFOLLOW` 打开并校验普通文件及大小，防止上传后 symlink 替换。

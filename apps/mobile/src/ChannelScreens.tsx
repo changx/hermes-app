@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useIsFocused } from 'expo-router';
+import { Text, TextInput } from './FontSize';
 import type { HermesClient, ThreadSummary } from '../../../packages/client/src/index';
 import { channelPatch, threadPatch } from './channel-edits';
 
@@ -14,15 +16,21 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const [title, setTitle] = useState(''), [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const working = useRef(false), generation = useRef(0);
+  const focused = useIsFocused(), focusedRef = useRef(focused);
+  focusedRef.current = focused;
+  useFocusEffect(React.useCallback(() => {
+    focusedRef.current = true;
+    return () => { focusedRef.current = false; generation.current++; };
+  }, []));
   useEffect(() => {
     generation.current++;
     setCreating(false); setEditing(false); setRenaming(null); setName(''); setDescription(''); setTitle(''); setError('');
     return () => { generation.current++; };
   }, [channelId, client]);
   const run = async (work: (isCurrent: () => boolean) => Promise<void>) => {
-    if (working.current) return;
+    if (working.current || !focusedRef.current) return;
     const version = generation.current; working.current = true; setBusy(true); setError('');
-    const isCurrent = () => generation.current === version;
+    const isCurrent = () => focusedRef.current && generation.current === version;
     try { await work(isCurrent); }
     catch { if (isCurrent()) setError('Could not complete that action. Try again later.'); }
     finally { working.current = false; setBusy(false); }
@@ -48,7 +56,6 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   </View>;
   return <View style={s.fill}>
     <View style={s.top}>
-      {channelId && <Action label="‹ Channels" secondary disabled={busy} onPress={() => onChannel(null)} />}
       <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || 'Channel' : 'Channels'}</Text>
       <Action label={channelId ? 'Edit' : 'New'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
     </View>

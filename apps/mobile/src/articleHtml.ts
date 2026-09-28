@@ -2,6 +2,7 @@ import { getRandomBytes } from 'expo-crypto';
 import { KATEX_CSS, KATEX_SCRIPT, MERMAID_SCRIPT } from './markdownRenderer.generated';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import { safeLinkUrl } from './messageMarkdown';
+import { safeFontScale } from './fontScale';
 import type { ToolCall } from '../../../packages/client/src/index';
 
 // One WebView per open article, at most three locally rendered math/diagram nodes.
@@ -17,7 +18,7 @@ const script = (value: string) => value.replace(/<\/script/gi, '<\\/script');
 export type ArticleExpansion = { kind: 'table' | 'diagram'; block: Block };
 export type ArticlePage = { html: string; expansions: ArticleExpansion[]; links: string[] };
 
-export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall[]): ArticlePage {
+export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall[], scale = 1): ArticlePage {
   const expansions: ArticleExpansion[] = [], links: string[] = [];
   const imageSources = new Set<string>(), videoSources = new Set<string>();
   let rendered = 0, math = false, diagram = false;
@@ -111,7 +112,7 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
         if(el.dataset.render==='math'){
           el.innerHTML=katex.renderToString(source,{displayMode:el.dataset.display==='true',throwOnError:true,trust:false,maxExpand:1000});
         }else{
-          mermaid.initialize({startOnLoad:false,securityLevel:'strict',secure:['securityLevel','maxTextSize','maxEdges','htmlLabels'],htmlLabels:false,maxTextSize:6000,maxEdges:100,theme:'default'});
+          mermaid.initialize({startOnLoad:false,securityLevel:'strict',secure:['securityLevel','maxTextSize','maxEdges','htmlLabels'],htmlLabels:false,maxTextSize:6000,maxEdges:100,theme:'default',themeVariables:{fontSize:'${16 * safeFontScale(scale)}px'}});
           const result=await mermaid.render('article-diagram-'+Array.prototype.indexOf.call(document.querySelectorAll('[data-render="diagram"]'),el),source);
           el.innerHTML=result.svg;
           if(!el.querySelector('svg'))throw Error('diagram unavailable');
@@ -121,6 +122,6 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
   })();`;
   return { expansions, links, html: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; font-src data:; img-src data: ${escape([...imageSources].join(' '))}; media-src ${videoSources.size ? escape([...videoSources].join(' ')) : "'none'"}; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">` +
-    `<style>html,body{margin:0;background:white;color:#172a40;font:15px/1.55 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}body{padding:4px 2px 24px;overflow-wrap:anywhere}p{margin:0 0 12px}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:16px 0 8px}h1{font-size:23px}h2{font-size:21px}h3{font-size:19px}h4{font-size:17px}h5{font-size:16px}h6{font-size:15px}blockquote{border-left:3px solid #9ab2d2;margin:12px 0;padding-left:10px}ul,ol{padding-left:28px}li{margin:4px 0}li p{margin:0}code,pre{font-family:ui-monospace,monospace}code{background:#edf2f7}.code,.tool pre{background:#f2f5fa;border-radius:8px;padding:10px}.code pre,.tool pre{overflow:auto;white-space:pre;margin:0}.code small{color:#52657c}a{color:#215ca7}.table-scroll{overflow-x:auto;overscroll-behavior-x:contain}table{border-collapse:collapse;width:max-content;min-width:100%}td,th{border:1px solid #d6e0ed;min-width:140px;padding:8px;vertical-align:top}th{background:#e5ecf5}button{display:block;margin-left:auto;background:none;border:0;color:#215ca7;padding:8px;font:13px system-ui}.diagram{overflow:auto;max-height:50vh}.diagram svg{max-width:100%;height:auto}.fallback{overflow:auto;white-space:pre-wrap;max-height:220px}.formula{overflow:auto}.tools{margin-top:14px;color:#52657c;font-size:13px}.tool{margin:4px 0}.tool pre{color:#20314a}figure{margin:8px 0}img,video{display:block;max-width:100%;max-height:320px}figcaption{font-size:12px;color:#52657c}hr{border:0;border-top:1px solid #d7e0eb}</style>` + (math ? `<style>${KATEX_CSS}</style><script nonce="${nonce}">${script(KATEX_SCRIPT)}</script>` : '') + (diagram ? `<script nonce="${nonce}">${script(MERMAID_SCRIPT)}</script>` : '') +
+    `<style>:root{--interface-scale:${safeFontScale(scale)}}html,body{margin:0;background:white;color:#172a40;font:${15 * safeFontScale(scale)}px/1.55 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}body{padding:4px 2px 24px;overflow-wrap:anywhere}p{margin:0 0 12px}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:16px 0 8px}h1{font-size:${23 * safeFontScale(scale)}px}h2{font-size:${21 * safeFontScale(scale)}px}h3{font-size:${19 * safeFontScale(scale)}px}h4{font-size:${17 * safeFontScale(scale)}px}h5{font-size:${16 * safeFontScale(scale)}px}h6{font-size:${15 * safeFontScale(scale)}px}blockquote{border-left:3px solid #9ab2d2;margin:12px 0;padding-left:10px}ul,ol{padding-left:28px}li{margin:4px 0}li p{margin:0}code,pre{font-family:ui-monospace,monospace}code{background:#edf2f7}.code,.tool pre{background:#f2f5fa;border-radius:8px;padding:10px}.code pre,.tool pre{overflow:auto;white-space:pre;margin:0}.diagram{overflow:auto;max-height:50vh}.diagram svg{max-width:100%;height:auto}.fallback{overflow:auto;white-space:pre-wrap;max-height:220px}.formula{overflow:auto}.tools{margin-top:14px;color:#52657c;font-size:${13 * safeFontScale(scale)}px}.tool{margin:4px 0}.tool pre{color:#20314a}.code small{color:#52657c}a{color:#215ca7}.table-scroll{overflow-x:auto;overscroll-behavior-x:contain}table{border-collapse:collapse;width:max-content;min-width:100%}td,th{border:1px solid #d6e0ed;min-width:140px;padding:8px;vertical-align:top}th{background:#e5ecf5}button{display:block;margin-left:auto;background:none;border:0;color:#215ca7;padding:8px;font:${13 * safeFontScale(scale)}px system-ui}figure{margin:8px 0}img,video{display:block;max-width:100%;max-height:320px}figcaption{font-size:${12 * safeFontScale(scale)}px;color:#52657c}hr{border:0;border-top:1px solid #d7e0eb}</style>` + (math ? `<style>${KATEX_CSS}</style><script nonce="${nonce}">${script(KATEX_SCRIPT)}</script>` : '') + (diagram ? `<script nonce="${nonce}">${script(MERMAID_SCRIPT)}</script>` : '') +
     `</head><body><article>${body}${tools}</article><script nonce="${nonce}">${script(runtime)}</script></body></html>` };
 }

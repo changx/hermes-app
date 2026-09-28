@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { safeFontScale } from '../src/fontScale.ts';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
 
 // Execute the real article serializer against the real Markdown AST, with small
@@ -15,9 +16,26 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
   if (name === 'expo-crypto') return { getRandomBytes: count => Uint8Array.from({ length: count }, (_, i) => i + 1) };
   if (name === './markdownRenderer.generated') return sampleEngines;
   if (name === './messageMarkdown') return { safeLinkUrl };
+  if (name === './fontScale') return { safeFontScale };
   throw Error(name);
 } });
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
+
+test('article CSS scales body, headings, code inheritance, controls and captions with bounded input', () => {
+  const blocks = parseMessageMarkdown('# Heading\n\nSome `code`.\n\n```sh\nprintf ok\n```\n\n![image](https://example.com/i.png)');
+  const large = output.exports.renderArticleHtml(blocks, [], 1.3).html;
+  assert.match(large, /:root\{--interface-scale:1\.3\}/);
+  assert.match(large, /html,body\{[^}]*font:19\.5px\/1\.55/);
+  assert.match(large, /h1\{font-size:29\.9[\d]*px\}/);
+  assert.equal((large.match(/h1\{font-size:/g) || []).length, 1);
+  assert.match(large, /code,pre\{font-family:ui-monospace,monospace\}/);
+  assert.match(large, /button\{[^}]*font:16\.9\d*px system-ui/);
+  assert.match(large, /figcaption\{font-size:15\.6\d*px/);
+  assert.match(large, /themeVariables:\{fontSize:'20\.8px'\}/);
+  assert.match(output.exports.renderArticleHtml(blocks, [], 1).html, /font:15px\/1\.55/);
+  assert.match(output.exports.renderArticleHtml(blocks, [], 1.1).html, /font:16\.5px\/1\.55/);
+  assert.match(output.exports.renderArticleHtml(blocks, [], Infinity).html, /--interface-scale:1\}/);
+});
 
 test('article serializes complete semantic blocks, selectable adjacent inline prose, local math and diagram', () => {
   const page = render('# 标题\n\n前文 **重点**、*斜体*、~~删~~、`代码` 和 $x^2$ 后文。\n\n> 引用\n\n3. 第一\n   - [x] 完成\n\n|左|右|\n|:---|---:|\n|一|**二**|\n\n```js\nconst a = 2;\n```\n\n$$y^2$$\n\n```mermaid\nflowchart LR\n甲-->乙\n```\n\n结尾');

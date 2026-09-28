@@ -15,14 +15,14 @@ function visit(node) {
 visit(source);
 assert.ok(initializer);
 const code = ts.transpileModule('globalThis.sendCallback = ' + initializer, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-function harness({ reject = false, uploading = false, switchThread = false } = {}) {
+function harness({ reject = false, uploading = false, switchThread = false, pop = false } = {}) {
   const events = [], attachments = [{ id: 'att_a', thread_id: 't', state: 'available' }];
   const context = {
-    config: { id: 'connection' }, threadId: 't', text: '', composerScope: 'connection:t', currentComposer: { current: 'connection:t' },
-    draftAttachments: attachments, attachmentsBusy: uploading,
+    config: { id: 'connection' }, threadId: 't', text: '', composerScope: 'connection:t', currentComposer: { current: 'connection:t' }, focusedRef: { current: true },
+    draftAttachments: attachments, attachmentsBusy: uploading, textDrafts: { current: new Map() },
     Crypto: { randomUUID: () => 'uuid' },
     newSend: (...args) => { events.push(['record', ...args]); return { attachments: args[4], text: args[2] }; },
-    outboxRef: { current: { storage: { connectionId: 'connection' }, enqueue: async record => { events.push(['enqueue', record]); if (switchThread) context.currentComposer.current = 'connection:other'; if (reject) throw Error('storage unavailable'); } } },
+    outboxRef: { current: { storage: { connectionId: 'connection' }, enqueue: async record => { events.push(['enqueue', record]); if (switchThread) context.currentComposer.current = 'connection:other'; if (pop) { context.focusedRef.current = false; context.currentComposer.current = ''; } if (reject) throw Error('storage unavailable'); } } },
     timelineRef: { current: { followLatest() { events.push(['follow']); } } },
     setText: callback => events.push(['text', callback('')]),
     setAttachmentDraft: value => events.push(['attachments', value]),
@@ -47,5 +47,9 @@ test('App retains draft after durable storage failure and never sends during upl
 });
 test('completion after switching threads cannot clear another composer or move its timeline', async () => {
   const h = harness({ switchThread: true }); await h.context.sendCallback();
+  assert.deepEqual(h.events.map(e => e[0]), ['record', 'enqueue']);
+});
+test('completion after unmount does not mutate the removed composer or timeline', async () => {
+  const h = harness({ pop: true }); await h.context.sendCallback();
   assert.deepEqual(h.events.map(e => e[0]), ['record', 'enqueue']);
 });

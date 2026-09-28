@@ -8,10 +8,11 @@ import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 } } = {}) {
+function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1 } = {}) {
   const copied = [], opened = [], players = [], paused = [];
+  const webCalls = [], font = { scale: fontScale };
   const hooks = new Map(), playerBySrc = new Map();
-  const appListeners = new Set();
+  const appListeners = new Set(), viewerStack = [];
   let scope, index, visited;
   const slot = initial => {
     const cells = hooks.get(scope) || [];
@@ -48,6 +49,9 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
   const modules = { react: { ...react, default: react }, 'react-native': native,
+    './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => font },
+    'expo-router': { useIsFocused: () => scope?.startsWith('viewer.') ? Number(scope.split('.')[1].split(':')[0]) === viewerStack.length - 1 : viewerStack.length === 0 },
+    './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewerStack.push({ title, content, onClose }) }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 21, bottom: 13, left: 2, right: 3 }) },
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: (src, setup) => {
@@ -57,7 +61,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
       } }; setup(player); players.push(player); playerBySrc.set(src, player); return player;
     } },
     'react-native-webview': 'WebView',
-    './markdownWeb': { renderMarkdownHtml: (kind, source, display) => `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}` },
+    './markdownWeb': { renderMarkdownHtml: (kind, source, display, scale) => { webCalls.push({ kind, source, display, scale }); return `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}`; } },
     './messageMarkdown': { parseMessageMarkdown, safeLinkUrl: href => { try { const u = new URL(href); return /^https?:$/.test(u.protocol) && !u.username && !u.password && !/[\s\\]/.test(href) ? u.href : null; } catch { return null; } } } };
   const articleOutput = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts', import.meta.url), 'utf8'), {
@@ -66,6 +70,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(42) };
     if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' };
     if (name === './messageMarkdown') return modules[name];
+    if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
     throw Error(name);
   } });
   modules['./articleHtml'] = articleOutput.exports;
@@ -89,25 +94,44 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
   const renderOnce = () => {
     visited = new Set();
     const tree = expand({ type: output.exports.MessageContent, props: { text, canExpand, toolCalls } });
+    const viewers = viewerStack.map((route, i) => expand(route.content, `viewer.${i}`));
     for (const [path, cells] of hooks) if (!visited.has(path)) {
       cells.forEach(cell => cell.cleanup?.()); hooks.delete(path);
     }
-    return tree;
+    return { tree, viewers };
   };
+  let last;
   const render = (measure = true) => {
-    const tree = renderOnce();
-    if (!measure) return tree;
-    const frames = walk(tree).filter(n => n.props.onLayout);
+    last = renderOnce();
+    if (!measure) return last.tree;
+    const frames = walk([last.tree, ...last.viewers].flat()).filter(n => n.props.onLayout);
     frames.forEach(n => n.props.onLayout({ nativeEvent: { layout: { width: 320, height: n.props.style.height } } }));
-    return frames.length ? renderOnce() : tree;
+    if (frames.length) last = renderOnce();
+    return last.tree;
   };
-  return { render, walk, copied, opened, players, paused, background: () => appListeners.forEach(listener => listener('background')),
+  return { render, walk, copied, opened, players, paused, webCalls, font, setText: next => { text = next; }, background: () => appListeners.forEach(listener => listener('background')),
+    viewer: () => { render(); return last.viewers.at(-1); }, viewerAt: i => { render(); return last.viewers[i]; }, viewers: viewerStack,
+    close: () => { const route = viewerStack.pop(); route?.onClose?.(); render(); },
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
 }
 
 function findStyle(tree, predicate) {
   return tree.find(n => predicate(n.props?.style));
 }
+
+test('article and inline math receive live device font scale without reparsing message text', () => {
+  const h = mount('Paragraph $x^2$ and `code`.\n\n```js\nconst n = 1;\n```', { canExpand: true, fontScale: 1.3 });
+  h.render();
+  assert.ok(h.webCalls.some(call => call.kind === 'math' && call.scale === 1.3));
+  doubleTapArticle(h);
+  assert.equal(h.viewers.at(-1).title, 'Message');
+  assert.match(h.walk(h.viewer()).find(node => node.type === 'WebView').props.source.html, /:root\{--interface-scale:1\.3\}/);
+  h.font.scale = 0.9;
+  assert.match(h.walk(h.viewer()).find(node => node.type === 'WebView').props.source.html, /:root\{--interface-scale:0\.9\}/);
+  h.close(); h.render();
+  assert.ok(h.webCalls.some(call => call.kind === 'math' && call.scale === 0.9));
+  h.unmount();
+});
 
 function doubleTapArticle(h) {
   const root = h.walk(h.render(false)).find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
@@ -118,13 +142,13 @@ function doubleTapArticle(h) {
   }
 }
 
-test('fullscreen article uses one default-menu WebView, without native paragraph-copy claims', () => {
+test('routed article uses one default-menu WebView, without native paragraph-copy claims', () => {
   const h = mount('# 标题\n\n正文 **重点**\n\n| A | B |\n|---|---|\n|值|内容|', { canExpand: true });
   doubleTapArticle(h);
-  const nodes = h.walk(h.render());
-  const modal = nodes.find(n => n.type === 'Modal');
-  assert.equal(modal.props.visible, true);
-  const article = h.walk(modal.children).find(n => n.type === 'WebView');
+  const nodes = h.walk(h.viewer());
+  assert.equal(h.viewers.at(-1).title, 'Message');
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 0);
+  const article = nodes.find(n => n.type === 'WebView');
   assert.ok(article);
   assert.match(article.props.source.html, /<h1>标题<\/h1>[\s\S]*<strong>重点<\/strong>[\s\S]*<table>/);
   assert.equal(article.props.menuItems, undefined);
@@ -132,12 +156,9 @@ test('fullscreen article uses one default-menu WebView, without native paragraph
   assert.doesNotMatch(article.props.source.html, /user-select:\s*none|preventDefault\(\).*selection|contextmenu|document\.execCommand|clipboard\.writeText/i);
   assert.equal(article.props.onShouldStartLoadWithRequest({ url: 'https://example.com' }), false);
   assert.equal(article.props.onShouldStartLoadWithRequest({ url: 'about:blank' }), true);
-  const root = h.walk(modal.children).find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.onTouchStart);
-  let stopped = false;
-  root.props.onTouchStart({ stopPropagation() { stopped = true; } });
-  assert.equal(stopped, true);
-  modal.props.onRequestClose();
-  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
+  assert.equal(nodes.filter(n => n.type === 'Modal').length, 0);
+  h.close();
+  assert.equal(h.viewers.length, 0);
   assert.equal(h.walk(h.render()).filter(n => n.type === 'WebView').length, 0);
   h.unmount();
 });
@@ -151,16 +172,15 @@ test('public tool summaries persist in article mode, never interpret command det
   assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
   assert.equal(nodes.some(n => n.props.accessibilityLabel === '全屏查看消息'), false);
   doubleTapArticle(h);
-  nodes = h.walk(h.render());
-  const modal = nodes.find(n => n.type === 'Modal');
-  assert.equal(modal.props.visible, true);
-  const html = h.walk([modal]).find(n => n.type === 'WebView').props.source.html;
+  nodes = h.walk(h.viewer());
+  assert.equal(h.viewers.at(-1).title, 'Message');
+  const html = nodes.find(n => n.type === 'WebView').props.source.html;
   assert.match(html, /先检查 <strong>项目<\/strong>。/);
   assert.ok(html.includes('运行命令'));
   assert.ok(html.includes('[literal](https://example.com) &amp;&amp; printf &quot;**text**&quot;'));
   assert.doesNotMatch(html, /<a[^>]+literal/);
-  modal.props.onRequestClose();
-  assert.equal(h.walk(h.render()).find(n => n.type === 'Modal').props.visible, false);
+  h.close();
+  assert.equal(h.viewers.length, 0);
   assert.ok(flatten(h.render()).includes(toolCalls[0].detail));
   h.unmount();
 });
@@ -193,7 +213,7 @@ test('multiple tool calls use compact spacing but ordinary Markdown code keeps i
     assert.equal(text.props.ellipsizeMode, 'tail');
   }
   assert.equal(nodes.some(n => n.props.accessibilityLabel === '复制整条消息'), false);
-  assert.equal(nodes.filter(n => n.type === 'Modal').length, 1, 'no extra invisible toolbar modal');
+  assert.equal(nodes.filter(n => n.type === 'Modal').length, 0, 'no invisible toolbar modal');
   const code = mount('```sh\ngit status\n```');
   const codeText = code.walk(code.render()).find(n => n.type === 'Animated.Text' && n.props.selectable);
   const codeStyle = Object.assign({}, ...codeText.props.style);
@@ -251,8 +271,8 @@ test('tool text uses native copy without an extra window, press responder or sav
     assert.ok(children.every(n => n.type !== 'Modal' && n.type !== 'Pressable'));
     assert.ok(children.every(n => !n.props.onPress && !n.props.onLongPress && !n.props.onStartShouldSetResponder));
     assert.ok(children.every(n => n.props.style?.position !== 'absolute'));
-    assert.equal(nodes().filter(n => n.type === 'Modal').length, 1, 'article is the only modal');
-    assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false);
+    assert.equal(nodes().filter(n => n.type === 'Modal').length, 0);
+    assert.equal(h.viewers.length, 0);
     assert.deepEqual(h.copied, [], 'native menu owns copying, not JS clipboard/focus actions');
   };
   check();
@@ -264,22 +284,21 @@ test('tool text uses native copy without an extra window, press responder or sav
   h.unmount();
 });
 
-test('full article tools remain HTML text, no copy bridge or extra toolbar modal', () => {
+test('full article tools remain HTML text, no copy bridge or extra toolbar route', () => {
   const calls = [{ id: 'safe', name: 'terminal', label: '运行命令', detail: 'printf "safe"' }];
   const h = mount('正文\n\n```sh\nprintf ok\n```', { canExpand: true, toolCalls: calls });
   const nodes = () => h.walk(h.render(false));
   doubleTapArticle(h);
-  const article = nodes().find(n => n.type === 'Modal');
-  assert.equal(article.props.visible, true);
-  const inside = h.walk([article]);
+  const inside = h.walk(h.viewer());
+  assert.equal(h.viewers.at(-1).title, 'Message');
   const web = inside.find(n => n.type === 'WebView');
   assert.match(web.props.source.html, /<pre><code>printf ok\n<\/code><\/pre>/);
   assert.match(web.props.source.html, /<pre>printf &quot;safe&quot;<\/pre>/);
-  assert.equal(inside.filter(n => n.type === 'Modal').length, 1);
+  assert.equal(inside.filter(n => n.type === 'Modal').length, 0);
   web.props.onMessage({ nativeEvent: { data: 'copy:0' } });
   assert.deepEqual(h.copied, []);
-  article.props.onRequestClose();
-  assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false);
+  h.close();
+  assert.equal(h.viewers.length, 0);
   h.unmount();
 });
 
@@ -303,46 +322,48 @@ test('three-column table fits measured phone width, keeps every cell and trailin
   h.unmount();
 });
 
-test('production controls open one safe-area modal for article, table and Mermaid; close releases expanded WebView', () => {
+test('article, table and Mermaid push native viewer routes; nested back retains the article', () => {
   const text = '开头。\n\n| 第一 | 第二 | 第三 |\n|---|---|---|\n| 甲 | 乙 | 丙 |\n\n```mermaid\nflowchart LR\nA-->B\n```\n\n结尾。';
   for (const canExpand of [false, true]) {
     const h = mount(text, { canExpand });
-    h.render(); // Mount the inline WebView first; opening must release it.
+    h.render();
     const nodes = () => h.walk(h.render(false));
+    const inside = () => h.walk(h.viewer());
     const button = (entries, label) => {
       const found = entries.find(n => n.props.accessibilityLabel === label);
       assert.ok(found, label); found.props.onPress();
     };
-    const modal = () => nodes().find(n => n.type === 'Modal');
-    const inside = () => h.walk([modal()]);
-    assert.equal(modal().props.visible, false);
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1);
-    assert.equal(nodes().some(n => n.props.accessibilityLabel === '全屏查看消息'), false);
+    assert.equal(nodes().some(n => n.type === 'Modal'), false);
     if (canExpand) {
       doubleTapArticle(h);
-      assert.equal(modal().props.visible, true);
-      assert.equal(nodes().filter(n => n.type === 'Modal').length, 1);
-      assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'underlying renderer suspended; article WebView mounted');
-      const article = inside();
-      const articleWeb = article.find(n => n.type === 'WebView');
-      const html = articleWeb.props.source.html;
-      assert.match(html, /开头。[\s\S]*<td>甲<\/td>[\s\S]*结尾。/);
-      assert.match(html, /data-expand="0"[\s\S]*data-expand="1"/);
+      assert.deepEqual(h.viewers.map(route => route.title), ['Message']);
+      assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'inline WebView remains mounted on blur');
+      const articleWeb = inside().find(n => n.type === 'WebView');
+      assert.match(articleWeb.props.source.html, /开头。[\s\S]*<td>甲<\/td>[\s\S]*结尾。/);
+      assert.match(articleWeb.props.source.html, /data-expand="0"[\s\S]*data-expand="1"/);
       articleWeb.props.onMessage({ nativeEvent: { data: 'expand:0' } });
-      assert.equal(inside().filter(n => n.type === 'Modal').length, 1, 'switches target rather than nesting dialogs');
-      assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
-      modal().props.onRequestClose();
-      assert.equal(modal().props.visible, false, 'Android back closes same modal');
+      assert.deepEqual(h.viewers.map(route => route.title), ['Message', 'Table']);
+      assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
+      assert.equal(h.walk(h.viewerAt(0)).filter(n => n.type === 'WebView').length, 1, 'covered article retains its WebView');
+      h.close();
+      assert.deepEqual(h.viewers.map(route => route.title), ['Message']);
+      assert.ok(inside().some(n => n.type === 'WebView'), 'article resumes on native back');
+      h.close();
+      assert.equal(nodes().filter(n => n.type === 'WebView').length, 1);
     }
     button(nodes(), 'View table fullscreen');
+    assert.equal(h.viewers.at(-1).title, 'Table');
     assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal));
     assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
-    button(inside(), 'Close fullscreen view');
-    assert.equal(modal().props.visible, false);
+    h.close();
     button(nodes(), 'View diagram fullscreen');
+    assert.equal(h.viewers.at(-1).title, 'Diagram');
     let diagram = inside();
-    const modalBody = diagram.find(n => n.type === 'View' && Array.isArray(n.props.style) && n.props.style[0]?.backgroundColor === '#fff');
-    assert.deepEqual({ ...modalBody.props.style[1] }, { paddingTop: 33, paddingBottom: 25, paddingLeft: 16, paddingRight: 17 });
+    const body = diagram.find(n => n.type === 'View' && n.props.style?.backgroundColor === '#fff');
+    assert.equal(body.props.style.paddingBottom, 12);
+    assert.equal(body.props.style.paddingHorizontal, 14);
+    assert.equal(body.props.style.paddingTop, undefined, 'native header owns top inset');
     const frame = diagram.find(n => n.props.onLayout && n.props.style?.flex === 1);
     assert.ok(frame, 'full-height flex diagram, not fixed 220');
     frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 610 } } });
@@ -350,10 +371,9 @@ test('production controls open one safe-area modal for article, table and Mermai
     const expanded = diagram.find(n => n.type === 'WebView');
     assert.equal(Object.assign({}, ...expanded.props.style).height, 610);
     assert.equal(Object.assign({}, ...expanded.props.containerStyle).width, 340);
-    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'never duplicates inline and expanded WebViews');
-    button(diagram, 'Close fullscreen view');
-    assert.equal(modal().props.visible, false);
-    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'expanded instance releases; underlying reading resumes');
+    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'native stack retains the inline renderer');
+    h.close();
+    assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'inline reading resumes');
     h.unmount();
   }
 });
@@ -362,7 +382,7 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   const text = '[安全链接](https://a.test/)\n\n| A | B |\n|---|---|\n| 一 | 二 |\n\n```mermaid\nflowchart LR\nA-->B\n```';
   const h = mount(text, { canExpand: true, toolCalls: [{ id: 'x', name: 'terminal', label: '运行命令', detail: 'safe' }] });
   doubleTapArticle(h);
-  const inside = () => h.walk([h.walk(h.render(false)).find(n => n.type === 'Modal')]);
+  const inside = () => h.walk(h.viewer());
   const web = inside().find(n => n.type === 'WebView');
   for (const prop of ['domStorageEnabled', 'allowFileAccess', 'allowFileAccessFromFileURLs', 'allowUniversalAccessFromFileURLs', 'setSupportMultipleWindows', 'javaScriptCanOpenWindowsAutomatically', 'sharedCookiesEnabled', 'thirdPartyCookiesEnabled']) assert.equal(web.props[prop], false, prop);
   assert.deepEqual(Array.from(web.props.originWhitelist), ['*']);
@@ -373,9 +393,13 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   web.props.onMessage({ nativeEvent: { data: 'link:0' } });
   assert.deepEqual(h.opened, ['https://a.test/']);
   web.props.onMessage({ nativeEvent: { data: 'expand:1' } });
+  assert.deepEqual(h.viewers.map(route => route.title), ['Message', 'Diagram']);
   assert.equal(inside().some(n => n.props.accessibilityLabel === 'Reset zoom'), false);
-  assert.ok(inside().some(n => n.props.onLayout && n.props.style?.flex === 1), 'diagram target switches within same modal');
-  h.walk(h.render(false)).find(n => n.type === 'Modal').props.onRequestClose();
+  assert.ok(inside().some(n => n.props.onLayout && n.props.style?.flex === 1), 'diagram is a child route');
+  assert.equal(h.walk(h.viewerAt(0)).filter(n => n.type === 'WebView').length, 1);
+  h.close();
+  assert.ok(inside().some(n => n.type === 'WebView'), 'parent article survives child back');
+  h.close();
   doubleTapArticle(h);
   const failed = inside().find(n => n.type === 'WebView');
   failed.props.onRenderProcessGone();
@@ -385,17 +409,33 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   h.unmount();
   const huge = mount('文'.repeat(200001), { canExpand: true });
   doubleTapArticle(huge);
-  const nodes = huge.walk(huge.render(false));
+  const nodes = huge.walk(huge.viewer());
   assert.equal(nodes.filter(n => n.type === 'WebView').length, 0);
   assert.ok(nodes.some(n => n.type === 'Text' && n.children.includes('This article is too long. Showing the standard view instead.')));
   huge.unmount();
+});
+
+test('streaming rerenders keep the opened article snapshot and route-scoped diagram', () => {
+  const h = mount('Start.\n\n```mermaid\nflowchart LR\nA-->B\n```', { canExpand: true });
+  doubleTapArticle(h);
+  const article = h.walk(h.viewer()).find(n => n.type === 'WebView');
+  h.setText('New streamed body.\n\n| X |\n|---|\n| Y |');
+  assert.match(h.walk(h.viewer()).find(n => n.type === 'WebView').props.source.html, /Start\./);
+  article.props.onMessage({ nativeEvent: { data: 'expand:0' } });
+  assert.deepEqual(h.viewers.map(route => route.title), ['Message', 'Diagram']);
+  assert.ok(h.walk(h.viewer()).some(n => n.props.onLayout && n.props.style?.flex === 1));
+  h.close();
+  assert.match(h.walk(h.viewer()).find(n => n.type === 'WebView').props.source.html, /Start\./);
+  h.close();
+  assert.ok(JSON.stringify(h.render()).includes('New streamed body.'));
+  h.unmount();
 });
 
 test('article double tap needs same still text target; movement, cancellation and links do not open it', () => {
   const h = mount('普通文字 [链接](https://example.com)', { canExpand: true });
   const tree = () => h.walk(h.render(false));
   const root = () => tree().find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
-  const visible = () => tree().find(n => n.type === 'Modal').props.visible;
+  const visible = () => h.viewers.length > 0;
   const event = (target = 17, x = 40, y = 50) => ({ nativeEvent: { target, pageX: x, pageY: y, touches: [] } });
   const tap = (target = 17, x = 40) => { root().props.onTouchStart(event(target, x)); root().props.onTouchEnd(event(target, x)); };
   tap(); assert.equal(visible(), false, 'one tap does nothing');
@@ -410,14 +450,14 @@ test('article double tap needs same still text target; movement, cancellation an
   assert.equal(visible(), false, 'link press takes precedence');
   tap(); assert.equal(visible(), false, 'first tap after link only primes double tap');
   tap(); assert.equal(visible(), true);
-  tree().find(n => n.type === 'Modal').props.onRequestClose();
+  h.close();
   assert.equal(visible(), false);
   h.unmount();
   const user = mount('普通文字');
   const userTree = user.walk(user.render(false));
   const userRoot = userTree.find(n => n.type === 'View' && n.props.onTouchStart && n.props.onTouchEnd);
   for (let i = 0; i < 2; i++) { userRoot.props.onTouchStart(event()); userRoot.props.onTouchEnd(event()); }
-  assert.equal(user.walk(user.render(false)).find(n => n.type === 'Modal').props.visible, false);
+  assert.equal(user.viewers.length, 0);
 });
 
 test('tool touch interrupts prose double tap and scroll never opens toolbar', () => {
@@ -432,9 +472,9 @@ test('tool touch interrupts prose double tap and scroll never opens toolbar', ()
   group().props.onTouchStart({ stopPropagation() { stopped = true; } });
   assert.equal(stopped, true);
   proseTap();
-  assert.equal(nodes().find(n => n.type === 'Modal').props.visible, false, 'tool touch resets prior prose tap');
+  assert.equal(h.viewers.length, 0, 'tool touch resets prior prose tap');
   root().props.onTouchStart(event()); root().props.onTouchMove(event(40, 90)); root().props.onTouchEnd(event(40, 90));
-  assert.equal(nodes().filter(n => n.type === 'Modal').length, 1, 'scroll opens no copy toolbar');
+  assert.equal(nodes().filter(n => n.type === 'Modal').length, 0, 'scroll opens no copy toolbar');
   assert.deepEqual(h.copied, []);
   h.unmount();
 });
@@ -483,6 +523,20 @@ test('video remains a fixed preview until tap, then native controls pause on bac
   h.unmount();
   const bad = mount('![unsafe](https://u@example.com/a.mp4)');
   assert.equal(bad.walk(bad.render()).filter(n => n.type === 'VideoView').length, 0);
+});
+
+test('pushing a viewer pauses inline video without destroying its native player', () => {
+  const h = mount('![clip](https://example.com/a.mp4)\n\n| A |\n|---|\n| B |');
+  h.walk(h.render()).find(n => n.props.accessibilityLabel === 'Play video: clip').props.onPress();
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'VideoView').length, 1);
+  const before = h.paused.length;
+  h.walk(h.render()).find(n => n.props.accessibilityLabel === 'View table fullscreen').props.onPress();
+  assert.equal(h.viewers.at(-1).title, 'Table');
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'VideoView').length, 1);
+  assert.ok(h.paused.length > before, 'blur pauses native player');
+  h.close();
+  assert.equal(h.walk(h.render()).filter(n => n.type === 'VideoView').length, 1);
+  h.unmount();
 });
 
 test('display math and Mermaid use isolated bounded native WebViews; oversized content falls back', () => {
@@ -590,7 +644,7 @@ test('installed WebView navigation wrapper never opens external apps with actual
 test('article WebView wrapper rejects all external navigation without Linking fallback', async () => {
   const h = mount('[外链](https://example.com)', { canExpand: true });
   doubleTapArticle(h);
-  const props = h.walk(h.render()).find(n => n.type === 'WebView').props;
+  const props = h.walk(h.viewer()).find(n => n.type === 'WebView').props;
   const output = { exports: {} }, attempted = [], decisions = [];
   const require = createRequire(import.meta.url);
   const source = readFileSync(new URL('../node_modules/react-native-webview/src/WebViewShared.tsx', import.meta.url), 'utf8');
