@@ -6,7 +6,13 @@
 - 修正空输入框 placeholder 的纵向对齐，保留输入后的原生多行增长和清空复位。
 - 保留返回最新所在透明行、消息底部 96pt 留白和现有键盘跟随。
 
-## 原生排版修订（待发布）
+## 原生排版修订（已发布）
+
+Jamie 授权后，提交 `8fe48074982a21cafc686b89389a3a8c45901219` 已发布至 `exps://agent.tuly.space`。发布从干净的 `3373445` fast-forward，仅停止/启动 Expo 服务。发布后 TypeScript 通过；公网 iOS/Android manifest 的精确 launchAsset 均核验包含原生排版样式（无动态行高/留白计算、保留 42pt 空输入复位及 120pt 上限）、共用阴影、透明最新行与 96pt 留白。两个 Gateway 的 PID/启动时间及插件哈希保持不变。
+
+证据保存在私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/composer-native-text/`：`release-before.json`、`release-verification.json`、双平台 manifest、`release.py`。保留前序 Git 提交用于明确 revert 回滚；未修改聊天数据。真机视觉与大字体效果仍需设备验收。
+
+以下为实施时的本地验证记录：
 
 Jamie 反馈 placeholder 仍未视觉居中，确认撤去额外字体排版干预：移除显式行高、includeFontPadding/textAlignVertical 覆盖，以及按应用/系统字体倍率计算高度和留白的逻辑。继续使用原生 placeholder 和字体度量，不新增占位层；保留原先 8pt 上下内边距、空输入 42pt 高度复位、非空多行增长和 120pt 高度上限。应用字号仍由已有 FontSize 包装器处理。
 
