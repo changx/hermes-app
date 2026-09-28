@@ -74,3 +74,35 @@ def test_new_session_description_once_and_thread_isolation(tmp_path):
     with pytest.raises(ValueError, match='invalid cursor'):
         reopened.list_threads('other', after=first['next_cursor'])
     reopened.close()
+
+
+def test_generated_title_is_conditional_and_emits_thread_event(tmp_path):
+    store = Store(tmp_path / 'app.sqlite')
+    thread = store.create_thread('project', 'New topic', 'session', '')
+    assert store.replace_thread_title(thread, 'New topic', 'Generated title')
+    assert store.get_thread(thread)['title'] == 'Generated title'
+    before = store.sync_page()['waterline']
+    assert not store.replace_thread_title(thread, 'New topic', 'Late title')
+    assert store.get_thread(thread)['title'] == 'Generated title'
+    assert store.sync_page(cursor=before)['events'] == []
+
+
+def test_adapter_uses_hermes_title_generator_and_attachment_fallback(tmp_path, monkeypatch):
+    from agent import title_generator
+    from hermes_app.adapter import HermesAppAdapter
+
+    store = Store(tmp_path / 'app.sqlite')
+    text_thread = store.create_thread('project', 'New topic', 'session-one', '')
+    file_thread = store.create_thread('project', 'New topic', 'session-two', '')
+    store.attachment_add(file_thread, 'att_test', 'camera.jpg', 'image/jpeg', 3)
+    prompts = []
+    monkeypatch.setattr(title_generator, 'generate_title',
+                        lambda prompt: prompts.append(prompt) or ('Camera review' if 'camera.jpg' in prompt else 'Auth repair'))
+    adapter = object.__new__(HermesAppAdapter)
+    adapter._store = store
+    adapter._events_changed = asyncio.Event()
+    asyncio.run(adapter._generate_topic_title(text_thread, 'repair login auth', ()))
+    asyncio.run(adapter._generate_topic_title(file_thread, '', ('att_test',)))
+    assert prompts == ['repair login auth', 'Files: camera.jpg']
+    assert store.get_thread(text_thread)['title'] == 'Auth repair'
+    assert store.get_thread(file_thread)['title'] == 'Camera review'

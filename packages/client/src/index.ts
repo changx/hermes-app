@@ -232,7 +232,7 @@ export class HermesClient {
   async updateChannel(id: string, patch: {name?: string; description?: string}): Promise<Channel> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),patch); const c = validChannel(x.channel); this.channels.set(id,c); this.changed(); return c }
   async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.changed() }
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }
-  async createThread(channelId: string, title: string): Promise<Thread> { const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title}); return validThread(x.thread) }
+  async createThread(channelId: string, title: string, clientThreadId?: string): Promise<Thread> { const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{})}); return validThread(x.thread) }
   async getThread(id: string, rank = this.lastEventId, signal?: AbortSignal): Promise<Thread> {
     const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/threads/'+idPath(id),undefined,signal); const thread = validThread(x.thread);
     const key = 'thread:'+id;

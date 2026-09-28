@@ -1637,6 +1637,20 @@ class Store:
                 self._event(db,'thread',thread_id,thread_id,version)
         return self.get_thread(thread_id)
 
+    def replace_thread_title(self, thread_id, expected, title):
+        """CAS used by delayed auto-title work so a manual rename always wins."""
+        if not isinstance(title, str) or not title.strip() or len(title.strip()) > 200:
+            return False
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            changed = db.execute('UPDATE threads SET title=? WHERE id=? AND title=?',
+                                 (title.strip(), thread_id, expected)).rowcount
+            if changed:
+                version=db.execute("SELECT COALESCE(MAX(version),0)+1 FROM sync_events "
+                                   "WHERE kind='thread' AND ref=?",(thread_id,)).fetchone()[0]
+                self._event(db,'thread',thread_id,thread_id,version)
+            return bool(changed)
+
     def take_initial_description(self, session_id):
         """Atomic one-time *user session* initialization; never match a child ID."""
         with self._connect() as db:

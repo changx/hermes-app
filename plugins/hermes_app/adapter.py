@@ -29,6 +29,7 @@ from .history_hooks import pre_command, pre_llm_call, pre_tool_call, post_tool_c
 from .reply_context import reply_scope
 
 log = logging.getLogger(__name__)
+NEW_TOPIC_TITLE = 'New topic'
 
 
 def _store():
@@ -95,6 +96,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._queue_wakes = {}
         self._followup_tasks = set()
         self._admission_tasks = set()
+        self._title_tasks = set()
         self._ingress_locks = {}
         self._channel_refresh_lock = asyncio.Lock()
         self._events_changed = asyncio.Event()
@@ -192,6 +194,11 @@ class HermesAppAdapter(BasePlatformAdapter):
             task.cancel()
         if followups:
             await asyncio.gather(*tuple(followups), return_exceptions=True)
+        titles=getattr(self,'_title_tasks',set())
+        for task in tuple(titles):
+            task.cancel()
+        if titles:
+            await asyncio.gather(*tuple(titles), return_exceptions=True)
         admissions=getattr(self,'_admission_tasks',set())
         if admissions:
             await asyncio.gather(*tuple(admissions),return_exceptions=True)
@@ -556,12 +563,43 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPBadRequest(text='invalid title')
         # SessionStore is the gateway's actual routing authority. This is the
         # only private baseline call; it is checked in the runner integration test.
-        thread_id = 'th_' + uuid.uuid4().hex[:24]
+        requested_id = body.get('client_thread_id')
+        if requested_id is not None and (not isinstance(requested_id, str) or
+                not re.fullmatch(r'th_[A-Za-z0-9_-]{8,64}', requested_id)):
+            raise web.HTTPBadRequest(text='invalid client_thread_id')
+        thread_id = requested_id or 'th_' + uuid.uuid4().hex[:24]
+        existing = self._store.get_thread(thread_id)
+        if existing is not None:
+            if existing['project_id'] != cid or existing['title'] != title.strip():
+                raise web.HTTPConflict(text='client_thread_id conflict')
+            return web.json_response({'thread': existing}, status=200)
         source = self._source(cid, thread_id)
         entry = await asyncio.to_thread(self._session_store.get_or_create_session, source, touch_activity=False)
         actual = self._store.create_thread(cid, title.strip(), entry.session_id, p.description or '',
                                            thread_id=thread_id)
         return web.json_response({'thread': self._store.get_thread(actual)}, status=201)
+
+    async def _generate_topic_title(self, thread_id, content, attachment_ids):
+        try:
+            prompt = content.strip() if isinstance(content, str) else ''
+            if not prompt:
+                names = []
+                for attachment_id in attachment_ids:
+                    row = await asyncio.to_thread(self._store.attachment, thread_id, attachment_id)
+                    if row:
+                        names.append(row['name'])
+                prompt = 'Files: ' + ', '.join(names)
+            from agent.title_generator import derive_title, generate_title
+            title = await asyncio.to_thread(generate_title, prompt)
+            if not title:
+                title = derive_title(prompt)
+            if title and await asyncio.to_thread(self._store.replace_thread_title,
+                                                 thread_id, NEW_TOPIC_TITLE, title):
+                self._events_changed.set()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception('Topic title generation failed for %s', thread_id)
 
     async def _thread(self, request):
         tid = request.match_info['id']
@@ -604,6 +642,12 @@ class HermesAppAdapter(BasePlatformAdapter):
             raise web.HTTPBadRequest(text=str(exc)) from exc
         if created:
             self._events_changed.set()
+            thread = await asyncio.to_thread(self._store.get_thread, tid)
+            if thread and thread['title'] == NEW_TOPIC_TITLE:
+                title_task = asyncio.create_task(self._generate_topic_title(
+                    tid, content, tuple(body.get('attachments', []))))
+                self._title_tasks.add(title_task)
+                title_task.add_done_callback(self._title_tasks.discard)
             admission=asyncio.create_task(self._dispatch_busy_text(tid))
             self._admission_tasks.add(admission)
             def done(task):

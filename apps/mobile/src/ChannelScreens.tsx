@@ -1,30 +1,41 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
+import * as Crypto from 'expo-crypto';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from './FontSize';
 import type { HermesClient, ThreadSummary } from '../../../packages/client/src/index';
 import { channelPatch, threadPatch } from './channel-edits';
+import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments';
 
 type Props = { client: HermesClient; channelId: string | null; onChannel: (id: string | null) => void; onThread: (id: string) => void };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[s.action, secondary && s.secondary, disabled && s.disabled]}><Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[s.action, secondary && s.secondary, disabled && s.disabled]}><Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text></Pressable>;
 }
 
+const newId = (prefix: string) => prefix + Crypto.randomUUID().replace(/-/g, '');
+
 export function ChannelScreens({ client, channelId, onChannel, onThread }: Props) {
-  const [creating, setCreating] = useState(false), [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false), [editing, setEditing] = useState(false), [composing, setComposing] = useState(false);
   const [name, setName] = useState(''), [description, setDescription] = useState('');
-  const [title, setTitle] = useState(''), [renaming, setRenaming] = useState<string | null>(null);
+  const [message, setMessage] = useState(''), [attachmentCount, setAttachmentCount] = useState(0), [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentClearKey, setAttachmentClearKey] = useState(0), [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const working = useRef(false), generation = useRef(0);
-  const focused = useIsFocused(), focusedRef = useRef(focused);
+  const working = useRef(false), generation = useRef(0), attachmentComposer = useRef<AttachmentComposerHandle>(null);
+  const draftThread = useRef<string | null>(null), draftAttachments = useRef<string[] | null>(null), draftMessageId = useRef(''), draftThreadId = useRef('');
+  const focused = useIsFocused(), focusedRef = useRef(focused), insets = useSafeAreaInsets();
   focusedRef.current = focused;
   useFocusEffect(React.useCallback(() => {
     focusedRef.current = true;
     return () => { focusedRef.current = false; generation.current++; };
   }, []));
+  const resetComposer = () => {
+    setComposing(false); setMessage(''); setAttachmentCount(0); setAttachmentBusy(false); setAttachmentClearKey(value => value + 1);
+    draftThread.current = null; draftAttachments.current = null; draftMessageId.current = ''; draftThreadId.current = '';
+  };
   useEffect(() => {
     generation.current++;
-    setCreating(false); setEditing(false); setRenaming(null); setName(''); setDescription(''); setTitle(''); setError('');
+    setCreating(false); setEditing(false); setRenaming(null); setName(''); setDescription(''); setError(''); resetComposer();
     return () => { generation.current++; };
   }, [channelId, client]);
   const run = async (work: (isCurrent: () => boolean) => Promise<void>) => {
@@ -40,6 +51,35 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const threads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived).sort((a, b) => b.last_ref - a.last_ref || a.title.localeCompare(b.title));
   const startEdit = () => { if (!channel) return; setName(channel.name); setDescription(channel.description || ''); setEditing(true); setCreating(false); setError(''); };
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
+  const openComposer = () => {
+    draftThreadId.current = newId('th_'); draftMessageId.current = newId('mob_');
+    draftThread.current = null; draftAttachments.current = null; setMessage(''); setAttachmentCount(0); setError(''); setComposing(true);
+  };
+  const cancelComposer = () => {
+    if (!draftThread.current) { resetComposer(); return; }
+    void run(async current => {
+      await attachmentComposer.current?.discardFrom(draftThread.current!);
+      await client.archiveThread(draftThread.current!);
+      if (current()) resetComposer();
+    });
+  };
+  const submitTopic = () => void run(async current => {
+    if (!channelId || (!message.trim() && !attachmentCount) || attachmentBusy) return;
+    let threadId = draftThread.current;
+    if (!threadId) {
+      const made = await client.createThread(channelId, 'New topic', draftThreadId.current);
+      threadId = made.id; draftThread.current = threadId;
+      await client.getThread(threadId);
+    }
+    let attachmentIds = draftAttachments.current;
+    if (!attachmentIds) {
+      const uploaded = await attachmentComposer.current!.uploadTo(threadId);
+      attachmentIds = uploaded.map(item => item.id); draftAttachments.current = attachmentIds;
+    }
+    await client.send(threadId, draftMessageId.current, message, attachmentIds);
+    await client.getThread(threadId);
+    if (current()) { resetComposer(); onThread(threadId); }
+  });
   const channelForm = (editing || creating) && <View style={s.form}>
     <Text style={s.heading}>{editing ? 'Edit channel' : 'New channel'}</Text>
     <TextInput accessibilityLabel="Channel name" placeholder="Channel name" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
@@ -59,26 +99,40 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
       <Text style={[s.heading, s.fill]} numberOfLines={2}>{channelId ? channel?.name || 'Channel' : 'Channels'}</Text>
       <Action label={channelId ? 'Edit' : 'New'} secondary disabled={busy} onPress={channelId ? startEdit : () => { setName(''); setDescription(''); setCreating(true); }} />
     </View>
-    {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
-    {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-    {channelId ? <FlatList keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id} contentContainerStyle={s.list}
-      ListHeaderComponent={<>
-        {channelForm}
-        {!!channel?.description && !editing && <Text selectable style={s.summary}>{channel.description}</Text>}
-        <View style={s.form}><Text style={s.heading}>New topic</Text><View style={s.row}><TextInput accessibilityLabel="New topic title" placeholder="What would you like to discuss?" value={title} onChangeText={setTitle} style={[s.input, s.fill]} editable={!busy} maxLength={200} /><Action label="Create" disabled={busy || !title.trim()} onPress={() => void run(async current => { const made = await client.createThread(channelId, threadPatch(title).title); await client.getThread(made.id); if (current()) { setTitle(''); onThread(made.id); } })} /></View></View>
-      </>}
+    {busy && !composing && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
+    {!!error && !composing && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+    {channelId ? <FlatList keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
+      ListHeaderComponent={<>{channelForm}{!!channel?.description && !editing && <Text selectable style={s.summary}>{channel.description}</Text>}</>}
       renderItem={({ item }) => <View style={s.card}>
         {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><Text style={s.hint}>{item.unread_count ? `${item.unread_count} unread` : 'Open conversation'}</Text></Pressable><Action label="Rename" secondary disabled={busy} onPress={() => rename(item)} /></View>}
       </View>}
-      ListEmptyComponent={<Text style={s.empty}>No topics yet. Create one to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={s.list} ListHeaderComponent={channelForm || null}
+      ListEmptyComponent={<Text style={s.empty}>No topics yet. Tap + to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={s.list} ListHeaderComponent={channelForm || null}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text><Text numberOfLines={2} style={s.hint}>{item.description || 'A space for a project or ongoing conversations'}</Text></Pressable>}
       ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
+    {!!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New topic" disabled={busy} onPress={openComposer} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
+    <Modal visible={composing} transparent animationType="fade" onRequestClose={cancelComposer}>
+      <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close new topic composer" style={s.backdrop} disabled={busy} onPress={cancelComposer} />
+        <View style={[s.composer, { paddingBottom: Math.max(14, insets.bottom) }]}>
+          <View style={s.top}><Text style={[s.heading, s.fill]}>New topic</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelComposer} /></View>
+          {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+          <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message} onChangeText={setMessage} editable={!busy} multiline autoFocus maxLength={16000} style={[s.input, s.message]} />
+          <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={attachmentClearKey} disabled={busy}
+            onSelectionChange={setAttachmentCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={text => setMessage(value => value + text)}>
+            <View style={s.fill} />
+            <Action label={busy ? 'Creating…' : 'Create topic'} disabled={busy || attachmentBusy || (!message.trim() && !attachmentCount)} onPress={submitTopic} />
+          </AttachmentComposer>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   </View>;
 }
 const s = StyleSheet.create({
   fill: { flex: 1 }, top: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }, row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   list: { paddingHorizontal: 12, paddingBottom: 24 }, heading: { fontSize: 17, fontWeight: '600', color: '#172a40' }, hint: { color: '#65758b', fontSize: 13, lineHeight: 19, marginTop: 4 }, summary: { color: '#42566f', lineHeight: 22, marginBottom: 12 },
-  form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 85, maxHeight: 160, textAlignVertical: 'top' },
+  form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 85, maxHeight: 160, textAlignVertical: 'top' }, message: { minHeight: 130, maxHeight: 280, marginHorizontal: 12, textAlignVertical: 'top' },
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8, gap: 8 }, action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, actionText: { color: '#fff', fontWeight: '600' }, secondary: { backgroundColor: '#e7eef8' }, secondaryText: { color: '#2b4e81' }, disabled: { opacity: 0.5 },
-  progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 }
+  progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 },
+  fab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2960ad', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 }, fabText: { color: '#fff', fontSize: 32, lineHeight: 36 },
+  modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', inset: 0, backgroundColor: 'rgba(11, 24, 40, 0.42)' }, composer: { backgroundColor: '#f8fafc', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 4, maxHeight: '82%', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 12 }
 });

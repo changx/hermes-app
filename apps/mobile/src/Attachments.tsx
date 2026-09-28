@@ -46,21 +46,28 @@ async function openImage(uri: string, title: string, openViewer: ReturnType<type
   } catch (error) { forgetFile(file); throw error; }
 }
 
-/** Only ready, server-returned Attachment metadata reaches onChange. Failed selections remain visible; busy is true until removed/retried. */
-export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, disabled = false }: {
-  client: HermesClient; threadId: string; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; disabled?: boolean;
+export type AttachmentComposerHandle = {
+  uploadTo: (threadId: string) => Promise<Attachment[]>;
+  discardFrom: (threadId: string) => Promise<void>;
+};
+
+/** Ready server metadata reaches onChange. With no threadId, files stay local until uploadTo(). */
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, onSelectionChange, handleRef, disabled = false }: {
+  client: HermesClient; threadId: string | null; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; onSelectionChange?: (count: number) => void; handleRef?: React.MutableRefObject<AttachmentComposerHandle | null>; disabled?: boolean;
 }) {
   const [items, setItems] = useState<DraftAttachment[]>([]);
   const [notice, setNotice] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const { openViewer } = useViewer();
-  const itemsRef = useRef(items), callbacks = useRef(onChange), epoch = useRef(0), nextKey = useRef(0);
+  const itemsRef = useRef(items), callbacks = useRef(onChange), selectionCallback = useRef(onSelectionChange), epoch = useRef(0), nextKey = useRef(0);
   const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>());
   const identity = useRef({ client, threadId, clearKey });
   callbacks.current = onChange;
+  selectionCallback.current = onSelectionChange;
   const update = (next: DraftAttachment[]) => {
     itemsRef.current = next; setItems(next);
     callbacks.current(uploadedInOrder(next), draftBusy(next));
+    selectionCallback.current?.(next.length);
   };
   const cleanup = () => {
     ++epoch.current;
@@ -85,6 +92,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
       if (generation !== epoch.current || controller.signal.aborted) return;
       // Actual SDK signature is upload(threadId, name, Uint8Array, signal).
+      if (!threadId) throw new Error('thread required');
       const attachment = await client.upload(threadId, source.name, bytes, controller.signal);
       if (generation !== epoch.current || controller.signal.aborted) return;
       const current = itemsRef.current;
@@ -101,10 +109,10 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     const { accepted, error } = chooseAttachments(itemsRef.current.length, sources);
     setNotice(error || '');
     if (!accepted.length) { if (file) forgetFile(file); return; }
-    const created: DraftAttachment[] = accepted.map(source => ({ key: ++nextKey.current, source, status: 'uploading' }));
+    const created: DraftAttachment[] = accepted.map(source => ({ key: ++nextKey.current, source, status: threadId ? 'uploading' : 'ready' }));
     if (file) owned.current.set(created[0].key, file);
     update([...itemsRef.current, ...created]);
-    created.forEach(item => { void upload(item.key, item.source, generation); });
+    if (threadId) created.forEach(item => { void upload(item.key, item.source, generation); });
   };
   const images = async () => {
     if (disabled) return;
@@ -185,13 +193,13 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     const file = owned.current.get(key); if (file) { forgetFile(file); owned.current.delete(key); }
     if (item.attachment?.state === 'available' && item.attachment.receipt_id == null) {
       // Only explicit removal deletes an upload this instance owns. The server refuses already-attached IDs.
-      void client.deleteUnattached(threadId, item.attachment.id).catch(() => {});
+      if (threadId) void client.deleteUnattached(threadId, item.attachment.id).catch(() => {});
     }
   };
   const retry = (key: number) => {
     if (disabled) return;
     const item = itemsRef.current.find(entry => entry.key === key);
-    if (!item || item.status !== 'failed') return;
+    if (!item || item.status !== 'failed' || !threadId) return;
     update(itemsRef.current.map(entry => entry.key === key ? { ...entry, status: 'uploading', error: undefined } : entry));
     void upload(key, item.source, epoch.current);
   };
@@ -202,6 +210,45 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       () => generation === epoch.current && itemsRef.current.some(entry => entry.key === item.key))
       .catch(() => { if (generation === epoch.current) setNotice('Could not open the image. Please try again.'); });
   };
+  const uploadTo = async (targetThreadId: string) => {
+    if (threadId) return uploadedInOrder(itemsRef.current);
+    const generation = epoch.current, snapshot = [...itemsRef.current];
+    if (snapshot.some(item => item.status === 'failed')) throw new Error('attachment unavailable');
+    update(snapshot.map(item => item.attachment ? item : { ...item, status: 'uploading', error: undefined }));
+    const uploaded: Attachment[] = snapshot.flatMap(item => item.attachment ? [item.attachment] : []);
+    try {
+      for (const item of snapshot) {
+        if (item.attachment) continue;
+        const controller = new AbortController(); controllers.current.set(item.key, controller);
+        let release: (() => void) | undefined;
+        try {
+          release = await attachmentSlot(controller.signal);
+          const bytes = item.source.data ?? await new File(item.source.uri!).bytes();
+          if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES || generation !== epoch.current) throw new Error('invalid attachment');
+          const attachment = await client.upload(targetThreadId, item.source.name, bytes, controller.signal);
+          if (generation !== epoch.current) throw new Error('stale attachment');
+          uploaded.push(attachment);
+          update(itemsRef.current.map(entry => entry.key === item.key ? { ...entry, status: 'ready', attachment } : entry));
+        } finally {
+          release?.();
+          if (controllers.current.get(item.key) === controller) controllers.current.delete(item.key);
+        }
+      }
+      return uploaded;
+    } catch (error) {
+      if (generation === epoch.current) update(itemsRef.current.map(item => item.attachment ? item : { ...item, status: 'failed', error: friendlyFailure }));
+      throw error;
+    }
+  };
+  const discardFrom = async (targetThreadId: string) => {
+    const uploads = itemsRef.current.flatMap(item => item.attachment?.state === 'available' && item.attachment.receipt_id == null ? [item.attachment.id] : []);
+    await Promise.all(uploads.map(id => client.deleteUnattached(targetThreadId, id)));
+  };
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = { uploadTo, discardFrom };
+    return () => { handleRef.current = null; };
+  }, [client, threadId, handleRef]);
   return <View style={styles.composerRoot}>
       {menuOpen && <View style={[styles.controls, styles.menu]}>
         <Action label="Choose file" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
