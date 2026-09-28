@@ -1,8 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
-import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
+import { useKeyboardState } from 'react-native-keyboard-controller';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
@@ -425,9 +427,13 @@ export function Notice({ text }: { text: string }) {
 export function FormKeyboardAvoidingView({ children }: { children: React.ReactNode }) {
   const focused = useIsFocused();
   const keyboardVisible = useKeyboardState(state => state.isVisible);
-  // Native Stack retains covered screens. Do not let another route's keyboard
-  // shrink them, or retain an animated height after the native did-hide event.
-  return <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset enabled={focused && keyboardVisible}>
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  // Retained forms must explicitly restore zero padding. Controller's height
+  // mode returns {} on disable, leaving Reanimated's native height/flex behind.
+  // The hidden-header home route still starts below the top safe-area inset.
+  return <KeyboardAvoidingView style={styles.flex} behavior="padding"
+    keyboardVerticalOffset={Math.max(headerHeight, insets.top)} enabled={focused && keyboardVisible}>
     {children}
   </KeyboardAvoidingView>;
 }

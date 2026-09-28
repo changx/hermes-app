@@ -39,11 +39,13 @@ async function harness() {
   const exports = {};
   const mocks = {
     react: React,
-    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
+    'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => router, useIsFocused: () => React.useContext(Focus),
       useFocusEffect: cb => { const focused = React.useContext(Focus); React.useEffect(() => focused ? cb() : undefined, [focused, cb]); } },
     './FontSize': { Text: 'Text', FontSizeSettings: 'FontSizeSettings' },
-    'react-native-keyboard-controller': { KeyboardAvoidingView: 'KeyboardAvoidingView', useKeyboardState: selector => selector({ isVisible: false }) },
+    'react-native-keyboard-controller': { useKeyboardState: selector => selector({ isVisible: false }) },
+    'expo-router/react-navigation': { useHeaderHeight: () => 100 },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
     'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null, deleteItemAsync: async () => {} },
     'expo-crypto': { randomUUID: () => 'synthetic-send-id' },
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },

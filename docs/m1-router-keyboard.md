@@ -15,7 +15,14 @@ Jamie 反馈迁移 Expo Router 后：输入区落入底部安全区，打开中�
 
 Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊天页返回后出现”。截图中频道列表提前截断，下方有大块空白；不能只用缺失的聊天安全区解释。频道、连接和设置的 KeyboardAvoidingView 目前无条件启用，原生 Stack 保留隐藏页面，它们会接收其他页面的全局键盘动画。当前库 height 模式在内部 isClosed=false 时返回固定 height/flex:0；该状态与 JS keyboardDidHide 通知属于不同事件通路，因此不能仅依赖它在原生导航/恢复后自动正确收尾。没有真机事件追踪，具体漏失/乱序步骤仍未确证。
 
-最小修正：这些表单页统一通过一个薄组件使用已有 `useIsFocused()` 与 keyboard-controller `useKeyboardState(state => state.isVisible)` 控制 enabled。隐藏页面不参与高度避让，keyboardDidHide 后强制撤销固定高度；仍由库负责展开/收起动画，保留同一个容器和子树，不重挂表单、不加延时、不关闭导航动画。聊天继续使用原来的 native sticky/scroll 方案，查看页无表单高度避让。
+首轮尝试（Jamie 真机反馈失败，以下结论已被下一节修正）：这些表单页统一通过一个薄组件使用已有 `useIsFocused()` 与 keyboard-controller `useKeyboardState(state => state.isVisible)` 控制 enabled。隐藏页面不参与高度避让，keyboardDidHide 后强制撤销固定高度；仍由库负责展开/收起动画，保留同一个容器和子树，不重挂表单、不加延时、不关闭导航动画。聊天继续使用原来的 native sticky/scroll 方案，查看页无表单高度避让。
+
+## 半高问题返工
+
+- `40a215a` 真机仍失败。已安装 controller 1.21.9 的 `KeyboardAvoidingView` height 模式关闭/禁用时返回 `{}`；Reanimated [官方契约](https://docs.swmansion.com/react-native-reanimated/docs/core/useAnimatedStyle/)明确说明移除动画属性不会撤销已经应用的原生值。单纯 `enabled=false` 不保证清除 `height/flex:0`。这是确定的代码缺口；没有 iPhone 事件追踪，仍不能宣称已穷尽所有原生导航原因。
+- 旧测试把每次 animatedStyle 当作完整样式替换，遗漏了原生增量写入语义。先增强替身、证明旧代码失败，再执行实际 RN KAV 源码检查恢复。
+- 普通表单页改用 RN 自带 KAV 的 padding 模式，保持外层 `flex:1`，禁用/关闭时明确写入 `paddingBottom:0`；保留 focus + native visible 防线、容器及草稿，不改聊天 controller、native Stack 或依赖。使用 `expo-router/react-navigation` 的 `useHeaderHeight()` 与安全区顶部计算原生导航偏移，首页 header 隐藏时补顶部 inset。
+- 验收涵盖 hide 在 pop 前后、covered show、取消返回、再次输入、不同键盘高度、header/safe-area 偏移、监听清理及子树身份。自动测试与双平台导出分别记录；iPhone 开键盘直接返回仍待真机确认。
 
 ## 验收
 
@@ -28,6 +35,12 @@ Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊�
 - https://kirillzyusko.github.io/react-native-keyboard-controller/docs/api/components/keyboard-chat-scroll-view
 - https://kirillzyusko.github.io/react-native-keyboard-controller/docs/guides/building-chat-app
 - 精确实现以项目安装的 `react-native-keyboard-controller@1.21.9` 与 `react-native@0.86.3` 源码为准，不能采用新版文档独有 API。
+
+## 本轮返工验证
+
+- 增量动画样式替身接入后，原实现 4 项测试中 3 项失败，稳定保留 `height:470/flex:0`；日志 `workspace/hermes-app/router-keyboard-height-reset/red.log`。
+- 新版执行已安装 RN 0.86.3 KAV 与 controller visibility hook 源码，专项 8/8，全量手机 263/263（0 failed/skipped）；TS、iOS/Android Metro 导出通过。导航生命周期测试同步了新增 hook 的替身，没有改变断线、消息或草稿逻辑。
+- 构建/测试日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/router-keyboard-height-reset/`。这些是 Node 原生边界替身测试和 JS 导出，不是 iPhone UI 实测，卡片须保留 review。
 
 ## 验证结果
 
