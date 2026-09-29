@@ -26,6 +26,7 @@ test('article CSS scales body, headings, code inheritance, controls and captions
   const large = output.exports.renderArticleHtml(blocks, [], 1.3).html;
   assert.match(large, /:root\{--interface-scale:1\.3\}/);
   assert.match(large, /html,body\{[^}]*font:19\.5px\/1\.55/);
+  assert.match(large, /body\{padding:4px 16px 36px;/, 'document padding preserves prose inset without shrinking the WebView');
   assert.match(large, /h1\{font-size:29\.9[\d]*px\}/);
   assert.equal((large.match(/h1\{font-size:/g) || []).length, 1);
   assert.match(large, /code,pre,\.original\{font-family:ui-monospace,Menlo,Consolas,monospace\}/);

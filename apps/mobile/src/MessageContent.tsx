@@ -300,7 +300,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
     return result.html.length <= 8_000_000 ? result : null; // includes the local engine bundles
   }, [text, blocks, toolCalls, scale]);
   const [failed, setFailed] = useState(false);
-  if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+  if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.articleFallbackContent}>
     <Text style={styles.articleFailure}>{!page ? 'This article is too long. Showing the standard view instead.' : 'This article could not load. Showing the standard view instead.'}</Text>
     <RenderBlocks blocks={blocks} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} suspended />
     <ToolCalls calls={toolCalls} onInteraction={() => {}} />
@@ -335,8 +335,11 @@ function ExpandedContent({ target, text, blocks, toolCalls, onExpand, tone, allo
 }) {
   // Native Stack retains this document when a child route covers it, including
   // its WebView scroll/selection state. Do not unmount it on blur.
-  // ViewerScreen already provides bottom/side safe-area padding.
-  return <View style={styles.viewer}>
+  // ViewerScreen already provides bottom/side safe-area padding. Keep the
+  // article viewport edge-to-edge so its native scroll indicator reaches the
+  // safe-area edge; prose padding belongs inside the document. Non-article
+  // viewers still need a bounded native layout.
+  return <View style={target.kind === 'message' ? styles.viewer : styles.insetViewer}>
     {target.kind === 'message'
       ? <ArticleContent text={text} blocks={blocks} toolCalls={toolCalls} onExpand={onExpand} tone={tone} allowed={allowed} />
       : target.kind === 'table' && target.block.kind === 'table'
@@ -445,9 +448,11 @@ const styles = StyleSheet.create({
   fullscreenDiagram: { flex: 1, minHeight: 0, width: '100%' },
   expandButton: { alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 },
   expandText: { color: '#215ca7', fontSize: 12 },
-  viewer: { flex: 1, backgroundColor: '#fff', paddingBottom: 12, paddingHorizontal: 14 },
+  viewer: { flex: 1, backgroundColor: '#fff' },
+  insetViewer: { flex: 1, backgroundColor: '#fff', paddingBottom: 12, paddingHorizontal: 14 },
   modalScroll: { flex: 1, minWidth: 0 },
   modalScrollContent: { paddingBottom: 16 },
+  articleFallbackContent: { paddingBottom: 28, paddingHorizontal: 14 },
   articleWeb: { flex: 1, backgroundColor: '#fff' },
   articleFailure: { color: '#52657c', fontSize: 13, paddingBottom: 10 },
   quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },

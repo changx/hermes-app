@@ -365,7 +365,11 @@ test('article, table and Mermaid push native viewer routes; nested back retains 
       doubleTapArticle(h);
       assert.deepEqual(h.viewers.map(route => route.title), ['Message']);
       assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'inline WebView remains mounted on blur');
+      const articleBody = inside().find(n => n.type === 'View' && n.props.style?.backgroundColor === '#fff');
+      assert.equal(articleBody.props.style.paddingHorizontal, undefined, 'article viewport reaches the side safe-area edges');
+      assert.equal(articleBody.props.style.paddingBottom, undefined, 'article viewport reaches the bottom safe-area edge');
       const articleWeb = inside().find(n => n.type === 'WebView');
+      assert.match(articleWeb.props.source.html, /body\{padding:4px 16px 36px;/, 'prose keeps its inset inside the document');
       assert.match(articleWeb.props.source.html, /开头。[\s\S]*<td>甲<\/td>[\s\S]*结尾。/);
       assert.match(articleWeb.props.source.html, /data-expand="0"[\s\S]*data-expand="1"/);
       articleWeb.props.onMessage({ nativeEvent: { data: 'expand:0' } });
@@ -430,6 +434,9 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   const failed = inside().find(n => n.type === 'WebView');
   failed.props.onRenderProcessGone();
   assert.equal(inside().some(n => n.type === 'WebView'), false);
+  const fallback = inside().find(n => n.type === 'ScrollView' && !n.props.horizontal);
+  assert.equal(fallback.props.contentContainerStyle.paddingHorizontal, 14, 'native fallback keeps prose inset inside its scroll content');
+  assert.equal(fallback.props.contentContainerStyle.paddingBottom, 28);
   assert.ok(inside().some(n => n.type === 'Text' && n.children.includes('This article could not load. Showing the standard view instead.')));
   assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), 'table not dropped on failure');
   h.unmount();
