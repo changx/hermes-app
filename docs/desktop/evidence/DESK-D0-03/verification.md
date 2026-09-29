@@ -1,8 +1,8 @@
 # DESK-D0-03 verification
 
-Status: Review
+Status: Done
 
-Automated renderer acceptance is complete. This card remains in Review until `DESK-D0-05` can launch the app and capture the required real-Mac widths.
+Automated renderer acceptance and the required real-Mac width checks are complete.
 
 ## Implemented shell
 
@@ -37,12 +37,14 @@ Results:
 - responsive breakpoints and reduced-motion policy are present
 - top-level error boundary uses user-safe copy
 
-## Remaining manual evidence
+## Mac mini evidence
 
-After `DESK-D0-05` starts the app on the Mac mini, capture the same commit at:
+Commit `b76eeaa6cb444dfa9cbc4cbfa8b3c9c96ca9b1e8` was built and launched with Electron `40.10.2` on an Apple Silicon Mac mini running macOS 26.5. The application was captured at three real BrowserWindow widths:
 
-1. normal three-column width
-2. medium two-column width
-3. narrow single-content width
+| Window | Expected visible panes | Evidence | SHA-256 |
+| --- | --- | --- | --- |
+| 1280×820 | Channels, Threads, Conversation | [`mac/1280px.png`](mac/1280px.png) | `90065f820e5c1e93f480e603a82f6cab3e41918424f328a454f36153e75f7298` |
+| 900×820 | Threads, Conversation | [`mac/900px.png`](mac/900px.png) | `1bd7ed657b474b0bbf747d2c8f36f7eb58f6a15a24be8769b1ae0a413b82c9a6` |
+| 720×820 | Conversation | [`mac/720px.png`](mac/720px.png) | `2c425b49cc73f96576bd0e25ee0aae73290d4b43c2308e9153646f78771037cd` |
 
-The screenshots must contain no credentials, internal IDs or real chat data.
+Window enumeration confirmed each requested logical width. OCR confirmed that hidden pane headings were absent at their respective breakpoints while the Conversation empty state remained visible. The screenshots contain only static placeholder content—no credentials, internal IDs or real chat data.

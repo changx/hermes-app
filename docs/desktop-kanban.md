@@ -58,10 +58,8 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 | 状态 | 卡片 |
 | --- | --- |
-| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳 |
-| Review | `DESK-D0-03` React 三栏与响应式骨架（待 Mac 三种宽度截图） |
-| Ready | `DESK-D0-04` 安全自动回归 |
-| Backlog | `DESK-D0-05` Mac 开发启动；`DESK-D0-06` 未签名 `.app` 打包 |
+| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架；`DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动 |
+| Ready | `DESK-D0-06` 未签名 `.app` 打包 |
 | Backlog | `DESK-D0-07` HermesClient transport 与 React adapter；`DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
 | Backlog | `DESK-D1-01` 至 `DESK-D1-16` 完整聊天闭环 |
 | Backlog | `DESK-D2-01` 至 `DESK-D2-09` 可靠性与桌面体验 |
@@ -104,7 +102,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 ### DESK-D0-03 — React 三栏与响应式骨架
 
-- **状态**：Review（自动检查完成；真实 Mac 三种宽度截图待 `DESK-D0-05` 启动后补齐）。
+- **状态**：Done（自动检查和真实 Mac 三种宽度截图均完成）。
 - **目标**：显示 Channels、Threads、Conversation 三栏语义骨架，并在窄窗口中确定折叠规则。
 - **范围**：renderer HTML/入口/CSS、错误边界、三栏 landmarks、空状态、720px 最小窗口、中宽隐藏 Channel、窄宽单主区切换。
 - **验收**：
@@ -114,19 +112,21 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
   4. 键盘焦点顺序合理，所有临时按钮有英文可访问名称。
 - **不包含**：真实数据、美术定稿、复杂动画。
 - **依赖**：`DESK-D0-01`。
-- **证据**：`apps/desktop/tests/renderer-shell.test.mjs`；[`docs/desktop/evidence/DESK-D0-03/verification.md`](desktop/evidence/DESK-D0-03/verification.md)；Mac 三种窗口宽度截图待补。
+- **证据**：`apps/desktop/tests/renderer-shell.test.mjs`；[`docs/desktop/evidence/DESK-D0-03/verification.md`](desktop/evidence/DESK-D0-03/verification.md)；Mac 三种窗口宽度截图。
 
 ### DESK-D0-04 — D0 安全自动回归
 
+- **状态**：Done。
 - **目标**：把 Electron 和 renderer 安全约束变成阻止回归的自动 gate。
 - **范围**：静态/运行时测试、构建产物检查、CSP 检查、preload surface 快照、禁止危险 Electron 配置。
 - **验收**：主动引入 `nodeIntegration: true`、宽泛 IPC 或远程脚本时测试必失败；正常构建全绿。
 - **不包含**：OS 权限渗透测试或第三方审计。
 - **依赖**：`DESK-D0-02`、`DESK-D0-03`。
-- **证据**：`apps/desktop/tests/security-baseline.test.mjs` 及 CI/本地输出。
+- **证据**：`apps/desktop/tests/security-baseline.test.mjs`；[`docs/desktop/evidence/DESK-D0-04/verification.md`](desktop/evidence/DESK-D0-04/verification.md)。
 
 ### DESK-D0-05 — Apple Silicon Mac 开发启动
 
+- **状态**：Done。
 - **目标**：在 Mac mini 上从 checkout 启动 Electron 开发 App，并能用现有 GUI 观察工具验收。
 - **范围**：Mac Node/npm 安装方式、依赖恢复、build/start 命令、日志位置、启动/退出 smoke test。
 - **验收**：
@@ -135,7 +135,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
   3. 不修改 TCC、Accessibility 或 Input Monitoring；当前只读 Screen Recording 足够。
 - **不包含**：可分发 artifact、签名、notarization。
 - **依赖**：`DESK-D0-04`。
-- **证据**：`docs/desktop/evidence/DESK-D0-05/` 中的脱敏命令记录、进程记录和截图。
+- **证据**：[`docs/desktop/evidence/DESK-D0-05/verification.md`](desktop/evidence/DESK-D0-05/verification.md) 中的脱敏命令、原生进程、窗口、截图和清理记录。
 
 ### DESK-D0-06 — 未签名 `.app` 打包与回滚
 
