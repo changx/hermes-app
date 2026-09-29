@@ -34,6 +34,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
+  active: boolean;
   threadId: string;
   rows: TimelineRow[];
   startRef: number | null;
@@ -99,16 +100,21 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     previousKeys.current = nextKeys;
   }
   const frame = useRef<number | null>(null);
+  // Native-stack keeps the departing screen mounted during an interactive
+  // swipe-back. Never address its list once the route has lost focus.
+  const active = useRef(props.active);
+  active.current = props.active;
   const followAnimation = useRef(false);
   const pendingFollow = useRef(false);
   const animatingFollow = useRef(false);
   const scheduleFollow = useCallback((animate = false) => {
+    if (!active.current) return;
     // Geometry corrections must not turn a queued/ongoing append into a jump.
     if (animate) followAnimation.current = true;
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      if (!following.current || dragging.current || gestureMomentum.current || momentumEligible.current) {
+      if (!active.current || !following.current || dragging.current || gestureMomentum.current || momentumEligible.current) {
         pendingFollow.current = false;
         followAnimation.current = false;
         return;
@@ -143,10 +149,20 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     });
     return () => { mounted = false; sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
+  useEffect(() => {
+    if (props.active) return;
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+    keyboardMoving.current = false; nativeMoving.value = false;
+    pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+  }, [props.active]);
   const callbacks = useRef({ onPosition, onVisibleRef, startRef });
   callbacks.current = { onPosition, onVisibleRef, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
   const followLatest = useCallback((animate = true) => {
+    if (!active.current) return;
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
@@ -209,6 +225,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
         onViewableItemsChanged={viewability.current}
         onLayout={e => {
+          if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;
           if (!restored.current && content.current) {
             restored.current = true;
@@ -217,6 +234,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           }
         }}
         onContentSizeChange={(_, height) => {
+          if (!active.current) return;
           const previous = content.current;
           content.current = height;
           if (!restored.current && viewport.current) {
@@ -228,11 +246,12 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             && (!keyboardMoving.current || appended.current)) scheduleFollow(appended.current);
           appended.current = false;
         }}
-        onScrollBeginDrag={() => { dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; followAnimation.current = false; pendingFollow.current = false; }}
+        onScrollBeginDrag={() => { if (!active.current) return; dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; followAnimation.current = false; pendingFollow.current = false; }}
         onMomentumScrollBegin={() => { gestureMomentum.current = momentumEligible.current; momentumEligible.current = false; }}
         onScrollEndDrag={e => { dragging.current = false; momentumEligible.current = Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01; savePosition(); }}
         onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; savePosition(); }}
         onScroll={e => {
+          if (!active.current) return;
           const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
             (dragging.current || gestureMomentum.current) && !keyboardMoving.current, reportedInset.current);
           offset.current = state.offset;
@@ -244,6 +263,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
 
     </View>
     <KeyboardStickyView pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
+      if (!active.current) return;
       const height = e.nativeEvent.layout.height;
       if (dockHeight.current !== height) {
         const hadDock = dockHeight.current > 0;

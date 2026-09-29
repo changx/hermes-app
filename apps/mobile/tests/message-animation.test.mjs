@@ -53,7 +53,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; },
       requestAnimationFrame: cb => { frames.push(cb); return frames.length; }, cancelAnimationFrame: () => {} });
   const props = {
-    threadId: 'th', rows: rows.map(row => typeof row === 'string' ? { key: row, role: 'user', text: row } : row), startRef: null, hasOlder: false,
+    active: true, threadId: 'th', rows: rows.map(row => typeof row === 'string' ? { key: row, role: 'user', text: row } : row), startRef: null, hasOlder: false,
     onOlder() {}, onPosition() {}, onVisibleRef() {}, text: '', onText() {}, onSend() {}, records: [], receipts: [], interactions: [], answers: {},
     onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false, position
   };
@@ -89,6 +89,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     dock: height => sticky.onLayout({ nativeEvent: { layout: { height } } }),
     append: key => { props.rows = [...props.rows, { key, role: 'user', text: key }]; render(); },
     rows: next => { props.rows = next; render(); },
+    active: value => { props.active = value; render(); },
     rerender: () => render(),
     keyboard: moving => { if (moving) keyboardHandler.onStart(); else keyboardHandler.onEnd(); },
     interactive: () => keyboardHandler.onInteractive(),
@@ -357,6 +358,16 @@ test('moving keyboard defers append and explicit latest until end, not while mov
   assert.equal(h.calls.length, 0);
   h.keyboard(false); h.flush();
   assert.deepEqual(h.calls, [{ animated: true }]);
+});
+
+test('losing route focus cancels queued follows and ignores departing native layout events', () => {
+  const h = mount({ rows: [user('question')] });
+  h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
+  h.rows([user('question'), agent('answer', 'Answer')]);
+  h.active(false);
+  h.content(1100); h.layout(480); h.dock(120); h.flush();
+  h.ref.current.followLatest();
+  assert.deepEqual(h.calls, [], 'a swipe-back transition must not scroll the departing native list');
 });
 
 test('keyboard geometry alone never issues a competing scroll; reader cancels deferred follow', () => {
