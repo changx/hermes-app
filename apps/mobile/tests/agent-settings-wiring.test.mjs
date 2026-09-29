@@ -32,10 +32,10 @@ test('channels push native routes; settings remains independent from chat', () =
   const router = { push: path => calls.push(path), back: () => calls.push('back') };
   const channels = renderReturn('ChannelsScreen', {
     ready: true, config: { id: 'conn' }, client, channelId: null, error: '', loading: false, router,
-    View: 'View', Text: 'Text', Button: 'Button', FormKeyboardAvoidingView: 'FormKeyboardAvoidingView', ChannelScreens: 'ChannelScreens', Notice: 'Notice',
+    View: 'View', Text: 'Text', HeaderActions: 'HeaderActions', FormKeyboardAvoidingView: 'FormKeyboardAvoidingView', ChannelScreens: 'ChannelScreens', Notice: 'Notice',
   });
-  channels.find(n => n.type === 'Button' && n.props.title === 'Agent settings').props.onPress();
-  channels.find(n => n.type === 'Button' && n.props.title === 'Connection').props.onPress();
+  const header = channels.find(n => n.type === 'HeaderActions');
+  header.props.onSettings(); header.props.onConnection();
   const list = channels.find(n => n.type === 'ChannelScreens');
   list.props.onChannel('p_one'); list.props.onThread('t_one');
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['/settings', '/connection',
@@ -56,7 +56,7 @@ test('chat composer retains route-local identity and hides callbacks after blur'
   const calls = [], focusedRef = { current: true }, currentComposer = { current: 'conn:t_one' };
   const nodes = renderReturn('ThreadScreen', {
     config: { id: 'conn' }, client, selected: client.threads.get('t_one'), threadId: 't_one', router: { push: path => calls.push(path) }, rows: [], visibleMessages: [], located: true, first: 0,
-    pageCursor: null, historyBusy: false, positions: { current: new Map() }, timelineRef: { current: { pasteText: value => calls.push(value) } },
+    pageCursor: null, historyBusy: false, positions: { current: new Map() }, entryPosition: { offset: 0, following: true, startRef: null }, timelineRef: { current: { pasteText: value => calls.push(value) } },
     text: 'draft', draftAttachments: [{ id: 'att' }], attachmentsBusy: false, receipts: [], interactions: [], answers: {}, status: 'online',
     composerScope: 'conn:t_one', currentComposer, focusedRef, attachmentClearKey: 3, agentName: { name: 'Tuly' }, busy: false,
     loading: false, error: '', connectionError: '', isAgentTyping: () => true, View: 'View', Text: 'Text', Notice: 'Notice',

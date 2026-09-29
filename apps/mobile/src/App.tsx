@@ -23,19 +23,22 @@ import { AttachmentComposer, MessageAttachments } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
+import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
 
 const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
   ? 'Message not sent. Check your access or message content. Your message is still here.'
   : "Could not save or confirm your message. Don't clear this app's data.";
 
-function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button, secondary && styles.secondary, disabled && styles.disabled]}><Text style={[styles.buttonText, secondary && styles.secondaryText]}>{title}</Text></Pressable>;
+function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSymbol; android: AndroidSymbol; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.headerIconPressed]}>
+    <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
+  </Pressable>;
 }
 export function HeaderActions({ onConnection, onSettings }: { onConnection: () => void; onSettings: () => void }) {
   return <View style={styles.headerActions}>
-    <Pressable accessibilityRole="button" onPress={onConnection}><Text style={styles.headerLink}>Connection</Text></Pressable>
-    <Pressable accessibilityRole="button" onPress={onSettings}><Text style={styles.headerLink}>Settings</Text></Pressable>
+    <HeaderIcon label="Connection" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
+    <HeaderIcon label="Agent settings" ios="gearshape" android="settings" onPress={onSettings} />
   </View>;
 }
 type AppContextValue = {
@@ -249,6 +252,8 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
+  // Every entry opens at the latest message; keep only the loaded history window.
+  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: true, startRef: positions.current.get(threadId)?.startRef ?? null }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -408,7 +413,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
       locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
       onOlder={() => { void loadOlder(); }}
-      position={positions.current.get(threadId)} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
+      position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
@@ -447,8 +452,7 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     return <Notice text={client.connectionState === 'online' ? 'This channel is unavailable.' : 'Opening channel…'} />;
   return <View style={styles.flex}>
     {!channelId && <View style={styles.header}><View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
-      <Button title="Connection" secondary onPress={() => router.push('/connection')} />
-      <Button title="Agent settings" secondary onPress={() => router.push('/settings')} />
+      <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} />
     </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
     {loading && <Text style={styles.hint}>Opening…</Text>}
@@ -487,10 +491,11 @@ export function SettingsRoute() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderColor: '#e2e8f0' },
+  header: { paddingLeft: 16, paddingRight: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderColor: '#e2e8f0' },
   brandSmall: { fontSize: 19, fontWeight: '700', color: '#14283e' },
   hint: { color: '#607187', fontSize: 12, margin: 9 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10 },
   button: { backgroundColor: '#2960ad', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', margin: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 }, headerLink: { color: '#2b4e81', fontSize: 13, fontWeight: '600' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, headerLink: { color: '#2b4e81', fontSize: 13, fontWeight: '600' },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, headerIconPressed: { backgroundColor: '#e6edf7' },
   secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 }, buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 }, secondaryText: { color: '#2b4e81' },
 });

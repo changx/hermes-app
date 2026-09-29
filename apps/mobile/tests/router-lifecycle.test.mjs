@@ -65,6 +65,7 @@ async function harness() {
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
     './AgentSettings': { AgentSettings: 'AgentSettings', useAgentName: () => name },
     './ModelSettings': { ModelSettings: 'ModelSettings' },
+    'expo-symbols': { SymbolView: 'SymbolView' },
   };
   runInNewContext(code, { exports, console, AbortController, require: id => { if (!(id in mocks)) throw Error(id); return mocks[id]; } });
   function Pages({ thread, settings }) {

@@ -11,7 +11,7 @@ import json
 import hashlib
 import math
 import stat
-from contextlib import contextmanager, closing
+from contextlib import contextmanager, closing, nullcontext
 from pathlib import Path
 
 
@@ -911,7 +911,34 @@ class Store:
             return {'events':events,'waterline':self._sync_cursor(high),
                     'next_cursor':self._sync_cursor(last), 'has_more':len(rows)>limit}
 
-    def snapshot(self, *, after=None, limit=50):
+    @staticmethod
+    def _last_message_at(db, source, thread_id):
+        """Display time of the newest published message; thread creation if none."""
+        ref=db.execute('SELECT seq,row_id,input_receipt_id,direct_message_id FROM message_refs '
+                       'WHERE thread_id=? ORDER BY seq DESC LIMIT 1',(thread_id,)).fetchone()
+        value=None
+        if ref is not None and ref['input_receipt_id'] is not None:
+            value=db.execute('SELECT created_at FROM receipts WHERE id=?',(ref['input_receipt_id'],)).fetchone()
+            value=value[0] if value else None
+        elif ref is not None and ref['direct_message_id'] is not None:
+            value=db.execute('SELECT created_at FROM direct_messages WHERE id=?',(ref['direct_message_id'],)).fetchone()
+            value=value[0] if value else None
+        elif ref is not None:
+            linked=db.execute('SELECT created_at FROM receipts WHERE thread_id=? AND user_row_id=?',
+                              (thread_id,ref['row_id'])).fetchall()
+            if len(linked)==1:
+                value=linked[0][0]
+            elif source is not None:
+                row=source.execute('SELECT timestamp FROM messages WHERE id=?',(ref['row_id'],)).fetchone()
+                value=row[0] if row else None
+            if value is None:
+                snap=db.execute('SELECT payload FROM core_ref_snapshots WHERE row_id=?',(ref['row_id'],)).fetchone()
+                value=json.loads(snap[0]).get('timestamp') if snap else None
+        if not _message_time(value):
+            value=db.execute('SELECT created_at FROM threads WHERE id=?',(thread_id,)).fetchone()[0]
+        return _message_time(value).get('created_at')
+
+    def snapshot(self, *, after=None, limit=50, source_db=None):
         if type(limit) is not int or not 1<=limit<=100:
             raise ValueError('limit must be 1..100')
         boundary=''
@@ -926,7 +953,10 @@ class Store:
                 boundary=value[1]
             except (ValueError,TypeError,UnicodeDecodeError,base64.binascii.Error) as exc:
                 raise ValueError('invalid snapshot cursor') from exc
-        with self._connect() as db:
+        source=None
+        if source_db is not None and Path(source_db).exists():
+            source=sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)
+        with closing(source) if source is not None else nullcontext(), self._connect() as db:
             db.execute('BEGIN')
             if boundary and not db.execute('SELECT 1 FROM threads WHERE id=?',(boundary,)).fetchone():
                 raise ValueError('invalid snapshot cursor')
@@ -942,6 +972,9 @@ class Store:
                 item=dict(row)
                 item['unread_count']=db.execute('SELECT COUNT(*) FROM message_refs WHERE thread_id=? AND seq>?',
                                                  (item['id'],item['read_ref'])).fetchone()[0]
+                last_at=self._last_message_at(db,source,item['id'])
+                if last_at is not None:
+                    item['last_message_at']=last_at
                 active=db.execute("SELECT id,client_message_id,thread_id,state,admission,handed_off,processing,feedback,user_row_id FROM receipts "
                                   "WHERE thread_id=? AND state IN ('queued','running') "
                                   "ORDER BY created_at,id LIMIT 33",(item['id'],)).fetchall()

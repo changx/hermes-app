@@ -923,7 +923,8 @@ class HermesAppAdapter(BasePlatformAdapter):
             self._reconcile_interactions()
             await self._refresh_channels()
             limit=int(request.query.get('limit','50'))
-            page=await asyncio.to_thread(self._store.snapshot,after=request.query.get('after'),limit=limit)
+            page=await asyncio.to_thread(self._store.snapshot,after=request.query.get('after'),limit=limit,
+                                        source_db=get_hermes_home()/'state.db')
         except (ValueError,TypeError) as exc:
             raise web.HTTPBadRequest(text=str(exc)) from exc
         except OverflowError as exc:
