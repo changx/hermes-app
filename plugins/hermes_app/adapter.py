@@ -30,6 +30,11 @@ from .reply_context import reply_scope
 
 log = logging.getLogger(__name__)
 NEW_TOPIC_TITLE = 'New topic'
+_BACKGROUND_REVIEW_NOTICE = re.compile(r'^💾 Self-improvement review:\s+\S[\s\S]*$')
+_COMPACTION_START_NOTICE = '🗜️ Compacting context — summarizing earlier conversation so I can continue...'
+_COMPACTION_DONE_NOTICE = '✓ Context compaction complete — continuing turn...'
+_COMPRESSION_PROGRESS_PREFIXES = (
+    '🗜️ Compacting context —', '📦 Pre-API compression:', '📦 Preflight compression:')
 
 
 def _store():
@@ -98,6 +103,7 @@ class HermesAppAdapter(BasePlatformAdapter):
         self._admission_tasks = set()
         self._title_tasks = set()
         self._ingress_locks = {}
+        self._status_locks = {}
         self._channel_refresh_lock = asyncio.Lock()
         self._events_changed = asyncio.Event()
         self._stopping = False
@@ -249,6 +255,33 @@ class HermesAppAdapter(BasePlatformAdapter):
             return None
         return thread['id'], receipt_id
 
+    def _notice_target(self, chat_id, metadata=None):
+        thread_id = (metadata or {}).get('thread_id')
+        if not isinstance(thread_id, str) or not thread_id:
+            return None
+        thread = self._store.get_thread(thread_id)
+        if not thread or thread['project_id'] != chat_id:
+            return None
+        return thread_id
+
+    @staticmethod
+    def _notice_content(content):
+        return isinstance(content, str) and bool(content.strip()) and len(content) <= 12000
+
+    @staticmethod
+    def _compression_progress(content):
+        if content.startswith(_COMPRESSION_PROGRESS_PREFIXES):
+            return True
+        if content.startswith('💤 Resumed after '):
+            return ' — compacting ' in content
+        if content.startswith('🗜️ Context too large ('):
+            return ' — compressing (' in content and content.endswith(')...')
+        if content.startswith('🗜️ Compressed '):
+            return ' → ' in content and content.endswith(', retrying...')
+        if content.startswith('🗜️ Context reduced to '):
+            return ' (was ' in content and content.endswith(', retrying...')
+        return False
+
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         # Only ACKs emitted inside this exact busy admission belong to the input.
         # Ordinary agent output still comes exclusively from SessionDB below.
@@ -262,6 +295,17 @@ class HermesAppAdapter(BasePlatformAdapter):
                 if await asyncio.to_thread(self._store.record_feedback,reply_to,target[1],feedback):
                     self._events_changed.set()
                 return SendResult(success=True, message_id='feedback:'+reply_to)
+        # The gateway's post-delivery background review has a Thread but no
+        # input receipt. Admit only its marked, exact envelope; arbitrary
+        # interim sends still require the normal receipt-owned path below.
+        if (reply_to is None and metadata and metadata.get('_interim_send') is True
+                and self._notice_content(content) and _BACKGROUND_REVIEW_NOTICE.fullmatch(content)):
+            thread_id = self._notice_target(chat_id,metadata)
+            if thread_id:
+                message_id = await asyncio.to_thread(
+                    self._store.create_system_notice,thread_id,'review',content)
+                self._events_changed.set()
+                return SendResult(success=True,message_id=message_id)
         # Cron has its own established delivery identity and persistence path.
         if metadata and metadata.get('job_id'):
             await self._deliver_background(chat_id, content, metadata)
@@ -300,6 +344,28 @@ class HermesAppAdapter(BasePlatformAdapter):
             self._events_changed.set()
             return SendResult(success=True, message_id=message_id)
         return SendResult(success=False, error='No exact App reply destination', retryable=False)
+
+    async def send_or_update_status(self, chat_id, status_key, content, *, metadata=None):
+        """Persist only the core's recognized context-compression lifecycle."""
+        thread_id = self._notice_target(chat_id,metadata)
+        if not thread_id or not self._notice_content(content):
+            return SendResult(success=False,error='No exact App status destination',retryable=False)
+        body = content.strip()
+        progress = status_key == 'lifecycle' and self._compression_progress(body)
+        complete = status_key == 'compacted' and body == _COMPACTION_DONE_NOTICE
+        if not (progress or complete):
+            return SendResult(success=False,error='Unsupported App status',retryable=False)
+        phase = 'complete' if complete else 'active' if body == _COMPACTION_START_NOTICE else 'pending'
+        # Gateway status callbacks are scheduled independently. Preserve their
+        # per-Thread callback order across the blocking SQLite handoff so a
+        # fast completion cannot be persisted before a delayed start.
+        lock = self._status_locks.setdefault(thread_id,asyncio.Lock())
+        async with lock:
+            message_id, changed = await asyncio.to_thread(
+                self._store.upsert_compression_notice,thread_id,body,phase=phase)
+        if changed:
+            self._events_changed.set()
+        return SendResult(success=True,message_id=message_id)
 
     async def edit_message(self, chat_id, message_id, content, *, finalize=False, metadata=None):
         target = await asyncio.to_thread(self._store.direct_message_thread, message_id)

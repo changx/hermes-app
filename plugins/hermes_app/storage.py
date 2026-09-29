@@ -58,10 +58,14 @@ class Store:
                     session_id TEXT NOT NULL, row_id INTEGER UNIQUE,
                     input_receipt_id TEXT UNIQUE REFERENCES receipts(id),
                     direct_message_id TEXT UNIQUE REFERENCES direct_messages(id),
+                    system_notice_id TEXT UNIQUE REFERENCES system_notices(id),
                     role TEXT NOT NULL,
-                    CHECK ((direct_message_id IS NULL AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL))
-                           OR (direct_message_id IS NOT NULL AND row_id IS NULL
-                               AND input_receipt_id IS NULL AND role = 'assistant')));
+                    CHECK ((direct_message_id IS NULL AND system_notice_id IS NULL
+                            AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL))
+                           OR (direct_message_id IS NOT NULL AND system_notice_id IS NULL
+                               AND row_id IS NULL AND input_receipt_id IS NULL AND role = 'assistant')
+                           OR (system_notice_id IS NOT NULL AND direct_message_id IS NULL
+                               AND row_id IS NULL AND input_receipt_id IS NULL AND role = 'system')));
                 CREATE INDEX IF NOT EXISTS refs_page ON message_refs(thread_id, seq);
                 CREATE TABLE IF NOT EXISTS receipts (
                     id TEXT PRIMARY KEY, client_message_id TEXT NOT NULL UNIQUE,
@@ -77,6 +81,15 @@ class Store:
                     attachment_id TEXT REFERENCES attachments(id),
                     created_at INTEGER NOT NULL DEFAULT (unixepoch()));
                 CREATE INDEX IF NOT EXISTS direct_messages_receipt ON direct_messages(receipt_id);
+                CREATE TABLE IF NOT EXISTS system_notices (
+                    id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
+                    kind TEXT NOT NULL CHECK (kind IN ('review','compression')),
+                    state TEXT NOT NULL CHECK (state IN ('pending','active','complete')),
+                    text TEXT NOT NULL,
+                    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                    updated_at INTEGER NOT NULL DEFAULT (unixepoch()));
+                CREATE INDEX IF NOT EXISTS system_notices_active
+                    ON system_notices(thread_id,kind,state,created_at);
                 CREATE TABLE IF NOT EXISTS core_ref_snapshots (
                     row_id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sync_events (
@@ -117,7 +130,7 @@ class Store:
             if not any(r['name'] == 'attachment_id' for r in db.execute('PRAGMA table_info(direct_messages)')):
                 db.execute('ALTER TABLE direct_messages ADD COLUMN attachment_id TEXT REFERENCES attachments(id)')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
-            if ('direct_message_id' not in ref_sql or
+            if ('system_notice_id' not in ref_sql or 'direct_message_id' not in ref_sql or
                     'CHECK ((row_id IS NULL) != (input_receipt_id IS NULL))' in ref_sql):
                 # Rebuild only the ref table. Keep issued seq identities, event log,
                 # read positions, and the original insert trigger semantics intact.
@@ -128,16 +141,21 @@ class Store:
                            'turn_id TEXT NOT NULL REFERENCES turns(turn_id), '
                            'session_id TEXT NOT NULL, row_id INTEGER UNIQUE, '
                            'input_receipt_id TEXT UNIQUE REFERENCES receipts(id), '
-                           'direct_message_id TEXT UNIQUE REFERENCES direct_messages(id), role TEXT NOT NULL, '
-                           'CHECK ((direct_message_id IS NULL AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL)) '
-                           "OR (direct_message_id IS NOT NULL AND row_id IS NULL AND input_receipt_id IS NULL "
-                           "AND role = 'assistant')))")
-                if 'input_receipt_id' in ref_sql:
-                    db.execute('INSERT INTO message_refs_new(seq,thread_id,turn_id,session_id,row_id,input_receipt_id,role) '
-                               'SELECT seq,thread_id,turn_id,session_id,row_id,input_receipt_id,role FROM message_refs')
-                else:
-                    db.execute('INSERT INTO message_refs_new(seq,thread_id,turn_id,session_id,row_id,role) '
-                               'SELECT seq,thread_id,turn_id,session_id,row_id,role FROM message_refs')
+                           'direct_message_id TEXT UNIQUE REFERENCES direct_messages(id), '
+                           'system_notice_id TEXT UNIQUE REFERENCES system_notices(id), role TEXT NOT NULL, '
+                           'CHECK ((direct_message_id IS NULL AND system_notice_id IS NULL '
+                           'AND (row_id IS NOT NULL OR input_receipt_id IS NOT NULL)) '
+                           "OR (direct_message_id IS NOT NULL AND system_notice_id IS NULL "
+                           "AND row_id IS NULL AND input_receipt_id IS NULL AND role = 'assistant') "
+                           "OR (system_notice_id IS NOT NULL AND direct_message_id IS NULL "
+                           "AND row_id IS NULL AND input_receipt_id IS NULL AND role = 'system')))" )
+                receipt_expr = 'input_receipt_id' if 'input_receipt_id' in ref_sql else 'NULL'
+                direct_expr = 'direct_message_id' if 'direct_message_id' in ref_sql else 'NULL'
+                notice_expr = 'system_notice_id' if 'system_notice_id' in ref_sql else 'NULL'
+                db.execute('INSERT INTO message_refs_new(seq,thread_id,turn_id,session_id,row_id,'
+                           'input_receipt_id,direct_message_id,system_notice_id,role) '
+                           f'SELECT seq,thread_id,turn_id,session_id,row_id,{receipt_expr},'
+                           f'{direct_expr},{notice_expr},role FROM message_refs')
                 db.execute('DROP TABLE message_refs')
                 db.execute('ALTER TABLE message_refs_new RENAME TO message_refs')
                 db.execute('CREATE INDEX refs_page ON message_refs(thread_id,seq)')
@@ -174,6 +192,70 @@ class Store:
                        "VALUES (?,?,?,?,'assistant')",
                        (thread_id,'input:'+receipt_id,owner['session_id'],message_id))
         return message_id
+
+    @staticmethod
+    def _validate_notice_text(text):
+        if not isinstance(text, str) or not text.strip() or len(text) > 12000:
+            raise ValueError('invalid system notice text')
+
+    @staticmethod
+    def _insert_system_notice(db, thread_id, kind, state, text):
+        owner = db.execute('SELECT session_id FROM threads WHERE id=?', (thread_id,)).fetchone()
+        if not owner or not owner['session_id']:
+            raise ValueError('system notice requires an initialized thread')
+        notice_id = 'notice_' + secrets.token_hex(16)
+        turn_id = 'notice:' + notice_id
+        db.execute("INSERT INTO turns(turn_id,thread_id,state) VALUES (?,?,'complete')",
+                   (turn_id,thread_id))
+        db.execute('INSERT INTO system_notices(id,thread_id,kind,state,text) VALUES (?,?,?,?,?)',
+                   (notice_id,thread_id,kind,state,text))
+        db.execute('INSERT INTO message_refs(thread_id,turn_id,session_id,system_notice_id,role) '
+                   "VALUES (?,?,?,?,'system')",
+                   (thread_id,turn_id,owner['session_id'],notice_id))
+        return notice_id
+
+    def create_system_notice(self, thread_id, kind, text) -> str:
+        """Publish one completed plugin-owned notice in the visible Thread history."""
+        self._validate_notice_text(text)
+        if kind not in ('review','compression'):
+            raise ValueError('invalid system notice kind')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            return self._insert_system_notice(db,thread_id,kind,'complete',text)
+
+    def upsert_compression_notice(self, thread_id, text, *, phase='pending'):
+        """Create one compression attempt row or update its stable visible identity."""
+        self._validate_notice_text(text)
+        if phase not in ('pending','active','complete'):
+            raise ValueError('invalid compression notice state')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            active = db.execute(
+                "SELECT n.id,n.state,n.text,r.seq FROM system_notices n "
+                "JOIN message_refs r ON r.system_notice_id=n.id AND r.thread_id=n.thread_id "
+                "WHERE n.thread_id=? AND n.kind='compression' AND n.state IN ('pending','active') "
+                'ORDER BY r.seq DESC LIMIT 1', (thread_id,)).fetchone()
+            # The exact core start edge defines a new attempt. A preceding
+            # preflight line is part of that attempt; an already-started row is
+            # an orphan from a failed attempt and must never absorb the retry.
+            if phase == 'active' and active and active['state'] == 'active':
+                db.execute("UPDATE system_notices SET state='complete',updated_at=unixepoch() WHERE id=?",
+                           (active['id'],))
+                active = None
+            if active:
+                state = phase if phase != 'pending' else active['state']
+                if active['text'] == text and state == active['state']:
+                    return active['id'], False
+                db.execute('UPDATE system_notices SET text=?,state=?,updated_at=unixepoch() WHERE id=?',
+                           (text,state,active['id']))
+                version = db.execute("SELECT COALESCE(MAX(version),0)+1 FROM sync_events "
+                                     "WHERE kind='message' AND thread_id=? AND ref=?",
+                                     (thread_id,str(active['seq']))).fetchone()[0]
+                self._event(db,'message',thread_id,str(active['seq']),version)
+                return active['id'], True
+            notice_id = self._insert_system_notice(
+                db,thread_id,'compression',phase,text)
+            return notice_id, True
 
     def create_direct_document(self, thread_id, receipt_id, attachment_id, name, mime, size, caption):
         """Atomically publish an outbound document and its display-only reference."""
@@ -914,7 +996,7 @@ class Store:
     @staticmethod
     def _last_message_at(db, source, thread_id):
         """Display time of the newest published message; thread creation if none."""
-        ref=db.execute('SELECT seq,row_id,input_receipt_id,direct_message_id FROM message_refs '
+        ref=db.execute('SELECT seq,row_id,input_receipt_id,direct_message_id,system_notice_id FROM message_refs '
                        'WHERE thread_id=? ORDER BY seq DESC LIMIT 1',(thread_id,)).fetchone()
         value=None
         if ref is not None and ref['input_receipt_id'] is not None:
@@ -922,6 +1004,9 @@ class Store:
             value=value[0] if value else None
         elif ref is not None and ref['direct_message_id'] is not None:
             value=db.execute('SELECT created_at FROM direct_messages WHERE id=?',(ref['direct_message_id'],)).fetchone()
+            value=value[0] if value else None
+        elif ref is not None and ref['system_notice_id'] is not None:
+            value=db.execute('SELECT created_at FROM system_notices WHERE id=?',(ref['system_notice_id'],)).fetchone()
             value=value[0] if value else None
         elif ref is not None:
             linked=db.execute('SELECT created_at FROM receipts WHERE thread_id=? AND user_row_id=?',
@@ -1376,6 +1461,23 @@ class Store:
         return {'id':row['id'],'ref_seq':ref['seq'],'role':'assistant','text':row['text'],
                 'display_kind':'direct',**_message_time(row['created_at']),'attachments':attached}
 
+    @staticmethod
+    def _system_notices(db, page):
+        ids=[r['system_notice_id'] for r in page if r['system_notice_id'] is not None]
+        if not ids:
+            return {}
+        return {r['id']:r for r in db.execute(
+            'SELECT id,thread_id,kind,state,text,created_at FROM system_notices WHERE id IN '
+            f'({",".join("?" for _ in ids)})',ids)}
+
+    @staticmethod
+    def _system_display(ref, notices):
+        row=notices.get(ref['system_notice_id'])
+        if row is None or row['thread_id']!=ref['thread_id'] or ref['role']!='system':
+            raise MissingOriginal('system notice unavailable')
+        return {'id':row['id'],'ref_seq':ref['seq'],'role':'system','text':row['text'],
+                'display_kind':'system_notice',**_message_time(row['created_at']),'attachments':[]}
+
     def _is_followup_copy(self, ref, row):
         """Hide only a generated continuation whose original inputs are published."""
         from .projection import _ORIGIN_NOTE
@@ -1436,18 +1538,18 @@ class Store:
                 "SELECT turn_id,state FROM turns WHERE thread_id=? AND state IN ('failed','interrupted','unknown') "
                 "AND turn_id NOT LIKE 'ingress:%' ORDER BY rowid LIMIT 20", (thread_id,))]
             if ref_seq is not None:
-                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,system_notice_id,role FROM message_refs '
                                   'WHERE thread_id=? AND seq=?', (thread_id,ref_seq)).fetchall()
                 if not refs:
                     raise ValueError('unknown ref seq for thread')
                 page, older_cursor, next_cursor = refs, None, None
             elif backward:
                 if before is None:
-                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,system_notice_id,role FROM message_refs '
                                       'WHERE thread_id=? ORDER BY seq DESC LIMIT ?',
                                       (thread_id, limit + 1)).fetchall()
                 else:
-                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+                    refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,system_notice_id,role FROM message_refs '
                                       'WHERE thread_id=? AND seq<? ORDER BY seq DESC LIMIT ?',
                                       (thread_id, cursor, limit + 1)).fetchall()
                 page = list(reversed(refs[:limit]))
@@ -1457,7 +1559,7 @@ class Store:
                                                  (thread_id, page[-1]['seq'])).fetchone())
                 next_cursor = self._cursor(thread_id, page[-1]['seq']) if newer else None
             else:
-                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+                refs = db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,system_notice_id,role FROM message_refs '
                                   'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT ?',
                                   (thread_id, cursor, limit + 1)).fetchall()
                 page = refs[:limit]
@@ -1467,6 +1569,7 @@ class Store:
             inputs = {r['seq']:self._input_message(db,r) for r in page
                       if r['input_receipt_id'] is not None}
             direct = self._direct_messages(db,page)
+            notices = self._system_notices(db,page)
             snapshots = {r['row_id']:json.loads(r['payload']) for r in db.execute(
                 'SELECT row_id,payload FROM core_ref_snapshots WHERE row_id IN ('+
                 ','.join('?' for _ in ids)+')',ids)} if ids else {}
@@ -1500,6 +1603,9 @@ class Store:
                 continue
             if ref['direct_message_id'] is not None:
                 messages.append(self._direct_display(ref,direct))
+                continue
+            if ref['system_notice_id'] is not None:
+                messages.append(self._system_display(ref,notices))
                 continue
             row = rows.get(ref['row_id'])
             if row is None or row['session_id'] != ref['session_id'] or row['role'] != ref['role']:
@@ -1540,7 +1646,7 @@ class Store:
             if after is not None and not db.execute(
                     'SELECT 1 FROM message_refs WHERE thread_id=? AND seq=?',(thread_id,cursor)).fetchone():
                 raise ValueError('invalid cursor')
-            refs=db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,role FROM message_refs '
+            refs=db.execute('SELECT seq,thread_id,session_id,row_id,input_receipt_id,direct_message_id,system_notice_id,role FROM message_refs '
                             'WHERE thread_id=? AND seq>? ORDER BY seq LIMIT 501',
                             (thread_id,cursor)).fetchall()
         page=refs[:500]
@@ -1553,6 +1659,7 @@ class Store:
             inputs={r['seq']:self._input_message(db,r) for r in page
                     if r['input_receipt_id'] is not None}
             direct=self._direct_messages(db,page)
+            notices=self._system_notices(db,page)
             snapshots={r['row_id']:json.loads(r['payload']) for r in db.execute(
                 'SELECT row_id,payload FROM core_ref_snapshots WHERE row_id IN ('+
                 ','.join('?' for _ in ids)+')',ids)} if ids else {}
@@ -1583,6 +1690,10 @@ class Store:
                 message=self._direct_display(ref,direct)
                 content=message['text']
                 calls=[]
+            elif ref['system_notice_id'] is not None:
+                message=self._system_display(ref,notices)
+                content=message['text']
+                calls=[]
             else:
                 row=rows.get(ref['row_id'])
                 if row is None or row['session_id']!=ref['session_id'] or row['role']!=ref['role']:
@@ -1597,7 +1708,8 @@ class Store:
             scanned=ref['seq']
             if needle in content.casefold() or any(needle in c['label'].casefold() or
                                                     needle in c['name'].casefold() for c in calls):
-                if ref['seq'] not in inputs and ref['direct_message_id'] is None:
+                if (ref['seq'] not in inputs and ref['direct_message_id'] is None
+                        and ref['system_notice_id'] is None):
                     message = {'id':str(row['id']),'ref_seq':scanned,'role':ref['role'],'text':content,
                                **_message_time(linked[row['id']]['created_at'] if ref['role']=='user' and
                                                linked.get(row['id']) is not None else

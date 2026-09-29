@@ -48,6 +48,7 @@
 5. 对已接收任务采用服务端拥有的生命周期；不依赖打开着的窗口。人工停止、超时、重启和离线分别处理。
 6. 仅在全新用户会话初始化时将 Channel Description 放入头部一次。后续续聊、冷恢复、时间/长度压缩以及物理 session 续接均沿用 Hermes 自身上下文，插件不补入或恢复 Description 原文快照。既有 Session 的说明更新策略另行明确，不默认热更新；不作为普通聊天正文保存。
 7. 主动任务结果进入同一权威历史与同步链路，不只临时发送到某个连接。手机推送不承担正文同步。
+8. Hermes 记忆/Skill 自检与 context compression 生命周期由 adapter 识别后写入 plugin 专用系统通知记录，并通过同一 `message_refs`、分页和 `sync_events` 投影到 Thread。它们不写 SessionDB、不作为 assistant 正文；同一次压缩的 preflight、开始、心跳和完成更新稳定 ref，成功完成或失败后重试均使用新 ref。目标必须由 `chat_id + thread_id` 同时校验，不按最近会话猜测。
 
 无需为实现这些语义先引入 Redis、消息队列集群、独立聊天服务或新的通用框架。
 

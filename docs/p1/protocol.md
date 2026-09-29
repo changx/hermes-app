@@ -41,6 +41,8 @@ curl --fail-with-body -sS -H "Authorization: Bearer $HERMES_APP_TOKEN" -H 'Conte
 
 消息可有 `display_kind:"direct"`：表示 Hermes Gateway 的直接回复，正文由插件专用展示记录保存，不写入模型 SessionDB。沿用 `message` 同步事件、稳定 `id/ref_seq`、分页与搜索；进度编辑更新相同身份而非添加重复消息。普通 AI 结果继续只从 SessionDB 投影，不因 adapter 再次发送而复制。客户端将直接回复独立分组，旧客户端忽略该可选字段仍可显示正文。具体边界与验收见[原生命令回复](../m1-native-command-output.md)。
 
+消息可为严格配对的 `role:"system", display_kind:"system_notice"`：只承载绑定到当前 Thread 的 Hermes 记忆/Skill 自检结果和 context compression 生命周期。记录由 plugin 自有 `system_notices` 保存，通过普通 `message` 事件、`id/ref_seq`、分页、搜索、未读和冷恢复同步，但不写入 SessionDB、receipt 或 assistant 历史。压缩 preflight/started/heartbeat/complete 在同一次活动尝试内更新同一 ref；成功完成或失败后的新尝试使用新 ref。自检通知依赖 Gateway 后置 interim 路由、受限文本前缀与精确目标校验，这不是密码学来源证明；无精确 `chat_id + thread_id` 所有权、无 interim 标记、未知状态键、空白或超长文本均拒绝。Hermes 在 `compression.progress_notices` 关闭时会在 adapter 之前抑制例行压缩文本，plugin 不伪造缺失事件。
+
 消息可包含 `created_at`：有限非负 UNIX 秒数，允许小数，最大 `8.64e12`。取原始消息 timestamp 或 App 原始输入收据的首次 created_at，历史/最新分页/搜索保持一致。未知或无效则省略；旧服务端缺字段兼容。仅供客户端显示时间，不参与排序、身份判断或模型上下文构造，不用读取或重连时刻回填。详见[网络恢复与消息时间](../m1-network-time.md)。
 
 续轮上下文中的来源封装若精确对应已发布的追加原文，历史和搜索读取时不再显示其副本；原始 ref 与游标仍保留，不改数据库或模型内容。分页可能经过只含隐藏副本的空页，须继续使用返回的 next_cursor/older_cursor，不以消息数组为空判定末页。

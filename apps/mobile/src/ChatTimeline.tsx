@@ -16,8 +16,11 @@ const action = (title: string, onPress: () => void, disabled = false, muted = fa
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode }) {
   const own = row.role === 'user';
-  const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
+  if (row.displayKind === 'system_notice') return <View accessible accessibilityLabel={`System notice: ${row.text}`} style={styles.systemNotice}>
+    <Text style={styles.systemNoticeText}>{row.text}</Text><MessageTime seconds={row.timestamp} />
+  </View>;
+  const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const content = <View style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
@@ -30,7 +33,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
     </View>}
   </View>;
   return own ? <View style={styles.userMessageRow}>{content}</View> : content;
-}, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -302,6 +305,8 @@ const styles = StyleSheet.create({
   messages: { paddingTop: 12, paddingBottom: 96 },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
+  systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   own: { maxWidth: '80%', marginHorizontal: 0, backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-end', borderTopLeftRadius: 16, borderTopRightRadius: 4 },

@@ -11,7 +11,7 @@ export interface Attachment { id: string; thread_id: string; name?: string; mime
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'system_notice'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -104,7 +104,19 @@ const validToolCalls = (value: unknown): ToolCall[] => {
       ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
   });
 };
-const validMessage = (v: unknown): Message => { const x = obj(v); return { id: str(x.id), ref_seq: num(x.ref_seq), role: str(x.role), text: str(x.text), ...(x.role === 'assistant' && x.display_kind === 'direct' ? {display_kind: 'direct' as const} : {}), ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}), ...(x.role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}), ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}), ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}), attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) } };
+const validMessage = (v: unknown): Message => {
+  const x = obj(v), role = str(x.role);
+  if (role === 'system' && x.display_kind !== 'system_notice') throw new ProtocolError('invalid system notice');
+  if (x.display_kind === 'system_notice' && role !== 'system') throw new ProtocolError('invalid system notice');
+  return { id: str(x.id), ref_seq: num(x.ref_seq), role, text: str(x.text),
+    ...(role === 'assistant' && x.display_kind === 'direct' ? {display_kind: 'direct' as const} : {}),
+    ...(role === 'system' ? {display_kind: 'system_notice' as const} : {}),
+    ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}),
+    ...(role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}),
+    ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}),
+    ...(x.client_message_id == null ? {} : {client_message_id:str(x.client_message_id)}),
+    attachments:x.attachments===undefined?[]:arr(x.attachments).map(validAttachment) };
+};
 const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve,reject) => {
   if (signal.aborted) return reject(new Error('aborted'));
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms);
@@ -151,6 +163,7 @@ export class HermesClient {
   private versions = new Map<string, number>();
   private fetchSequence = 0;
   private entitySequence = new Map<string, number>();
+  private messageSequence = new Map<string, number>();
   private projectionEpoch = 0;
   private _connectionState: ConnectionState = 'suspended';
   get connectionState(): ConnectionState { return this._connectionState }
@@ -265,22 +278,25 @@ export class HermesClient {
   async deleteUnattached(threadId:string,id:string):Promise<void> {const x=await this.call('DELETE','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id));if(x.deleted!==true)throw new ProtocolError('delete not confirmed');this.attachments.set(id,{id,thread_id:threadId,state:'deleted'});this.changed()}
   async search(threadId:string,text:string,after?:string,limit=20,signal?:AbortSignal) {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/search'+query({q:text,after,limit}),undefined,signal);return {messages:arr(x.messages).map(validMessage),next_cursor:optionalCursor(x.next_cursor)}}
   async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number, refSeq?:number) {
+    const seq=++this.fetchSequence, epoch=this.projectionEpoch;
     const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,ref_seq:refSeq,limit}),undefined,signal);
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
     if (refSeq!==undefined && (page.length!==1 || page[0].ref_seq!==refSeq)) throw new ProtocolError('message reference mismatch');
     if(!page.length && !existing.length && after===undefined && afterRefSeq===undefined && x.next_cursor===null) this.knownEmptyThreads.add(threadId);
     if(page.length) this.knownEmptyThreads.delete(threadId);
-    const byRef=new Map(existing.map(m=>[m.ref_seq,m])); page.forEach(m=>byRef.set(m.ref_seq,m));
+    const byRef=new Map(existing.map(m=>[m.ref_seq,m]));
+    if(epoch===this.projectionEpoch) page.forEach(m=>{ const key=threadId+':'+m.ref_seq; if(seq >= (this.messageSequence.get(key)||0)) { byRef.set(m.ref_seq,m); this.messageSequence.set(key,seq) } });
     this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq)); this.changed();
     for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
     return {messages:page,next_cursor:optionalCursor(x.next_cursor),incomplete_turns:arr(x.incomplete_turns),turn_outcomes:arr(x.turn_outcomes)};
   }
   async historyWindow(threadId: string, before?: string, limit = 30, signal?: AbortSignal) {
     if (!this.supportsLatest) throw new ProtocolError('latest history unavailable');
+    const seq=++this.fetchSequence, epoch=this.projectionEpoch;
     const x = await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({latest:before?undefined:'true',before,limit}),undefined,signal);
     const page = arr(x.messages).map(validMessage);
     const byRef = new Map((this.messages.get(threadId)||[]).map(m=>[m.ref_seq,m]));
-    page.forEach(m=>byRef.set(m.ref_seq,m));
+    if(epoch===this.projectionEpoch) page.forEach(m=>{ const key=threadId+':'+m.ref_seq; if(seq >= (this.messageSequence.get(key)||0)) { byRef.set(m.ref_seq,m); this.messageSequence.set(key,seq) } });
     this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq));
     if(!before && !page.length) this.knownEmptyThreads.add(threadId);
     if(page.length) this.knownEmptyThreads.delete(threadId);
@@ -388,7 +404,7 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.messageSequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
   /** Starts one recovery loop; resolves immediately, not as a readiness signal. */
   async connect(): Promise<void> {
     if (this.controller) return;
