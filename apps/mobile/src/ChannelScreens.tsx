@@ -1,5 +1,5 @@
 import React, { type ReactNode, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, AppState, type AppStateStatus, Easing, FlatList, Keyboard, type KeyboardMetrics, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, AppState, type AppStateStatus, Easing, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,15 +22,8 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export const editorKeyboardInset = (
-  visible: boolean,
-  appState: AppStateStatus,
-  windowHeight: number,
-  keyboardFrame: KeyboardMetrics | null,
-) => {
-  if (!visible || appState !== 'active' || !keyboardFrame) return 0;
-  return Math.min(keyboardFrame.height, Math.max(0, windowHeight - keyboardFrame.screenY));
-};
+export const editorKeyboardEnabled = (visible: boolean, appState: AppStateStatus, keyboardVisible: boolean) =>
+  visible && appState === 'active' && keyboardVisible;
 
 export function EditorSheet({ visible, closeLabel, busy, bottomInset, reduceMotion, onClose, children }: {
   visible: boolean; closeLabel: string; busy: boolean; bottomInset: number; reduceMotion: boolean; onClose: () => void; children: ReactNode;
@@ -39,25 +32,15 @@ export function EditorSheet({ visible, closeLabel, busy, bottomInset, reduceMoti
   const sheetOffset = useRef(new Animated.Value(height)).current;
   const openingHeight = useRef(height);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
-  const [keyboardFrame, setKeyboardFrame] = useState<KeyboardMetrics | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(Keyboard.isVisible());
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    const updateFrame = (event: Parameters<typeof Keyboard.scheduleLayoutAnimation>[0]) => {
-      Keyboard.scheduleLayoutAnimation(event);
-      setKeyboardFrame(event.endCoordinates);
-    };
-    const show = Keyboard.addListener('keyboardWillShow', updateFrame);
-    const change = Keyboard.addListener('keyboardWillChangeFrame', updateFrame);
-    const hide = Keyboard.addListener('keyboardWillHide', event => {
-      Keyboard.scheduleLayoutAnimation(event);
-      setKeyboardFrame(null);
-    });
-    const didHide = Keyboard.addListener('keyboardDidHide', () => setKeyboardFrame(null));
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
     const app = AppState.addEventListener('change', state => {
       setAppState(state);
-      if (state !== 'active') setKeyboardFrame(null);
+      if (state === 'active') setKeyboardVisible(Keyboard.isVisible());
     });
-    return () => { show.remove(); change.remove(); hide.remove(); didHide.remove(); app.remove(); };
+    return () => { show.remove(); hide.remove(); app.remove(); };
   }, []);
   useEffect(() => {
     if (!visible) {
@@ -80,12 +63,12 @@ export function EditorSheet({ visible, closeLabel, busy, bottomInset, reduceMoti
   return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
     <View style={s.modalRoot}>
       <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} style={s.backdrop} disabled={busy} onPress={onClose} />
-      <View pointerEvents="box-none" style={[s.keyboardLayer, { paddingBottom: Platform.OS === 'ios'
-        ? editorKeyboardInset(visible, appState, height, keyboardFrame) : 0 }]}>
+      <KeyboardAvoidingView pointerEvents="box-none" style={s.keyboardLayer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS !== 'ios' || editorKeyboardEnabled(visible, appState, keyboardVisible)}>
         <Animated.View style={[s.composer, { paddingBottom: Math.max(14, bottomInset), transform: [{ translateY: sheetOffset }] }]}>
           {children}
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </View>
   </Modal>;
 }
