@@ -28,6 +28,8 @@ Jamie 真机反馈两类工具记录仍缺关键信息：`Run command` 只显示
 
 验收须覆盖真实开发历史前后对照、敏感值负例、单/多文件 patch、历史冷读与既有工具时间线回归。此变更不需要客户端协议或组件改动；是否发布开发插件另行记录，未发布前不能称手机端已修复。
 
+Jamie 随后明确授权合并部署。`05faf5d` 已快进到 `main`，插件归档 SHA-256 为 `b7233a85d396e585b224a377a990886cd0bd4cd2d7209f3eb680de654512d71a`；仅安装开发插件并重启 `hermes-gateway-hermes-app-dev.service`，未重启 Expo、Jamie 主 Gateway 或固定 Hermes 核心。公网验收使用同一真实历史引用做部署前后对照：原先无 detail 的 terminal 记录现返回 600 UTF-16 单位并明确截断的命令预览，原先无 detail 的 multi-file patch 现返回仅含路径的 422 单位摘要；重复读取的消息 ID、调用 ID 与详情哈希一致。capabilities、snapshot、未认证 401 和 Expo `/status` 均正常。回滚分支 `rollback/tool-detail-before-05faf5d` 保留发布前代码，旧插件、服务状态、测试日志和公网读回证据位于私有 `workspace/hermes-app/tool-detail-deploy/20260928T183439-0700/`。
+
 ## 系统长按复制与输入焦点
 
 Jamie 真机反馈：自制复制 Modal 会打断输入焦点、收起键盘，按点击时屏幕坐标定位的工具条在布局改变后错位，且与正文系统菜单样式不一致。本轮改为与正文相同的原生 Text selectable 长按复制，删除工具行 Pressable、自制 Modal、屏幕坐标与工具条样式；不新增原生依赖或模拟系统菜单。
