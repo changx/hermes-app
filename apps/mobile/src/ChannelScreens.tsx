@@ -25,8 +25,6 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const working = useRef(false), generation = useRef(0), attachmentComposer = useRef<AttachmentComposerHandle>(null);
   const draftThread = useRef<string | null>(null), draftAttachments = useRef<string[] | null>(null), draftMessageId = useRef(''), draftThreadId = useRef('');
   const focused = useIsFocused(), focusedRef = useRef(focused), insets = useSafeAreaInsets();
-  // Open a channel at its newest topic; stop sticking once the user scrolls.
-  const topicList = useRef<FlatList<ThreadSummary>>(null), stickToEnd = useRef(true);
   focusedRef.current = focused;
   useFocusEffect(React.useCallback(() => {
     focusedRef.current = true;
@@ -38,7 +36,6 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   };
   useEffect(() => {
     generation.current++;
-    stickToEnd.current = true;
     setCreating(false); setEditing(false); setRenaming(null); setName(''); setDescription(''); setError(''); resetComposer();
     return () => { generation.current++; };
   }, [channelId, client]);
@@ -52,9 +49,10 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   };
   const channel = client.channels.get(channelId || '');
   const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
-  // Oldest activity first so the newest topic sits at the bottom, like a chat.
+  // Newest activity first in data; the inverted list shows it at the bottom and
+  // starts there natively, so entering a channel needs no scroll at all.
   const threads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
-    .sort((a, b) => (a.last_message_at ?? 0) - (b.last_message_at ?? 0) || a.last_ref - b.last_ref || a.title.localeCompare(b.title));
+    .sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title));
   const startEdit = () => { if (!channel) return; setName(channel.name); setDescription(channel.description || ''); setEditing(true); setCreating(false); setError(''); };
   const startCreate = () => { setName(''); setDescription(''); setEditing(false); setError(''); setCreating(true); };
   const cancelChannelForm = () => { setCreating(false); setEditing(false); setError(''); };
@@ -93,7 +91,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     await client.getThread(threadId);
     if (current()) { resetComposer(); onThread(threadId); }
   });
-  const channelForm = editing && <View style={s.form}>
+  const channelForm = editing && <View style={[s.form, { marginHorizontal: 12 }]}>
     <Text style={s.heading}>Edit channel</Text>
     <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
     <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
@@ -110,10 +108,10 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
     </View>
     {busy && !composing && !creating && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && !composing && !creating && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-    {channelId ? <FlatList ref={topicList} keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
-      onScrollBeginDrag={() => { stickToEnd.current = false; }}
-      onContentSizeChange={(_, height) => { if (stickToEnd.current && height > 0) topicList.current?.scrollToEnd({ animated: false }); }}
-      ListHeaderComponent={<>{channelForm}{!!channel?.description && !editing && <Text selectable style={s.summary}>{channel.description}</Text>}</>}
+    {channelForm}
+    {channelId ? <FlatList inverted={threads.length > 0} keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id}
+      contentContainerStyle={[s.list, threads.length > 0 ? { paddingTop: 96 + insets.bottom } : { paddingBottom: 96 + insets.bottom }]}
+      ListFooterComponent={!!channel?.description && !editing ? <Text selectable style={s.summary}>{channel.description}</Text> : null}
       renderItem={({ item }) => <View style={s.card}>
         {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><View style={s.meta}><MessageTime seconds={item.last_message_at} />{!!item.unread_count && <Text style={s.unread}>{item.unread_count} unread</Text>}</View></Pressable><Action label="Rename" secondary disabled={busy} onPress={() => rename(item)} /></View>}
       </View>}

@@ -206,7 +206,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
           {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>
           : props.hasOlder ? <View style={styles.older}>{action('View earlier messages', props.onOlder, props.busy, true)}</View> : null}
-        ListEmptyComponent={props.locatingMessage ? null : <Text style={styles.empty}>No messages yet</Text>}
+        ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
         onViewableItemsChanged={viewability.current}
         onLayout={e => {
           viewport.current = e.nativeEvent.layout.height;

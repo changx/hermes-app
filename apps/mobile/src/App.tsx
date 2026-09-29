@@ -225,7 +225,7 @@ export function useApp() {
 export function ThreadScreen({ threadId }: { threadId: string }) {
   const router = useRouter();
   const { config, client, agentName, revision, records, connectionEpoch, status, error: connectionError,
-    loading, positions, textDrafts, locatedThreads, olderCursors, outboxRef } = useApp();
+    positions, textDrafts, locatedThreads, olderCursors, outboxRef } = useApp();
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -407,10 +407,9 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     <Stack.Screen options={{ title: selected.title || 'Conversation',
       headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    {loading && <Text style={styles.hint}>Opening…</Text>}
     <ChatTimeline ref={timelineRef} threadId={threadId} rows={rows}
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
-      locatingMessage={!located ? historyBusy ? 'Opening conversation…' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
+      locatingMessage={!located && !historyBusy ? pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
       onOlder={() => { void loadOlder(); }}
       position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
@@ -444,7 +443,7 @@ export function FormKeyboardAvoidingView({ children }: { children: React.ReactNo
 }
 
 export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
-  const { ready, config, client, loading, error } = useApp();
+  const { ready, config, client, error } = useApp();
   const router = useRouter();
   if (!ready) return <Notice text="Opening…" />;
   if (!config || !client) return <Notice text="Opening…" />;
@@ -455,7 +454,6 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
       <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} />
     </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
-    {loading && <Text style={styles.hint}>Opening…</Text>}
     <FormKeyboardAvoidingView>
       <ChannelScreens client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
         onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })} />

@@ -17,14 +17,21 @@ test('back buttons show only the arrow', () => {
   assert.match(layout, /headerBackButtonDisplayMode: 'minimal'/);
 });
 
-test('topics sort oldest activity first, show last message time, and open at the end', () => {
-  const sort = channels.match(/\.sort\(\(a, b\) => \(a\.last_message_at \?\? 0\) - \(b\.last_message_at \?\? 0\)[^\n]*/)?.[0];
-  assert.ok(sort, 'ascending last message sort');
-  const order = (list) => list.sort((a, b) => (a.last_message_at ?? 0) - (b.last_message_at ?? 0) || a.last_ref - b.last_ref || a.title.localeCompare(b.title)).map(t => t.id);
-  assert.deepEqual(order([{ id: 'new', last_message_at: 30, last_ref: 1, title: 'b' }, { id: 'old', last_message_at: 10, last_ref: 9, title: 'a' }, { id: 'mid', last_message_at: 20, last_ref: 2, title: 'c' }]), ['old', 'mid', 'new']);
+test('topics show newest at the bottom from first frame without scrolling', () => {
+  const sort = channels.match(/\.sort\(\(a, b\) => \(b\.last_message_at \?\? 0\) - \(a\.last_message_at \?\? 0\)[^\n]*/)?.[0];
+  assert.ok(sort, 'newest-first data for the inverted list');
+  const order = (list) => list.sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title)).map(t => t.id);
+  // Inverted FlatList renders data[0] at the bottom, so on screen top->bottom is old, mid, new.
+  assert.deepEqual(order([{ id: 'old', last_message_at: 10, last_ref: 9, title: 'a' }, { id: 'new', last_message_at: 30, last_ref: 1, title: 'b' }, { id: 'mid', last_message_at: 20, last_ref: 2, title: 'c' }]).reverse(), ['old', 'mid', 'new']);
+  assert.match(channels, /<FlatList inverted=\{threads\.length > 0\}/);
   assert.match(channels, /<MessageTime seconds=\{item\.last_message_at\} \/>/);
-  assert.match(channels, /onContentSizeChange=\{\(_, height\) => \{ if \(stickToEnd\.current && height > 0\) topicList\.current\?\.scrollToEnd\(\{ animated: false \}\); \}\}/);
-  assert.match(channels, /onScrollBeginDrag=\{\(\) => \{ stickToEnd\.current = false; \}\}/);
+  assert.doesNotMatch(channels, /scrollToEnd|stickToEnd|onContentSizeChange/);
+});
+
+test('no generic Opening status is shown over channels or conversations', () => {
+  assert.doesNotMatch(app, /loading && <Text[^>]*>Opening…/);
+  assert.doesNotMatch(app, /'Opening conversation…' :/);
+  assert.match(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'), /ListEmptyComponent=\{props\.locatingMessage \|\| props\.locatingBusy \? null :/);
 });
 
 test('every conversation entry follows the latest message instead of restoring an old offset', () => {
