@@ -33,6 +33,24 @@
 - 文档建立：2026-09-24（PDT）。
 - 当前开发环境与既有验收状态见 [开发环境](docs/dev-environment.md)。仓库建立不代表授权生产发布、签名、notarization、其他 profile 变更或正式 App 发布。
 
+## macOS 自动构建与 Release
+
+GitHub Actions 工作流 `.github/workflows/desktop-release.yml` 在 `main`、Pull Request 和手动触发时使用 Apple Silicon macOS runner 执行锁定依赖安装、桌面完整检查、依赖审计和 arm64 打包，并保留 14 天构建产物。
+
+推送与 `apps/desktop/package.json` 版本一致的 tag（例如当前版本 `v0.1.0`）会在相同门禁通过后自动创建 GitHub Release，上传：
+
+- `Hermes-<version>-macOS-arm64.zip`
+- 对应的 `.sha256` 校验文件
+
+发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。创建 release 的示例：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+同名 Release 已存在时，工作流会拒绝替换已发布资产。
+
 ## 下一步
 
 P1 已验收；P2 已实现首个 Expo 原生手机开发界面，公开测试入口已启动，尚待真实设备与模型联调完成；不代表独立安装包或 P2 全量功能完成。Description 仅全新逻辑会话注入一次、压缩后不补入。桌面 UI、设备安装包与完整真实设备验收仍是后续工作。
