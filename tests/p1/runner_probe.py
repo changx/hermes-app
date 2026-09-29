@@ -593,12 +593,14 @@ async def main():
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?limit=100") as resp:
                     if resp.status == 200:
                         after_page = await resp.json()
-                        if len(after_page['messages']) == len(expected)+2 and not after_page['incomplete_turns']:
+                        added = 1 if COMPACT_MODE == 'rotate' else 2
+                        if len(after_page['messages']) == len(expected)+added and not after_page['incomplete_turns']:
                             break
                 await asyncio.sleep(.2)
             assert [m['id'] for m in after_page['messages'][:len(original_ids)]] == original_ids
-            assert [(m['role'],m['text']) for m in after_page['messages']] == expected + [
-                ('user','P1_AFTER_COMPACT'),('assistant','SYNTHETIC_P1_FINAL')]
+            continuation = ([('assistant','SYNTHETIC_P1_FINAL')] if COMPACT_MODE == 'rotate' else
+                            [('user','P1_AFTER_COMPACT'),('assistant','SYNTHETIC_P1_FINAL')])
+            assert [(m['role'],m['text']) for m in after_page['messages']] == expected + continuation
             cold_path = HOME.parent / 'cold-page.json'
             cold = subprocess.run([sys.executable, '-c',
                 'import json,sys,pathlib;sys.path.insert(0,sys.argv[1]);from hermes_app.storage import Store;'

@@ -21,12 +21,20 @@ for (const [processing, label, emoji] of [['running', 'Working', '👀'], ['comp
     assert.equal(result[1].reaction, undefined);
   });
 }
-test('receipt lifecycle, handoff and followup admission never imply callback; cancel clears', () => {
-  for (const state of ['queued', 'running', 'received', 'completed', 'failed', 'interrupted', 'unknown']) {
+test('followup handoff is handled without inventing a processing callback; cancel clears', () => {
+  for (const state of ['queued', 'running', 'failed', 'interrupted', 'unknown']) {
     for (const processing of [undefined, null, 'interrupted']) {
       const r = { ...receipt('ra', 'a', state), admission: 'followup', handed_off: true, processing };
       assert.equal(rows([message('a', 'ra')], [], new Map([['ra', r]]))[0].reaction, undefined);
     }
+  }
+  for (const state of ['received', 'completed']) {
+    for (const processing of [undefined, null]) {
+      const r = { ...receipt('ra', 'a', state), admission: 'followup', handed_off: true, processing };
+      assert.equal(rows([message('a', 'ra')], [], new Map([['ra', r]]))[0].reaction?.label, 'Handled');
+    }
+    const interrupted = { ...receipt('ra', 'a', state), admission: 'followup', handed_off: true, processing: 'interrupted' };
+    assert.equal(rows([message('a', 'ra')], [], new Map([['ra', interrupted]]))[0].reaction, undefined);
   }
   assert.equal(rows([message('a', 'ra')])[0].reaction, undefined);
   assert.equal(rows([message('a', 'ra')], [], new Map([['ra', { ...receipt('ra', 'a', 'completed'), processing: null }]]))[0].reaction, undefined);

@@ -176,7 +176,7 @@ def test_real_native_command_replies_are_history_only():
                 assert retry_page['messages'][-1].get('display_kind')!='direct'
                 async with b.get(root+f"/v1/threads/{one['id']}/search?q=MODEL_AFTER_SWITCH") as response:
                     found=await response.json()
-                    assert response.status==200 and len(found['messages'])>=2,found
+                    assert response.status==200 and [m['text'] for m in found['messages']]==['MODEL_AFTER_SWITCH'],found
                 async with b.get(root+f"/v1/threads/{one['id']}/messages?ref_seq={later['messages'][-1]['ref_seq']}") as response:
                     old=await response.json()
                     assert response.status==200 and old['messages']==[later['messages'][-1]],old

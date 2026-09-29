@@ -4,35 +4,35 @@
     "messages": [
       {
         "attachments": [],
-        "client_message_id": "5d59d425824440e69f147d6d9b19f48f",
-        "created_at": 1790663763,
-        "id": "receipt:rc_b89255dbb3c8718f4c75b54b4246211b",
-        "receipt_id": "rc_b89255dbb3c8718f4c75b54b4246211b",
+        "client_message_id": "50ae4473887741479489f9d08acd8889",
+        "created_at": 1790668460,
+        "id": "receipt:rc_e015c546fc68ac163807264133c7bf9f",
+        "receipt_id": "rc_e015c546fc68ac163807264133c7bf9f",
         "ref_seq": 1,
         "role": "user",
         "text": "P1_FIRST"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.263477,
-        "id": "4",
-        "ref_seq": 4,
+        "created_at": 1790668461.0554326,
+        "id": "2",
+        "ref_seq": 3,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
         "attachments": [],
-        "client_message_id": "7f3951fb68974910bd6f64dd3c8db520",
-        "created_at": 1790663764,
-        "id": "receipt:rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
-        "receipt_id": "rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "client_message_id": "5d408f2c7b8e4b1a90d40696f3f537e7",
+        "created_at": 1790668461,
+        "id": "receipt:rc_0ce4a5637595ffdf62fc9b36411325f3",
+        "receipt_id": "rc_0ce4a5637595ffdf62fc9b36411325f3",
         "ref_seq": 5,
         "role": "user",
         "text": "P1_RACE"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.522982,
+        "created_at": 1790668461.3380013,
         "id": "8",
         "ref_seq": 6,
         "role": "assistant",
@@ -40,17 +40,17 @@
       },
       {
         "attachments": [],
-        "client_message_id": "5529c56ec0f14b66a2155af7f809cb3b",
-        "created_at": 1790663764,
-        "id": "receipt:rc_bcdfc2fb4ee43ad02a6fb08805a998e5",
-        "receipt_id": "rc_bcdfc2fb4ee43ad02a6fb08805a998e5",
+        "client_message_id": "e2d66f602fed4f43832a8b277e9df334",
+        "created_at": 1790668461,
+        "id": "receipt:rc_a733cc0f5658e8f207cfd8cade3803d0",
+        "receipt_id": "rc_a733cc0f5658e8f207cfd8cade3803d0",
         "ref_seq": 7,
         "role": "user",
         "text": "P1_FAST_SECOND"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.7147872,
+        "created_at": 1790668461.5423348,
         "id": "10",
         "ref_seq": 9,
         "role": "assistant",
@@ -58,17 +58,17 @@
       },
       {
         "attachments": [],
-        "client_message_id": "a87170962a4342ba99f47b19b0b620d3",
-        "created_at": 1790663764,
-        "id": "receipt:rc_91ed8b9de0edce1b56c7315784f028c0",
-        "receipt_id": "rc_91ed8b9de0edce1b56c7315784f028c0",
+        "client_message_id": "04fc166703864d3fae6c70b0fdaa2fea",
+        "created_at": 1790668461,
+        "id": "receipt:rc_df333684c12d792135141685b0529737",
+        "receipt_id": "rc_df333684c12d792135141685b0529737",
         "ref_seq": 10,
         "role": "user",
         "text": "P1_AFTER_RACE"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.912115,
+        "created_at": 1790668461.7263856,
         "id": "12",
         "ref_seq": 11,
         "role": "assistant",
@@ -83,40 +83,40 @@
   "busy_after_post_hook": true,
   "during": {
     "incomplete_turns": [
-      "ingress:rc_0b1b67d2f22fcda6c47b84a7cbc566ee"
+      "ingress:rc_0ce4a5637595ffdf62fc9b36411325f3"
     ],
     "messages": [
       {
         "attachments": [],
-        "client_message_id": "5d59d425824440e69f147d6d9b19f48f",
-        "created_at": 1790663763,
-        "id": "receipt:rc_b89255dbb3c8718f4c75b54b4246211b",
-        "receipt_id": "rc_b89255dbb3c8718f4c75b54b4246211b",
+        "client_message_id": "50ae4473887741479489f9d08acd8889",
+        "created_at": 1790668460,
+        "id": "receipt:rc_e015c546fc68ac163807264133c7bf9f",
+        "receipt_id": "rc_e015c546fc68ac163807264133c7bf9f",
         "ref_seq": 1,
         "role": "user",
         "text": "P1_FIRST"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.263477,
-        "id": "4",
-        "ref_seq": 4,
+        "created_at": 1790668461.0554326,
+        "id": "2",
+        "ref_seq": 3,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
         "attachments": [],
-        "client_message_id": "7f3951fb68974910bd6f64dd3c8db520",
-        "created_at": 1790663764,
-        "id": "receipt:rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
-        "receipt_id": "rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "client_message_id": "5d408f2c7b8e4b1a90d40696f3f537e7",
+        "created_at": 1790668461,
+        "id": "receipt:rc_0ce4a5637595ffdf62fc9b36411325f3",
+        "receipt_id": "rc_0ce4a5637595ffdf62fc9b36411325f3",
         "ref_seq": 5,
         "role": "user",
         "text": "P1_RACE"
       },
       {
         "attachments": [],
-        "created_at": 1790663764.522982,
+        "created_at": 1790668461.3380013,
         "id": "8",
         "ref_seq": 6,
         "role": "assistant",
