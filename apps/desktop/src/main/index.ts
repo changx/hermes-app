@@ -1,14 +1,6 @@
 import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
-
-const isAllowedExternalUrl = (rawUrl: string): boolean => {
-  try {
-    const url = new URL(rawUrl);
-    return url.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
+import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
 
 const createMainWindow = (): BrowserWindow => {
   const window = new BrowserWindow({
@@ -25,8 +17,17 @@ const createMainWindow = (): BrowserWindow => {
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
     },
   });
+
+  window.webContents.session.setPermissionCheckHandler(() => false);
+  window.webContents.session.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => callback(false),
+  );
+
+  window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) void shell.openExternal(url);
@@ -34,8 +35,12 @@ const createMainWindow = (): BrowserWindow => {
   });
 
   window.webContents.on("will-navigate", (event, url) => {
-    if (url !== window.webContents.getURL()) event.preventDefault();
+    if (!isSameDocumentNavigation(window.webContents.getURL(), url)) {
+      event.preventDefault();
+    }
   });
+
+  window.webContents.on("will-redirect", (event) => event.preventDefault());
 
   window.once("ready-to-show", () => window.show());
   void window.loadFile(join(__dirname, "../renderer/index.html"));

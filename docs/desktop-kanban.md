@@ -58,8 +58,8 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 | 状态 | 卡片 |
 | --- | --- |
-| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线 |
-| Ready | `DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架 |
+| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳 |
+| Ready | `DESK-D0-03` React 三栏与响应式骨架 |
 | Backlog | `DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动；`DESK-D0-06` 未签名 `.app` 打包 |
 | Backlog | `DESK-D0-07` HermesClient transport 与 React adapter；`DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
 | Backlog | `DESK-D1-01` 至 `DESK-D1-16` 完整聊天闭环 |
@@ -89,6 +89,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 ### DESK-D0-02 — Electron main/preload 安全壳
 
+- **状态**：Done（自动安全检查；Mac 启动归 `DESK-D0-05`）。
 - **目标**：建立最小 BrowserWindow 和只读 preload，从第一天固定 Electron 安全边界。
 - **范围**：窗口生命周期、`nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`、导航/新窗口拦截、HTTPS 外链校验、最小 runtime info bridge。
 - **验收**：
@@ -98,7 +99,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
   4. 关闭最后窗口遵循 macOS 生命周期，不实现托盘或隐藏后台驻留。
 - **不包含**：Keychain、文件、通知、任意业务 IPC。
 - **依赖**：`DESK-D0-01`。
-- **证据**：`apps/desktop/tests/electron-security.test.mjs`。
+- **证据**：`apps/desktop/tests/electron-security.test.mjs`；[`docs/desktop/evidence/DESK-D0-02/verification.md`](desktop/evidence/DESK-D0-02/verification.md)。
 
 ### DESK-D0-03 — React 三栏与响应式骨架
 
