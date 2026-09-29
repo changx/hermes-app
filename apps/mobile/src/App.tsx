@@ -337,6 +337,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
         locatedThreads.current.add(id);
         const loaded = client.messages.get(id) || [];
         setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
+        markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
       }
     } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
