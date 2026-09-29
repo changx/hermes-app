@@ -3,70 +3,130 @@
     "incomplete_turns": [],
     "messages": [
       {
-        "id": "3",
+        "attachments": [],
+        "client_message_id": "5d59d425824440e69f147d6d9b19f48f",
+        "created_at": 1790663763,
+        "id": "receipt:rc_b89255dbb3c8718f4c75b54b4246211b",
+        "receipt_id": "rc_b89255dbb3c8718f4c75b54b4246211b",
+        "ref_seq": 1,
         "role": "user",
         "text": "P1_FIRST"
       },
       {
+        "attachments": [],
+        "created_at": 1790663764.263477,
         "id": "4",
+        "ref_seq": 4,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
-        "id": "7",
+        "attachments": [],
+        "client_message_id": "7f3951fb68974910bd6f64dd3c8db520",
+        "created_at": 1790663764,
+        "id": "receipt:rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "receipt_id": "rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "ref_seq": 5,
         "role": "user",
         "text": "P1_RACE"
       },
       {
+        "attachments": [],
+        "created_at": 1790663764.522982,
         "id": "8",
+        "ref_seq": 6,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
-        "id": "9",
+        "attachments": [],
+        "client_message_id": "5529c56ec0f14b66a2155af7f809cb3b",
+        "created_at": 1790663764,
+        "id": "receipt:rc_bcdfc2fb4ee43ad02a6fb08805a998e5",
+        "receipt_id": "rc_bcdfc2fb4ee43ad02a6fb08805a998e5",
+        "ref_seq": 7,
+        "role": "user",
+        "text": "P1_FAST_SECOND"
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663764.7147872,
+        "id": "10",
+        "ref_seq": 9,
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "attachments": [],
+        "client_message_id": "a87170962a4342ba99f47b19b0b620d3",
+        "created_at": 1790663764,
+        "id": "receipt:rc_91ed8b9de0edce1b56c7315784f028c0",
+        "receipt_id": "rc_91ed8b9de0edce1b56c7315784f028c0",
+        "ref_seq": 10,
         "role": "user",
         "text": "P1_AFTER_RACE"
       },
       {
-        "id": "10",
+        "attachments": [],
+        "created_at": 1790663764.912115,
+        "id": "12",
+        "ref_seq": 11,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       }
     ],
     "next_cursor": null,
+    "older_cursor": null,
     "turn_outcomes": []
   },
   "after_release_exact": true,
   "busy_after_post_hook": true,
   "during": {
     "incomplete_turns": [
-      "ingress:b3b7e090a3fb4e679a995471ccd94cf0"
+      "ingress:rc_0b1b67d2f22fcda6c47b84a7cbc566ee"
     ],
     "messages": [
       {
-        "id": "3",
+        "attachments": [],
+        "client_message_id": "5d59d425824440e69f147d6d9b19f48f",
+        "created_at": 1790663763,
+        "id": "receipt:rc_b89255dbb3c8718f4c75b54b4246211b",
+        "receipt_id": "rc_b89255dbb3c8718f4c75b54b4246211b",
+        "ref_seq": 1,
         "role": "user",
         "text": "P1_FIRST"
       },
       {
+        "attachments": [],
+        "created_at": 1790663764.263477,
         "id": "4",
+        "ref_seq": 4,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       },
       {
-        "id": "7",
+        "attachments": [],
+        "client_message_id": "7f3951fb68974910bd6f64dd3c8db520",
+        "created_at": 1790663764,
+        "id": "receipt:rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "receipt_id": "rc_0b1b67d2f22fcda6c47b84a7cbc566ee",
+        "ref_seq": 5,
         "role": "user",
         "text": "P1_RACE"
       },
       {
+        "attachments": [],
+        "created_at": 1790663764.522982,
         "id": "8",
+        "ref_seq": 6,
         "role": "assistant",
         "text": "SYNTHETIC_P1_FINAL"
       }
     ],
     "next_cursor": null,
+    "older_cursor": null,
     "turn_outcomes": []
   },
   "mode": "race",
-  "second_send_status": 409
+  "second_send_status": 202
 }

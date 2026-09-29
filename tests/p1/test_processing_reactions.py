@@ -40,6 +40,11 @@ def test_only_callbacks_define_reaction_and_survive_settlement(tmp_path, outcome
     cold = Store(store.path)
     saved = cold.receipt(receipt['id'])
     assert saved['state'] == 'unknown' and saved['processing'] == expected
+    with cold._connect() as db:
+        versions = [row['version'] for row in db.execute(
+            "SELECT version FROM sync_events WHERE kind='receipt' AND ref=? ORDER BY seq",
+            (receipt['id'],)).fetchall()]
+    assert versions == [1, 2, 3, 4, 5]
     before = cold.sync_page()['events']
     asyncio.run(app.on_processing_start(event))  # duplicate late start
     asyncio.run(app.on_processing_complete(event, outcome))
@@ -95,3 +100,22 @@ def test_migration_does_not_invent_past_callbacks_and_checks_exact_identity(tmp_
     assert cold.receipt(owner['id'])['processing'] is None
     with pytest.raises(ValueError):
         cold.record_processing(owner['id'], thread, 'guessed')
+
+
+def test_version_migration_republishes_current_receipt_once(tmp_path):
+    store, thread, receipt, app, event = setup(tmp_path)
+    store.claim_next(thread)
+    asyncio.run(app.on_processing_start(event))
+    asyncio.run(app.on_processing_complete(event, ProcessingOutcome.SUCCESS))
+    store.finish_receipt(receipt['id'], 'completed')
+    with sqlite3.connect(store.path) as db:
+        prior = db.execute("SELECT MAX(version) FROM sync_events WHERE kind='receipt' AND ref=?",
+                           (receipt['id'],)).fetchone()[0]
+        db.execute('ALTER TABLE receipts DROP COLUMN event_version')
+    migrated = Store(store.path)
+    with migrated._connect() as db:
+        versions = [row['version'] for row in db.execute(
+            "SELECT version FROM sync_events WHERE kind='receipt' AND ref=? ORDER BY seq",
+            (receipt['id'],)).fetchall()]
+    assert versions[-1] == prior + 1
+    assert Store(store.path).sync_page()['events'][-1]['version'] == prior + 1

@@ -210,6 +210,21 @@ export class HermesClient {
       this.receipts.set(receipt.id, { ...previous, feedback: receipt.feedback }); this.changed();
     } else if (positionAdded) this.changed();
   }
+  private reconcileActiveReceipts(summary: ThreadSummary) {
+    if (summary.active_receipts === undefined) return;
+    const active = new Set<string>();
+    for (const receipt of summary.active_receipts) {
+      if (receipt.thread_id !== summary.id) throw new ProtocolError('receipt thread mismatch');
+      active.add(receipt.id); this.storeReceipt(receipt);
+    }
+    let changed = false;
+    for (const [id, receipt] of this.receipts) {
+      if (receipt.thread_id === summary.id && ['queued','running'].includes(receipt.state) && !active.has(id)) {
+        this.receipts.delete(id); changed = true;
+      }
+    }
+    if (changed) this.changed();
+  }
   private async call(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
     if (signal?.aborted) throw new Error('aborted');
     const token = this.token();
@@ -346,7 +361,7 @@ export class HermesClient {
         if (rank >= (this.versions.get(key)||0)) {
           const old=this.threads.get(summary.id);
           if (old && summary.read_ref<old.read_ref) { summary.read_ref=old.read_ref; summary.unread_count=old.unread_count }
-          this.threads.set(summary.id,summary); this.versions.set(key,rank); this.changed()
+          this.threads.set(summary.id,summary); this.reconcileActiveReceipts(summary); this.versions.set(key,rank); this.changed()
         }
       }
       after=optionalCursor(x.next_after);
@@ -360,7 +375,7 @@ export class HermesClient {
     if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
     await this.listChannels(signal);
     if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
-    for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) this.threads.set(t.id,t); for(const r of t.active_receipts||[])this.storeReceipt(r);for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
+    for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) { this.threads.set(t.id,t); this.reconcileActiveReceipts(t) } for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
     this.cursor=earliest; this.lastEventId=0; this.changed();
   }
   private async applyEvent(event: Event, signal?: AbortSignal) {

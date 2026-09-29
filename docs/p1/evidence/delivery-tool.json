@@ -4,8 +4,8 @@
   "model_requests_after": 1,
   "model_requests_before": 1,
   "queued_recovered": false,
-  "receipt": "rc_d3f6cc406017701bb42f0050d2cc0c08",
-  "replayed_events": 2,
+  "receipt": "rc_61801aa2ea4f54a8942e028204f65fa7",
+  "replayed_events": 3,
   "state": "unknown",
-  "visible_messages": 1
+  "visible_messages": 2
 }

@@ -71,6 +71,23 @@ test('snapshot active receipt preserves callback through cold projection and lat
   assert.equal(sdk.receipts.get('r').feedback, feedback);
 });
 
+test('authoritative snapshot removes only stale active receipts for included threads', async () => {
+  let active = [{ ...base, state: 'running', processing: 'running' }];
+  const other = { ...base, id: 'other', client_message_id: 'other', thread_id: 'other-thread', state: 'running' };
+  const sdk = new HermesClient({ token: () => 'test', socket: { connect() {} }, http: { async request(_method, path) {
+    if (path.startsWith('/v1/snapshot')) return { status: 200, body: { threads: [{ id: 'th', project_id: 'p', title: 'Thread', archived: 0, last_ref: 0, read_ref: 0, unread_count: 0, active_receipts: active }], waterline: 'c1', next_after: null } };
+    if (path === '/v1/channels') return { status: 200, body: { channels: [] } };
+    return { status: 200, body: { receipt: other } };
+  } } });
+  await sdk.getReceipt(other.id);
+  await sdk.snapshot();
+  assert.equal(sdk.receipts.get('r').state, 'running');
+  active = [];
+  await sdk.snapshot();
+  assert.equal(sdk.receipts.has('r'), false);
+  assert.equal(sdk.receipts.get(other.id).state, 'running');
+});
+
 test('feedback accepts exact native ACK text, rejects malformed values, survives omitted same-state and late ACK', async () => {
   const modes = [
     '⏩ Steered into current run (iteration 2/500). Your message arrives after the next tool call.',

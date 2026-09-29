@@ -1,0 +1,118 @@
+{
+  "after": {
+    "incomplete_turns": [],
+    "messages": [
+      {
+        "attachments": [],
+        "client_message_id": "b81827b7a7484a92b7ed5c06ce974da2",
+        "created_at": 1790663745,
+        "id": "receipt:rc_dedcfad7a205ab218dd56fcc19db32b0",
+        "receipt_id": "rc_dedcfad7a205ab218dd56fcc19db32b0",
+        "ref_seq": 1,
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663746.8335655,
+        "id": "5",
+        "ref_seq": 4,
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "attachments": [],
+        "client_message_id": "1ed45738268c4b21b2c7744db6839b39",
+        "created_at": 1790663747,
+        "id": "receipt:rc_a580e158f68281252606d8742ac5329f",
+        "receipt_id": "rc_a580e158f68281252606d8742ac5329f",
+        "ref_seq": 5,
+        "role": "user",
+        "text": "P1_TIMELINE"
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663747.0609927,
+        "id": "8",
+        "ref_seq": 6,
+        "role": "assistant",
+        "text": "",
+        "tool_calls": [
+          {
+            "id": "p1_call_1",
+            "label": "p1_synthetic_expand",
+            "name": "p1_synthetic_expand"
+          }
+        ]
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663747.1775746,
+        "id": "10",
+        "ref_seq": 7,
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      }
+    ],
+    "next_cursor": null,
+    "older_cursor": null,
+    "turn_outcomes": []
+  },
+  "before": {
+    "incomplete_turns": [
+      "ingress:rc_a580e158f68281252606d8742ac5329f",
+      "20260928_233545_4312c46a:20260928_233545_4312c46a:4215a1e0"
+    ],
+    "messages": [
+      {
+        "attachments": [],
+        "client_message_id": "b81827b7a7484a92b7ed5c06ce974da2",
+        "created_at": 1790663745,
+        "id": "receipt:rc_dedcfad7a205ab218dd56fcc19db32b0",
+        "receipt_id": "rc_dedcfad7a205ab218dd56fcc19db32b0",
+        "ref_seq": 1,
+        "role": "user",
+        "text": "P1_FIRST"
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663746.8335655,
+        "id": "5",
+        "ref_seq": 4,
+        "role": "assistant",
+        "text": "SYNTHETIC_P1_FINAL"
+      },
+      {
+        "attachments": [],
+        "client_message_id": "1ed45738268c4b21b2c7744db6839b39",
+        "created_at": 1790663747,
+        "id": "receipt:rc_a580e158f68281252606d8742ac5329f",
+        "receipt_id": "rc_a580e158f68281252606d8742ac5329f",
+        "ref_seq": 5,
+        "role": "user",
+        "text": "P1_TIMELINE"
+      },
+      {
+        "attachments": [],
+        "created_at": 1790663747.0609927,
+        "id": "8",
+        "ref_seq": 6,
+        "role": "assistant",
+        "text": "",
+        "tool_calls": [
+          {
+            "id": "p1_call_1",
+            "label": "p1_synthetic_expand",
+            "name": "p1_synthetic_expand"
+          }
+        ]
+      }
+    ],
+    "next_cursor": null,
+    "older_cursor": null,
+    "turn_outcomes": []
+  },
+  "core_row_id": "8",
+  "published_during_handler": true,
+  "tool_call_id": "p1_call_1"
+}

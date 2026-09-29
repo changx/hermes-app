@@ -73,6 +73,7 @@ class Store:
                     payload_hash TEXT NOT NULL, pending_text TEXT,
                     state TEXT NOT NULL, user_row_id INTEGER,
                     admission TEXT NOT NULL DEFAULT 'owner',
+                    event_version INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL DEFAULT (unixepoch()));
                 CREATE INDEX IF NOT EXISTS receipt_queue ON receipts(thread_id,state,created_at);
                 CREATE TABLE IF NOT EXISTS direct_messages (
@@ -127,6 +128,16 @@ class Store:
                 db.execute('ALTER TABLE receipts ADD COLUMN processing TEXT')
             if not any(r['name'] == 'feedback' for r in db.execute('PRAGMA table_info(receipts)')):
                 db.execute('ALTER TABLE receipts ADD COLUMN feedback TEXT')
+            if not any(r['name'] == 'event_version' for r in db.execute('PRAGMA table_info(receipts)')):
+                # Older releases reused receipt version 3 for processing completion
+                # and settlement. Seed from the log, then republish current state so
+                # already-connected clients can converge after upgrading.
+                db.execute('ALTER TABLE receipts ADD COLUMN event_version INTEGER NOT NULL DEFAULT 0')
+                db.execute("UPDATE receipts SET event_version=COALESCE((SELECT MAX(version) "
+                           "FROM sync_events WHERE kind='receipt' AND thread_id=receipts.thread_id "
+                           "AND ref=receipts.id),0)")
+                for receipt in db.execute('SELECT id,thread_id FROM receipts').fetchall():
+                    self._receipt_event(db, receipt['thread_id'], receipt['id'])
             if not any(r['name'] == 'attachment_id' for r in db.execute('PRAGMA table_info(direct_messages)')):
                 db.execute('ALTER TABLE direct_messages ADD COLUMN attachment_id TEXT REFERENCES attachments(id)')
             ref_sql=db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_refs'").fetchone()[0]
@@ -362,6 +373,16 @@ class Store:
         db.execute('INSERT INTO sync_events(kind,thread_id,ref,version) VALUES (?,?,?,?)',
                    (kind, thread_id, ref, version))
 
+    def _receipt_event(self, db, thread_id, receipt_id):
+        """Publish a strictly newer version for every receipt representation change."""
+        changed = db.execute('UPDATE receipts SET event_version=event_version+1 '
+                             'WHERE id=? AND thread_id=?', (receipt_id, thread_id)).rowcount
+        if changed != 1:
+            raise ValueError('unknown receipt event owner')
+        version = db.execute('SELECT event_version FROM receipts WHERE id=?',
+                             (receipt_id,)).fetchone()['event_version']
+        self._event(db, 'receipt', thread_id, receipt_id, version)
+
     def accept(self, thread_id, client_message_id, text, attachment_ids=()):
         if not isinstance(client_message_id, str) or not 1 <= len(client_message_id) <= 128 or not all(
                 c.isascii() and (c.isalnum() or c in '-_.:') for c in client_message_id):
@@ -406,7 +427,7 @@ class Store:
             db.execute("INSERT INTO turns VALUES (?,?,'input')",(turn_id,thread_id))
             db.execute("INSERT INTO message_refs(thread_id,turn_id,session_id,input_receipt_id,role) "
                        "VALUES (?,?,?,?,'user')",(thread_id,turn_id,thread['session_id'],receipt_id))
-            self._event(db, 'receipt', thread_id, receipt_id)
+            self._receipt_event(db, thread_id, receipt_id)
             row = db.execute('SELECT * FROM receipts WHERE id=?', (receipt_id,)).fetchone()
             return self._receipt(db,row), True
 
@@ -446,7 +467,7 @@ class Store:
             if not row or row['processing'] == state or row['processing'] in ('completed','failed','interrupted'):
                 return
             db.execute('UPDATE receipts SET processing=? WHERE id=?',(state,receipt_id))
-            self._event(db,'receipt',thread_id,receipt_id,3)
+            self._receipt_event(db, thread_id, receipt_id)
 
     def record_feedback(self, receipt_id, thread_id, text):
         """The native busy ACK is admission feedback, never completion evidence."""
@@ -458,7 +479,7 @@ class Store:
                                  "AND admission='followup' AND feedback IS NULL",
                                  (text,receipt_id,thread_id)).rowcount
             if changed:
-                self._event(db,'receipt',thread_id,receipt_id,4)
+                self._receipt_event(db, thread_id, receipt_id)
             return bool(changed)
 
     def reconcile_channels(self, channels):
@@ -499,7 +520,7 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             for row in db.execute("SELECT id,thread_id FROM receipts WHERE processing='running'").fetchall():
                 db.execute("UPDATE receipts SET processing='unknown' WHERE id=?", (row['id'],))
-                self._event(db,'receipt',row['thread_id'],row['id'],3)
+                self._receipt_event(db, row['thread_id'], row['id'])
             for row in db.execute("SELECT id,thread_id FROM receipts WHERE state='running'").fetchall():
                 db.execute("UPDATE receipts SET state='unknown' WHERE id=?", (row['id'],))
                 db.execute("UPDATE turns SET state='unknown' WHERE turn_id=? AND state='pending'",
@@ -507,7 +528,7 @@ class Store:
                 linked=db.execute('SELECT turn_id FROM ingress_links WHERE ingress_id=?',('ingress:'+row['id'],)).fetchone()
                 if linked:
                     db.execute("UPDATE turns SET state='unknown' WHERE turn_id=? AND state='pending'",(linked[0],))
-                self._event(db,'receipt',row['thread_id'],row['id'],3)
+                self._receipt_event(db, row['thread_id'], row['id'])
             return [r[0] for r in db.execute("SELECT DISTINCT thread_id FROM receipts WHERE state='queued'")]
 
     def _recover_visible_result(self, receipt_id, thread_id, source_db):
@@ -587,7 +608,7 @@ class Store:
                 return None
             db.execute("UPDATE receipts SET state='running' WHERE id=?", (row['id'],))
             db.execute("INSERT INTO turns VALUES (?,?,'pending')", ('ingress:'+row['id'],thread_id))
-            self._event(db,'receipt',thread_id,row['id'],2)
+            self._receipt_event(db, thread_id, row['id'])
             return row['id'],row['pending_text']
 
     def claim_busy_text(self, thread_id):
@@ -609,7 +630,7 @@ class Store:
             db.execute("INSERT OR IGNORE INTO turns VALUES (?,?,'input')",(turn_id,thread_id))
             db.execute("INSERT OR IGNORE INTO message_refs(thread_id,turn_id,session_id,input_receipt_id,role) "
                        "VALUES (?,?,?,?,'user')",(thread_id,turn_id,session,row['id']))
-            self._event(db,'receipt',thread_id,row['id'],2)
+            self._receipt_event(db, thread_id, row['id'])
             return row['id'],row['pending_text']
 
     def followup_core_outcome(self, receipt_id, source_db):
@@ -623,7 +644,7 @@ class Store:
                 # Exact platform_message_id means Gateway made a normal user
                 # turn (native FIFO/idle race), not a consumed steer.
                 db.execute("UPDATE receipts SET admission='owner' WHERE id=?",(receipt_id,))
-                self._event(db,'receipt',receipt['thread_id'],receipt_id,3)
+                self._receipt_event(db, receipt['thread_id'], receipt_id)
             row=db.execute('SELECT t.state,t.turn_id FROM receipts c JOIN message_refs r ON r.row_id=c.user_row_id '
                            'JOIN turns t ON t.turn_id=r.turn_id WHERE c.id=? AND r.role=\'user\'',
                            (receipt_id,)).fetchone()
@@ -650,7 +671,7 @@ class Store:
                              'AND handed_off=0', (receipt_id,)).fetchone()
             if row:
                 db.execute('UPDATE receipts SET handed_off=1 WHERE id=?', (receipt_id,))
-                self._event(db, 'receipt', row['thread_id'], receipt_id, 3)
+                self._receipt_event(db, row['thread_id'], receipt_id)
 
     def finish_receipt(self, receipt_id, state):
         if state not in ('received','completed','failed','interrupted','unknown'):
@@ -662,7 +683,7 @@ class Store:
                 return
             # The accepted input is already visible even without a core row.
             db.execute('UPDATE receipts SET state=? WHERE id=?', (state,receipt_id))
-            self._event(db,'receipt',row['thread_id'],receipt_id,3)
+            self._receipt_event(db, row['thread_id'], receipt_id)
 
     def finish_direct_receipt(self, receipt_id, state) -> bool:
         """Settle only a direct-only ingress, never an ACK for model work."""
@@ -688,7 +709,7 @@ class Store:
             if turn:
                 db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=?',
                            ('complete' if state=='completed' else state,ingress,receipt['thread_id']))
-            self._event(db,'receipt',receipt['thread_id'],receipt_id,3)
+            self._receipt_event(db, receipt['thread_id'], receipt_id)
             return True
 
     def finish_unanchored_model_receipt(self, receipt_id, turn_id, state) -> bool:
@@ -708,7 +729,7 @@ class Store:
             db.execute('UPDATE receipts SET state=? WHERE id=?',(state,receipt_id))
             db.execute('UPDATE turns SET state=? WHERE turn_id=? AND thread_id=? AND state=\'pending\'',
                        ('complete' if state=='completed' else state,'ingress:'+receipt_id,row['thread_id']))
-            self._event(db,'receipt',row['thread_id'],receipt_id,3)
+            self._receipt_event(db, row['thread_id'], receipt_id)
             return True
 
     def cancel_queued(self, thread_id, receipt_id):
@@ -717,7 +738,7 @@ class Store:
             changed=db.execute("UPDATE receipts SET state='interrupted' "
                                "WHERE id=? AND thread_id=? AND state='queued'",(receipt_id,thread_id)).rowcount
             if changed:
-                self._event(db,'receipt',thread_id,receipt_id,3)
+                self._receipt_event(db, thread_id, receipt_id)
             return bool(changed)
 
     def attachment_add(self, thread_id, attachment_id, name, mime, size):

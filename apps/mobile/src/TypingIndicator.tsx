@@ -5,6 +5,7 @@ import type { Interaction, Receipt } from '../../../packages/client/src/index';
 
 export function isAgentTyping(threadId: string, receipts: readonly Receipt[], interactions: readonly Interaction[], online: boolean): boolean {
   return online && receipts.some(receipt => receipt.thread_id === threadId && receipt.state === 'running'
+    && (receipt.processing == null || receipt.processing === 'running')
     && !interactions.some(item => item.thread_id === threadId && item.receipt_id === receipt.id && item.state === 'pending'));
 }
 

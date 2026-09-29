@@ -11,23 +11,23 @@
   "history_after_compaction_exact": true,
   "history_after_next_turn_exact": true,
   "history_original_ids": [
-    "4",
-    "5",
-    "7",
+    "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+    "2",
+    "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
     "8",
-    "9",
+    "receipt:rc_79ae7e70f63ff61afa9bd04466ef9adf",
     "10",
-    "11",
+    "receipt:rc_0280f45c00518b616f1b1ddfbe81c3b0",
     "12",
-    "13",
+    "receipt:rc_10bbdbeaf5b73182d34bb327acc33985",
     "14",
-    "15",
+    "receipt:rc_5be350d5ca75e9f234d04cf85f5e0f2c",
     "16",
-    "17",
+    "receipt:rc_88e4891d869398eb4d83f6d6f7700a63",
     "18",
-    "19",
+    "receipt:rc_a583624ef11b8f79fffb8154afc32492",
     "20",
-    "21",
+    "receipt:rc_10371bea3e4398d98a72bb6b1e057172",
     "22"
   ],
   "history_page_exact": true,
@@ -37,459 +37,794 @@
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "4",
+          "attachments": [],
+          "client_message_id": "97bb7509011e41dc90412c305fd72e45",
+          "created_at": 1790663709,
+          "id": "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "receipt_id": "rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "ref_seq": 1,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "5",
+          "attachments": [],
+          "created_at": 1790663710.1702917,
+          "id": "2",
+          "ref_seq": 3,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "7",
+          "attachments": [],
+          "client_message_id": "9f9ccc1b1cd0462f8a5fafe427d42fd3",
+          "created_at": 1790663710,
+          "id": "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
+          "receipt_id": "rc_bd2835623bd5bdaf24945dd853388f32",
+          "ref_seq": 5,
           "role": "user",
           "text": "P1_SECOND"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.427882,
           "id": "8",
+          "ref_seq": 6,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "9",
+          "attachments": [],
+          "client_message_id": "7daf3ab070814ac3849f1b03cde016af",
+          "created_at": 1790663710,
+          "id": "receipt:rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "receipt_id": "rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "ref_seq": 7,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.6492312,
           "id": "10",
+          "ref_seq": 8,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "11",
+          "attachments": [],
+          "client_message_id": "282745b06ca64f61b537c5781a57a712",
+          "created_at": 1790663710,
+          "id": "receipt:rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "receipt_id": "rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "ref_seq": 9,
           "role": "user",
           "text": "P1_BULK_0 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.8717752,
           "id": "12",
+          "ref_seq": 10,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "13",
+          "attachments": [],
+          "client_message_id": "d55d00a2b9954b8fa54a1824f9f3a3d7",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10bbdbeaf5b73182d34bb327acc33985",
+          "receipt_id": "rc_10bbdbeaf5b73182d34bb327acc33985",
+          "ref_seq": 11,
           "role": "user",
           "text": "P1_BULK_1 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.1020794,
           "id": "14",
+          "ref_seq": 12,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "15",
+          "attachments": [],
+          "client_message_id": "1d92a218336b4cf09fe3303329071005",
+          "created_at": 1790663711,
+          "id": "receipt:rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "receipt_id": "rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "ref_seq": 13,
           "role": "user",
           "text": "P1_BULK_2 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.3106394,
           "id": "16",
+          "ref_seq": 14,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "17",
+          "attachments": [],
+          "client_message_id": "fc689d33f156452bbd2a373593dff9cb",
+          "created_at": 1790663711,
+          "id": "receipt:rc_88e4891d869398eb4d83f6d6f7700a63",
+          "receipt_id": "rc_88e4891d869398eb4d83f6d6f7700a63",
+          "ref_seq": 15,
           "role": "user",
           "text": "P1_BULK_3 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.5316765,
           "id": "18",
+          "ref_seq": 16,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "19",
+          "attachments": [],
+          "client_message_id": "6d8a55e0eea241b59177733568df80f1",
+          "created_at": 1790663711,
+          "id": "receipt:rc_a583624ef11b8f79fffb8154afc32492",
+          "receipt_id": "rc_a583624ef11b8f79fffb8154afc32492",
+          "ref_seq": 17,
           "role": "user",
           "text": "P1_BULK_4 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.753608,
           "id": "20",
+          "ref_seq": 18,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "21",
+          "attachments": [],
+          "client_message_id": "76be5e4ecd2547178dd4e514fb4b33a3",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10371bea3e4398d98a72bb6b1e057172",
+          "receipt_id": "rc_10371bea3e4398d98a72bb6b1e057172",
+          "ref_seq": 19,
           "role": "user",
           "text": "P1_BULK_5 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.9786448,
           "id": "22",
+          "ref_seq": 20,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "27",
+          "attachments": [],
+          "client_message_id": "8859caa3d6824033aaaf0f986de6225b",
+          "created_at": 1790663712,
+          "id": "receipt:rc_f9fa103418e3bedb079b09eef4dd93e4",
+          "receipt_id": "rc_f9fa103418e3bedb079b09eef4dd93e4",
+          "ref_seq": 21,
           "role": "user",
           "text": "P1_AFTER_COMPACT"
         },
         {
+          "attachments": [],
+          "created_at": 1790663712.457308,
           "id": "28",
+          "ref_seq": 22,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
       "next_cursor": null,
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "before": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "4",
+          "attachments": [],
+          "client_message_id": "97bb7509011e41dc90412c305fd72e45",
+          "created_at": 1790663709,
+          "id": "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "receipt_id": "rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "ref_seq": 1,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "5",
+          "attachments": [],
+          "created_at": 1790663710.1702917,
+          "id": "2",
+          "ref_seq": 3,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "7",
+          "attachments": [],
+          "client_message_id": "9f9ccc1b1cd0462f8a5fafe427d42fd3",
+          "created_at": 1790663710,
+          "id": "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
+          "receipt_id": "rc_bd2835623bd5bdaf24945dd853388f32",
+          "ref_seq": 5,
           "role": "user",
           "text": "P1_SECOND"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.427882,
           "id": "8",
+          "ref_seq": 6,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "9",
+          "attachments": [],
+          "client_message_id": "7daf3ab070814ac3849f1b03cde016af",
+          "created_at": 1790663710,
+          "id": "receipt:rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "receipt_id": "rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "ref_seq": 7,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.6492312,
           "id": "10",
+          "ref_seq": 8,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "11",
+          "attachments": [],
+          "client_message_id": "282745b06ca64f61b537c5781a57a712",
+          "created_at": 1790663710,
+          "id": "receipt:rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "receipt_id": "rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "ref_seq": 9,
           "role": "user",
           "text": "P1_BULK_0 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.8717752,
           "id": "12",
+          "ref_seq": 10,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "13",
+          "attachments": [],
+          "client_message_id": "d55d00a2b9954b8fa54a1824f9f3a3d7",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10bbdbeaf5b73182d34bb327acc33985",
+          "receipt_id": "rc_10bbdbeaf5b73182d34bb327acc33985",
+          "ref_seq": 11,
           "role": "user",
           "text": "P1_BULK_1 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.1020794,
           "id": "14",
+          "ref_seq": 12,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "15",
+          "attachments": [],
+          "client_message_id": "1d92a218336b4cf09fe3303329071005",
+          "created_at": 1790663711,
+          "id": "receipt:rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "receipt_id": "rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "ref_seq": 13,
           "role": "user",
           "text": "P1_BULK_2 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.3106394,
           "id": "16",
+          "ref_seq": 14,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "17",
+          "attachments": [],
+          "client_message_id": "fc689d33f156452bbd2a373593dff9cb",
+          "created_at": 1790663711,
+          "id": "receipt:rc_88e4891d869398eb4d83f6d6f7700a63",
+          "receipt_id": "rc_88e4891d869398eb4d83f6d6f7700a63",
+          "ref_seq": 15,
           "role": "user",
           "text": "P1_BULK_3 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.5316765,
           "id": "18",
+          "ref_seq": 16,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "19",
+          "attachments": [],
+          "client_message_id": "6d8a55e0eea241b59177733568df80f1",
+          "created_at": 1790663711,
+          "id": "receipt:rc_a583624ef11b8f79fffb8154afc32492",
+          "receipt_id": "rc_a583624ef11b8f79fffb8154afc32492",
+          "ref_seq": 17,
           "role": "user",
           "text": "P1_BULK_4 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.753608,
           "id": "20",
+          "ref_seq": 18,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "21",
+          "attachments": [],
+          "client_message_id": "76be5e4ecd2547178dd4e514fb4b33a3",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10371bea3e4398d98a72bb6b1e057172",
+          "receipt_id": "rc_10371bea3e4398d98a72bb6b1e057172",
+          "ref_seq": 19,
           "role": "user",
           "text": "P1_BULK_5 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.9786448,
           "id": "22",
+          "ref_seq": 20,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
       "next_cursor": null,
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "branch": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "1",
+          "attachments": [],
+          "client_message_id": "608c0af5219d48198e1d18b8f39b36ec",
+          "created_at": 1790663709,
+          "id": "receipt:rc_37bd2a0423a1ef3d6cd1b334962feb21",
+          "receipt_id": "rc_37bd2a0423a1ef3d6cd1b334962feb21",
+          "ref_seq": 2,
           "role": "user",
           "text": "P1_OTHER"
         },
         {
-          "id": "2",
+          "attachments": [],
+          "created_at": 1790663710.2178319,
+          "id": "5",
+          "ref_seq": 4,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
       "next_cursor": null,
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "cold": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "4",
+          "attachments": [],
+          "client_message_id": "97bb7509011e41dc90412c305fd72e45",
+          "created_at": 1790663709,
+          "id": "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "receipt_id": "rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "ref_seq": 1,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "5",
+          "attachments": [],
+          "created_at": 1790663710.1702917,
+          "id": "2",
+          "ref_seq": 3,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "7",
+          "attachments": [],
+          "client_message_id": "9f9ccc1b1cd0462f8a5fafe427d42fd3",
+          "created_at": 1790663710,
+          "id": "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
+          "receipt_id": "rc_bd2835623bd5bdaf24945dd853388f32",
+          "ref_seq": 5,
           "role": "user",
           "text": "P1_SECOND"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.427882,
           "id": "8",
+          "ref_seq": 6,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "9",
+          "attachments": [],
+          "client_message_id": "7daf3ab070814ac3849f1b03cde016af",
+          "created_at": 1790663710,
+          "id": "receipt:rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "receipt_id": "rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "ref_seq": 7,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.6492312,
           "id": "10",
+          "ref_seq": 8,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "11",
+          "attachments": [],
+          "client_message_id": "282745b06ca64f61b537c5781a57a712",
+          "created_at": 1790663710,
+          "id": "receipt:rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "receipt_id": "rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "ref_seq": 9,
           "role": "user",
           "text": "P1_BULK_0 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.8717752,
           "id": "12",
+          "ref_seq": 10,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "13",
+          "attachments": [],
+          "client_message_id": "d55d00a2b9954b8fa54a1824f9f3a3d7",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10bbdbeaf5b73182d34bb327acc33985",
+          "receipt_id": "rc_10bbdbeaf5b73182d34bb327acc33985",
+          "ref_seq": 11,
           "role": "user",
           "text": "P1_BULK_1 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.1020794,
           "id": "14",
+          "ref_seq": 12,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "15",
+          "attachments": [],
+          "client_message_id": "1d92a218336b4cf09fe3303329071005",
+          "created_at": 1790663711,
+          "id": "receipt:rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "receipt_id": "rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "ref_seq": 13,
           "role": "user",
           "text": "P1_BULK_2 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.3106394,
           "id": "16",
+          "ref_seq": 14,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "17",
+          "attachments": [],
+          "client_message_id": "fc689d33f156452bbd2a373593dff9cb",
+          "created_at": 1790663711,
+          "id": "receipt:rc_88e4891d869398eb4d83f6d6f7700a63",
+          "receipt_id": "rc_88e4891d869398eb4d83f6d6f7700a63",
+          "ref_seq": 15,
           "role": "user",
           "text": "P1_BULK_3 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.5316765,
           "id": "18",
+          "ref_seq": 16,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "19",
+          "attachments": [],
+          "client_message_id": "6d8a55e0eea241b59177733568df80f1",
+          "created_at": 1790663711,
+          "id": "receipt:rc_a583624ef11b8f79fffb8154afc32492",
+          "receipt_id": "rc_a583624ef11b8f79fffb8154afc32492",
+          "ref_seq": 17,
           "role": "user",
           "text": "P1_BULK_4 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.753608,
           "id": "20",
+          "ref_seq": 18,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "21",
+          "attachments": [],
+          "client_message_id": "76be5e4ecd2547178dd4e514fb4b33a3",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10371bea3e4398d98a72bb6b1e057172",
+          "receipt_id": "rc_10371bea3e4398d98a72bb6b1e057172",
+          "ref_seq": 19,
           "role": "user",
           "text": "P1_BULK_5 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.9786448,
           "id": "22",
+          "ref_seq": 20,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "27",
+          "attachments": [],
+          "client_message_id": "8859caa3d6824033aaaf0f986de6225b",
+          "created_at": 1790663712,
+          "id": "receipt:rc_f9fa103418e3bedb079b09eef4dd93e4",
+          "receipt_id": "rc_f9fa103418e3bedb079b09eef4dd93e4",
+          "ref_seq": 21,
           "role": "user",
           "text": "P1_AFTER_COMPACT"
         },
         {
+          "attachments": [],
+          "created_at": 1790663712.457308,
           "id": "28",
+          "ref_seq": 22,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
       "next_cursor": null,
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "compressed": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "4",
+          "attachments": [],
+          "client_message_id": "97bb7509011e41dc90412c305fd72e45",
+          "created_at": 1790663709,
+          "id": "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "receipt_id": "rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "ref_seq": 1,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "5",
+          "attachments": [],
+          "created_at": 1790663710.1702917,
+          "id": "2",
+          "ref_seq": 3,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "7",
+          "attachments": [],
+          "client_message_id": "9f9ccc1b1cd0462f8a5fafe427d42fd3",
+          "created_at": 1790663710,
+          "id": "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
+          "receipt_id": "rc_bd2835623bd5bdaf24945dd853388f32",
+          "ref_seq": 5,
           "role": "user",
           "text": "P1_SECOND"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.427882,
           "id": "8",
+          "ref_seq": 6,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "9",
+          "attachments": [],
+          "client_message_id": "7daf3ab070814ac3849f1b03cde016af",
+          "created_at": 1790663710,
+          "id": "receipt:rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "receipt_id": "rc_79ae7e70f63ff61afa9bd04466ef9adf",
+          "ref_seq": 7,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.6492312,
           "id": "10",
+          "ref_seq": 8,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "11",
+          "attachments": [],
+          "client_message_id": "282745b06ca64f61b537c5781a57a712",
+          "created_at": 1790663710,
+          "id": "receipt:rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "receipt_id": "rc_0280f45c00518b616f1b1ddfbe81c3b0",
+          "ref_seq": 9,
           "role": "user",
           "text": "P1_BULK_0 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.8717752,
           "id": "12",
+          "ref_seq": 10,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "13",
+          "attachments": [],
+          "client_message_id": "d55d00a2b9954b8fa54a1824f9f3a3d7",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10bbdbeaf5b73182d34bb327acc33985",
+          "receipt_id": "rc_10bbdbeaf5b73182d34bb327acc33985",
+          "ref_seq": 11,
           "role": "user",
           "text": "P1_BULK_1 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.1020794,
           "id": "14",
+          "ref_seq": 12,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "15",
+          "attachments": [],
+          "client_message_id": "1d92a218336b4cf09fe3303329071005",
+          "created_at": 1790663711,
+          "id": "receipt:rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "receipt_id": "rc_5be350d5ca75e9f234d04cf85f5e0f2c",
+          "ref_seq": 13,
           "role": "user",
           "text": "P1_BULK_2 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.3106394,
           "id": "16",
+          "ref_seq": 14,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "17",
+          "attachments": [],
+          "client_message_id": "fc689d33f156452bbd2a373593dff9cb",
+          "created_at": 1790663711,
+          "id": "receipt:rc_88e4891d869398eb4d83f6d6f7700a63",
+          "receipt_id": "rc_88e4891d869398eb4d83f6d6f7700a63",
+          "ref_seq": 15,
           "role": "user",
           "text": "P1_BULK_3 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.5316765,
           "id": "18",
+          "ref_seq": 16,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "19",
+          "attachments": [],
+          "client_message_id": "6d8a55e0eea241b59177733568df80f1",
+          "created_at": 1790663711,
+          "id": "receipt:rc_a583624ef11b8f79fffb8154afc32492",
+          "receipt_id": "rc_a583624ef11b8f79fffb8154afc32492",
+          "ref_seq": 17,
           "role": "user",
           "text": "P1_BULK_4 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.753608,
           "id": "20",
+          "ref_seq": 18,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         },
         {
-          "id": "21",
+          "attachments": [],
+          "client_message_id": "76be5e4ecd2547178dd4e514fb4b33a3",
+          "created_at": 1790663711,
+          "id": "receipt:rc_10371bea3e4398d98a72bb6b1e057172",
+          "receipt_id": "rc_10371bea3e4398d98a72bb6b1e057172",
+          "ref_seq": 19,
           "role": "user",
           "text": "P1_BULK_5 alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta alpha beta gamma delta "
         },
         {
+          "attachments": [],
+          "created_at": 1790663711.9786448,
           "id": "22",
+          "ref_seq": 20,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
       "next_cursor": null,
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "page1": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "4",
+          "attachments": [],
+          "client_message_id": "97bb7509011e41dc90412c305fd72e45",
+          "created_at": 1790663709,
+          "id": "receipt:rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "receipt_id": "rc_fcfed6b57b3eb6598fc94e3845d292b8",
+          "ref_seq": 1,
           "role": "user",
           "text": "P1_FIRST"
         },
         {
-          "id": "5",
+          "attachments": [],
+          "created_at": 1790663710.1702917,
+          "id": "2",
+          "ref_seq": 3,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF9hOGVmZDM3NTlhMjY0ZDAzYWY5ZjNkMGQiLDRd",
+      "next_cursor": "WyJ0aF9lNjQ4NWE0YzMwMDk0YmI5YjljZTE4ZmIiLDNd",
+      "older_cursor": null,
       "turn_outcomes": []
     },
     "page2": {
       "incomplete_turns": [],
       "messages": [
         {
-          "id": "7",
+          "attachments": [],
+          "client_message_id": "9f9ccc1b1cd0462f8a5fafe427d42fd3",
+          "created_at": 1790663710,
+          "id": "receipt:rc_bd2835623bd5bdaf24945dd853388f32",
+          "receipt_id": "rc_bd2835623bd5bdaf24945dd853388f32",
+          "ref_seq": 5,
           "role": "user",
           "text": "P1_SECOND"
         },
         {
+          "attachments": [],
+          "created_at": 1790663710.427882,
           "id": "8",
+          "ref_seq": 6,
           "role": "assistant",
           "text": "SYNTHETIC_P1_FINAL"
         }
       ],
-      "next_cursor": "WyJ0aF9hOGVmZDM3NTlhMjY0ZDAzYWY5ZjNkMGQiLDZd",
+      "next_cursor": "WyJ0aF9lNjQ4NWE0YzMwMDk0YmI5YjljZTE4ZmIiLDZd",
+      "older_cursor": null,
       "turn_outcomes": []
     }
   },

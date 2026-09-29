@@ -5,16 +5,19 @@
     409
   ],
   "archived_search_retry": true,
+  "attachment_only_history": true,
   "clarify_answered": true,
   "cold_download_and_cron": true,
   "cron_crash_window_repaired": true,
   "cron_jobs": [
-    "f8ed5509cb0c",
-    "f665885cd1e8"
+    "6e04cd3cc6b4",
+    "6e04cd3cc6b4"
   ],
   "cron_refs": [
-    14,
-    15
+    21,
+    22
   ],
-  "stop_isolated": true
+  "same_recurring_job_two_fires": true,
+  "stop_isolated": true,
+  "symlink_ingress_rejected": true
 }

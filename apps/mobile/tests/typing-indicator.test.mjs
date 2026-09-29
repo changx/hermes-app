@@ -47,6 +47,9 @@ test('typing derives only from online, current-thread running work, excluding pe
   const { isAgentTyping } = harness();
   const receipt = { id: 'r', thread_id: 't', state: 'running' };
   assert.equal(isAgentTyping('t', [receipt], [], true), true);
+  for (const processing of ['completed', 'failed', 'interrupted', 'unknown']) {
+    assert.equal(isAgentTyping('t', [{ ...receipt, processing }], [], true), false);
+  }
   for (const state of ['queued', 'completed', 'failed', 'interrupted', 'unknown']) assert.equal(isAgentTyping('t', [{ ...receipt, state }], [], true), false);
   assert.equal(isAgentTyping('other', [receipt], [], true), false);
   assert.equal(isAgentTyping('t', [receipt], [], false), false);
