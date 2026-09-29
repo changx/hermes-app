@@ -21,6 +21,9 @@ test('running status, attachments, and input share one sticky blurred surface', 
   assert.match(timeline, /composerSurface: \{ backgroundColor: 'rgba\(/);
   assert.match(timeline, /composerSurface: \{[^\n]*boxShadow/);
   assert.doesNotMatch(timeline, /composerSurface: \{[^\n]*overflow: 'hidden'/);
+  assert.match(sticky, /runningRow[\s\S]*props\.typingIndicator[\s\S]*accessibilityLabel="Stop"/);
+  assert.ok(sticky.indexOf('accessibilityLabel="Stop"') < attachmentComposer, 'stop belongs to the running row, not the input row');
+  assert.match(timeline, /runningIndicator: \{ flex: 1, minWidth: 0 \}/);
 });
 
 test('attachment composer stays transparent inside the shared surface', () => {

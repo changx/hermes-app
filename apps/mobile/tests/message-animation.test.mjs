@@ -257,20 +257,20 @@ test('text taps keep the composer keyboard, while interactive drag dismissal rem
   assert.equal(h.flatList.contentContainerStyle.paddingBottom, 96);
 });
 
-test('new Agent output follows with same-height layout and sliding latest window', () => {
+test('new Agent output follows without animating the whole timeline', () => {
   const h = mount({ rows: [user('old'), user('recent')] });
   h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
   h.rows([user('recent'), agent('reply', 'Hello')]); // fixed-count latest page
   h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.calls.length = 0;
   h.rows([user('recent'), agent('reply', 'Hello again')]);
   h.flush(); // no onContentSizeChange (same rendered height)
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.calls.length = 0;
   h.rows([user('recent'), agent('reply', 'Hello again', [{ id: 'tool-1', name: 'web_search', label: '搜索' }])]);
   h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.calls.length = 0;
   h.rows([user('recent'), agent('reply', 'Hello again', [{ id: 'tool-1', name: 'web_search', label: '搜索' }])]);
   h.rerender(); h.flush();
@@ -283,9 +283,9 @@ test('Agent append follows when onScroll reports the new extent before onContent
   h.rows([user('question'), agent('answer', 'Answer')]);
   h.flatList.onScroll({ nativeEvent: { contentOffset: { y: 500 }, contentSize: { height: 1100 }, layoutMeasurement: { height: 500 } } });
   h.content(1100); h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.content(1150); h.flush();
-  assert.deepEqual(h.calls.at(-1), { animated: true }, 'late geometry correction retains animation');
+  assert.deepEqual(h.calls.at(-1), { animated: false }, 'late geometry correction remains non-animated');
 });
 
 test('Agent changes preserve reader and prepend anchors; keyboard movement defers output', () => {
@@ -300,7 +300,7 @@ test('Agent changes preserve reader and prepend anchors; keyboard movement defer
   h.content(1100); h.flush();
   assert.deepEqual(h.calls, [], 'keyboard moving cannot scroll immediately');
   h.keyboard(false); h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.calls.length = 0;
   h.ref.current.holdPosition();
   h.rows([user('u'), agent('a', 'first'), agent('tool', 'Done', [{ id: 'call', name: 'web_search', label: '搜索' }])]);
@@ -327,23 +327,23 @@ test('Agent output honors reduced motion and does not animate first restored mou
   assert.deepEqual(h.calls, [{ animated: false }]);
 });
 
-test('static open keyboard permits native animated send/latest and actual append', () => {
+test('static open keyboard animates explicit latest but not automatic append correction', () => {
   const h = mount({ keyboard: true });
   h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
   h.ref.current.followLatest();
   assert.deepEqual(h.calls, [{ animated: true }]);
   h.append('b'); h.content(1100); h.flush();
-  assert.deepEqual(h.calls.at(-1), { animated: true });
+  assert.deepEqual(h.calls.at(-1), { animated: false });
 });
 
-test('batched append measurements and dock resize never override queued or active animation', () => {
+test('batched append measurements and dock resize settle without inherited animation', () => {
   const h = mount({ keyboard: true });
   h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
   h.dock(60); h.append('b'); h.content(1000); h.content(1100); h.content(1120); h.dock(90);
   h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.content(1140); h.flush();
-  assert.deepEqual(h.calls.at(-1), { animated: true });
+  assert.deepEqual(h.calls.at(-1), { animated: false });
   h.flatList.onMomentumScrollEnd();
   h.content(1160); h.flush();
   assert.deepEqual(h.calls.at(-1), { animated: false });
@@ -355,7 +355,7 @@ test('moving keyboard defers append and explicit latest until end, not while mov
   h.keyboard(true); h.interactive(); h.append('b'); h.content(1100); h.flush();
   assert.equal(h.calls.length, 0);
   h.keyboard(false); h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.calls.length = 0;
   h.keyboard(true); h.ref.current.followLatest(); h.flush();
   assert.equal(h.calls.length, 0);
@@ -387,7 +387,7 @@ test('user drag cancels an in-flight follow and retains reader mode', () => {
   const h = mount();
   h.layout(500); h.content(1000); h.flush(); h.calls.length = 0;
   h.append('b'); h.content(1100); h.flush();
-  assert.deepEqual(h.calls, [{ animated: true }]);
+  assert.deepEqual(h.calls, [{ animated: false }]);
   h.flatList.onScroll({ nativeEvent: { contentOffset: { y: 600 }, contentSize: { height: 1100 }, layoutMeasurement: { height: 500 }, contentInset: { bottom: 0 } } });
   h.flatList.onScrollBeginDrag();
   h.flatList.onScroll({ nativeEvent: { contentOffset: { y: 550 }, contentSize: { height: 1100 }, layoutMeasurement: { height: 500 }, contentInset: { bottom: 0 } } });

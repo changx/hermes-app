@@ -112,10 +112,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   active.current = props.active;
   const followAnimation = useRef(false);
   const pendingFollow = useRef(false);
-  const animatingFollow = useRef(false);
   const scheduleFollow = useCallback((animate = false) => {
     if (!active.current) return;
-    // Geometry corrections must not turn a queued/ongoing append into a jump.
+    // Automatic content/geometry corrections must never inherit an older
+    // animated jump. Only the caller that explicitly requests animation gets it.
     if (animate) followAnimation.current = true;
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
@@ -127,11 +127,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       }
       if (keyboardMoving.current) { pendingFollow.current = true; return; }
       pendingFollow.current = false;
-      const animated = (followAnimation.current || animatingFollow.current) && !reducedMotion.current;
+      const animated = followAnimation.current && !reducedMotion.current;
       followAnimation.current = false;
-      if (scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current)) {
-        animatingFollow.current = animated;
-      }
+      scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current);
     });
   }, []);
   const setKeyboardMoving = useCallback((moving: boolean) => {
@@ -150,7 +148,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const app = AppState.addEventListener('change', state => {
       if (state !== 'active') {
         keyboardMoving.current = false; nativeMoving.value = false;
-        pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+        pendingFollow.current = false; followAnimation.current = false;
       }
     });
     return () => { mounted = false; sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
@@ -162,7 +160,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       frame.current = null;
     }
     keyboardMoving.current = false; nativeMoving.value = false;
-    pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+    pendingFollow.current = false; followAnimation.current = false;
   }, [props.active]);
   const callbacks = useRef({ onPosition, onVisibleRef, startRef });
   callbacks.current = { onPosition, onVisibleRef, startRef };
@@ -172,13 +170,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
-    if (!animate) { followAnimation.current = false; animatingFollow.current = false; }
+    if (!animate) followAnimation.current = false;
     if (keyboardMoving.current) scheduleFollow(animate);
     else {
       const animated = animate && !reducedMotion.current;
-      if (scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current)) {
-        animatingFollow.current = animated;
-      }
+      scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current);
     }
     savePosition();
   }, [savePosition, scheduleFollow]);
@@ -188,7 +184,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     props.onText(props.text.slice(0, start) + text + props.text.slice(end));
     textSelection.current = { start: start + text.length, end: start + text.length };
   }, holdPosition() {
-    following.current = false; pendingFollow.current = false; followAnimation.current = false; animatingFollow.current = false;
+    following.current = false; pendingFollow.current = false; followAnimation.current = false;
     setShowLatest(true); savePosition();
   } }), [followLatest, savePosition, props.text, props.onText]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
@@ -198,7 +194,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     previousRows.current = rows;
     // Commit the new FlatList data first, then use the native content extent.
     // Content-size may be unchanged (or onScroll may have observed it already).
-    if (newOutput && following.current) scheduleFollow(true);
+    // New output should appear at the tail without visibly scrolling the whole
+    // conversation. Explicit send/latest actions remain animated.
+    if (newOutput && following.current) scheduleFollow();
   }, [rows, scheduleFollow]);
   const visible = useRef({ onVisibleRef });
   visible.current.onVisibleRef = onVisibleRef;
@@ -213,8 +211,6 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
         style={styles.composeInput} underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       </Pressable>
-      {hasRunningReceipt(props.threadId, props.receipts) &&
-        <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} style={styles.flex}>
@@ -249,13 +245,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             else list.current?.scrollToOffset({ offset: offset.current, animated: false });
           } else if (!dragging.current && !gestureMomentum.current && !momentumEligible.current
             && (shouldFollowContentChange(following.current, false, previous, height) || following.current && appended.current && height > 0)
-            && (!keyboardMoving.current || appended.current)) scheduleFollow(appended.current);
+            && (!keyboardMoving.current || appended.current)) scheduleFollow();
           appended.current = false;
         }}
-        onScrollBeginDrag={() => { if (!active.current) return; dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; followAnimation.current = false; pendingFollow.current = false; }}
+        onScrollBeginDrag={() => { if (!active.current) return; dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; followAnimation.current = false; pendingFollow.current = false; }}
         onMomentumScrollBegin={() => { gestureMomentum.current = momentumEligible.current; momentumEligible.current = false; }}
         onScrollEndDrag={e => { dragging.current = false; momentumEligible.current = Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01; savePosition(); }}
-        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; animatingFollow.current = false; savePosition(); }}
+        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
         onScroll={e => {
           if (!active.current) return;
           const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
@@ -293,7 +289,12 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     </View>)}</ScrollView>}
 
     <BlurView blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerSurface}>
-      {props.typingIndicator}
+      {hasRunningReceipt(props.threadId, props.receipts) && <View style={styles.runningRow}>
+        <View style={styles.runningIndicator}>{props.typingIndicator}</View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.statusStopButton, props.busy && styles.disabled]}>
+          <Text style={styles.stopIcon}>■</Text>
+        </Pressable>
+      </View>}
       {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
         : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
     </BlurView>
@@ -327,7 +328,9 @@ const styles = StyleSheet.create({
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
 
-  stopButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e6edf7' },
+  runningRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', paddingRight: 10 },
+  runningIndicator: { flex: 1, minWidth: 0 },
+  statusStopButton: { width: 34, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#e6edf7' },
   stopIcon: { color: '#425874', fontSize: 17 },
   // Center the content-sized native input, not text inside a fixed-height UITextView.
   composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },

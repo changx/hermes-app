@@ -359,7 +359,7 @@ test('pill is under corresponding user message with stable footprint; controls r
 test('latest action sits above the composer at the right in its shared keyboard dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   for (const accessory of [false, true]) {
-  const h = mount(rows, [], [], { position: { offset: 20, following: false }, typingIndicator: react.createElement('TypingIndicator'),
+  const h = mount(rows, [receipt('running')], [], { position: { offset: 20, following: false }, typingIndicator: react.createElement('TypingIndicator'),
     ...(accessory ? { composerAccessory: controls => react.createElement('Accessory', {}, controls) } : {}) });
   const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Jump to latest ↓');
   assert.ok(latest);
@@ -406,6 +406,10 @@ test('composer keeps send while running with an independent stop that preserves 
     assert.ok(send); assert.equal(send.props.disabled, draft === '');
     const stop = buttons.find(n => n.props.accessibilityLabel === 'Stop');
     assert.equal(stop.props.disabled, false);
+    const runningRow = named(h.tree, 'View').find(n => n.props.style?.minHeight === 32 && n.props.style?.flexDirection === 'row');
+    assert.ok(runningRow);
+    assert.ok(expand(runningRow).includes(stop), 'stop is at the far right of the running status row');
+    assert.ok(!expand(named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row')).includes(stop));
     click(h.tree, 'Stop');
     assert.deepEqual(h.calls, [['stop']]);
     if (draft) { click(h.tree, 'Send'); assert.deepEqual(h.calls, [['stop'], ['send']]); }
