@@ -269,6 +269,14 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     focusedRef.current = true;
     return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); receiptHydrator.current?.cancel(); };
   }, []));
+  const markVisibleRead = (ref: number) => {
+    if (!client || !focusedRef.current || !appActive.current || ref <= 0) return;
+    if (ref <= markedRef.current) return;
+    markedRef.current = ref;
+    client.markRead(threadId, ref).catch(() => {
+      if (markedRef.current === ref) markedRef.current = 0;
+    });
+  };
   const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
@@ -283,7 +291,12 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     setPageCursor(null); setHistoryBusy(true);
     const cached = locatedThreads.current.has(id);
     setLocated(cached); setStartRef(positions.current.get(id)?.startRef ?? null);
-    if (cached) { setPageCursor(olderCursors.current.get(id) ?? null); setHistoryBusy(false); return; }
+    if (cached) {
+      setPageCursor(olderCursors.current.get(id) ?? null);
+      setHistoryBusy(false);
+      if (!client.tailIncomplete.has(id)) markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
+      return;
+    }
     try {
       if (client.supportsLatest) {
         const page = await client.historyWindow(id);
@@ -292,6 +305,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
         setPageCursor(page.older_cursor); setLocated(true); locatedThreads.current.add(id);
         client.resumeTail(id);
         setStartRef(page.messages[0]?.ref_seq ?? null);
+        markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
         return;
       }
       // The older server only exposes forward pages. Auto-scan a strictly bounded
@@ -304,6 +318,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
           locatedThreads.current.add(id);
           const loaded = client.messages.get(id) || [];
           setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
+          markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
         }
       }
     } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
@@ -377,14 +392,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     return () => receiptHydrator.current?.cancel();
   }, [focused, client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
 
-  const visibleRef = (ref: number) => {
-    if (!client || !focusedRef.current || !appActive.current) return;
-    if (ref <= markedRef.current) return;
-    markedRef.current = ref;
-    client.markRead(threadId, ref).catch(() => {
-      if (markedRef.current === ref) markedRef.current = 0;
-    });
-  };
+
   useEffect(() => {
     if (focused && client && located && client.tailIncomplete.has(threadId)) {
       locatedThreads.current.delete(threadId);
@@ -412,7 +420,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
       locatingMessage={!located && !historyBusy ? pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
       onOlder={() => { void loadOlder(); }}
-      position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={visibleRef}
+      position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={markVisibleRead}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}

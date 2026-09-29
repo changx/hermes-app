@@ -49,7 +49,7 @@ test('hidden timeline reports do not mark a thread read', () => {
   const read = [], focusedRef = { current: false };
   const context = { client: { markRead: (...args) => { read.push(args); return Promise.resolve(); } }, focusedRef,
     appActive: { current: true }, threadId: 't_one', markedRef: { current: 0 } };
-  const visible = callback('visibleRef', context);
+  const visible = callback('markVisibleRead', context);
   visible(8); assert.equal(read.length, 0);
   focusedRef.current = true; visible(8);
   assert.deepEqual(read, [['t_one', 8]]);

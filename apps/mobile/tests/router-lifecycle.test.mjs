@@ -22,7 +22,7 @@ async function harness() {
     constructor(options) {
       sdkCount++; this.options = options; this.connectionState = 'online'; this.supportsLatest = true;
       this.channels = new Map([['p_one', { id: 'p_one' }]]);
-      this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id }]));
+      this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
       this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
     }
     async connect() { this.options.onConnectionState('online'); }
@@ -85,16 +85,17 @@ async function harness() {
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
 
-test('one SDK/outbox survives push/back; hidden chat cannot mark read; draft survives native pop/reopen', async () => {
+test('entering chat marks its latest ref read; hidden chat cannot mark read; SDK and draft survive navigation', async () => {
   const h = await harness();
+  assert.deepEqual(h.reads, [['t_one', 8]]);
   await act(async () => h.timelines.get('t_one').onText('keep this draft'));
   await h.render('t_one', true);
-  h.timelines.get('t_one').onVisibleRef(8);
-  assert.equal(h.reads.length, 0);
+  h.timelines.get('t_one').onVisibleRef(9);
+  assert.equal(h.reads.length, 1);
   assert.equal(h.timelines.get('t_one').text, 'keep this draft');
   await h.render('t_one', false);
-  h.timelines.get('t_one').onVisibleRef(8);
-  assert.equal(h.reads.length, 1);
+  h.timelines.get('t_one').onVisibleRef(9);
+  assert.equal(h.reads.length, 2);
   await h.render(null);
   await h.render('t_two');
   assert.equal(h.timelines.get('t_two').text, '');
