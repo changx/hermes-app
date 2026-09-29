@@ -42,10 +42,12 @@ test("desktop shell denies renderer permissions and embedded webviews", () => {
   assert.match(mainSource, /event\.preventDefault\(\)/);
 });
 
-test("preload exposes only frozen runtime information", () => {
+test("preload exposes a frozen, purpose-specific API", () => {
   assert.match(preloadSource, /contextBridge\.exposeInMainWorld/);
   assert.match(preloadSource, /Object\.freeze/);
-  assert.doesNotMatch(preloadSource, /ipcRenderer|shell|node:fs|child_process/);
+  assert.match(preloadSource, /ipcRenderer\.invoke\("desktop:get-snapshot"\)/);
+  assert.doesNotMatch(preloadSource, /ipcRenderer\.(?:invoke|send)\([^"']/);
+  assert.doesNotMatch(preloadSource, /shell|node:fs|child_process|process\.env/);
 });
 
 test("external URL policy allows only credential-free HTTPS URLs", async () => {

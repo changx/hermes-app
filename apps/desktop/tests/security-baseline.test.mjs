@@ -56,7 +56,7 @@ test("security gate rejects remote or evaluated renderer scripts", () => {
   );
 });
 
-test("preload surface matches the approved read-only snapshot", () => {
+test("preload surface matches the approved purpose-specific desktop API", () => {
   const worldNames = [
     ...preloadSource.matchAll(/exposeInMainWorld\(\s*["']([^"']+)["']/g),
   ].map((match) => match[1]);
@@ -65,15 +65,26 @@ test("preload surface matches the approved read-only snapshot", () => {
   ].map((match) => match[1]);
 
   assert.deepEqual(worldNames, ["hermesDesktop"]);
-  assert.deepEqual(exposedMethods, ["getRuntimeInfo"]);
+  assert.deepEqual(exposedMethods, [
+    "getRuntimeInfo",
+    "getSnapshot",
+    "pair",
+    "cancelPairing",
+    "forgetConnection",
+    "selectChannel",
+    "selectThread",
+    "retryConnection",
+  ]);
+  assert.match(preloadSource, /ipcRenderer\.on\("desktop:snapshot"/);
+  assert.doesNotMatch(preloadSource, /ipcRenderer\.(?:invoke|send)\([^"']/);
   assert.doesNotMatch(
     preloadSource,
-    /ipcRenderer|shell|webFrame|node:fs|child_process|process\.env/,
+    /shell|webFrame|node:fs|child_process|process\.env/,
   );
   assert.throws(() =>
     assert.doesNotMatch(
       `${preloadSource}\nipcRenderer.invoke(request.channel, request.payload)`,
-      /ipcRenderer|shell|webFrame|node:fs|child_process|process\.env/,
+      /ipcRenderer\.(?:invoke|send)\([^"']|shell|webFrame|node:fs|child_process|process\.env/,
     ),
   );
 });

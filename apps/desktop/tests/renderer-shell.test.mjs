@@ -9,8 +9,16 @@ const result = await build({
   stdin: {
     contents: `
       import { renderToStaticMarkup } from "react-dom/server";
-      import { DesktopShell } from "./src/renderer/shell.tsx";
-      export const markup = renderToStaticMarkup(DesktopShell());
+      import { DesktopShellView } from "./src/renderer/shell.tsx";
+      export const markup = renderToStaticMarkup(DesktopShellView({ snapshot: {
+        revision: 1,
+        phase: "connected",
+        connectionState: "suspended",
+        connectionLabel: "Offline",
+        channels: [],
+        threads: [],
+        messages: [],
+      }}));
     `,
     loader: "tsx",
     resolveDir: desktopRoot,
