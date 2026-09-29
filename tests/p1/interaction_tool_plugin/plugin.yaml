@@ -1,5 +1,0 @@
-name: p1-interaction-tools
-label: P1 isolated interaction tools
-kind: standalone
-version: 0.1.0
-description: Harmless local approval and interrupt fixtures

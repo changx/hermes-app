@@ -1,10 +1,10 @@
 # Hermes App
 
-独立的 Hermes 桌面客户端与手机客户端。借鉴 Discord 成熟的频道、话题与异步消息体验，减少设计试错；不复刻 Discord 服务，不实现 Discord 协议兼容层。
+独立的 Hermes 桌面客户端与手机客户端。借鉴 Discord 成熟的频道、话题与异步消息体验，减少设计试错；不复刻 Discord 服务，不实现 Discord 协议兼容层。服务端 adapter 已拆分到 private repository [`changx/hermes-app-plugin`](https://github.com/changx/hermes-app-plugin)。
 
 ## 当前状态
 
-- P0 与 P1 本地交付已完成。主控独立验收：43 项 Python、17 项 TS、严格历史 gate、解包插件真实 Gateway 双端联调与 Metro Android JS 导出通过。交付插件和共享协议/测试客户端；正式桌面/手机 App 尚待 P2/P3，不能把测试客户端当正式 App。详见 [P1 最终验收](docs/p1/final.md)。
+- P0 与 P1 本地交付已完成。历史验收记录保留在 `docs/p1/`；当前仓库只维护客户端与共享客户端代码，Hermes App plugin 在独立仓库维护。
 - 产品核心：Channel 公共上下文、Thread 连续对话、独立于客户端在线状态的异步同步。
 - Hermes 是数据与执行的权威服务端；客户端与通信 adapter 不维护第二套权威业务数据。
 - 最终必须交付可安装的独立桌面 App 和手机 App；Web/PWA 只可用于中间验证，不能替代最终交付。
@@ -30,7 +30,7 @@
 - 初始化任务：Hermes Kanban `default / t_94cc1d1e`。
 - 需求来源：Jamie 与 Tuly 的 Discord 设计讨论，线程 `1552884015143583759`。
 - 文档建立：2026-09-24（PDT）。
-- 当前授权：P1 本地插件与共享契约实现、隔离验证；另已授权新建 `hermes-app-dev` 开发 profile、使用内置 OpenAI Codex、安装插件并以 `agent.tuly.space` 提供开发 API。开发环境验收状态见 [开发环境](docs/dev-environment.md)。不包括 Jamie 等现有 profile 变更、远端建仓或正式 App 发布。
+- 当前开发环境与既有验收状态见 [开发环境](docs/dev-environment.md)。仓库建立不代表授权生产发布、签名、notarization、其他 profile 变更或正式 App 发布。
 
 ## 下一步
 
