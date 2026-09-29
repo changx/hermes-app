@@ -20,9 +20,11 @@ test('new-channel full-screen editor preserves the existing creation path', () =
   assert.match(route, /<FormKeyboardAvoidingView>/);
   assert.match(route, /<NewChannelEditor client=\{client\}/);
   assert.match(route, /router\.replace\(\{ pathname: '\/channels\/\[channelId\]'/);
-  assert.match(editor, /accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b"[\s\S]*?autoFocus/);
+  assert.match(editor, /accessibilityLabel="Channel name" placeholder="Channel name"/);
+  assert.doesNotMatch(editor, /autoFocus/);
   assert.match(editor, /accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines \(optional\)"[\s\S]*?multiline/);
-  assert.match(editor, /description: \{ minHeight: 180, maxHeight: 320, textAlignVertical: 'top' \}/);
+  assert.match(editor, /form: \{ flex: 1, gap: 12 \}/);
+  assert.match(editor, /description: \{ flex: 1, minHeight: 180, textAlignVertical: 'top' \}/);
   assert.match(editor, /client\.createChannel\(patch\.name, patch\.description\)/);
   assert.match(editor, /if \(current\(\)\) onCreated\(made\.id\)/);
 });

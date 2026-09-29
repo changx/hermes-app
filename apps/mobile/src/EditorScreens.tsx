@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { Text, TextInput } from './FontSize';
@@ -55,11 +55,11 @@ export function NewChannelEditor({ client, onCreated }: {
     const made = await client.createChannel(patch.name, patch.description);
     if (current()) onCreated(made.id);
   });
-  return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+  return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <View style={s.form}>
       <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b"
-        value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} autoFocus />
+        value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
       <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)"
         placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline
         style={[s.input, s.description]} editable={!busy} />
@@ -67,7 +67,7 @@ export function NewChannelEditor({ client, onCreated }: {
       <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'}
         disabled={busy || !name.trim()} onPress={submit} /></View>
     </View>
-  </ScrollView>;
+  </View>;
 }
 
 export function NewTopicEditor({ client, channelId, onCreated }: {
@@ -114,7 +114,7 @@ export function NewTopicEditor({ client, channelId, onCreated }: {
   return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message}
-      onChangeText={setMessage} editable={!busy} multiline autoFocus maxLength={16000} style={[s.input, s.message]} />
+      onChangeText={setMessage} editable={!busy} multiline maxLength={16000} style={[s.input, s.message]} />
     <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={0} disabled={busy}
       onSelectionChange={setAttachmentCount} onChange={(attachments, pending) => {
         uploadedDraftAttachments.current = attachments.map(item => item.id);
@@ -129,12 +129,12 @@ export function NewTopicEditor({ client, channelId, onCreated }: {
 }
 
 const s = StyleSheet.create({
-  page: { flexGrow: 1, padding: 12, backgroundColor: '#f8fafc' },
+  page: { flex: 1, padding: 12, backgroundColor: '#f8fafc' },
   fill: { flex: 1 },
-  form: { gap: 12 },
+  form: { flex: 1, gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' },
-  description: { minHeight: 180, maxHeight: 320, textAlignVertical: 'top' },
+  description: { flex: 1, minHeight: 180, textAlignVertical: 'top' },
   message: { flex: 1, minHeight: 180, marginBottom: 12, textAlignVertical: 'top' },
   hint: { color: '#65758b', fontSize: 13, lineHeight: 19 },
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, marginBottom: 12, borderRadius: 8 },

@@ -16,7 +16,8 @@ test('Channel opens a full-screen multiline new-topic route', () => {
   assert.match(app, /pathname: '\/channels\/\[channelId\]\/new-topic'/);
   assert.match(layout, /Stack\.Screen name="channels\/\[channelId\]\/new-topic" options=\{\{ title: 'New topic' \}\}/);
   assert.match(route, /<FormKeyboardAvoidingView>/);
-  assert.match(editor, /accessibilityLabel="First message"[\s\S]*?multiline[\s\S]*?autoFocus/);
+  assert.match(editor, /accessibilityLabel="First message"[\s\S]*?multiline/);
+  assert.doesNotMatch(editor, /autoFocus/);
   assert.doesNotMatch(editor, /accessibilityLabel="New topic title"/);
 });
 
