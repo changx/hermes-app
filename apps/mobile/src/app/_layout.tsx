@@ -24,7 +24,9 @@ function NativeRoutes() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="connection" options={{ title: 'Connection' }} />
       <Stack.Protected guard={!ready || (!!config && !(editing && pendingPairing))}>
+        <Stack.Screen name="new-channel" options={{ title: 'New channel' }} />
         <Stack.Screen name="channels/[channelId]" options={{ title: 'Channel' }} />
+        <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
         <Stack.Screen name="threads/[threadId]" options={{ title: 'Conversation' }} />
         <Stack.Screen name="settings" options={{ title: 'Agent settings' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />

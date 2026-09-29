@@ -465,7 +465,9 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>
       <ChannelScreens client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
-        onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })} />
+        onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })}
+        onNewChannel={() => router.push('/new-channel')}
+        onNewTopic={id => router.push({ pathname: '/channels/[channelId]/new-topic', params: { channelId: id } })} />
     </FormKeyboardAvoidingView>
   </View>;
 }
