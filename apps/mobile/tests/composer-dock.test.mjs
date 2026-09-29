@@ -7,18 +7,20 @@ const attachments = readFileSync(new URL('../src/Attachments.tsx', import.meta.u
 
 test('running status, attachments, and input share one sticky blurred surface', () => {
   const sticky = timeline.slice(timeline.indexOf('<KeyboardStickyView'), timeline.indexOf('</KeyboardStickyView>'));
-  const surfaceOpen = sticky.indexOf('<View style={styles.composerSurface}>');
-  const blur = sticky.indexOf('<BlurView', surfaceOpen);
+  const surfaceOpen = sticky.indexOf('<BlurView');
   const status = sticky.indexOf('{props.typingIndicator}', surfaceOpen);
   const attachmentComposer = sticky.indexOf('props.composerAccessory', surfaceOpen);
-  const surfaceClose = sticky.indexOf('</View>', attachmentComposer);
+  const surfaceClose = sticky.indexOf('</BlurView>', attachmentComposer);
 
-  assert.ok(surfaceOpen >= 0 && blur > surfaceOpen);
-  assert.ok(status > blur && attachmentComposer > status && surfaceClose > attachmentComposer);
+  assert.ok(surfaceOpen >= 0);
+  assert.ok(status > surfaceOpen && attachmentComposer > status && surfaceClose > attachmentComposer);
   assert.equal((sticky.match(/<BlurView/g) || []).length, 1);
-  assert.match(sticky, /experimentalBlurMethod="dimezisBlurView"/);
+  assert.match(timeline, /<BlurTargetView ref=\{blurTarget\}/);
+  assert.match(sticky, /blurMethod="dimezisBlurViewSdk31Plus"/);
+  assert.match(sticky, /blurTarget=\{blurTarget\}/);
   assert.match(timeline, /composerSurface: \{ backgroundColor: 'rgba\(/);
-  assert.doesNotMatch(timeline, /composerSurface: \{[^\n]*(boxShadow|shadowColor|elevation)/);
+  assert.match(timeline, /composerSurface: \{[^\n]*boxShadow/);
+  assert.doesNotMatch(timeline, /composerSurface: \{[^\n]*overflow: 'hidden'/);
 });
 
 test('attachment composer stays transparent inside the shared surface', () => {

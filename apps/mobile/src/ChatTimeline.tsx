@@ -5,7 +5,7 @@ import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
+import { BlurTargetView, BlurView } from 'expo-blur';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
@@ -88,6 +88,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
   [bottom, onContentInsetChange]);
   const list = useRef<FlatList<TimelineRow>>(null);
+  const blurTarget = useRef<View | null>(null);
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
   const offset = useRef(position?.offset ?? 0);
@@ -216,7 +217,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.stopButton, props.busy && styles.disabled]}><Text style={styles.stopIcon}>■</Text></Pressable>}
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
-    <View style={styles.flex}>
+    <BlurTargetView ref={blurTarget} style={styles.flex}>
       <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
         renderScrollComponent={renderScrollComponent}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
@@ -266,7 +267,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           savePosition();
         }} scrollEventThrottle={16} />
 
-    </View>
+    </BlurTargetView>
     <KeyboardStickyView pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
       if (!active.current) return;
       const height = e.nativeEvent.layout.height;
@@ -291,12 +292,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </View>}
     </View>)}</ScrollView>}
 
-    <View style={styles.composerSurface}>
-      <BlurView pointerEvents="none" intensity={70} tint="light" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+    <BlurView blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerSurface}>
       {props.typingIndicator}
       {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
         : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
-    </View>
+    </BlurView>
     </KeyboardStickyView>
   </KeyboardGestureArea>;
 });
@@ -332,9 +332,8 @@ const styles = StyleSheet.create({
   // Center the content-sized native input, not text inside a fixed-height UITextView.
   composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   composeInput: { maxHeight: 102, padding: 0, color: '#172a40' },
-  // One translucent native-blur surface behind status, attachments, and input.
-  // The tint remains as a readable fallback where native blur is unavailable.
-  composerSurface: { backgroundColor: 'rgba(246, 249, 253, 0.82)', borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(205, 215, 227, 0.72)', overflow: 'hidden' },
-  composer: { backgroundColor: 'transparent', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
+  // One shadow around the shared status, attachment, and input blur surface.
+  composerSurface: { backgroundColor: 'rgba(248, 250, 253, 0.78)', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
+  composer: { backgroundColor: 'transparent', borderTopWidth: 1, borderColor: 'rgba(205, 215, 227, 0.72)', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }
 });

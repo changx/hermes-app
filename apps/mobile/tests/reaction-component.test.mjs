@@ -17,7 +17,7 @@ const react = {
 };
 const modules = {
   react: { ...react, default: react }, 'react-native': native,
-  'expo-blur': { BlurView: 'BlurView' },
+  'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
   'expo-router': { useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
   './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
@@ -359,7 +359,7 @@ test('pill is under corresponding user message with stable footprint; controls r
 test('latest action sits above the composer at the right in its shared keyboard dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
   for (const accessory of [false, true]) {
-  const h = mount(rows, [], [], { position: { offset: 20, following: false },
+  const h = mount(rows, [], [], { position: { offset: 20, following: false }, typingIndicator: react.createElement('TypingIndicator'),
     ...(accessory ? { composerAccessory: controls => react.createElement('Accessory', {}, controls) } : {}) });
   const latest = named(h.tree, 'Pressable').find(n => n.props.accessibilityLabel === 'Jump to latest ↓');
   assert.ok(latest);
@@ -378,16 +378,19 @@ test('latest action sits above the composer at the right in its shared keyboard 
   assert.ok(expand(row).includes(latest));
   const composer = accessory ? named(h.tree, 'Accessory')[0] : named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
   assert.ok(expand(sticky).includes(composer));
-  const blurs = named(h.tree, 'BlurView');
-  assert.equal(blurs.length, 1, 'one native blur for the complete composer');
-  const surfaces = named(h.tree, 'View').filter(n => n.props.style?.backgroundColor?.startsWith?.('rgba(246, 249, 253'));
-  assert.equal(surfaces.length, 1, 'one translucent fallback surface');
+  const surfaces = named(h.tree, 'BlurView').filter(n => n.props.style?.boxShadow);
+  assert.equal(surfaces.length, 1, 'one blurred shadow surface for the complete composer');
   const surface = surfaces[0];
-  assert.ok(expand(surface).includes(blurs[0]));
+  assert.equal(surface.props.intensity, 72);
+  assert.equal(surface.props.tint, 'systemMaterialLight');
+  assert.equal(surface.props.blurMethod, 'dimezisBlurViewSdk31Plus');
+  assert.equal(surface.props.blurTarget.current, null);
+  assert.equal(surface.props.style.backgroundColor, 'rgba(248, 250, 253, 0.78)');
+  assert.match(surface.props.style.boxShadow, /^0 -4px 10px -4px rgba/);
   assert.ok(expand(surface).includes(composer), 'the entire accessory, including its menu, is inside the blur');
+  assert.ok(expand(surface).some(n => n.type === 'TypingIndicator'));
   assert.ok(!expand(surface).includes(latest), 'latest row must remain transparent outside the blur surface');
-  assert.equal(surface.props.style.overflow, 'hidden');
-  assert.equal(named(h.tree, 'View').some(n => n.props.style?.boxShadow), false);
+  assert.notEqual(surface.props.style.overflow, 'hidden');
   assert.ok(!expand(composer).includes(latest), 'button must not consume input-row width');
   assert.ok(expand(sticky).indexOf(latest) < expand(sticky).indexOf(composer));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);

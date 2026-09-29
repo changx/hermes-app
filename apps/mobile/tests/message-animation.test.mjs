@@ -43,7 +43,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   };
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
-    'expo-blur': { BlurView: 'BlurView' },
+    'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
     './FontSize': { Text: native.Text, TextInput: native.TextInput, useFontSize: () => ({ scale }) },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },

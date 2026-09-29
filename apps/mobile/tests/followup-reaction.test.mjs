@@ -16,7 +16,7 @@ test('multiple followups without callbacks never borrow the primary completion',
   const second = { ...message, id: 'm2', ref_seq: 9, client_message_id: 'second', receipt_id: 'r2' };
   const cache = new Map([['r', { ...r, handed_off: true }], ['r2', { ...r, id: 'r2', client_message_id: 'second', state: 'completed', processing: null }], ['primary', { ...r, id: 'primary', client_message_id: 'other', state: 'completed', processing: 'completed', admission: undefined }]]);
   const rows = projectTimeline([message, second], null, 'th', undefined, true, [], cache);
-  assert.deepEqual(rows.map(row => row.reaction), [undefined, undefined]);
+  assert.deepEqual(rows.map(row => row.reaction), [undefined, { emoji: '✅', label: 'Handled', source: 'agent' }]);
   assert.equal(reaction({ ...r, handed_off: true, processing: 'running' }).emoji, '👀');
   assert.equal(reaction({ ...receipt('completed'), processing: 'completed' }).label, 'Completed');
   assert.equal(reaction({ ...receipt('unknown'), processing: 'completed' }).label, 'Completed', 'actual callback beats unknown receipt bookkeeping');
