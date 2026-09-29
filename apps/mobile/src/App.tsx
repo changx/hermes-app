@@ -407,7 +407,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     <Stack.Screen options={{ title: selected.title || 'Conversation',
       headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    <ChatTimeline ref={timelineRef} threadId={threadId} rows={rows}
+    <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
       locatingMessage={!located && !historyBusy ? pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
