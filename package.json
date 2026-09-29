@@ -17,6 +17,7 @@
     "client:real": "node tests/client/real-gateway.mjs",
     "client:metro": "bash scripts/export-client-metro.sh",
     "desktop:build": "npm run build --workspace @hermes-app/desktop",
+    "desktop:package:mac": "npm run package:mac --workspace @hermes-app/desktop",
     "desktop:test": "npm run test --workspace @hermes-app/desktop",
     "desktop:typecheck": "npm run typecheck --workspace @hermes-app/desktop",
     "desktop:check": "npm run check --workspace @hermes-app/desktop"

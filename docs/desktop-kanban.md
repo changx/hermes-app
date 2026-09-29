@@ -59,13 +59,13 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 | 状态 | 卡片 |
 | --- | --- |
 | Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架；`DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动 |
-| Ready | `DESK-D0-06` 未签名 `.app` 打包 |
+| In progress | `DESK-D0-06` 未签名 `.app` 打包（自动构建已通过，等待 Mac artifact 验收） |
 | Backlog | `DESK-D0-07` HermesClient transport 与 React adapter；`DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
 | Backlog | `DESK-D1-01` 至 `DESK-D1-16` 完整聊天闭环 |
 | Backlog | `DESK-D2-01` 至 `DESK-D2-09` 可靠性与桌面体验 |
 | Deferred | `DESK-D3-01` 签名/notarization；`DESK-D3-02` DMG/更新/公开发布 |
 
-当前 `apps/desktop` 只有未验证的 main/preload/build 脚手架；缺少 renderer 文件、依赖安装、测试和真实 Mac 运行证据，因此任何 D0 卡均未完成。
+当前已完成安全壳、响应式 renderer、安全回归和 Apple Silicon 开发启动；正在验证可复制启动的未签名 `.app`。
 
 ---
 
@@ -139,6 +139,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 ### DESK-D0-06 — 未签名 `.app` 打包与回滚
 
+- **状态**：In progress（自动构建已通过，等待 Mac 复制、启动、退出和重开验收）。
 - **目标**：产出可复制启动的 arm64 未签名开发 `.app`。
 - **范围**：打包器选择与锁定、bundle ID、应用名称、图标占位、最低 macOS 版本、arm64 target、artifact 清理和回滚说明。
 - **验收**：

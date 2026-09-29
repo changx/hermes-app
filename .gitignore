@@ -20,4 +20,6 @@ coverage/
 .expo/
 .expo-shared/
 apps/mobile/src/markdownRenderer.generated.ts
+apps/desktop/.package-staging/
+apps/desktop/artifacts/
 .DS_Store
