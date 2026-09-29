@@ -37,6 +37,7 @@ function timeline(bottom = 34, os = 'ios') {
     react,
     'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
       Platform: { OS: os }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ fontScale: 1 }) },
+    'expo-blur': { BlurView: 'BlurView' },
     './FontSize': { Text: 'Text', TextInput: 'TextInput', useFontSize: () => ({ scale: 1 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom }) },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',

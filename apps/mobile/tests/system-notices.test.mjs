@@ -30,6 +30,7 @@ function loadTimeline() {
   };
   const modules = {
     react,
+    'expo-blur': { BlurView: 'BlurView' },
     'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
       AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
       AppState: { addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },

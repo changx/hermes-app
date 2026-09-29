@@ -16,6 +16,7 @@ const react = {
 };
 const modules = {
   react: { ...react, default: react }, 'react-native': native,
+  'expo-blur': { BlurView: 'BlurView' },
   'expo-router': { useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
   './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
@@ -376,14 +377,16 @@ test('latest action sits above the composer at the right in its shared keyboard 
   assert.ok(expand(row).includes(latest));
   const composer = accessory ? named(h.tree, 'Accessory')[0] : named(h.tree, 'View').find(n => n.props.style?.paddingVertical === 7 && n.props.style?.flexDirection === 'row');
   assert.ok(expand(sticky).includes(composer));
-  const surfaces = named(h.tree, 'View').filter(n => n.props.style?.boxShadow);
-  assert.equal(surfaces.length, 1, 'one shadow for the complete composer, not one per row');
+  const blurs = named(h.tree, 'BlurView');
+  assert.equal(blurs.length, 1, 'one native blur for the complete composer');
+  const surfaces = named(h.tree, 'View').filter(n => n.props.style?.backgroundColor?.startsWith?.('rgba(246, 249, 253'));
+  assert.equal(surfaces.length, 1, 'one translucent fallback surface');
   const surface = surfaces[0];
-  assert.equal(surface.props.style.backgroundColor, '#fff');
-  assert.match(surface.props.style.boxShadow, /^0 -4px 10px -4px rgba/);
-  assert.ok(expand(surface).includes(composer), 'the entire accessory, including its menu, is inside the shadow');
-  assert.ok(!expand(surface).includes(latest), 'latest row must remain transparent outside the shadow surface');
-  assert.notEqual(surface.props.style.overflow, 'hidden');
+  assert.ok(expand(surface).includes(blurs[0]));
+  assert.ok(expand(surface).includes(composer), 'the entire accessory, including its menu, is inside the blur');
+  assert.ok(!expand(surface).includes(latest), 'latest row must remain transparent outside the blur surface');
+  assert.equal(surface.props.style.overflow, 'hidden');
+  assert.equal(named(h.tree, 'View').some(n => n.props.style?.boxShadow), false);
   assert.ok(!expand(composer).includes(latest), 'button must not consume input-row width');
   assert.ok(expand(sticky).indexOf(latest) < expand(sticky).indexOf(composer));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);

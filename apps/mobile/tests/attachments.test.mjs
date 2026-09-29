@@ -97,7 +97,7 @@ test('plus menu opens inside the shared composer surface, without a separate nes
   const input = { type: 'TextInput', props: { accessibilityLabel: 'Message text' } };
   const closed = h.start('AttachmentComposer', { children: input });
   assert.equal(closed[0].type, 'View');
-  assert.equal(closed[0].props.style.backgroundColor, '#fff');
+  assert.equal(closed[0].props.style.backgroundColor, 'transparent');
   assert.equal(closed.some(n => n.props.accessibilityLabel === 'Choose file'), false);
   h.press('Add attachment', closed);
   const opened = h.render();

@@ -364,9 +364,10 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
 }
 
 const styles = StyleSheet.create({
-  composerRoot: { backgroundColor: '#fff' },
+  // ChatTimeline owns the single blurred/tinted composer surface.
+  composerRoot: { backgroundColor: 'transparent' },
   menu: { paddingHorizontal: 10, paddingVertical: 6 },
-  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderTopWidth: 1, borderColor: '#e2e8f0' },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, paddingHorizontal: 10, paddingVertical: 7 },
   draftStrip: { maxHeight: 112 }, draftTile: { width: 250, marginRight: 6 },
   root: { marginVertical: 4 }, controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   action: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, backgroundColor: '#e6f0ff' }, actionText: { color: '#215ca7', fontSize: 12 }, disabled: { opacity: 0.45 },

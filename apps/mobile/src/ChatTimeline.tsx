@@ -5,6 +5,7 @@ import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 import { MessageContent } from './MessageContent';
@@ -289,10 +290,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </View>}
     </View>)}</ScrollView>}
 
-    {props.typingIndicator}
     <View style={styles.composerSurface}>
-    {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
-      : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
+      <BlurView pointerEvents="none" intensity={70} tint="light" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+      {props.typingIndicator}
+      {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
+        : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
     </View>
     </KeyboardStickyView>
   </KeyboardGestureArea>;
@@ -329,8 +331,9 @@ const styles = StyleSheet.create({
   // Center the content-sized native input, not text inside a fixed-height UITextView.
   composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   composeInput: { maxHeight: 102, padding: 0, color: '#172a40' },
-  // One shadow around the whole input surface, including the expanded + menu.
-  composerSurface: { backgroundColor: '#fff', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
-  composer: { backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
+  // One translucent native-blur surface behind status, attachments, and input.
+  // The tint remains as a readable fallback where native blur is unavailable.
+  composerSurface: { backgroundColor: 'rgba(246, 249, 253, 0.82)', borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(205, 215, 227, 0.72)', overflow: 'hidden' },
+  composer: { backgroundColor: 'transparent', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }
 });
