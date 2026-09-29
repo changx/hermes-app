@@ -23,6 +23,7 @@
 - [P1-04 第三 gate](docs/p1/third-gate.md)、[P1-05 第四 gate](docs/p1/fourth-gate.md)与[共享客户端契约](docs/p1/client-contract.md)：交互、附件、主动投递、测试客户端与集成限制。
 - [开发环境](docs/dev-environment.md)与[P2 Expo 手机开发版](docs/p2-mobile-dev.md)：隔离后端、手机测试链接、运行方法和未完成验收。
 - [macOS 桌面 App 第一版设计](docs/desktop-macos-v1.md)：已确认方向、三栏交互、Electron 安全边界、实施阶段与真机验收。
+- [macOS 桌面 App Kanban](docs/desktop-kanban.md)：D0–D2 可独立验收任务、依赖链、证据要求和当前状态。
 
 ## 项目跟踪
 
