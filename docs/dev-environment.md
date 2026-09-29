@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+系统通知开发版 `edc541e` 已发布：Hermes 记忆/Skill 自检与 context compression 状态通过独立 `system_notice` 持久显示在对应 Thread，不写 SessionDB、不冒充 Agent 回复。插件完整 artifact 与两平台 Expo bundle 均已更新；真实 Gateway 延迟回调、压缩原位更新、公网冷读/同步事件、精确 ref/搜索和模型历史隔离通过。只重启开发 Gateway 与 Expo，Jamie 主实例、固定 Core 和 dev 配置不变；iPhone 视觉待验收。详情见[系统通知开发版发布记录](system-notices-release.md)。下方均为历史发布记录。
+
 最新开发版 `e25d812` 已发布：命令消息位置与收据执行状态解耦，已有 `ref_seq` 透传/持久化及有证据的本地副本清理。仅更新开发插件/Gateway 和 Expo，未改写旧 unknown；公网 API/WS、iOS/Android 实际资源及新命令完成/同 ID 重试/历史冷读通过。Jamie 主实例、固定核心和开发配置不变。入口 `exps://agent.tuly.space`，iPhone 视觉待验收；详情见 [命令状态与顺序修复](command-state-order.md)。下方均为历史发布记录。
 
 当前开发版代码 `09d08fc` 已联合发布：运行中保留发送并走 Discord 同型原生插入路径，逐条输入历史、全屏文章系统选区、多行输入框清空复位。主控 P1 135 项、移动 199 项、SDK 41 项及双平台导出通过；公网真实执行中两条补充均被下一模型轮次消费，历史无重复，验收话题已归档。仅更新开发 Gateway/Expo，Jamie 主实例及固定核心未变。iPhone 手势和系统菜单由 Jamie 继续测试，见 [本轮发布记录](m1-midrun-release.md)。下方均为历史记录。
