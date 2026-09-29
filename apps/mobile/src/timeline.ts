@@ -31,7 +31,14 @@ function statusFor(receipt: Receipt | undefined, interactions: readonly Interact
     const pending = interactions.find(i => i.state === 'pending' && i.thread_id === receipt.thread_id && i.receipt_id === receipt.id);
     if (pending) return { emoji: '⚠️', label: pending.kind === 'approval' ? 'Awaiting approval' : 'Awaiting your answer', source: 'agent' };
   }
-  return receipt.processing == null ? undefined : agentState[receipt.processing];
+  // Processing callbacks remain authoritative when they exist. Native busy
+  // follow-ups do not receive those callbacks, so their received state means
+  // Hermes accepted the handoff, not that the whole model run completed.
+  if (receipt.processing != null) return agentState[receipt.processing];
+  if (receipt.admission === 'followup' && (receipt.state === 'received' || receipt.state === 'completed')) {
+    return { emoji: '✅', label: 'Handled', source: 'agent' };
+  }
+  return undefined;
 }
 
 // Only explicit server identity can reconcile a send; never match equal text.

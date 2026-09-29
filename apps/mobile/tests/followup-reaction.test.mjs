@@ -23,6 +23,9 @@ test('multiple followups without callbacks never borrow the primary completion',
   assert.equal(reaction({ ...receipt('completed'), processing: 'failed' }).label, 'Failed');
   assert.equal(reaction({ ...r, processing: 'interrupted' }), undefined);
   assert.equal(reaction({ ...r, thread_id: 'foreign', processing: 'completed' }), undefined);
+  assert.deepEqual(reaction(receipt('received')), { emoji: '✅', label: 'Handled', source: 'agent' });
+  assert.equal(reaction(receipt('completed')).label, 'Handled', 'legacy followup confirms handoff, not task completion');
+  assert.equal(reaction({ ...receipt('completed'), admission: undefined }), undefined);
 });
 
 test('SDK validates admission from authenticated server without inventing it for old receipts', async () => {
@@ -66,8 +69,8 @@ test('received input remains visible until exact authoritative identity arrives'
   const pending = projectTimeline([], null, 'th', undefined, true, [local]);
   assert.equal(pending.length, 1);
   assert.equal(pending[0].text, '补充一');
-  assert.equal(pending[0].reaction, undefined);
-  const foreign = { ...message, ref_seq: 7, client_message_id: 'another', text: '补充一' };
+  assert.equal(pending[0].reaction.label, 'Handled');
+  const foreign = { ...message, client_message_id: 'another', text: '补充一' };
   assert.equal(projectTimeline([foreign], null, 'th', undefined, true, [local]).length, 2, 'equal text is not identity');
   const input = { id: 'receipt:r', ref_seq: 8, role: 'user', text: '补充一', client_message_id: id, receipt_id: 'r' };
   const client = new HermesClient({ token: () => 'test', http: { async request() { return { status: 200, body: { messages: [input], next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; } }, socket: { connect() {} } });
@@ -75,7 +78,7 @@ test('received input remains visible until exact authoritative identity arrives'
   const result = projectTimeline(client.messages.get('th'), null, 'th', undefined, true, [local], new Map([['r', receipt('received')]]));
   assert.equal(result.length, 1);
   assert.equal(result[0].key, pending[0].key, 'confirmation preserves the optimistic row identity');
-  assert.equal(result[0].reaction, undefined);
+  assert.equal(result[0].reaction.label, 'Handled');
   assert.equal(result[0].receipt.id, 'r');
   const data = new Map();
   const kv = { async getItemAsync(k) { return data.get(k) ?? null; }, async setItemAsync(k, v) { data.set(k, v); }, async deleteItemAsync(k) { data.delete(k); } };
@@ -108,7 +111,7 @@ test('interleaved input/output keeps server order across replay, cold history an
   page = stream; const cold = makeClient(); await cold.history('th');
   assert.deepEqual(project(cold), rows);
   const unresolved = accepted(newSend(config, 'th', '尚无原文引用', id), receipt('completed'));
-  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction, undefined);
+  assert.equal(projectTimeline([], null, 'th', undefined, true, [unresolved])[0].reaction.label, 'Handled');
 });
 
 test('received followup survives successful history sync until its exact input is available', async () => {

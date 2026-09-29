@@ -89,17 +89,18 @@ def _capture_tool_row(**kwargs):
         return None
     store = _store()
     thread_id = store.thread_for_session(session_id)
-    ingress_id = store.pending_ingress_id(thread_id) if thread_id else None
-    if not ingress_id:
+    if not thread_id:
         return None
     from .projection import visible_text
-    with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
+    source_db = get_hermes_home() / 'state.db'
+    with closing(sqlite3.connect(f'file:{source_db}?mode=ro', uri=True)) as db:
         db.row_factory = sqlite3.Row
-        anchor = db.execute("SELECT * FROM messages WHERE session_id=? AND role='user' "
-                            'AND platform_message_id=? ORDER BY id LIMIT 1',
-                            (session_id, ingress_id)).fetchone()
         assistant = db.execute("SELECT * FROM messages WHERE session_id=? AND role='assistant' "
                                'AND active=1 ORDER BY id DESC LIMIT 1', (session_id,)).fetchone()
+        anchor = (db.execute("SELECT * FROM messages WHERE session_id=? AND role='user' "
+                             "AND (display_kind IS NULL OR display_kind!='steer') "
+                             'AND id<? ORDER BY id DESC LIMIT 1',
+                             (session_id, assistant['id'])).fetchone() if assistant else None)
     if not anchor or not assistant:
         return None
     try:
@@ -113,7 +114,16 @@ def _capture_tool_row(**kwargs):
     _link_core_user(store,thread_id)
     store.bind_turn(turn_id, session_id)
     old = store.turn_refs(turn_id)
-    refs = ([] if old else [(session_id, anchor['id'], 'user')])
+    if anchor['platform_message_id'] is None:
+        if not store.continuation_anchor(thread_id, turn_id, session_id, anchor['id'], source_db):
+            return None
+        refs = []
+    else:
+        # Do not attach the preceding owner input to a new follow-up turn.
+        if not old and anchor['platform_message_id'] != store.pending_ingress_id(thread_id) and not store.link_user_from_core(
+                anchor['platform_message_id'], source_db):
+            return None
+        refs = ([] if old else [(session_id, anchor['id'], 'user')])
     if not old or assistant['id'] > old[-1][1]:
         refs.append((session_id, assistant['id'], 'assistant'))
     if refs:
@@ -130,18 +140,26 @@ def pre_auxiliary_call(**kwargs):
         return None
     store = _store()
     thread_id = store.bind_turn(turn_id, session_id, _compression_parent(session_id))
-    ingress_id = store.pending_ingress_id(thread_id) if thread_id else None
-    if not ingress_id:
+    if not thread_id:
         return None
     from .projection import visible_text
-    with closing(sqlite3.connect(f'file:{get_hermes_home() / "state.db"}?mode=ro', uri=True)) as db:
+    source_db = get_hermes_home() / 'state.db'
+    with closing(sqlite3.connect(f'file:{source_db}?mode=ro', uri=True)) as db:
         db.row_factory = sqlite3.Row
-        anchor = db.execute("SELECT id FROM messages WHERE session_id=? AND role='user' "
-                            'AND platform_message_id=? ORDER BY id LIMIT 1',
-                            (session_id, ingress_id)).fetchone()
         tool = db.execute("SELECT id FROM messages WHERE session_id=? AND role='tool' "
                           'AND active=1 ORDER BY id DESC LIMIT 1', (session_id,)).fetchone()
+        anchor = (db.execute("SELECT * FROM messages WHERE session_id=? AND role='user' "
+                             "AND (display_kind IS NULL OR display_kind!='steer') "
+                             'AND id<? ORDER BY id DESC LIMIT 1',
+                             (session_id, tool['id'])).fetchone() if tool else None)
         if not anchor or not tool or tool['id'] <= anchor['id']:
+            return None
+        continuation = anchor['platform_message_id'] is None
+        if continuation:
+            if not store.continuation_anchor(thread_id, turn_id, session_id, anchor['id'], source_db):
+                return None
+        elif anchor['platform_message_id'] != store.pending_ingress_id(thread_id) and not store.link_user_from_core(
+                anchor['platform_message_id'], source_db):
             return None
         old = store.turn_refs(turn_id)
         if old:
@@ -154,7 +172,8 @@ def pre_auxiliary_call(**kwargs):
         else:
             rows = db.execute('SELECT * FROM messages WHERE session_id=? AND id>=? AND id<? '
                               'ORDER BY id', (session_id, anchor['id'], tool['id'])).fetchall()
-        refs = [(session_id, r['id'], r['role']) for r in rows if visible_text(dict(r)) is not None]
+        refs = [(session_id, r['id'], r['role']) for r in rows
+                if not (continuation and r['id'] == anchor['id']) and visible_text(dict(r)) is not None]
     if refs:
         _link_core_user(store,thread_id)
         store.append_hook_refs(thread_id, turn_id, refs)
@@ -186,6 +205,14 @@ def post_llm_call(**kwargs):
     visible = [m for m in candidates if m.get('display_kind') != 'steer' and visible_text(m) is not None]
     if not visible or visible[0].get('role') != 'user':
         return _complete_compacted_tail(store, thread_id, turn_id, session_id, history)
+    # The core's leftover steer becomes a new ordinary user row without a
+    # platform ID. It is a turn anchor, not another platform input display.
+    user_id = visible[0].get('_row_id')
+    if type(user_id) is int and store.continuation_anchor(
+            thread_id, turn_id, session_id, user_id, get_hermes_home() / 'state.db'):
+        visible = visible[1:]
+        if not visible:
+            return None
     ids = [m.get('_row_id') for m in visible]
     if any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
         log.error('Hermes App turn %s has missing or duplicate original row IDs', turn_id)

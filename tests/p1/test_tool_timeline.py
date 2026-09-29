@@ -87,6 +87,40 @@ def test_formal_start_hook_publishes_before_execution_and_no_duplicate(tmp_path)
         reset_hermes_home_override(token)
 
 
+def test_internal_continuation_anchor_is_not_a_second_user_and_hooks_repeat(tmp_path):
+    home, core, store, tid, token = setup(tmp_path)
+    try:
+        original = core.append_message('s', 'user', 'original', platform_message_id='rc-one')
+        owner_final = core.append_message('s', 'assistant', 'first final', finish_reason='stop')
+        store.record_turn(tid, 'owner', [('s', original, 'user'), ('s', owner_final, 'assistant')])
+        internal = core.append_message('s', 'user', 'generated continuation with origin envelope')
+        call_row = core.append_message('s', 'assistant', 'continued',
+                                       tool_calls=[call('continuation-call', 'terminal', {'command':'pwd'})],
+                                       finish_reason='tool_calls')
+        for hook in (pre_tool_call, post_tool_call, pre_tool_call, post_tool_call):
+            hook(platform='hermes_app', turn_id='continuation', session_id='s',
+                 tool_call_id='continuation-call')
+        assert store.turn_refs('continuation') == [('s', call_row, 'assistant')]
+        assert [m['id'] for m in store.history_page(tid, home/'state.db')['messages']] == [
+            str(original), str(owner_final), str(call_row)]
+        final = core.append_message('s', 'assistant', 'second final', finish_reason='stop')
+        history = [{'role':'user','content':'generated continuation with origin envelope','_row_id':internal},
+                   {'role':'assistant','content':'continued','_row_id':call_row},
+                   {'role':'assistant','content':'second final','_row_id':final}]
+        post_llm_call(platform='hermes_app', turn_id='continuation', session_id='s',
+                      conversation_history=history)
+        post_llm_call(platform='hermes_app', turn_id='continuation', session_id='s',
+                      conversation_history=history)
+        ids = [m['id'] for m in Store(store.path).history_page(tid, home/'state.db')['messages']]
+        assert ids == list(map(str, (original, owner_final, call_row, final)))
+        assert store.search_page(tid, home/'state.db', 'origin envelope')['messages'] == []
+        assert [m['id'] for m in store.history_page(tid, home/'state.db', latest=True, limit=2)['messages']] == [
+            str(call_row), str(final)]
+    finally:
+        core.close()
+        reset_hermes_home_override(token)
+
+
 def test_tool_only_fallback_compression_and_hidden(tmp_path):
     home, core, store, tid, token = setup(tmp_path)
     try:

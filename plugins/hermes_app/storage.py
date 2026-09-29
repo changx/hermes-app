@@ -48,6 +48,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS turns (
                     turn_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
                     state TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS continuation_anchors (
+                    turn_id TEXT PRIMARY KEY REFERENCES turns(turn_id),
+                    session_id TEXT NOT NULL, row_id INTEGER NOT NULL UNIQUE);
                 CREATE TABLE IF NOT EXISTS ingress_links (
                     ingress_id TEXT PRIMARY KEY REFERENCES turns(turn_id),
                     turn_id TEXT NOT NULL UNIQUE REFERENCES turns(turn_id));
@@ -1219,13 +1222,15 @@ class Store:
 
     def record_turn(self, thread_id, turn_id, refs):
         """Commit the durable visible rows of one turn; a user-only turn is valid."""
-        if not refs or refs[0][2] != 'user' or any(r[2] not in ('user', 'assistant') for r in refs):
+        if not refs or any(r[2] not in ('user', 'assistant') for r in refs):
             raise ValueError('visible turn must start with a user row')
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             existing = db.execute('SELECT thread_id,state FROM turns WHERE turn_id=?', (turn_id,)).fetchone()
             if existing and existing['thread_id'] != thread_id:
                 raise ValueError('turn belongs to another thread')
+            if refs[0][2] != 'user' and not self._has_continuation(db, turn_id, refs[0][0], refs[0][1]):
+                raise ValueError('assistant-only turn needs a continuation anchor')
             if existing and existing['state'] == 'complete':
                 old = [(r['session_id'], r['row_id'], r['role']) for r in db.execute(
                     'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
@@ -1252,7 +1257,9 @@ class Store:
             old = [(r['session_id'],r['row_id'],r['role']) for r in db.execute(
                 'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
             if not old and (not refs or refs[0][2] != 'user'):
-                raise ValueError('hook turn needs original user anchor')
+                if not refs or refs[0][2] != 'assistant' or not self._has_continuation(
+                        db, turn_id, refs[0][0], refs[0][1]):
+                    raise ValueError('hook turn needs original user or continuation anchor')
             if any(ref[2] not in ('user','assistant') for ref in refs):
                 raise ValueError('invalid visible row')
             if old and refs and refs[0][1] <= old[-1][1]:
@@ -1266,6 +1273,36 @@ class Store:
         with self._connect() as db:
             return [(r['session_id'],r['row_id'],r['role']) for r in db.execute(
                 'SELECT session_id,row_id,role FROM message_refs WHERE turn_id=? ORDER BY seq', (turn_id,))]
+
+    @staticmethod
+    def _has_continuation(db, turn_id, session_id, first_id):
+        row = db.execute('SELECT row_id FROM continuation_anchors WHERE turn_id=? AND session_id=?',
+                         (turn_id, session_id)).fetchone()
+        return bool(row and row['row_id'] < first_id)
+
+    def continuation_anchor(self, thread_id, turn_id, session_id, row_id, source_db):
+        """Track a core-generated user turn for bookkeeping, never for display."""
+        with closing(sqlite3.connect(f'file:{Path(source_db)}?mode=ro', uri=True)) as source:
+            row = source.execute('SELECT role,session_id,platform_message_id FROM messages WHERE id=?',
+                                 (row_id,)).fetchone()
+        if not row or row != ('user', session_id, None):
+            return False
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            turn = db.execute('SELECT thread_id FROM turns WHERE turn_id=?', (turn_id,)).fetchone()
+            linked = db.execute('SELECT thread_id FROM session_links WHERE session_id=?',
+                                (session_id,)).fetchone()
+            prior = db.execute("SELECT 1 FROM message_refs WHERE thread_id=? "
+                               "AND role='user' AND row_id<? LIMIT 1",
+                               (thread_id, row_id)).fetchone()
+            if not turn or turn['thread_id'] != thread_id or not linked or linked['thread_id'] != thread_id or not prior:
+                return False
+            old = db.execute('SELECT row_id FROM continuation_anchors WHERE turn_id=?', (turn_id,)).fetchone()
+            if old and old['row_id'] != row_id:
+                raise ValueError('continuation anchor changed')
+            db.execute('INSERT OR IGNORE INTO continuation_anchors VALUES (?,?,?)',
+                       (turn_id, session_id, row_id))
+            return True
 
     def pending_ingress_id(self, thread_id):
         with self._connect() as db:

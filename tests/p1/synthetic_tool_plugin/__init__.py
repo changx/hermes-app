@@ -25,7 +25,7 @@ def _expand(args, **kwargs):
             time.sleep(.01)
         if not (home / 'timeline-tool-release').exists():
             raise RuntimeError('timeline tool release missing')
-    return ('P1_TOOL_RESULT small' if _tool_count == 1 else
+    return ('P1_TOOL_RESULT small' if _tool_count == 1 or os.environ.get('P1_SMALL_TOOLS') == '1' else
             'P1_TOOL_RESULT ' + 'synthetic local data ' * 4000)
 
 

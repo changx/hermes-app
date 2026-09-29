@@ -106,7 +106,7 @@ test('sender and time are adjacent for each full message, not assistant continua
 test('followup callback reaction stays visible without changing row identity or footprint', () => {
   let previous;
   let footprint;
-  for (const [state, processing, label] of [['queued', null, undefined], ['running', 'running', 'Working'], ['running', 'completed', 'Completed'], ['received', null, undefined]]) {
+  for (const [state, processing, label] of [['queued', null, undefined], ['running', 'running', 'Working'], ['running', 'completed', 'Completed'], ['received', null, 'Handled']]) {
     const r = { ...receipt(state), admission: 'followup', handed_off: true, processing };
     const row = projectTimeline([msg], null, 'th', undefined, true, [], new Map([['r', r]]))[0];
     const { rowTree } = mount([row]);
