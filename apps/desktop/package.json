@@ -1,0 +1,27 @@
+{
+  "name": "@hermes-app/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hermes App desktop client for macOS",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm run build && npm test",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@hermes-app/client": "0.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "electron": "40.10.2",
+    "esbuild": "0.28.1",
+    "typescript": "6.0.3"
+  }
+}

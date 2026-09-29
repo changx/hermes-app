@@ -1,12 +1,25 @@
 {
-  "name": "hermes-app-p1-05",
+  "name": "hermes-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": "24.14.1",
+    "npm": "11.11.0"
+  },
+  "workspaces": [
+    "apps/desktop",
+    "packages/client"
+  ],
   "scripts": {
     "client:check": "bash scripts/client-check.sh",
     "client:real": "node tests/client/real-gateway.mjs",
-    "client:metro": "bash scripts/export-client-metro.sh"
+    "client:metro": "bash scripts/export-client-metro.sh",
+    "desktop:build": "npm run build --workspace @hermes-app/desktop",
+    "desktop:test": "npm run test --workspace @hermes-app/desktop",
+    "desktop:typecheck": "npm run typecheck --workspace @hermes-app/desktop",
+    "desktop:check": "npm run check --workspace @hermes-app/desktop"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

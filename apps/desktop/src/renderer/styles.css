@@ -1,0 +1,28 @@
+:root {
+  color: #24211e;
+  background: #f5f3ef;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.desktop-shell {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1fr) minmax(360px, 2.2fr);
+  min-height: 100vh;
+}
+
+.desktop-shell > * {
+  padding: 24px;
+  border-inline-end: 1px solid #d7d2ca;
+}
+
+.desktop-shell > :last-child {
+  border-inline-end: 0;
+}

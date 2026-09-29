@@ -58,7 +58,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 | 状态 | 卡片 |
 | --- | --- |
-| In progress | `DESK-D0-01` 桌面 workspace 与可重复构建基线 |
+| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线 |
 | Ready | `DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架 |
 | Backlog | `DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动；`DESK-D0-06` 未签名 `.app` 打包 |
 | Backlog | `DESK-D0-07` HermesClient transport 与 React adapter；`DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
@@ -74,6 +74,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 ### DESK-D0-01 — 桌面 workspace 与可重复构建基线
 
+- **状态**：Done（Linux 自动检查；本卡不包含 Mac 启动）。
 - **目标**：让桌面包能从 App 仓库根目录以锁定依赖独立安装、检查和构建。
 - **范围**：根 workspace 策略、`apps/desktop/package.json`、TypeScript 配置、lockfile、根级 `desktop:*` 命令、`packages/client` 本地依赖方式、构建产物忽略规则。
 - **决策要求**：固定 Node/npm、Electron、React、TypeScript、esbuild 版本；禁止依赖浮动范围。
@@ -84,7 +85,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
   4. lockfile 无无关移动端升级，`dist/` 和打包产物不入库。
 - **不包含**：窗口、renderer UI、打包 `.app`。
 - **依赖**：无。
-- **证据**：命令、版本和产物清单写入 `docs/desktop/evidence/DESK-D0-01/verification.md`。
+- **证据**：[`docs/desktop/evidence/DESK-D0-01/verification.md`](desktop/evidence/DESK-D0-01/verification.md)。
 
 ### DESK-D0-02 — Electron main/preload 安全壳
 
