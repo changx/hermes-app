@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest } from "../shared/desktop-api";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   platform: process.platform,
@@ -20,6 +20,23 @@ const api: HermesDesktopApi = Object.freeze({
   selectChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:select-channel", channelId),
   selectThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:select-thread", threadId),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
+  createChannel: (input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
+  updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),
+  deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),
+  createThread: (input: ThreadInput): Promise<void> => ipcRenderer.invoke("desktop:create-thread", input),
+  renameThread: (threadId: string, title: string): Promise<void> => ipcRenderer.invoke("desktop:rename-thread", threadId, title),
+  archiveThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:archive-thread", threadId),
+  loadOlder: (): Promise<void> => ipcRenderer.invoke("desktop:load-older"),
+  markVisible: (refSeq: number): Promise<void> => ipcRenderer.invoke("desktop:mark-visible", refSeq),
+  sendMessage: (input: SendMessageInput): Promise<void> => ipcRenderer.invoke("desktop:send-message", input),
+  retryMessage: (clientMessageId: string): Promise<void> => ipcRenderer.invoke("desktop:retry-message", clientMessageId),
+  stopThread: (): Promise<void> => ipcRenderer.invoke("desktop:stop-thread"),
+  cancelQueued: (receiptId: string): Promise<void> => ipcRenderer.invoke("desktop:cancel-queued", receiptId),
+  answerInteraction: (interactionId: string, choice: string): Promise<void> => ipcRenderer.invoke("desktop:answer-interaction", interactionId, choice),
+  pickAndUploadAttachments: (): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:pick-attachments"),
+  uploadDroppedFiles: (files: readonly File[]): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:drop-attachments", files.map((file) => webUtils.getPathForFile(file))),
+  deleteUnattachedAttachment: (attachmentId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-attachment", attachmentId),
+  downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),
 });
 
 contextBridge.exposeInMainWorld("hermesDesktop", api);

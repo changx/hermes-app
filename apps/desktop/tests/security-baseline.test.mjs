@@ -74,6 +74,23 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "selectChannel",
     "selectThread",
     "retryConnection",
+    "createChannel",
+    "updateChannel",
+    "deleteChannel",
+    "createThread",
+    "renameThread",
+    "archiveThread",
+    "loadOlder",
+    "markVisible",
+    "sendMessage",
+    "retryMessage",
+    "stopThread",
+    "cancelQueued",
+    "answerInteraction",
+    "pickAndUploadAttachments",
+    "uploadDroppedFiles",
+    "deleteUnattachedAttachment",
+    "downloadAttachment",
   ]);
   assert.match(preloadSource, /ipcRenderer\.on\("desktop:snapshot"/);
   assert.doesNotMatch(preloadSource, /ipcRenderer\.(?:invoke|send)\([^"']/);

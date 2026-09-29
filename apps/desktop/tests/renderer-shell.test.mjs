@@ -8,9 +8,10 @@ const desktopRoot = new URL("..", import.meta.url).pathname;
 const result = await build({
   stdin: {
     contents: `
+      import { createElement } from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import { DesktopShellView } from "./src/renderer/shell.tsx";
-      export const markup = renderToStaticMarkup(DesktopShellView({ snapshot: {
+      export const markup = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
         revision: 1,
         phase: "connected",
         connectionState: "suspended",
@@ -18,6 +19,8 @@ const result = await build({
         channels: [],
         threads: [],
         messages: [],
+        interactions: [],
+        canLoadOlder: false,
       }}));
     `,
     loader: "tsx",
@@ -65,8 +68,9 @@ test("renderer shell contains three labelled desktop regions", () => {
   assert.match(markup, />Choose a thread</);
 });
 
-test("unimplemented actions are labelled and disabled", () => {
-  assert.match(markup, /aria-label="Create a channel"[^>]+disabled/);
+test("write actions reflect the current selection", () => {
+  assert.match(markup, /aria-label="Create a channel"/);
+  assert.doesNotMatch(markup, /aria-label="Create a channel"[^>]+disabled/);
   assert.match(markup, /aria-label="Create a topic"[^>]+disabled/);
   assert.match(markup, /aria-label="Message"[^>]+disabled/);
   assert.match(markup, /<button[^>]+disabled[^>]*>Send<\/button>/);

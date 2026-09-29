@@ -1,7 +1,11 @@
-import { randomBytes } from "node:crypto";
-import { HermesClient, connectionFailure, type ConnectionState, type Thread } from "@hermes-app/client";
-import type { DesktopSnapshot, PairingRequest } from "../shared/desktop-api";
+import { randomBytes, randomUUID } from "node:crypto";
+import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, join } from "node:path";
+import { app, dialog, shell } from "electron";
+import { HermesClient, HttpError, connectionFailure, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
+import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
+import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { mainTransport, normalizeBaseUrl } from "./transport";
 
 const stateLabel: Record<ConnectionState, string> = {
@@ -66,6 +70,7 @@ const pairingRequest = async (baseUrl: string, path: string, init: RequestInit, 
 
 export class DesktopConnectionService {
   private readonly store = new CredentialStore();
+  private readonly outboxStore = new OutboxStore();
   private client: HermesClient | null = null;
   private connection: StoredConnection | null = null;
   private pairingController: AbortController | null = null;
@@ -79,6 +84,9 @@ export class DesktopConnectionService {
   private selectedChannelId: string | undefined;
   private selectedThreadId: string | undefined;
   private selectingInitialChannel = false;
+  private outbox: OutboxRecord[] = [];
+  private flushingOutbox = false;
+  private olderCursor: string | undefined;
 
   constructor(private readonly publish: (snapshot: DesktopSnapshot) => void) {}
 
@@ -90,25 +98,62 @@ export class DesktopConnectionService {
     const combined = new Map<string, Thread | (typeof projected extends Map<string, infer V> ? V : never)>();
     for (const [id, thread] of this.listedThreads) combined.set(id, thread);
     for (const [id, thread] of projected) combined.set(id, thread);
+    const receipts = [...(this.client?.receipts.values() ?? [])];
     const threads = [...combined.values()]
-      .filter((thread) => !this.selectedChannelId || thread.project_id === this.selectedChannelId)
+      .filter((thread) => !thread.archived && (!this.selectedChannelId || thread.project_id === this.selectedChannelId))
       .map((thread) => ({
         id: thread.id,
         channelId: thread.project_id,
         title: thread.title,
         unreadCount: "unread_count" in thread && typeof thread.unread_count === "number" ? thread.unread_count : 0,
+        running: receipts.some((receipt) => receipt.thread_id === thread.id && (receipt.state === "queued" || receipt.state === "running" || receipt.processing === "running")),
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title));
     const selected = this.selectedThreadId ? combined.get(this.selectedThreadId) : undefined;
-    const messages = this.selectedThreadId
-      ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].map(({ id, role, text, created_at }) => ({
-        id,
-        role: role === "assistant" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
-        text,
-        ...(created_at ? { createdAt: created_at } : {}),
-      }))
+    const receiptByClient = new Map(receipts.map((receipt) => [receipt.client_message_id, receipt]));
+    const durable = this.selectedThreadId
+      ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].filter(({ role }) => role !== "analysis" && role !== "reasoning")
       : [];
+    const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
+    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
+      const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
+      return {
+        id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
+        role: role === "assistant" || role === "commentary" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
+        text,
+        refSeq: ref_seq,
+        ...(client_message_id ? { clientMessageId: client_message_id } : {}),
+        ...(receipt ? { receiptId: receipt.id } : {}),
+        ...(created_at ? { createdAt: created_at } : {}),
+        ...(receipt ? { receiptState: receipt.state, processing: receipt.processing, ...(receipt.feedback ? { feedback: receipt.feedback } : {}) } : {}),
+        toolCalls: tool_calls.map(({ id: toolId, label, detail }) => ({ id: toolId, label, ...(detail ? { detail } : {}) })),
+        attachments: attachments.map((attachment) => this.projectAttachment(attachment)),
+      };
+    });
+    if (this.selectedThreadId) {
+      for (const pending of this.outbox) {
+        if (pending.threadId !== this.selectedThreadId || durableClientIds.has(pending.id)) continue;
+        const receipt = pending.receiptId ? this.client?.receipts.get(pending.receiptId) : receiptByClient.get(pending.id);
+        messages.push({
+          id: `client:${pending.id}`,
+          role: "user" as const,
+          text: pending.text,
+          clientMessageId: pending.id,
+          ...(receipt ? { receiptId: receipt.id } : {}),
+          createdAt: pending.createdAt / 1000,
+          receiptState: receipt?.state ?? (pending.state === "unknown" ? "unknown" : "queued"),
+          processing: receipt?.processing,
+          ...(receipt?.feedback ? { feedback: receipt.feedback } : {}),
+          optimistic: true,
+          toolCalls: [],
+          attachments: pending.attachmentIds.map((id) => this.client?.attachments.get(id)).filter((item): item is Attachment => Boolean(item)).map((item) => this.projectAttachment(item)),
+        });
+      }
+    }
+    const interactions = [...(this.client?.interactions.values() ?? [])]
+      .filter((item) => item.thread_id === this.selectedThreadId && item.state === "pending")
+      .map(({ id, kind, prompt, choices }) => ({ id, kind, prompt, choices: [...choices] }));
     return Object.freeze({
       revision: this.revision,
       phase: this.phase,
@@ -119,10 +164,16 @@ export class DesktopConnectionService {
       channels,
       threads,
       messages,
+      interactions,
+      canLoadOlder: Boolean(this.olderCursor),
       ...(this.selectedChannelId ? { selectedChannelId: this.selectedChannelId } : {}),
       ...(this.selectedThreadId ? { selectedThreadId: this.selectedThreadId } : {}),
       ...(selected ? { selectedThreadTitle: selected.title } : {}),
     });
+  }
+
+  private projectAttachment({ id, name = "Attachment", mime = "application/octet-stream", size = 0, state }: Attachment): DesktopAttachment {
+    return { id, name, mime, size, state };
   }
 
   private changed(): void {
@@ -132,6 +183,7 @@ export class DesktopConnectionService {
 
   async initialize(): Promise<void> {
     try {
+      await rm(join(app.getPath("temp"), "Hermes"), { recursive: true, force: true }).catch(() => {});
       const state = await this.store.load();
       if (!state) { this.phase = "unpaired"; this.changed(); return; }
       if (state.connection) { await this.startClient(state.connection); return; }
@@ -154,16 +206,18 @@ export class DesktopConnectionService {
     this.listedThreads.clear();
     this.selectedChannelId = undefined;
     this.selectedThreadId = undefined;
+    this.olderCursor = undefined;
     this.errorMessage = undefined;
     this.statusMessage = undefined;
     this.phase = "connected";
+    this.outbox = [...await this.outboxStore.list(connection.id)];
     const transport = mainTransport(connection.baseUrl);
     let client: HermesClient;
     client = new HermesClient({
       ...transport,
       token: () => connection.token,
-      onChange: () => { this.changed(); void this.selectInitialChannel(); },
-      onConnectionState: (state) => { this.connectionState = state; this.changed(); },
+      onChange: () => { this.reconcileOutbox(); this.changed(); void this.selectInitialChannel(); },
+      onConnectionState: (state) => { this.connectionState = state; this.changed(); if (state === "online") void this.flushOutbox(); },
       onError: (error) => { this.errorMessage = this.connectionError(error); this.changed(); },
     });
     this.client = client;
@@ -292,11 +346,15 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
+    const connectionId = this.connection?.id;
     this.connection = null;
+    this.outbox = [];
     this.listedThreads.clear();
     this.selectedChannelId = undefined;
     this.selectedThreadId = undefined;
+    this.olderCursor = undefined;
     await this.store.delete();
+    if (connectionId) await this.outboxStore.clear(connectionId);
     this.phase = "unpaired";
     this.connectionState = "suspended";
     this.statusMessage = undefined;
@@ -308,6 +366,7 @@ export class DesktopConnectionService {
     if (!this.client?.channels.has(channelId)) return;
     this.selectedChannelId = channelId;
     this.selectedThreadId = undefined;
+    this.olderCursor = undefined;
     this.listedThreads.clear();
     this.changed();
     let after: string | undefined;
@@ -323,16 +382,245 @@ export class DesktopConnectionService {
     const thread = this.listedThreads.get(threadId) ?? this.client?.threads.get(threadId);
     if (!thread || thread.project_id !== this.selectedChannelId || !this.client) return;
     this.selectedThreadId = threadId;
+    this.olderCursor = undefined;
     this.changed();
     try {
-      if (this.client.supportsLatest) await this.client.historyWindow(threadId, undefined, 50);
-      else await this.client.history(threadId, undefined, 50);
-      const messages = this.client.messages.get(threadId);
-      const last = messages?.at(-1)?.ref_seq;
-      if (last) await this.client.markRead(threadId, last).catch(() => {});
+      if (this.client.supportsLatest) {
+        const page = await this.client.historyWindow(threadId, undefined, 50);
+        this.olderCursor = page.older_cursor ?? undefined;
+      } else await this.client.history(threadId, undefined, 50);
+      this.changed();
     } catch {
       this.errorMessage = "This conversation could not be loaded. Try again when the connection is online.";
       this.changed();
+    }
+  }
+
+  private requireClient(): HermesClient {
+    if (!this.client || !this.connection) throw new Error("Hermes is not connected.");
+    return this.client;
+  }
+
+  private actionError(message: string): void {
+    this.errorMessage = message;
+    this.changed();
+  }
+
+  async createChannel(input: ChannelInput): Promise<void> {
+    const name = input.name.trim(), description = input.description.trim();
+    if (!name || name.length > 120 || description.length > 4000) throw new Error("Enter a channel name and a shorter description.");
+    let channel: Awaited<ReturnType<HermesClient["createChannel"]>>;
+    try { channel = await this.requireClient().createChannel(name, description); }
+    catch { this.actionError("The channel could not be created. Check your permission and try again."); throw new Error("Channel creation was not confirmed."); }
+    await this.selectChannel(channel.id).catch(() => this.actionError("The channel was created, but its topics could not be loaded yet."));
+  }
+
+  async updateChannel(channelId: string, input: ChannelInput): Promise<void> {
+    if (!this.client?.channels.has(channelId)) return;
+    const name = input.name.trim(), description = input.description.trim();
+    if (!name || name.length > 120 || description.length > 4000) throw new Error("Enter a channel name and a shorter description.");
+    try { await this.client.updateChannel(channelId, { name, description }); }
+    catch { this.actionError("The channel could not be updated. It may have changed on another device."); throw new Error("Channel update was not confirmed."); }
+  }
+
+  async deleteChannel(channelId: string): Promise<void> {
+    if (!this.client?.channels.has(channelId)) return;
+    try {
+      await this.client.deleteChannel(channelId);
+      if (this.selectedChannelId === channelId) {
+        this.selectedChannelId = undefined;
+        this.selectedThreadId = undefined;
+        this.listedThreads.clear();
+        this.olderCursor = undefined;
+        await this.selectInitialChannel();
+      }
+      this.changed();
+    } catch { this.actionError("The channel could not be deleted. Check that it is empty and that you have permission."); }
+  }
+
+  async createThread(input: ThreadInput): Promise<void> {
+    const client = this.requireClient(), channelId = this.selectedChannelId;
+    const title = input.title.trim();
+    if (!channelId || !title || title.length > 200 || !/^desktop-thread:[0-9a-f-]{36}$/.test(input.clientThreadId)) throw new Error("Enter a topic title.");
+    try {
+      const thread = await client.createThread(channelId, title, input.clientThreadId);
+      this.listedThreads.set(thread.id, thread);
+      await this.selectThread(thread.id);
+    } catch { this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed."); }
+  }
+
+  async renameThread(threadId: string, titleValue: string): Promise<void> {
+    const title = titleValue.trim();
+    if (!title || title.length > 200 || !this.listedThreads.has(threadId)) throw new Error("Enter a topic title.");
+    try { const thread = await this.requireClient().updateThread(threadId, { title }); this.listedThreads.set(thread.id, thread); this.changed(); }
+    catch { this.actionError("The topic could not be renamed. It may have changed on another device."); throw new Error("Topic rename was not confirmed."); }
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    if (!this.listedThreads.has(threadId)) return;
+    try {
+      await this.requireClient().archiveThread(threadId);
+      this.listedThreads.delete(threadId);
+      if (this.selectedThreadId === threadId) {
+        this.selectedThreadId = undefined;
+        this.olderCursor = undefined;
+        const fallback = this.snapshot().threads[0];
+        if (fallback) await this.selectThread(fallback.id);
+      }
+      this.changed();
+    } catch { this.actionError("The topic could not be archived. Try again after Hermes reconnects."); }
+  }
+
+  async loadOlder(): Promise<void> {
+    const client = this.requireClient(), threadId = this.selectedThreadId, before = this.olderCursor;
+    if (!threadId || !before || !client.supportsLatest) return;
+    try { const page = await client.historyWindow(threadId, before, 50); this.olderCursor = page.older_cursor ?? undefined; this.changed(); }
+    catch { this.actionError("Older messages could not be loaded. Your current conversation is still available."); }
+  }
+
+  async markVisible(refSeq: number): Promise<void> {
+    if (!Number.isSafeInteger(refSeq) || refSeq <= 0 || !this.selectedThreadId) return;
+    await this.client?.markRead(this.selectedThreadId, refSeq).catch(() => {});
+  }
+
+  async sendMessage(input: SendMessageInput): Promise<void> {
+    const client = this.requireClient(), connection = this.connection!, threadId = this.selectedThreadId;
+    const text = input.text.replace(/\r\n/g, "\n");
+    const attachmentIds = [...input.attachmentIds];
+    if (!threadId || text.length > 100_000 || (!text.trim() && !attachmentIds.length) || attachmentIds.length > 8 || new Set(attachmentIds).size !== attachmentIds.length || attachmentIds.some((id) => !client.attachments.has(id))) throw new Error("Write a message or add an attachment before sending.");
+    const pending: OutboxRecord = { version: 1, id: `desktop:${randomUUID()}`, threadId, text, attachmentIds, createdAt: Date.now(), state: "pending" };
+    await this.outboxStore.put(connection.id, pending);
+    this.outbox.push(pending);
+    this.changed();
+    await this.deliver(pending);
+  }
+
+  async retryMessage(clientMessageId: string): Promise<void> {
+    const pending = this.outbox.find(({ id }) => id === clientMessageId);
+    if (pending) await this.deliver({ ...pending, state: "pending" });
+  }
+
+  private async persistOutbox(record: OutboxRecord): Promise<void> {
+    const connection = this.connection;
+    if (!connection) return;
+    await this.outboxStore.put(connection.id, record);
+    const index = this.outbox.findIndex(({ id }) => id === record.id);
+    if (index < 0) this.outbox.push(record); else this.outbox[index] = record;
+    this.changed();
+  }
+
+  private async deliver(value: OutboxRecord): Promise<void> {
+    const client = this.client;
+    if (!client || !this.connection || value.state === "blocked") return;
+    const sending: OutboxRecord = { ...value, state: "sending" };
+    await this.persistOutbox(sending);
+    try {
+      const receipt = value.receiptId
+        ? await client.getReceipt(value.receiptId)
+        : await client.send(value.threadId, value.id, value.text, [...value.attachmentIds]);
+      await this.persistOutbox({ ...sending, state: receipt.state === "unknown" ? "unknown" : "pending", receiptId: receipt.id });
+    } catch (error) {
+      const blocked = error instanceof HttpError && (error.status === 401 || error.status === 403);
+      await this.persistOutbox({ ...value, state: blocked || !isRetryableError(error) ? "blocked" : "pending" });
+      this.actionError(blocked ? "This device is no longer authorized. Pair it again before retrying." : "The message is safely queued and will retry when Hermes reconnects.");
+    }
+  }
+
+  private async flushOutbox(): Promise<void> {
+    if (this.flushingOutbox || this.connectionState !== "online") return;
+    this.flushingOutbox = true;
+    try { for (const pending of [...this.outbox]) if (pending.state === "pending") await this.deliver(pending); }
+    finally { this.flushingOutbox = false; }
+  }
+
+  private reconcileOutbox(): void {
+    const connection = this.connection;
+    if (!connection || !this.client) return;
+    const confirmed = new Set([...this.client.messages.values()].flat().flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
+    const removed = this.outbox.filter(({ id }) => confirmed.has(id));
+    if (!removed.length) return;
+    this.outbox = this.outbox.filter(({ id }) => !confirmed.has(id));
+    for (const item of removed) void this.outboxStore.remove(connection.id, item.id);
+  }
+
+  async stopThread(): Promise<void> {
+    if (!this.selectedThreadId) return;
+    try { await this.requireClient().stop(this.selectedThreadId); }
+    catch { this.actionError("The running task could not be stopped. It may have already finished."); }
+  }
+
+  async cancelQueued(receiptId: string): Promise<void> {
+    if (!this.selectedThreadId || !this.client?.receipts.has(receiptId)) return;
+    try { await this.client.cancelQueued(this.selectedThreadId, receiptId); }
+    catch { this.actionError("The queued message could not be cancelled. Its state may have changed."); }
+  }
+
+  async answerInteraction(interactionId: string, choice: string): Promise<void> {
+    const item = this.client?.interactions.get(interactionId);
+    if (!item || item.thread_id !== this.selectedThreadId || item.state !== "pending" || !item.choices.includes(choice)) return;
+    try { await this.client!.answerInteraction(item, choice); }
+    catch { this.actionError("That request is no longer pending. Hermes will refresh its status."); await this.client?.getInteraction(item.thread_id, item.id).catch(() => {}); }
+  }
+
+  async pickAndUploadAttachments(): Promise<readonly DesktopAttachment[]> {
+    const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], title: "Attach files to Hermes" });
+    if (result.canceled) return [];
+    return this.uploadAttachmentPaths(result.filePaths);
+  }
+
+  async uploadAttachmentPaths(filePaths: readonly string[]): Promise<readonly DesktopAttachment[]> {
+    const client = this.requireClient(), threadId = this.selectedThreadId;
+    if (!threadId) return [];
+    if (filePaths.length > 8) throw new Error("Choose no more than eight files.");
+    const files: Array<{ path: string; name: string; bytes: Uint8Array }> = [];
+    for (const filePath of filePaths) {
+      if (!filePath || !isAbsolute(filePath)) throw new Error("The attachment path is invalid.");
+      const info = await stat(filePath);
+      if (!info.isFile() || info.size < 1 || info.size > 10 * 1024 * 1024) throw new Error("Each attachment must be a file between 1 byte and 10 MiB.");
+      files.push({ path: filePath, name: basename(filePath), bytes: new Uint8Array(await readFile(filePath)) });
+    }
+    const uploaded: DesktopAttachment[] = [];
+    try {
+      for (const file of files) uploaded.push(this.projectAttachment(await client.upload(threadId, file.name, file.bytes)));
+    } catch {
+      await Promise.all(uploaded.map(({ id }) => client.deleteUnattached(threadId, id).catch(() => {})));
+      this.actionError("The attachments could not be uploaded. Check their size and try again.");
+      throw new Error("Attachment upload was not confirmed.");
+    }
+    return uploaded;
+  }
+
+  async deleteUnattachedAttachment(attachmentId: string): Promise<void> {
+    const attachment = this.client?.attachments.get(attachmentId);
+    if (!attachment || attachment.thread_id !== this.selectedThreadId || attachment.receipt_id) return;
+    await this.client?.deleteUnattached(attachment.thread_id, attachment.id);
+  }
+
+  async downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void> {
+    const client = this.requireClient(), threadId = this.selectedThreadId;
+    const attachment = client.attachments.get(attachmentId);
+    if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
+    const bytes = await client.download(threadId, attachmentId);
+    const safeName = (attachment.name ?? "Attachment").replace(/[\x00-\x1f\x7f/\\:]/g, "_").slice(0, 180) || "Attachment";
+    let target: string;
+    if (action === "save") {
+      const selected = await dialog.showSaveDialog({ title: "Save Hermes attachment", defaultPath: safeName });
+      if (selected.canceled || !selected.filePath) return;
+      target = selected.filePath;
+    } else {
+      const folder = join(app.getPath("temp"), "Hermes");
+      await mkdir(folder, { recursive: true, mode: 0o700 });
+      target = join(folder, `${randomUUID()}${extname(safeName).slice(0, 20)}`);
+    }
+    const temporary = `${target}.partial`;
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(temporary, bytes, { mode: 0o600 });
+    await rename(temporary, target);
+    if (action === "open") {
+      const failure = await shell.openPath(target);
+      if (failure) { await rm(target, { force: true }); throw new Error("The attachment could not be opened."); }
+      const cleanup = setTimeout(() => void rm(target, { force: true }), 10 * 60 * 1000);
+      cleanup.unref();
     }
   }
 

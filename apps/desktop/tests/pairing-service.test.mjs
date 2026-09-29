@@ -113,6 +113,9 @@ test("read-only projection loads threads for the selected channel and the select
     ]),
     threads: new Map(),
     messages: new Map(),
+    receipts: new Map(),
+    interactions: new Map(),
+    attachments: new Map(),
     supportsLatest: true,
     async listThreads(channelId) {
       calls.push(["threads", channelId]);
@@ -130,8 +133,15 @@ test("read-only projection loads threads for the selected channel and the select
   assert.deepEqual(calls, [["threads", "channel-a"]]);
   assert.equal(service.snapshot().threads[0].unreadCount, 2);
   await service.selectThread("thread-a");
-  assert.deepEqual(calls, [["threads", "channel-a"], ["history", "thread-a"], ["read", "thread-a", 7]]);
-  assert.deepEqual(service.snapshot().messages, [{ id: "message-a", role: "assistant", text: "Visible reply" }]);
+  assert.deepEqual(calls, [["threads", "channel-a"], ["history", "thread-a"]]);
+  assert.deepEqual(service.snapshot().messages, [{
+    id: "message:message-a",
+    refSeq: 7,
+    role: "assistant",
+    text: "Visible reply",
+    toolCalls: [],
+    attachments: [],
+  }]);
   await service.selectChannel("channel-b");
   assert.equal(service.snapshot().selectedThreadId, undefined);
   assert.equal(service.snapshot().messages.length, 0);

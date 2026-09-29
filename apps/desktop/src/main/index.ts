@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { join } from "node:path";
-import type { PairingRequest } from "../shared/desktop-api";
+import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnectionService } from "./connection-service";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
 
@@ -21,6 +21,14 @@ const text = (value: unknown, maximum: number): string => {
   if (typeof value !== "string" || value.length > maximum) throw new Error("Invalid desktop request");
   return value;
 };
+const object = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid desktop request");
+  return value as Record<string, unknown>;
+};
+const texts = (value: unknown, maximumItems: number, maximumLength: number): string[] => {
+  if (!Array.isArray(value) || value.length > maximumItems) throw new Error("Invalid desktop request");
+  return value.map((item) => text(item, maximumLength));
+};
 
 const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:get-snapshot", (event) => { trustedSender(event); return service.snapshot(); });
@@ -35,6 +43,23 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:select-channel", async (event, id: unknown) => { trustedSender(event); await service.selectChannel(text(id, 200)); });
   ipcMain.handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
   ipcMain.handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
+  ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createChannel({ name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
+  ipcMain.handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
+  ipcMain.handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
+  ipcMain.handle("desktop:create-thread", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createThread({ title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80) } satisfies ThreadInput); });
+  ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); await service.renameThread(text(id, 200), text(title, 200)); });
+  ipcMain.handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); await service.archiveThread(text(id, 200)); });
+  ipcMain.handle("desktop:load-older", async (event) => { trustedSender(event); await service.loadOlder(); });
+  ipcMain.handle("desktop:mark-visible", async (event, ref: unknown) => { trustedSender(event); if (!Number.isSafeInteger(ref)) throw new Error("Invalid desktop request"); await service.markVisible(ref as number); });
+  ipcMain.handle("desktop:send-message", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.sendMessage({ text: text(input.text, 100_000), attachmentIds: texts(input.attachmentIds, 8, 200) } satisfies SendMessageInput); });
+  ipcMain.handle("desktop:retry-message", async (event, id: unknown) => { trustedSender(event); await service.retryMessage(text(id, 128)); });
+  ipcMain.handle("desktop:stop-thread", async (event) => { trustedSender(event); await service.stopThread(); });
+  ipcMain.handle("desktop:cancel-queued", async (event, id: unknown) => { trustedSender(event); await service.cancelQueued(text(id, 200)); });
+  ipcMain.handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { trustedSender(event); await service.answerInteraction(text(id, 200), text(choice, 4000)); });
+  ipcMain.handle("desktop:pick-attachments", async (event) => { trustedSender(event); return service.pickAndUploadAttachments(); });
+  ipcMain.handle("desktop:drop-attachments", async (event, paths: unknown) => { trustedSender(event); return service.uploadAttachmentPaths(texts(paths, 8, 4096)); });
+  ipcMain.handle("desktop:delete-attachment", async (event, id: unknown) => { trustedSender(event); await service.deleteUnattachedAttachment(text(id, 200)); });
+  ipcMain.handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { trustedSender(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action); });
 };
 
 const createMainWindow = (): BrowserWindow => {

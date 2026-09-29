@@ -244,3 +244,60 @@ textarea:disabled {
     scroll-behavior: auto !important;
   }
 }
+
+/* Interactive conversation and D1 controls. */
+.conversation-pane { display: flex; flex-direction: column; min-height: 0; }
+.thread-item span:empty { display: none; }
+.timeline-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.message-list { height: 100%; overflow: auto; }
+.message.optimistic { opacity: .78; }
+.message p, .message ul, .message ol, .message table, .message pre { margin: .55em 0; }
+.message table { width: 100%; border-collapse: collapse; white-space: normal; }
+.message th, .message td { border: 1px solid #d9d5ce; padding: 7px 9px; text-align: start; }
+.message a { color: #325c77; }
+.message code { border-radius: 4px; padding: 1px 4px; background: #efede8; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.code-block { overflow: auto; border-radius: 9px; padding: 12px; color: #f5f3ef; background: #292724; white-space: pre; }
+.code-block code { padding: 0; color: inherit; background: transparent; }
+.code-block small { display: block; margin-top: 8px; color: #cbc5bc; }
+.mermaid-diagram { overflow: auto; margin: 12px 0; text-align: center; white-space: normal; }
+.mermaid-diagram svg { max-width: 100%; height: auto; }
+.blocked-image { color: #746e66; font-style: italic; }
+.tool-record { margin-top: 8px; border: 1px solid #ddd8d0; border-radius: 8px; padding: 8px 10px; background: #faf9f7; white-space: normal; }
+.tool-record summary { cursor: pointer; font-size: 13px; font-weight: 650; }
+.tool-record pre { overflow: auto; white-space: pre-wrap; }
+.attachment-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; border: 1px solid #ddd8d0; border-radius: 9px; padding: 8px 10px; white-space: normal; }
+.attachment-row span:first-child { flex: 1; font-weight: 650; }
+.attachment-row span:nth-child(2) { color: #746e66; font-size: 12px; }
+.attachment-row button, .receipt button, .load-older { border: 1px solid #cfc9c0; border-radius: 7px; padding: 4px 8px; color: #514d47; background: #fff; }
+.receipt { margin-top: 7px; color: #746e66; font-size: 12px; text-transform: capitalize; }
+.receipt button { margin-left: 8px; }
+.load-older { display: block; margin: 0 auto 20px; }
+.new-messages { position: absolute; right: 24px; bottom: 16px; border: 0; border-radius: 999px; padding: 8px 13px; color: #fff; background: #53504a; box-shadow: 0 5px 18px rgb(0 0 0 / 20%); }
+.composer { display: block; padding: 10px 18px 18px; border-top: 1px solid #e3dfd8; background: #faf9f7; }
+.composer-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; }
+.composer textarea { min-height: 44px; max-height: 180px; resize: vertical; border: 1px solid #d1ccc4; border-radius: 11px; padding: 11px 13px; color: #292724; background: #fff; font: inherit; }
+.composer-row > button { align-self: end; min-height: 40px; border: 0; border-radius: 10px; padding: 0 16px; color: #fff; background: #53504a; font-weight: 650; }
+.composer-row .attach-button { width: 40px; padding: 0; color: #514d47; background: #ebe8e2; }
+.composer-row .stop-button { color: #8a352e; background: #f6e3df; }
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px 48px; }
+.composer-attachments span { border-radius: 999px; padding: 5px 8px 5px 10px; background: #ebe8e2; font-size: 12px; }
+.composer-attachments button { border: 0; margin-left: 5px; background: transparent; }
+.interaction-card { margin: 0 18px 10px; border: 1px solid #d2c8b8; border-radius: 10px; padding: 12px; background: #fff9ed; }
+.interaction-card p { margin: 5px 0 10px; }
+.interaction-card button { margin-right: 7px; border: 1px solid #bcae98; border-radius: 7px; padding: 6px 10px; background: #fff; }
+.header-actions, .conversation-actions { display: flex; align-items: center; gap: 6px; }
+.conversation-actions > button:not(.connection-state), .resource-actions button { border: 0; color: #746e66; background: transparent; font-size: 12px; }
+.channel-description { max-width: 190px; overflow: hidden; color: #746e66; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.resource-actions { padding: 5px 18px; border-bottom: 1px solid #e2ded7; text-align: right; }
+.modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(35 32 28 / 38%); }
+.editor-dialog { display: grid; width: min(440px, 100%); gap: 14px; border: 1px solid #cbc5bc; border-radius: 14px; padding: 22px; background: #fff; box-shadow: 0 20px 70px rgb(0 0 0 / 25%); }
+.editor-dialog label { display: grid; gap: 6px; color: #514d47; font-size: 13px; font-weight: 650; }
+.editor-dialog input, .editor-dialog textarea { border: 1px solid #cfc9c0; border-radius: 9px; padding: 9px 10px; font: inherit; }
+.editor-dialog textarea { min-height: 100px; resize: vertical; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: #53504a; }
+.dialog-actions .secondary { border: 1px solid #cfc9c0; color: #514d47; background: #fff; }
+.palette { align-self: start; margin-top: 10vh; padding: 12px; }
+.palette-results { display: grid; max-height: 360px; overflow: auto; }
+.palette-results button { border: 0; border-radius: 7px; padding: 10px; background: transparent; text-align: start; }
+.palette-results button:hover { background: #f1eee9; }

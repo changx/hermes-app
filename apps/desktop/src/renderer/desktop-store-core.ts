@@ -8,6 +8,8 @@ export const initialDesktopSnapshot: DesktopSnapshot = Object.freeze({
   channels: [],
   threads: [],
   messages: [],
+  interactions: [],
+  canLoadOlder: false,
 });
 
 export class DesktopSnapshotStore {

@@ -14,8 +14,14 @@
   },
   "dependencies": {
     "@hermes-app/client": "0.1.0",
+    "katex": "0.16.22",
+    "mermaid": "11.17.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
     "ws": "8.22.0"
   },
   "devDependencies": {

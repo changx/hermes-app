@@ -1,28 +1,45 @@
-import type { ConnectionState } from "@hermes-app/client";
+import type { ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 
-export type DesktopChannel = Readonly<{
-  id: string;
-  name: string;
-  description?: string;
-}>;
-
+export type DesktopChannel = Readonly<{ id: string; name: string; description?: string }>;
 export type DesktopThread = Readonly<{
   id: string;
   channelId: string;
   title: string;
   unreadCount: number;
   lastMessageAt?: number;
+  running: boolean;
 }>;
-
+export type DesktopToolCall = Readonly<{ id: string; label: string; detail?: string }>;
+export type DesktopAttachment = Readonly<{
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  state: "available" | "missing" | "deleted" | "uploading";
+}>;
+export type DesktopInteraction = Readonly<{
+  id: string;
+  kind: "approval" | "clarify";
+  prompt: string;
+  choices: readonly string[];
+}>;
 export type DesktopMessage = Readonly<{
   id: string;
   role: "user" | "assistant" | "system";
   text: string;
+  refSeq?: number;
+  clientMessageId?: string;
+  receiptId?: string;
   createdAt?: number;
+  receiptState?: ReceiptState;
+  processing?: ReceiptProcessing;
+  feedback?: string;
+  optimistic?: boolean;
+  toolCalls: readonly DesktopToolCall[];
+  attachments: readonly DesktopAttachment[];
 }>;
-
 export type DesktopSnapshot = Readonly<{
   revision: number;
   phase: DesktopPhase;
@@ -33,17 +50,17 @@ export type DesktopSnapshot = Readonly<{
   channels: readonly DesktopChannel[];
   threads: readonly DesktopThread[];
   messages: readonly DesktopMessage[];
+  interactions: readonly DesktopInteraction[];
   selectedChannelId?: string;
   selectedThreadId?: string;
   selectedThreadTitle?: string;
+  canLoadOlder: boolean;
 }>;
 
-export type PairingRequest = Readonly<{
-  baseUrl: string;
-  code: string;
-  deviceName: string;
-}>;
-
+export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
+export type ChannelInput = Readonly<{ name: string; description: string }>;
+export type ThreadInput = Readonly<{ title: string; clientThreadId: string }>;
+export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[] }>;
 export type DesktopRuntimeInfo = Readonly<{
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
@@ -59,4 +76,21 @@ export interface HermesDesktopApi {
   selectChannel(channelId: string): Promise<void>;
   selectThread(threadId: string): Promise<void>;
   retryConnection(): Promise<void>;
+  createChannel(input: ChannelInput): Promise<void>;
+  updateChannel(channelId: string, input: ChannelInput): Promise<void>;
+  deleteChannel(channelId: string): Promise<void>;
+  createThread(input: ThreadInput): Promise<void>;
+  renameThread(threadId: string, title: string): Promise<void>;
+  archiveThread(threadId: string): Promise<void>;
+  loadOlder(): Promise<void>;
+  markVisible(refSeq: number): Promise<void>;
+  sendMessage(input: SendMessageInput): Promise<void>;
+  retryMessage(clientMessageId: string): Promise<void>;
+  stopThread(): Promise<void>;
+  cancelQueued(receiptId: string): Promise<void>;
+  answerInteraction(interactionId: string, choice: string): Promise<void>;
+  pickAndUploadAttachments(): Promise<readonly DesktopAttachment[]>;
+  uploadDroppedFiles(files: readonly File[]): Promise<readonly DesktopAttachment[]>;
+  deleteUnattachedAttachment(attachmentId: string): Promise<void>;
+  downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void>;
 }
