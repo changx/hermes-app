@@ -10,6 +10,8 @@ test('Channel uses a safe-area floating new-topic button and multiline first-mes
   assert.match(channel, /style=\{\[s\.fab, \{ bottom: 18 \+ insets\.bottom \}/);
   assert.match(channel, /accessibilityLabel="First message"[^>]*multiline/);
   assert.doesNotMatch(channel, /accessibilityLabel="New topic title"/);
+  assert.match(channel, /<EditorSheet visible=\{composing\} closeLabel="Close new topic composer"/);
+  assert.match(channel, /reduceMotion=\{reduceMotion\}/);
 });
 
 test('new-topic submission stages local attachments then creates, uploads and sends one stable message', () => {

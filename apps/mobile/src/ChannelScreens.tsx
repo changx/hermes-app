@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import React, { type ReactNode, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,35 @@ function Action({ label, onPress, disabled = false, secondary = false }: { label
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[s.action, secondary && s.secondary, disabled && s.disabled]}><Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text></Pressable>;
 }
 
+function EditorSheet({ visible, closeLabel, busy, bottomInset, reduceMotion, onClose, children }: {
+  visible: boolean; closeLabel: string; busy: boolean; bottomInset: number; reduceMotion: boolean; onClose: () => void; children: ReactNode;
+}) {
+  const { height } = useWindowDimensions();
+  const sheetOffset = useRef(new Animated.Value(height)).current;
+  useEffect(() => {
+    if (!visible) { sheetOffset.setValue(height); return; }
+    sheetOffset.setValue(height);
+    const animation = Animated.timing(sheetOffset, {
+      toValue: 0,
+      duration: reduceMotion ? 0 : 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [height, reduceMotion, sheetOffset, visible]);
+  return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <View style={s.modalRoot}>
+      <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} style={s.backdrop} disabled={busy} onPress={onClose} />
+      <KeyboardAvoidingView pointerEvents="box-none" style={s.keyboardLayer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View style={[s.composer, { paddingBottom: Math.max(14, bottomInset), transform: [{ translateY: sheetOffset }] }]}>
+          {children}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </View>
+  </Modal>;
+}
+
 const newId = (prefix: string) => prefix + Crypto.randomUUID().replace(/-/g, '');
 
 export function ChannelScreens({ client, channelId, onChannel, onThread }: Props) {
@@ -25,7 +54,14 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
   const working = useRef(false), generation = useRef(0), attachmentComposer = useRef<AttachmentComposerHandle>(null);
   const draftThread = useRef<string | null>(null), draftAttachments = useRef<string[] | null>(null), draftMessageId = useRef(''), draftThreadId = useRef('');
   const focused = useIsFocused(), focusedRef = useRef(focused), insets = useSafeAreaInsets();
+  const [reduceMotion, setReduceMotion] = useState(false);
   focusedRef.current = focused;
+  useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (active) setReduceMotion(value); });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => { active = false; subscription.remove(); };
+  }, []);
   useFocusEffect(React.useCallback(() => {
     focusedRef.current = true;
     return () => { focusedRef.current = false; generation.current++; };
@@ -120,36 +156,26 @@ export function ChannelScreens({ client, channelId, onChannel, onThread }: Props
       ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
     {!!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New topic" disabled={busy} onPress={openComposer} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
     {!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New channel" disabled={busy} onPress={startCreate} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
-    <Modal visible={creating} transparent animationType="slide" onRequestClose={cancelChannelForm}>
-      <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close new channel editor" style={s.backdrop} disabled={busy} onPress={cancelChannelForm} />
-        <View style={[s.composer, { paddingBottom: Math.max(14, insets.bottom) }]}>
-          <View style={s.top}><Text style={[s.heading, s.fill]}>New channel</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelChannelForm} /></View>
-          {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-          <View style={s.sheetForm}>
-            <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} autoFocus />
-            <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
-            <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
-            <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'} disabled={busy || !name.trim()} onPress={submitChannel} /></View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-    <Modal visible={composing} transparent animationType="fade" onRequestClose={cancelComposer}>
-      <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close new topic composer" style={s.backdrop} disabled={busy} onPress={cancelComposer} />
-        <View style={[s.composer, { paddingBottom: Math.max(14, insets.bottom) }]}>
-          <View style={s.top}><Text style={[s.heading, s.fill]}>New topic</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelComposer} /></View>
-          {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-          <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message} onChangeText={setMessage} editable={!busy} multiline autoFocus maxLength={16000} style={[s.input, s.message]} />
-          <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={attachmentClearKey} disabled={busy}
-            onSelectionChange={setAttachmentCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={text => setMessage(value => value + text)}>
-            <View style={s.fill} />
-            <Action label={busy ? 'Creating…' : 'Create topic'} disabled={busy || attachmentBusy || (!message.trim() && !attachmentCount)} onPress={submitTopic} />
-          </AttachmentComposer>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <EditorSheet visible={creating} closeLabel="Close new channel editor" busy={busy} bottomInset={insets.bottom} reduceMotion={reduceMotion} onClose={cancelChannelForm}>
+      <View style={s.top}><Text style={[s.heading, s.fill]}>New channel</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelChannelForm} /></View>
+      {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+      <View style={s.sheetForm}>
+        <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b" value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} autoFocus />
+        <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)" placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline style={[s.input, s.description]} editable={!busy} />
+        <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
+        <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'} disabled={busy || !name.trim()} onPress={submitChannel} /></View>
+      </View>
+    </EditorSheet>
+    <EditorSheet visible={composing} closeLabel="Close new topic composer" busy={busy} bottomInset={insets.bottom} reduceMotion={reduceMotion} onClose={cancelComposer}>
+      <View style={s.top}><Text style={[s.heading, s.fill]}>New topic</Text><Action label="Cancel" secondary disabled={busy} onPress={cancelComposer} /></View>
+      {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+      <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message} onChangeText={setMessage} editable={!busy} multiline autoFocus maxLength={16000} style={[s.input, s.message]} />
+      <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={attachmentClearKey} disabled={busy}
+        onSelectionChange={setAttachmentCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={text => setMessage(value => value + text)}>
+        <View style={s.fill} />
+        <Action label={busy ? 'Creating…' : 'Create topic'} disabled={busy || attachmentBusy || (!message.trim() && !attachmentCount)} onPress={submitTopic} />
+      </AttachmentComposer>
+    </EditorSheet>
   </View>;
 }
 const s = StyleSheet.create({
@@ -160,5 +186,5 @@ const s = StyleSheet.create({
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }, unread: { color: '#2960ad', fontSize: 12, fontWeight: '600' },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 },
   fab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2960ad', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 }, fabText: { color: '#fff', fontSize: 32, lineHeight: 36 },
-  modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', inset: 0, backgroundColor: 'rgba(11, 24, 40, 0.42)' }, composer: { backgroundColor: '#f8fafc', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 4, maxHeight: '82%', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 12 }
+  modalRoot: { flex: 1 }, backdrop: { position: 'absolute', inset: 0, backgroundColor: 'rgba(11, 24, 40, 0.42)' }, keyboardLayer: { flex: 1, justifyContent: 'flex-end' }, composer: { backgroundColor: '#f8fafc', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 4, maxHeight: '82%', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 12 }
 });
