@@ -55,6 +55,20 @@ def test_only_named_tool_fields_and_no_parallel_expansion():
         'pattern=*.py · path=/repo')
     assert project('skill_view', {'name': 'hermes-agent'})['detail'] == 'name=hermes-agent'
     assert project('patch', {'path': '/repo/a.py', 'patch': 'PRIVATE'})['detail'] == 'path=/repo/a.py'
+    assert project('patch', {'mode': 'patch', 'patch': '''*** Begin Patch
+*** Update File: /repo/a.py
+@@
+-old
++new
+*** Add File: /repo/b.py
++new
+*** Delete File: /repo/c.py
+*** End Patch'''})['detail'] == 'path=/repo/a.py · path=/repo/b.py · path=/repo/c.py'
+    assert project('functions.patch', {'mode': 'patch', 'patch': '''*** Begin Patch
+*** Update File: /repo/a.py
+*** Update File: /repo/a.py
+*** Update File: /repo/.env
+*** End Patch'''})['detail'] == 'path=/repo/a.py'
     assert project('write_file', {'path': '/repo/b.py', 'content': 'PRIVATE'})['detail'] == 'path=/repo/b.py'
     assert project('unknown.tool', {'path': '/private', 'model': 'gpt-6', 'password': 'PRIVATE'}) == {
         'id': 'real-id', 'name': 'unknown.tool', 'label': 'unknown.tool'}
@@ -160,6 +174,31 @@ def test_real_db_hooks_history_api_reread_urls(tmp_path, monkeypatch):
                     assert messages[-1]['tool_calls'] == hits[0]['tool_calls'] == expected
                     assert 'hidden' not in json.dumps(messages[-1])
         asyncio.run(probe())
+    finally:
+        core.close()
+        reset_hermes_home_override(token)
+
+
+def test_patch_mode_paths_persist_through_history_and_cold_read(tmp_path):
+    home, core, store, tid, token = setup(tmp_path)
+    try:
+        core.append_message('s', 'user', 'edit files', platform_message_id='rc-one')
+        source = call('patch-call', 'patch', {'mode': 'patch', 'patch': '''*** Begin Patch
+*** Update File: /repo/a.py
+@@
+-old
++new
+*** Add File: /repo/b.py
++new
+*** End Patch'''})
+        row = core.append_message('s', 'assistant', '', tool_calls=[source], finish_reason='tool_calls')
+        pre_tool_call(turn_id='turn-patch', session_id='s', tool_call_id='patch-call')
+        expected = [{'id': 'patch-call', 'name': 'patch', 'label': 'Edit file',
+                     'detail': 'path=/repo/a.py · path=/repo/b.py'}]
+        page = store.history_page(tid, home/'state.db')
+        assert page['messages'][-1]['id'] == str(row)
+        assert page['messages'][-1]['tool_calls'] == expected
+        assert Store(store.path).history_page(tid, home/'state.db')['messages'] == page['messages']
     finally:
         core.close()
         reset_hermes_home_override(token)

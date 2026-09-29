@@ -18,28 +18,53 @@ from test_tool_timeline import call, setup
     'git status --short\ngit log -3 --oneline',
     'python3 -c "import pathlib\np=pathlib.Path(\'/repo\')\nprint(p.exists())"',
     'printf\t\'done\'\n',
+    'pytest -p no:warnings',
+    'env | sort',
+    'printf "$HOME"',
+    'python3 -c "unterminated',
+    'python -m pytest ' + 'x' * 4001,
 ])
 def test_safe_scripts_and_multiline_show_exact_command(command):
     for name in ('terminal', 'functions.terminal'):
-        assert project(name, {'command': command})['detail'] == command
+        detail = project(name, {'command': command})['detail']
+        if tool_timeline._utf16_length(command) <= 600:
+            assert detail == command
+        else:
+            assert detail.endswith('…')
 
 
 @pytest.mark.parametrize('command', [
-    'VALUE=opaque python3 script.py',
-    'git status; VALUE=opaque python3 script.py',
-    'git status\nVALUE=opaque python3 script.py',
-    'python3 -c "password=\'private\'; print(password)"',
-    'curl -H "Authorization: Bearer private" https://example.org',
-    'curl https://user:private@example.org',
-    'curl https://example.org/?opaque=private',
-    'curl https://example.org/#private',
-    'curl ftp://example.org/file',
     'git status\u202e', 'git status\ud800', 'git status\x1b[31m',
-    'python3 -c "unterminated',
-    'git status\n' + 'x' * 650 + '\nAPI_TOKEN=private python script.py',
 ])
 def test_sensitive_or_ambiguous_commands_stay_hidden(command):
     assert 'detail' not in project('terminal', {'command': command})
+
+
+@pytest.mark.parametrize(('command', 'visible', 'hidden'), [
+    ('VALUE=opaque python3 script.py', 'VALUE=opaque python3 script.py', None),
+    ('git status; VALUE=opaque python3 script.py', 'git status; VALUE=opaque python3 script.py', None),
+    ('git status\nVALUE=opaque python3 script.py', 'git status\nVALUE=opaque python3 script.py', None),
+    ('python3 -c "password=\'private\'; print(password)"', 'password=***', 'private'),
+    ('python3 -c "password=\'two words\'; print(password)"', 'password=***', 'two words'),
+    ('curl -H "Authorization: Bearer opaque-secret-value" https://example.org', '-H ***', 'opaque-secret-value'),
+    ('env curl -HAuthorization:opaque-secret-value https://example.org', '-H***', 'opaque-secret-value'),
+    ('curl -ubob:opaque-secret-value https://example.org', '-u***', 'opaque-secret-value'),
+    ('curl --api-key=opaque-secret-value https://example.org', '--api-key=***', 'opaque-secret-value'),
+    ('pytest -p no:warnings', 'pytest -p no:warnings', None),
+    ('ssh -p 2222 example.org', 'ssh -p 2222 example.org', None),
+    ('mysql -popaque-secret-value database', 'mysql -p*** database', 'opaque-secret-value'),
+    ('mysql -p opaque-secret-value database', 'mysql -p *** database', 'opaque-secret-value'),
+    ('API_TOKEN=opaque-secret-value python script.py\n' + 'x' * 650, 'API_TOKEN=***', 'opaque-secret-value'),
+    ('curl https://user:private@example.org/path', 'https://example.org/path', 'private'),
+    ('curl https://example.org/?token=opaque-secret-value&page=2', 'https://example.org/', 'opaque-secret-value'),
+    ('curl https://example.org/#private', 'https://example.org/', '#private'),
+    ('curl ftp://example.org/file', '[redacted-url]', 'ftp://'),
+])
+def test_sensitive_command_values_are_masked_without_hiding_the_command(command, visible, hidden):
+    detail = project('terminal', {'command': command})['detail']
+    assert visible in detail
+    if hidden:
+        assert hidden not in detail
 
 
 def test_multiline_is_checked_before_truncation_and_redactor_failure(monkeypatch):

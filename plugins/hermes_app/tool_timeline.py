@@ -2,18 +2,35 @@
 import ast
 import json
 import re
-import shlex
 import unicodedata
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 from agent.redact import REDACTION_UNAVAILABLE, redact_for_egress
 
 _NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.]{0,199}\Z')
-_UNSAFE_COMMAND = re.compile(
-    r'(?i)(?:wss?://|ftp://|\$|\b(?:password|passwd|secret|token|credential|authorization|api[_-]?key|auth[_-]?key)\b'
-    r'|--[\w-]*(?:password|passwd|secret|token|credential|auth|key)[\w-]*'
-    r'|\s(?:-H|-u|-p|--header|--data|--data-raw|--user|--password|--cookie)(?:\s|=)'
-    r'|(?:^|\s)(?:export|env|set|printenv)\b|\b\.env\b)')
+_COMMAND_URL = re.compile(r'(?i)(?:https?|wss?|ftp)://[^\s\'"<>]+')
+_SENSITIVE_COMMAND_OPTION = re.compile(
+    r'(?i)(?P<prefix>(?:^|\s)(?:'
+    r'--(?:[A-Za-z0-9]+[-_])*(?:password|passwd|secret|token|credential|auth|api[_-]?key|cookie)'
+    r'(?:[-_][A-Za-z0-9]+)*|--header|--data|--data-raw|--user))'
+    r'(?:(?P<equals>=)(?P<equal_value>[^\s]+)|(?P<space>\s+)'
+    r'(?P<space_value>"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^\s]+))')
+_CURL_SENSITIVE_OPTION = re.compile(
+    r'(?i)(?P<prefix>(?:^|\s)(?:-H|-u))'
+    r'(?:(?P<equals>=)(?P<equal_value>[^\s]+)|(?P<space>\s+)'
+    r'(?P<space_value>"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^\s]+)'
+    r'|(?P<attached>[^\s]+))')
+_MYSQL_PASSWORD_OPTION = re.compile(
+    r'(?i)(?P<prefix>(?:^|\s)-p)'
+    r'(?:(?P<equals>=)(?P<equal_value>[^\s]+)|(?P<space>\s+)'
+    r'(?P<space_value>"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^\s]+)'
+    r'|(?P<attached>[^\s]+))')
+_COMMAND_ASSIGNMENT = re.compile(
+    r'(?i)(?P<prefix>\b(?P<key>[A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*)'
+    r'(?P<value>"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^\s;]+)')
+_SENSITIVE_ASSIGNMENT_KEY = re.compile(
+    r'(?i)(?:password|passwd|secret|token|credential|api[_-]?key|auth[_-]?key)')
+_PATCH_FILE = re.compile(r'^\*\*\* (?:Add|Update|Delete) File: (.+)$', re.MULTILINE)
 _LABELS = {
     'read_file': 'Read file', 'search_files': 'Search files', 'web_search': 'Search web',
     'web_extract': 'Read webpage', 'browser_exec': 'Browse web', 'terminal': 'Run command',
@@ -73,37 +90,42 @@ def _short(text, cap=160):
 
 
 def _command_detail(arguments):
-    """Safe shell/script preview, checked in full before truncating."""
+    """Show the command structure while masking sensitive values."""
     if not isinstance(arguments, dict):
         return None
     command = arguments.get('command')
-    if not isinstance(command, str) or not command.strip() or _utf16_length(command) > 4000:
+    if not isinstance(command, str) or not command.strip() or _utf16_length(command) > 16000:
         return None
     if any(ord(char) < 32 and char not in '\n\t' for char in command):
         return None
-    if _UNSAFE_COMMAND.search(command):
-        return None
-    try:
-        # Keep quotes so a Python -c body is not mistaken for a shell assignment.
-        shell = shlex.shlex(command, posix=False, punctuation_chars=True)
-        shell.whitespace_split = True
-        shell.commenters = ''
-        if any(re.match(r'^[A-Za-z_][A-Za-z_0-9]*=', word) for word in shell):
-            return None
-    except ValueError:
-        return None
-    for url in re.findall(r'https?://[^\s\'"<>]+', command, flags=re.IGNORECASE):
-        # Arbitrary query values may be credentials even without a known key name.
-        if any(mark in url for mark in '@?#') or _safe_url(url) is None:
-            return None
     try:
         clean = redact_for_egress(command)
     except Exception:
         return None
-    if not isinstance(clean, str) or clean == REDACTION_UNAVAILABLE or 'redacted' in clean.lower() or clean != command:
-        return None  # A redaction implies command structure may still reveal sensitive context.
-    if _safe_text(command, multiline=True) is None:
+    if not isinstance(clean, str) or clean == REDACTION_UNAVAILABLE:
         return None
+    clean = _SENSITIVE_COMMAND_OPTION.sub(
+        lambda match: match.group('prefix') + ('=' if match.group('equals') else ' ') + '***', clean)
+    if re.search(r'(?i)\bcurl\b', clean):
+        clean = _CURL_SENSITIVE_OPTION.sub(
+            lambda match: match.group('prefix') + ('=' if match.group('equals') else
+                                                   ' ' if match.group('space') else '') + '***', clean)
+    if re.search(r'(?i)\b(?:mysql|mariadb)\b', clean):
+        clean = _MYSQL_PASSWORD_OPTION.sub(
+            lambda match: match.group('prefix') + ('=' if match.group('equals') else
+                                                   ' ' if match.group('space') else '') + '***', clean)
+    clean = _COMMAND_ASSIGNMENT.sub(
+        lambda match: match.group('prefix') + '***'
+        if _SENSITIVE_ASSIGNMENT_KEY.search(match.group('key')) else match.group(0), clean)
+    clean = _COMMAND_URL.sub(lambda match: _safe_command_url(match.group(0)) or '[redacted-url]', clean)
+    # Redact again after normalization and require a stable egress-safe result.
+    try:
+        second = redact_for_egress(clean)
+    except Exception:
+        return None
+    if not isinstance(second, str) or second == REDACTION_UNAVAILABLE or not _valid_text(second, multiline=True):
+        return None
+    clean = second
     return _short(clean, 600)
 
 
@@ -162,6 +184,19 @@ def _safe_url(value):
         return clean if _safe_text(clean) is not None else None
     except (ValueError, UnicodeError):
         return None
+
+
+def _safe_command_url(value):
+    """Keep a command URL's public location, never arbitrary query values."""
+    clean = _safe_url(value)
+    if clean is None:
+        return None
+    parts = urlsplit(clean)
+    query = '&'.join(
+        f'{quote(key, safe="")}=***' if item else f'{quote(key, safe="")}='
+        for key, item in parse_qsl(parts.query, keep_blank_values=True)
+    )
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ''))
 
 
 def _field(arguments, key):
@@ -233,8 +268,24 @@ def _summary(name, args):
         return [field for field in fields if field]
     if bare == 'search_files':
         return [field for key in ('pattern', 'path') if (field := _field(args, key))]
-    if bare in {'write_file', 'patch'}:
+    if bare == 'write_file':
         return [field for field in [_field(args, 'path')] if field]
+    if bare == 'patch':
+        direct = _field(args, 'path')
+        if direct:
+            return [direct]
+        patch = args.get('patch')
+        if args.get('mode') != 'patch' or not isinstance(patch, str) or len(patch) > 4_000_000:
+            return []
+        paths = []
+        for raw in _PATCH_FILE.findall(patch):
+            path = _safe_text(raw)
+            if path and path not in paths:
+                paths.append(path)
+        fields = [f'path={_short(path, 160)}' for path in paths[:5]]
+        if len(paths) > 5:
+            fields.append('…')
+        return fields
     if bare == 'skill_view':
         return [field for field in [_field(args, 'name')] if field]
     return []

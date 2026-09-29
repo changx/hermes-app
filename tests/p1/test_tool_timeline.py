@@ -124,7 +124,8 @@ def test_command_privacy_unknown_parallel_and_overflow(monkeypatch):
            'python -m pytest ' + 'x'*4001]
     for command in bad:
         projected = public_tool_calls({'tool_calls':[call('t','terminal',{'command':command})]})
-        assert 'detail' not in projected[0], command[:55]
+        assert 'detail' in projected[0], command[:55]
+        assert secret not in projected[0]['detail']
     assert public_tool_calls({'tool_calls':[call('p','multi_tool_use.parallel',{'tool_uses':[
         {'recipient_name':'terminal','parameters':{'command':secret}}]})]}) == [
             {'id':'p','name':'multi_tool_use.parallel','label':'Run tools in parallel'}]
@@ -134,8 +135,10 @@ def test_command_privacy_unknown_parallel_and_overflow(monkeypatch):
             {'id':'bad','name':'terminal','label':'Run command'}]
     assert public_tool_calls({'tool_calls':'not json'}) == []
     assert public_tool_calls({'tool_calls':[call('😀'*101, 'web_search')]}) == []
-    assert 'detail' not in public_tool_calls({'tool_calls':[
+    emoji = public_tool_calls({'tool_calls':[
         call('emoji','terminal',{'command':'python -m pytest ' + '😀'*2000})]})[0]
+    assert emoji['detail'].endswith('…')
+    assert len(emoji['detail'].encode('utf-16-le')) // 2 <= 600
     projected = public_tool_calls({'tool_calls':[call(str(i),'web_search') for i in range(131)]})
     assert len(projected) == 128
     assert projected[-1] == {'id':'127','name':'web_search','label':'This and 3 more tool calls are not shown individually'}
