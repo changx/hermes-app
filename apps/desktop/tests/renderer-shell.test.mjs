@@ -84,6 +84,18 @@ test("responsive layout hides panes without conditionally unmounting them", () =
   assert.match(styles, /prefers-reduced-motion: reduce/);
 });
 
+test("window stays fixed while each pane scrolls its own content", () => {
+  assert.match(styles, /html,\s*body,\s*#root\s*{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.desktop-shell\s*{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.pane\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.channels-pane\s*{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/s);
+  assert.match(styles, /\.threads-pane\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
+  assert.match(styles, /\.threads-pane \.item-list\s*{[^}]*flex:\s*1;/s);
+  assert.match(styles, /\.item-list\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s);
+  assert.match(styles, /\.timeline-wrap\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.message-list\s*{[^}]*height:\s*100%;[^}]*overflow:\s*auto;/s);
+});
+
 test("renderer has a user-safe top-level error boundary", () => {
   assert.match(rendererEntry, /<ShellErrorBoundary>/);
   assert.match(errorBoundary, /getDerivedStateFromError/);

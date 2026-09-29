@@ -5,6 +5,13 @@
   font-synthesis: none;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -18,13 +25,17 @@ body {
 .desktop-shell {
   display: grid;
   grid-template-columns: minmax(180px, 0.72fr) minmax(240px, 0.95fr) minmax(420px, 2.1fr);
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: #fff;
 }
 
 .pane {
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   border-inline-end: 1px solid #d9d5ce;
 }
 
@@ -113,14 +124,16 @@ textarea:disabled {
 .pairing-actions button { min-height: 40px; border: 0; border-radius: 10px; padding: 0 16px; color: #fff; background: #53504a; font-weight: 650; }
 .pairing-actions .secondary { border: 1px solid #cfc9c0; color: #514d47; background: #fff; }
 .connection-notice { min-height: 22px; text-align: center; }
-.item-list { overflow: auto; }
+.item-list { min-height: 0; overflow: auto; }
 .list-item { display: grid; width: 100%; gap: 4px; border: 0; border-bottom: 1px solid rgb(217 213 206 / 65%); padding: 13px 18px; color: #393631; background: transparent; text-align: start; }
 .list-item:hover,
 .list-item.selected { background: rgb(255 255 255 / 68%); }
 .list-item span { overflow: hidden; color: #746e66; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .thread-item { grid-template-columns: minmax(0, 1fr) auto; }
 .unread-count { min-width: 20px; border-radius: 999px; padding: 2px 6px; color: #fff !important; background: #53504a; text-align: center; }
-.channels-pane { display: grid; grid-template-rows: auto 1fr auto; }
+.channels-pane { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.threads-pane { display: flex; flex-direction: column; }
+.threads-pane .item-list { flex: 1; }
 .sidebar-footer { padding: 12px 18px; border-top: 1px solid #d9d5ce; }
 .text-button { border: 0; padding: 0; color: #746e66; background: transparent; font: inherit; font-size: 12px; }
 
