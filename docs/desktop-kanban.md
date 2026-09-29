@@ -58,14 +58,14 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 | 状态 | 卡片 |
 | --- | --- |
-| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架；`DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动 |
-| In progress | `DESK-D0-06` 未签名 `.app` 打包（自动构建已通过，等待 Mac artifact 验收） |
-| Backlog | `DESK-D0-07` HermesClient transport 与 React adapter；`DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
+| Done | `DESK-D0-01` 桌面 workspace 与可重复构建基线；`DESK-D0-02` Electron main/preload 安全壳；`DESK-D0-03` React 三栏与响应式骨架；`DESK-D0-04` 安全自动回归；`DESK-D0-05` Mac 开发启动；`DESK-D0-06` 未签名 `.app` 打包 |
+| Ready | `DESK-D0-07` HermesClient transport 与 React adapter |
+| Backlog | `DESK-D0-08` 设备配对；`DESK-D0-09` Keychain；`DESK-D0-10` 只读真实三栏；`DESK-D0-11` D0 总验收 |
 | Backlog | `DESK-D1-01` 至 `DESK-D1-16` 完整聊天闭环 |
 | Backlog | `DESK-D2-01` 至 `DESK-D2-09` 可靠性与桌面体验 |
 | Deferred | `DESK-D3-01` 签名/notarization；`DESK-D3-02` DMG/更新/公开发布 |
 
-当前已完成安全壳、响应式 renderer、安全回归和 Apple Silicon 开发启动；正在验证可复制启动的未签名 `.app`。
+当前已完成安全壳、响应式 renderer、安全回归、Apple Silicon 开发启动和可复制启动的未签名 `.app`；下一张执行卡为共享客户端接入。
 
 ---
 
@@ -139,7 +139,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 
 ### DESK-D0-06 — 未签名 `.app` 打包与回滚
 
-- **状态**：In progress（自动构建已通过，等待 Mac 复制、启动、退出和重开验收）。
+- **状态**：Done（自动检查及 Mac 复制、启动、退出和重开验收均通过）。
 - **目标**：产出可复制启动的 arm64 未签名开发 `.app`。
 - **范围**：打包器选择与锁定、bundle ID、应用名称、图标占位、最低 macOS 版本、arm64 target、artifact 清理和回滚说明。
 - **验收**：
@@ -148,10 +148,11 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
   3. 记录 SHA-256、大小、最低系统版本和回滚删除步骤。
 - **不包含**：DMG、Developer ID、notarization、自动更新。
 - **依赖**：`DESK-D0-05`。
-- **证据**：artifact manifest、校验和和真机截图；artifact 本体不提交 Git。
+- **证据**：[`docs/desktop/evidence/DESK-D0-06/verification.md`](desktop/evidence/DESK-D0-06/verification.md)；artifact 本体不提交 Git。
 
 ### DESK-D0-07 — HermesClient transport 与 React adapter
 
+- **状态**：Ready。
 - **目标**：用桌面浏览器 transport 实例化共享 `HermesClient`，以薄 adapter 接入 React。
 - **范围**：HTTP/WebSocket/binary transport、`useSyncExternalStore`、稳定 snapshot、选择器、连接状态和用户可见错误分类、开发 base URL 配置。
 - **验收**：
