@@ -20,6 +20,17 @@
 
 完整 mobile 313 项测试、TypeScript、iOS/Android Expo 导出及 diff check 通过。首次使用额外 renderItem 包装层导致 3 项消息布局测试失败；改为保持原 cell 结构的 CellRendererComponent 后通过。没有修改依赖或协议。
 
-本轮为隔离分支 `jamie/session-history-anchor` 的候选修正，尚未发布。iPhone 的真实松手高度、原生 refresh dismissal 和动态 Markdown 高度仍待真机测试；模拟测试不等同于真机无跳动验收。
+本轮候选在隔离分支 `jamie/session-history-anchor` 验证后，经 Jamie 明确要求“发布”，将提交 `b8b7be7` 快进合入 main 并更新手机测试入口。iPhone 的真实松手高度、原生 refresh dismissal 和动态 Markdown 高度仍待真机测试；模拟测试不等同于真机无跳动验收。
+
+## 授权发布记录
+
+- 仅重启用户级 `hermes-app-expo.service`；Jamie 和开发 Gateway 的 PID、启动时间、运行状态保持不变。
+- 发布目录重新执行 TypeScript、完整 mobile 313/313 测试通过。
+- 公网 iOS/Android manifest 与各自实际 launchAsset 均确认 SDK57、现有 Expo 账户、测量 cell renderer、松手高度校正及回弹距离补偿。公网资源通过不等同于真机体验通过。
+- 测试入口保持 `exps://agent.tuly.space`，需要在 Expo Go 完整 Reload。
+- 回滚分支 `rollback/session-history-anchor-before-b8b7be7` 指向发布前 `e6272fc`。恢复时仅回退本次客户端变化，不覆盖其他任务工作区文件。
+- 发布期间原有 `docs/dev-environment.md` 和 `docs/dev-lcm-fix.md` 非本任务修改完整保留，发布前后 SHA-256 核对一致。
+- 私有证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-history-anchor/release/release-verification.json`，包含两平台 bundle 哈希、Gateway 前后状态、测试日志。
+- 未推送远程、未发布签名安装包、未升级 Hermes 核心或修改服务端。
 
 参考：React Native [ScrollView](https://reactnative.dev/docs/scrollview#maintainvisiblecontentposition)（本轮读取）；本地核对当前 RN Fabric 原生位置保持算法和键盘组件透传。没有改依赖源码。
