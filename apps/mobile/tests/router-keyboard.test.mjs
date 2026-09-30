@@ -49,7 +49,7 @@ function timeline(bottom = 34, os = 'ios', receipts = []) {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',
       KeyboardStickyView: 'KeyboardStickyView', KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
+    './historyAnchor': {}, './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
   }).ChatTimeline({ threadId: 't_one', rows: [], text: '', receipts, interactions: [], answers: {} }, {});
   const list = find(tree, 'FlatList').props;
   return { tree, list, scroll: list.renderScrollComponent(list), sticky: find(tree, 'KeyboardStickyView').props };

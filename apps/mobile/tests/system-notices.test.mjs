@@ -39,7 +39,7 @@ function loadTimeline() {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardStickyView: 'KeyboardStickyView',
       KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
+    './historyAnchor': {}, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
     './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false },
   };

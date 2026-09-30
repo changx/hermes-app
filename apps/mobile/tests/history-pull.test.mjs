@@ -6,6 +6,7 @@ import ts from 'typescript';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
+import * as historyAnchor from '../src/historyAnchor.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value },
@@ -18,7 +19,7 @@ const modules = {
   'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
-  './timeline': timeline, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
+  './historyAnchor': historyAnchor, './timeline': timeline, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
   './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false }
 };
 const output = { exports: {} };
@@ -27,6 +28,7 @@ let nextFrame = 0;
 runInNewContext(ts.transpileModule(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText,
   { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; },
+    setTimeout, clearTimeout,
     requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; }, cancelAnimationFrame: id => frames.delete(id) });
 const { ChatTimeline } = output.exports;
 const row = ref => ({ key: `ref:${ref}`, refSeq: ref, role: 'assistant', text: `Message ${ref}` });
@@ -38,9 +40,16 @@ async function mount(overrides = {}) {
     receipts: [], interactions: [], answers: {}, onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false, ...overrides };
   let renderer;
   await act(async () => { renderer = create(React.createElement(ChatTimeline, props), { createNodeMock: node =>
-    node.type === 'FlatList' ? { scrollToOffset: value => scrolls.push(value) } : null }); });
+    node.type === 'FlatList' ? { scrollToOffset: value => scrolls.push(value) }
+      : node.type === 'BlurTargetView' ? { measureInWindow: cb => cb(0, 100, 400, 600) } : null }); });
   const list = () => renderer.root.findByType('FlatList').props;
   return { renderer, list, positions, scrolls,
+    cell(item, geometry) {
+      const cell = list().CellRendererComponent({ item, children: null });
+      cell.props.ref({ measureInWindow: cb => cb(0, geometry.top, 400, geometry.height) });
+      return cell;
+    },
+    async flush() { await act(async () => { const pending = [...frames.values()]; frames.clear(); for (const fn of pending) fn(); }); },
     async update(values) { props = { ...props, ...values }; await act(async () => renderer.update(React.createElement(ChatTimeline, props))); },
     async close() { await act(async () => renderer.unmount()); } };
 }
@@ -103,6 +112,106 @@ test('a stale pull callback cannot load history after route loses focus', async 
   await act(async () => { await oldPull(); });
   assert.equal(calls, 0);
   await h.close();
+});
+
+const scrollEvent = (y, height = 1400) => ({ nativeEvent: {
+  contentOffset: { y }, contentSize: { height }, layoutMeasurement: { height: 600 }, contentInset: { bottom: 0 }
+} });
+
+test('prepend preserves the middle message at its released pull position, not the old offset or new top', async () => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const h = await mount({ rows: [row(31), row(32)], onOlder: () => pending });
+  const first = { top: 180, height: 100 }, middle = { top: 350, height: 120 };
+  h.cell(row(31), first); const middleCell = h.cell(row(32), middle);
+  await act(async () => {
+    h.list().onScrollBeginDrag(); h.list().onScroll(scrollEvent(-80));
+    h.list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -80 }, velocity: { y: 1 } } });
+  });
+  let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await h.update({ rows: [row(1), row(31), row(32)], startRef: 1 });
+  // Native first-item anchoring/rebound left the middle record 70pt too low.
+  middle.top = 420;
+  await act(async () => { h.list().onScroll(scrollEvent(400, 2200)); finish(); await request; });
+  await h.flush();
+  assert.equal(h.scrolls.at(-1).offset, 470);
+  assert.equal(h.scrolls.at(-1).animated, false);
+  assert.equal(middle.top - (h.scrolls.at(-1).offset - 400), 350, 'same record stays at released screen coordinate');
+  assert.deepEqual(h.list().data.map(item => item.key), ['ref:1', 'ref:31', 'ref:32']);
+  assert.equal(h.positions.at(-1).following, false);
+  // Already-correct native anchoring must not be compensated twice.
+  middle.top = 350;
+  const count = h.scrolls.length;
+  await act(async () => { h.list().onScroll(scrollEvent(470, 2200)); middleCell.props.onLayout({}); });
+  await h.flush();
+  assert.equal(h.scrolls.length, count);
+  // A later height change above the anchor is corrected, not total content growth below it.
+  middle.top = 380;
+  await act(async () => { middleCell.props.onLayout({}); });
+  await h.flush();
+  assert.equal(h.scrolls.at(-1).offset, 500);
+  // The next deliberate gesture takes ownership; no correction fights the reader.
+  const after = h.scrolls.length;
+  await act(async () => { h.list().onScrollBeginDrag(); middle.top = 450; middleCell.props.onLayout({}); });
+  await h.flush();
+  assert.equal(h.scrolls.length, after);
+  await h.close();
+});
+
+test('measurements after rebound restore the full released gap and blur cancels pending correction', async () => {
+  const h = await mount({ onOlder: async () => {} });
+  const geometry = { top: 112, height: 180 };
+  const cell = h.cell(row(31), geometry);
+  await act(async () => {
+    h.list().onScrollBeginDrag(); h.list().onScroll(scrollEvent(-96));
+    h.list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -96 } } });
+    h.list().onScroll(scrollEvent(0)); // rebound before native measurement returns
+    await h.list().refreshControl.props.onRefresh();
+  });
+  geometry.top = 612;
+  await act(async () => { h.list().onScroll(scrollEvent(0, 2000)); });
+  await h.flush();
+  assert.equal(h.scrolls.at(-1).offset, 404, '500pt prepend minus the retained 96pt pull gap');
+  const count = h.scrolls.length;
+  geometry.top = 800;
+  await act(async () => { cell.props.onLayout({}); });
+  await h.update({ active: false });
+  await h.flush();
+  assert.equal(h.scrolls.length, count);
+  await h.close();
+});
+
+test('refresh fired before drag end uses final release height, not the threshold height', async () => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const h = await mount({ onOlder: () => pending });
+  const geometry = { top: 172, height: 180 };
+  h.cell(row(31), geometry);
+  await act(async () => { h.list().onScrollBeginDrag(); h.list().onScroll(scrollEvent(-60)); });
+  let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await act(async () => {
+    h.list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -100 }, velocity: { y: 1 } } });
+    geometry.top = 612;
+    h.list().onScroll(scrollEvent(0, 2000));
+    finish(); await request;
+  });
+  await h.flush();
+  assert.equal(h.scrolls.at(-1).offset, 400, 'the full final 100pt gap is retained');
+  await h.close();
+});
+
+test('anchor geometry uses stable identity and real middle row measurement', () => {
+  const anchor = historyAnchor.middleHistoryAnchor([
+    { key: 'offscreen', top: -400, height: 100 }, { key: 'first', top: 150, height: 100 },
+    { key: 'middle', top: 350, height: 100 }, { key: 'bottom', top: 650, height: 100 }
+  ], 100, 600);
+  assert.deepEqual(anchor, { key: 'middle', top: 250 });
+  assert.equal(historyAnchor.historyAnchorOffset(anchor, 950, 100, 40), 640);
+  assert.equal(historyAnchor.historyAnchorOffset(anchor, 350, 100, 640), null);
+  assert.equal(historyAnchor.historyAnchorOffset(anchor, 110, 100, 0), null, 'no repeated command at the top boundary');
+  assert.equal(historyAnchor.middleHistoryAnchor([], 100, 600), null);
 });
 
 test('App passes the history promise through so progress covers network pagination', () => {
