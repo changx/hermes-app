@@ -23,7 +23,16 @@
 
 ## 交付边界
 
-本轮候选在隔离分支 `jamie/session-flashlist-history`。未更新运行入口、未重启 Expo/Gateway，未动其他任务工作区文档；发布需对应授权。
+本轮候选在隔离分支 `jamie/session-flashlist-history` 验证后，Jamie 明确要求“改完继续部署上线”。提交 `ba23bc7` 已快进合入 main，并更新现有手机测试入口。没有动其他任务的工作区文档。
+
+## 授权发布记录
+
+- 发布目录按锁文件安装依赖、生成 Markdown renderer，TypeScript 和完整 mobile 312/312 再次通过；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 和各自实际 launchAsset 均确认实际 FlashList 2.3.2 客户端、列表内部位置保持、原键盘包装、受控刷新；自制历史锚点和松手计时器不存在。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态与本次发布前一致；其他任务的两个文档文件 SHA-256 保持一致。
+- 测试入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。未远程推送、未发布签名安装包、未升级 Hermes 核心。
+- 回滚分支 `rollback/session-flashlist-history-before-ba23bc7` 指向发布前 `fe59c7d`。回滚除了客户端文件，还需要恢复之前的 mobile lockfile/依赖，然后仅重启 Expo；不得覆盖其他任务的工作区修改。
+- 私有发布证据：下方目录 `release/release-verification.json`，包含实际公网 bundle 哈希、版本与检查项；另保留发布目录测试、安装与 Gateway 前后状态日志。
 
 实际 iPhone 的“能轻松继续阅读”验收仍待确认：多次 prepend、长短 Markdown、图片/图表/附件动态高度、键盘显隐和慢网/错误恢复。库已有上游实现不等于本项目真机已经通过。允许轻微移动，不接受跳到陌生消息或重新寻找阅读位置。
 
