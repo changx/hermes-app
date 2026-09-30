@@ -22,6 +22,16 @@ Jamie 反馈已发布的 `b8b7be7` 在真实操作中仍跳到不明确的位置
 
 旧代码混合不同时间的屏幕测量和滚动偏移是代码层风险；未将它冒充为已在 iPhone 定位的唯一原因。Jamie 的实机反馈说明之前的模拟测试不足以证明体验正确。本轮也未获得实际 iPhone 无跳动验收，不能保证原生插入/刷新动画间没有可见瞬态。
 
-本轮候选位于隔离分支 `jamie/session-release-delay`，尚未更新运行入口。没有改服务器、协议、核心、依赖、Gateway 或另一个任务的文档。
+本轮候选在隔离分支 `jamie/session-release-delay` 验证后，经 Jamie 明确要求“发布”，将提交 `d13f2a4` 快进合入 main 并更新运行入口。没有改服务器、协议、核心、依赖、Gateway 或另一个任务的文档。
+
+## 授权发布记录
+
+- 发布目录再次通过 TypeScript 和 mobile 317/317；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 与各自实际 launchAsset 均确认松手计时、1000ms 延迟、固定原消息快照、committed cell layout 和绝对目标定位；旧混合时间补偿代码已不在组件中。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态与本次发布前一致；其他任务的两个文档文件 SHA-256 保持一致。
+- 回滚分支 `rollback/session-release-delay-before-d13f2a4` 指向发布前 `e36ca74`；回滚不得覆盖其他任务工作区修改。
+- 测试入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。公网资源通过不等同于 iPhone 无跳动验收，真机仍待确认。
+- 私有发布证据在下方目录的 `release/release-verification.json`，包含两平台实际 bundle 哈希和验证项；另保留发布目录测试日志、Gateway 前后状态。
+- 未远程推送，未发布签名安装包，没有升级 Hermes 核心或重启 Gateway。
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-release-delay/`。
