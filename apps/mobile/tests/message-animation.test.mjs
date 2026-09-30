@@ -48,7 +48,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
-    './historyAnchor': {}, './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false },
+    '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false },
     './receiptState': { hasRunningReceipt }
   };
   const output = { exports: {} };

@@ -1,5 +1,6 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, TextInput } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
@@ -8,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
-import { releasedHistoryAnchor, historyAnchorOffset, type HistoryAnchor, type MeasuredHistoryRow } from './historyAnchor';
+
 import { MessageContent } from './MessageContent';
 import { MessageTime } from './MessageTime';
 import { messageNeedsViewport } from './messageMarkdown';
@@ -16,6 +17,7 @@ import { hasRunningReceipt } from './receiptState';
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
+const historyPosition = { disabled: false };
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode }) {
   const own = row.role === 'user';
@@ -88,29 +90,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       applyWorkaroundForContentInsetHitTestBug
       offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
   [bottom, onContentInsetChange]);
-  const list = useRef<FlatList<TimelineRow>>(null);
+  const list = useRef<FlashListRef<TimelineRow>>(null);
+
   const blurTarget = useRef<View | null>(null);
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
   const [refreshingHistory, setRefreshingHistory] = useState(false);
   const historyPullPending = useRef(false);
   const offset = useRef(position?.offset ?? 0);
-  const rawOffset = useRef(position?.offset ?? 0);
-  const releasedOffset = useRef<number | null>(null);
-  const releasedAt = useRef<number | null>(null);
-  const releaseWaiter = useRef<(() => void) | null>(null);
-  const historyDelay = useRef<{ timer: ReturnType<typeof setTimeout>; cancel: () => void } | null>(null);
-  const historyAnchor = useRef<HistoryAnchor | null>(null);
-  const releaseSnapshot = useRef<{ anchor: HistoryAnchor | null; contentTop: number | null } | null>(null);
   const historyReading = useRef(false);
-  const historyCells = useRef(new Map<string, MeasuredHistoryRow>());
-  const historyCellRefs = useRef(new Map<string, (view: View | null) => void>());
-  const viewportTop = useRef(0);
-  const originalAnchorContentTop = useRef<number | null>(null);
-  const commandedAnchorOffset = useRef<number | null>(null);
-  const historyProps = useRef(props); historyProps.current = props;
-  const anchorFrame = useRef<number | null>(null);
-  const anchorGeneration = useRef(0);
   const viewport = useRef(0), content = useRef(0), dragging = useRef(false), gestureMomentum = useRef(false), momentumEligible = useRef(false);
   const keyboardMoving = useRef(false);
   const nativeMoving = useSharedValue(false);
@@ -131,52 +119,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   active.current = props.active;
   const followAnimation = useRef(false);
   const pendingFollow = useRef(false);
-  const clearHistoryAnchor = useCallback(() => {
-    historyAnchor.current = null; historyReading.current = false; anchorGeneration.current++;
-    releaseSnapshot.current = null;
-    commandedAnchorOffset.current = null;
-    releaseWaiter.current?.(); releaseWaiter.current = null;
-    historyDelay.current?.cancel(); historyDelay.current = null;
-    if (anchorFrame.current !== null) cancelAnimationFrame(anchorFrame.current);
-    anchorFrame.current = null;
+  const clearHistoryReading = useCallback(() => {
+    historyReading.current = false;
   }, []);
-
-  const applyHistoryAnchor = useCallback(() => {
-    const anchor = historyAnchor.current;
-    if (!active.current || !anchor || historyPullPending.current || dragging.current || gestureMomentum.current || momentumEligible.current || keyboardMoving.current) return;
-    const row = historyCells.current.get(anchor.key);
-    // Only the original cell's committed layout can define the target.
-    if (!row || row.top === originalAnchorContentTop.current) return;
-    const target = historyAnchorOffset(anchor, row.top, viewportTop.current, rawOffset.current);
-    if (target !== null && target !== commandedAnchorOffset.current) {
-      commandedAnchorOffset.current = target;
-      list.current?.scrollToOffset({ offset: target, animated: false });
-    }
-  }, []);
-  const restoreHistoryAnchor = useCallback(() => {
-    if (!active.current || !historyAnchor.current || historyPullPending.current || anchorFrame.current !== null) return;
-    anchorFrame.current = requestAnimationFrame(() => {
-      anchorFrame.current = null;
-      applyHistoryAnchor();
-    });
-  }, [applyHistoryAnchor]);
-  const historyCellRef = useCallback((key: string) => {
-    let callback = historyCellRefs.current.get(key);
-    if (!callback) {
-      callback = view => { if (!view) { historyCells.current.delete(key); historyCellRefs.current.delete(key); } };
-      historyCellRefs.current.set(key, callback);
-    }
-    return callback;
-  }, []);
-  const renderHistoryCell = useCallback(({ item, children, onLayout, style, onFocusCapture }: React.ComponentProps<NonNullable<FlatList<TimelineRow>['props']['CellRendererComponent']>>) =>
-    <View ref={historyCellRef(item.key)} collapsable={false} style={style} {...{ onFocusCapture }}
-      onLayout={event => {
-        onLayout?.(event);
-        historyCells.current.set(item.key, { key: item.key, top: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height });
-        // Correct as soon as the native cell layout is reported, without an
-        // extra animation frame after the insertion has already been painted.
-        applyHistoryAnchor();
-      }}>{children}</View>, [applyHistoryAnchor, historyCellRef]);
   const scheduleFollow = useCallback((animate = false) => {
     if (!active.current) return;
     // Automatic content/geometry corrections must never inherit an older
@@ -200,8 +145,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const setKeyboardMoving = useCallback((moving: boolean) => {
     keyboardMoving.current = moving;
     if (!moving && pendingFollow.current) scheduleFollow();
-    if (!moving) restoreHistoryAnchor();
-  }, [scheduleFollow, restoreHistoryAnchor]);
+  }, [scheduleFollow]);
   useKeyboardHandler({
     onStart: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
     onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
@@ -218,11 +162,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         pendingFollow.current = false; followAnimation.current = false;
       }
     });
-    return () => { mounted = false; active.current = false; clearHistoryAnchor(); sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
+    return () => { mounted = false; active.current = false; clearHistoryReading(); sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
   useEffect(() => {
     if (props.active) return;
-    clearHistoryAnchor();
+    clearHistoryReading();
     setRefreshingHistory(false);
     if (frame.current !== null) {
       cancelAnimationFrame(frame.current);
@@ -243,38 +187,16 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     following.current = false; pendingFollow.current = false; followAnimation.current = false;
     setShowLatest(true); savePosition();
     setRefreshingHistory(true);
-    const generation = ++anchorGeneration.current;
     try {
-      // onRefresh can arrive while the finger is still down. The delay starts
-      // at drag-end, never at the native refresh threshold.
-      if (dragging.current) await new Promise<void>(resolve => { releaseWaiter.current = resolve; });
-      if (!active.current || generation !== anchorGeneration.current) return;
-      if (!historyAnchor.current) {
-        const keys = new Set(rows.map(row => row.key));
-        historyAnchor.current = releaseSnapshot.current ? releaseSnapshot.current.anchor : releasedHistoryAnchor([...historyCells.current.values()].filter(row => keys.has(row.key)), releasedOffset.current ?? rawOffset.current, viewport.current, viewportTop.current);
-        originalAnchorContentTop.current = releaseSnapshot.current?.contentTop ?? (historyAnchor.current ? historyCells.current.get(historyAnchor.current.key)?.top ?? null : null);
-      }
-      // No measured original record means there is no safe reading anchor.
-      if (!historyAnchor.current) return;
-      const delay = Math.max(0, 1000 - (Date.now() - (releasedAt.current ?? Date.now())));
-      await new Promise<void>(resolve => {
-        const timer = setTimeout(() => { historyDelay.current = null; resolve(); }, delay);
-        historyDelay.current = { timer, cancel: () => { clearTimeout(timer); resolve(); } };
-      });
-      if (!active.current || generation !== anchorGeneration.current || !historyProps.current.hasOlder || historyProps.current.locatingBusy) return;
-      await historyProps.current.onOlder();
-    } catch (error) {
-      clearHistoryAnchor(); throw error;
+      await props.onOlder();
     } finally {
       historyPullPending.current = false;
-      applyHistoryAnchor();
       if (active.current) setRefreshingHistory(false);
     }
   };
-  useEffect(() => { if (!refreshingHistory) restoreHistoryAnchor(); }, [refreshingHistory, rows, restoreHistoryAnchor]);
   const followLatest = useCallback((animate = true) => {
     if (!active.current) return;
-    clearHistoryAnchor();
+    clearHistoryReading();
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
@@ -300,7 +222,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   useEffect(() => {
     const newOutput = agentOutputAdded(previousRows.current, rows);
     previousRows.current = rows;
-    // Commit the new FlatList data first, then use the native content extent.
+    // Commit the new FlashList data first, then use the native content extent.
     // Content-size may be unchanged (or onScroll may have observed it already).
     // New output should appear at the tail without visibly scrolling the whole
     // conversation. Explicit send/latest actions remain animated.
@@ -322,14 +244,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
-      <FlatList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
-        CellRendererComponent={renderHistoryCell}
+      <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments} />}
         renderScrollComponent={renderScrollComponent}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
-        initialNumToRender={14} maxToRenderPerBatch={10} windowSize={7} updateCellsBatchingPeriod={60}
-        // Keep the native visible-item anchor stable across prepends. Do not
-        // toggle it during programmatic follow/keyboard scrolling.
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        // List-owned position maintenance; no competing prepend scrolls.
+        maintainVisibleContentPosition={historyPosition}
+        // Rich message descendants have image/video/WebView state; use the
+        // supported non-recycling mode instead of reusing that state across messages.
+        maxItemsInRecyclePool={0}
         refreshControl={props.hasOlder || refreshingHistory ? <RefreshControl
           refreshing={refreshingHistory} onRefresh={pullOlder}
           enabled={props.active && props.hasOlder && !props.locatingBusy}
@@ -342,7 +264,6 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;
-          blurTarget.current?.measureInWindow?.((_x, top) => { if (active.current) { viewportTop.current = top; restoreHistoryAnchor(); } });
           if (!restored.current && content.current) {
             restored.current = true;
             if (following.current) scheduleFollow();
@@ -353,7 +274,6 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           if (!active.current) return;
           const previous = content.current;
           content.current = height;
-          restoreHistoryAnchor();
           if (!restored.current && viewport.current) {
             restored.current = true;
             if (following.current) scheduleFollow();
@@ -363,38 +283,23 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             && (!keyboardMoving.current || appended.current)) scheduleFollow();
           appended.current = false;
         }}
-        onScrollBeginDrag={() => { if (!active.current) return; clearHistoryAnchor(); releasedOffset.current = null; releasedAt.current = null; dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; followAnimation.current = false; pendingFollow.current = false; }}
+        onScrollBeginDrag={() => { if (!active.current) return; clearHistoryReading(); dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; followAnimation.current = false; pendingFollow.current = false; }}
         onMomentumScrollBegin={() => { gestureMomentum.current = momentumEligible.current; momentumEligible.current = false; }}
         onScrollEndDrag={e => {
-          releasedOffset.current = e.nativeEvent.contentOffset?.y ?? rawOffset.current;
-          releasedAt.current = Date.now();
-          if (releasedOffset.current < 0 || historyPullPending.current) {
-            const keys = new Set(rows.map(row => row.key));
-            const anchor = releasedHistoryAnchor([...historyCells.current.values()].filter(row => keys.has(row.key)), releasedOffset.current, viewport.current, viewportTop.current);
-            const contentTop = anchor ? historyCells.current.get(anchor.key)?.top ?? null : null;
-            releaseSnapshot.current = { anchor, contentTop };
-            if (historyPullPending.current) { historyAnchor.current = anchor; originalAnchorContentTop.current = contentTop; }
-          }
           dragging.current = false;
-          releaseWaiter.current?.(); releaseWaiter.current = null;
-          // Top-pull rebound is not reading momentum and must not block restoring
-          // the released gap after the prepend/refresh indicator settles.
-          momentumEligible.current = releasedOffset.current >= 0 && Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01;
-          savePosition(); restoreHistoryAnchor();
+          momentumEligible.current = e.nativeEvent.contentOffset?.y >= 0 && Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01;
+          savePosition();
         }}
-        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); restoreHistoryAnchor(); }}
+        onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
         onScroll={e => {
           if (!active.current) return;
-          rawOffset.current = e.nativeEvent.contentOffset.y;
-          if (commandedAnchorOffset.current !== null && Math.abs(rawOffset.current - commandedAnchorOffset.current) <= 0.5) commandedAnchorOffset.current = null;
           const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
-            (dragging.current || gestureMomentum.current) && !keyboardMoving.current && !historyPullPending.current && !historyReading.current && rawOffset.current >= 0, reportedInset.current);
+            (dragging.current || gestureMomentum.current) && !keyboardMoving.current && !historyPullPending.current && !historyReading.current && e.nativeEvent.contentOffset.y >= 0, reportedInset.current);
           offset.current = state.offset;
           viewport.current = state.geometry.viewport; content.current = state.geometry.height;
           scrollGeometry.current = state.geometry;
           if (state.following !== following.current) { following.current = state.following; setShowLatest(!state.following); }
           savePosition();
-          restoreHistoryAnchor();
         }} scrollEventThrottle={16} />
 
     </BlurTargetView>

@@ -13,6 +13,7 @@
     "export:ios": "expo export --platform ios --output-dir dist/ios --no-bytecode --max-workers 2"
   },
   "dependencies": {
+    "@shopify/flash-list": "2.3.2",
     "base64-js": "^1.5.1",
     "esbuild": "0.28.1",
     "expo": "57.0.25",
