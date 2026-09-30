@@ -1,5 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, AppState, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
@@ -44,7 +44,7 @@ interface Props {
   rows: TimelineRow[];
   startRef: number | null;
   hasOlder: boolean;
-  onOlder(): void;
+  onOlder(): void | Promise<void>;
   locatingMessage?: string;
   onLocateNext?: () => void;
   locatingBusy?: boolean;
@@ -91,6 +91,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const blurTarget = useRef<View | null>(null);
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
+  const [refreshingHistory, setRefreshingHistory] = useState(false);
+  const historyPullPending = useRef(false);
   const offset = useRef(position?.offset ?? 0);
   const viewport = useRef(0), content = useRef(0), dragging = useRef(false), gestureMomentum = useRef(false), momentumEligible = useRef(false);
   const keyboardMoving = useRef(false);
@@ -165,6 +167,17 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const callbacks = useRef({ onPosition, onVisibleRef, startRef });
   callbacks.current = { onPosition, onVisibleRef, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
+  const pullOlder = async () => {
+    if (!active.current || !props.hasOlder || props.locatingBusy || historyPullPending.current) return;
+    // A short conversation can still be at the tail when pulled from the top.
+    // Stop following before prepending so new history cannot jump to latest.
+    historyPullPending.current = true;
+    following.current = false; pendingFollow.current = false; followAnimation.current = false;
+    setShowLatest(true); savePosition();
+    setRefreshingHistory(true);
+    try { await props.onOlder(); }
+    finally { historyPullPending.current = false; setRefreshingHistory(false); }
+  };
   const followLatest = useCallback((animate = true) => {
     if (!active.current) return;
     following.current = true; setShowLatest(false);
@@ -221,9 +234,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         // Keep the native visible-item anchor stable across prepends. Do not
         // toggle it during programmatic follow/keyboard scrolling.
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        refreshControl={props.hasOlder || refreshingHistory ? <RefreshControl
+          refreshing={refreshingHistory} onRefresh={pullOlder}
+          enabled={props.active && props.hasOlder && !props.locatingBusy}
+          accessibilityLabel="Load earlier messages" tintColor="#526780" colors={['#526780']} /> : undefined}
         ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
           {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>
-          : props.hasOlder ? <View style={styles.older}>{action('View earlier messages', props.onOlder, props.busy, true)}</View> : null}
+          : null}
         ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
         onViewableItemsChanged={viewability.current}
         onLayout={e => {

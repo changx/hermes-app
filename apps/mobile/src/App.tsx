@@ -420,7 +420,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
       locatingMessage={!located && !historyBusy ? pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
-      onOlder={() => { void loadOlder(); }}
+      onOlder={loadOlder}
       position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={markVisibleRead}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
