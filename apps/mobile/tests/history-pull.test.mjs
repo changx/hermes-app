@@ -6,12 +6,15 @@ import ts from 'typescript';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
+import { loadHistoryBlocks } from '../src/historyBlocks.ts';
+import { HermesClient } from '../../../packages/client/dist/index.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const source = readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8');
+const source = readFileSync(process.env.HISTORY_TIMELINE_SOURCE ?? new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8');
+const appHandlers = new Set();
 const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value },
   AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
-  AppState: { addEventListener: () => ({ remove() {} }) } };
+  AppState: { currentState: 'active', addEventListener: (_event, handler) => { appHandlers.add(handler); return { remove() { appHandlers.delete(handler); } }; } } };
 for (const name of ['Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
 // The app wiring tests substitute native list views; they are not device tests.
 const modules = {
@@ -37,16 +40,21 @@ const { ChatTimeline } = load(source, modules, {
 });
 const row = ref => ({ key: `ref:${ref}`, refSeq: ref, role: 'assistant', text: `Message ${ref}` });
 const event = (y, height = 1400) => ({ nativeEvent: { contentOffset: { y }, contentSize: { height }, layoutMeasurement: { height: 600 }, contentInset: { bottom: 0 } } });
-async function mount(overrides = {}) {
+async function mount(overrides = {}, { released = true } = {}) {
   frames.clear(); const positions = [], scrolls = [];
   let props = { active: true, threadId: 'th', rows: [row(31)], startRef: 31, hasOlder: true, onOlder: async () => {},
     onPosition: value => positions.push(value), onVisibleRef() {}, text: '', onText() {}, onSend() {},
     receipts: [], interactions: [], answers: {}, onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false, ...overrides };
   let renderer;
   await act(async () => { renderer = create(React.createElement(ChatTimeline, props), { createNodeMock: node =>
-    node.type === 'FlashList' ? { scrollToOffset: value => scrolls.push(value) } : null }); });
+    node.type === 'FlashList' ? { scrollToOffset: value => scrolls.push(value), getScrollResponder: () => ({ scrollToEnd: value => scrolls.push(value) }) } : null }); });
   const list = () => renderer.root.findByType('FlashList').props;
+  const release = async () => { await act(async () => list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -80 }, velocity: { y: 0 } } })); };
+  if (released) { await act(async () => list().onScrollBeginDrag()); await release(); }
   return { renderer, list, positions, scrolls,
+    release,
+    async begin() { await act(async () => list().onScrollBeginDrag()); },
+    async app(state) { await act(async () => { for (const handler of [...appHandlers]) handler(state); }); },
     async flush() { await act(async () => { const pending = [...frames.values()]; frames.clear(); for (const fn of pending) fn(); }); },
     async update(values) { props = { ...props, ...values }; await act(async () => renderer.update(React.createElement(ChatTimeline, props))); },
     async close() { await act(async () => renderer.unmount()); } };
@@ -72,7 +80,7 @@ test('FlashList owns position maintenance with stable keys, no top auto-jump and
   await h.close();
 });
 
-test('pull starts immediately without release delay, progress covers network, repeats suppressed', async () => {
+test('early refresh waits for release, then starts without a timer; progress covers network', async () => {
   let finish, calls = 0;
   const pending = new Promise(resolve => { finish = resolve; });
   const h = await mount({ onOlder: () => { calls++; return pending; } });
@@ -81,15 +89,117 @@ test('pull starts immediately without release delay, progress covers network, re
   assert.equal(h.list().renderScrollComponent({ refreshControl: control }).props.refreshControl, control);
   await act(async () => { h.list().onScrollBeginDrag(); h.list().onScroll(event(-80)); });
   let request; await act(async () => { request = control.props.onRefresh(); });
-  assert.equal(calls, 1);
+  assert.equal(calls, 0, 'finger still down: no cache or network load');
   assert.equal(h.list().refreshControl.props.refreshing, true);
   assert.equal(h.positions.at(-1).following, false);
   await act(async () => { await h.list().refreshControl.props.onRefresh(); });
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
+  await h.release();
+  assert.equal(calls, 1, 'drag-end starts immediately, no one-second wait');
   await h.update({ rows: [row(1), row(31)], startRef: 1, hasOlder: false });
   assert.equal(h.list().refreshControl.props.refreshing, true);
   await act(async () => { finish(); await request; });
   assert.equal(h.list().refreshControl, undefined);
+  await h.close();
+});
+
+test('cached expansion also waits for drag-end, and release without refresh does not load', async () => {
+  let calls = 0;
+  const h = await mount({ onOlder: () => { calls++; } }, { released: false });
+  await h.begin(); await h.release(); assert.equal(calls, 0);
+  await h.begin(); let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await act(async () => { h.list().onScroll(event(-100)); h.list().onScroll(event(-140)); });
+  assert.equal(calls, 0);
+  await h.release(); await request; assert.equal(calls, 1);
+  assert.equal(h.list().refreshControl.props.refreshing, false);
+  await h.begin(); await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  assert.equal(calls, 1); await h.release(); await request; assert.equal(calls, 2, 'later gesture remains allowed');
+  await h.close();
+});
+
+test('refresh delivered before observed begin-drag still cannot start until observed release', async () => {
+  let calls = 0; const h = await mount({ onOlder: () => { calls++; } }, { released: false });
+  let request; await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  assert.equal(calls, 0); await h.begin(); assert.equal(calls, 0);
+  await h.release(); await request; assert.equal(calls, 1);
+  await h.close();
+});
+
+test('refresh delivered after drag-end starts immediately, not after a timeout', async () => {
+  let calls = 0; const h = await mount({ onOlder: () => { calls++; } });
+  await act(async () => { await h.list().refreshControl.props.onRefresh(); });
+  assert.equal(calls, 1); assert.doesNotMatch(source, /setTimeout|historyDelay|Date\.now/);
+  await h.close();
+});
+
+test('pending release is canceled by blur, background, unmount or explicit latest', async () => {
+  for (const action of ['blur', 'background', 'unmount', 'latest']) {
+    let calls = 0; const h = await mount({ onOlder: () => { calls++; } }, { released: false });
+    await h.begin(); let request;
+    await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+    if (action === 'blur') await h.update({ active: false });
+    if (action === 'background') await h.app('background');
+    if (action === 'unmount') await h.close();
+    if (action === 'latest') await act(async () => h.renderer.root.findAllByType('Pressable').find(node => node.props.accessibilityLabel === 'Jump to latest ↓').props.onPress());
+    await request; assert.equal(calls, 0);
+    if (action !== 'unmount') { await h.release(); assert.equal(calls, 0); await h.close(); }
+  }
+});
+
+test('cancelled old waiter cannot clear the replacement gesture owner or its progress', async () => {
+  let calls = 0, finish;
+  const h = await mount({ onOlder: () => { calls++; return new Promise(resolve => { finish = resolve; }); } }, { released: false });
+  await h.begin(); let oldRequest, newRequest;
+  await act(async () => { oldRequest = h.list().refreshControl.props.onRefresh(); });
+  await act(async () => { h.list().onScrollBeginDrag(); newRequest = h.list().refreshControl.props.onRefresh(); });
+  await oldRequest; assert.equal(calls, 0);
+  assert.equal(h.list().refreshControl.props.refreshing, true);
+  await h.release(); assert.equal(calls, 1);
+  assert.equal(h.list().refreshControl.props.refreshing, true);
+  await act(async () => { finish(); await newRequest; });
+  assert.equal(h.list().refreshControl.props.refreshing, false);
+  await h.close();
+});
+
+test('release rechecks live availability and uses current callback rather than stale captured props', async () => {
+  for (const values of [{ hasOlder: false }, { locatingBusy: true }]) {
+    let calls = 0; const h = await mount({ onOlder: () => { calls++; } }, { released: false });
+    await h.begin(); let request; await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+    await h.update(values); await h.release(); await request; assert.equal(calls, 0);
+    await h.close();
+  }
+  let oldCalls = 0, newCalls = 0;
+  const h = await mount({ onOlder: () => { oldCalls++; } }, { released: false });
+  await h.begin(); let request; await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await h.update({ onOlder: () => { newCalls++; } }); await h.release(); await request;
+  assert.equal(oldCalls, 0); assert.equal(newCalls, 1); await h.close();
+});
+
+test('real SDK paging with synthetic HTTP and visible 3-block publication do not start before release', async () => {
+  const initial = [{ id: '100', ref_seq: 100, role: 'user', text: 'Synthetic user' }, { id: '101', ref_seq: 101, role: 'assistant', text: 'Synthetic reply' }];
+  let requests = 0, h;
+  const client = new HermesClient({ token: () => 'synthetic-only', http: { request: async () => {
+    requests++;
+    return { status: 200, body: { messages: [70, 80, 90].flatMap(ref => [
+      { id: String(ref), ref_seq: ref, role: 'user', text: 'Synthetic earlier user' },
+      { id: String(ref + 1), ref_seq: ref + 1, role: 'assistant', text: 'Synthetic earlier reply' }
+    ]), older_cursor: null } };
+  } } });
+  client.supportsLatest = true; client.messages.set('t', initial);
+  h = await mount({ rows: timeline.projectTimeline(initial, null, 't'), startRef: 100, onOlder: async () => {
+    const blocks = await loadHistoryBlocks(client, 't', 100, 'synthetic-before');
+    await h.update({ rows: timeline.projectTimeline(client.messages.get('t').filter(message => message.ref_seq >= blocks.startRef), null, 't'), startRef: blocks.startRef });
+  } }, { released: false });
+  await h.begin(); let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  assert.equal(requests, 0); assert.equal(h.list().data[0].refSeq, 100);
+  await act(async () => {
+    h.list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -80 }, velocity: { y: 0 } } });
+    await request;
+  });
+  assert.equal(requests, 1); assert.equal(h.list().data[0].refSeq, 70);
+  await h.flush(); assert.equal(h.scrolls.length, 0);
   await h.close();
 });
 

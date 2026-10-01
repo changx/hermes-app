@@ -19,6 +19,7 @@ import { hasRunningReceipt } from './receiptState';
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
 const historyPosition = { disabled: false };
 const historyEntrance = FadeIn.duration(220).reduceMotion(ReduceMotion.System);
+type HistoryPullRequest = { started: boolean; release?: (released: boolean) => void };
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments, animateHistory, onHistoryShown }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void }) {
   const own = row.role === 'user';
@@ -103,7 +104,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
   const [refreshingHistory, setRefreshingHistory] = useState(false);
-  const historyPullPending = useRef(false);
+  const historyPullPending = useRef<HistoryPullRequest | null>(null);
+  const historyReleased = useRef(false);
+  const historyLoadProps = useRef({ hasOlder: props.hasOlder, locatingBusy: props.locatingBusy, onOlder: props.onOlder });
+  historyLoadProps.current = { hasOlder: props.hasOlder, locatingBusy: props.locatingBusy, onOlder: props.onOlder };
   const offset = useRef(position?.offset ?? 0);
   const historyReading = useRef(false);
   const viewport = useRef(0), content = useRef(0), dragging = useRef(false), gestureMomentum = useRef(false), momentumEligible = useRef(false);
@@ -132,6 +136,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   active.current = props.active;
   const followAnimation = useRef(false);
   const pendingFollow = useRef(false);
+  const cancelPendingHistory = useCallback(() => {
+    const request = historyPullPending.current;
+    if (!request || request.started) return;
+    historyPullPending.current = null;
+    request.release?.(false);
+    request.release = undefined;
+    if (active.current) setRefreshingHistory(false);
+  }, []);
   const clearHistoryReading = useCallback(() => {
     historyReading.current = false;
     historyEnteringKeys.current.clear();
@@ -173,15 +185,21 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
       if (state !== 'active') {
+        historyReleased.current = false;
+        dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
+        cancelPendingHistory();
         historyEnteringKeys.current.clear();
         keyboardMoving.current = false; nativeMoving.value = false;
         pendingFollow.current = false; followAnimation.current = false;
       }
     });
-    return () => { mounted = false; active.current = false; clearHistoryReading(); sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
+    return () => { mounted = false; active.current = false; cancelPendingHistory(); clearHistoryReading(); sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
   useEffect(() => {
     if (props.active) return;
+    historyReleased.current = false;
+    dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
+    cancelPendingHistory();
     clearHistoryReading();
     setRefreshingHistory(false);
     if (frame.current !== null) {
@@ -195,23 +213,36 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   callbacks.current = { onPosition, onVisibleRef, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
   const pullOlder = async () => {
-    if (!active.current || !props.hasOlder || props.locatingBusy || historyPullPending.current) return;
+    if (!active.current || !motionForeground.current || !historyLoadProps.current.hasOlder || historyLoadProps.current.locatingBusy || historyPullPending.current) return;
     // A short conversation can still be at the tail when pulled from the top.
     // Stop following before prepending so new history cannot jump to latest.
-    historyPullPending.current = true;
+    const request: HistoryPullRequest = { started: false };
+    historyPullPending.current = request;
     historyReading.current = true;
     following.current = false; pendingFollow.current = false; followAnimation.current = false;
     setShowLatest(true); savePosition();
     setRefreshingHistory(true);
     try {
-      await props.onOlder();
+      // Native refresh can fire at the pull threshold while the finger is still
+      // down. Queue intent; neither cached expansion nor HTTP starts until end-drag.
+      if (!historyReleased.current) {
+        const released = await new Promise<boolean>(resolve => { request.release = resolve; });
+        if (!released) return;
+      }
+      const current = historyLoadProps.current;
+      if (historyPullPending.current !== request || !active.current || !motionForeground.current || dragging.current || !current.hasOlder || current.locatingBusy) return;
+      request.started = true;
+      await current.onOlder();
     } finally {
-      historyPullPending.current = false;
-      if (active.current) setRefreshingHistory(false);
+      if (historyPullPending.current === request) {
+        historyPullPending.current = null;
+        if (active.current) setRefreshingHistory(false);
+      }
     }
   };
   const followLatest = useCallback((animate = true) => {
     if (!active.current) return;
+    cancelPendingHistory();
     clearHistoryReading();
     following.current = true; setShowLatest(false);
     // An explicit send/latest action overrides any older gesture momentum.
@@ -300,12 +331,24 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             && (!keyboardMoving.current || appended.current)) scheduleFollow();
           appended.current = false;
         }}
-        onScrollBeginDrag={() => { if (!active.current) return; clearHistoryReading(); dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; followAnimation.current = false; pendingFollow.current = false; }}
+        onScrollBeginDrag={() => {
+          if (!active.current || !motionForeground.current) return;
+          if (dragging.current || historyReleased.current) cancelPendingHistory();
+          historyReleased.current = false;
+          clearHistoryReading();
+          if (historyPullPending.current?.release) historyReading.current = true;
+          dragging.current = true; gestureMomentum.current = false; momentumEligible.current = false; followAnimation.current = false; pendingFollow.current = false;
+        }}
         onMomentumScrollBegin={() => { gestureMomentum.current = momentumEligible.current; momentumEligible.current = false; }}
         onScrollEndDrag={e => {
+          if (!active.current || !motionForeground.current || (!dragging.current && !historyPullPending.current?.release)) return;
           dragging.current = false;
+          historyReleased.current = true;
           momentumEligible.current = e.nativeEvent.contentOffset?.y >= 0 && Math.abs(e.nativeEvent.velocity?.y ?? 0) > 0.01;
           savePosition();
+          const request = historyPullPending.current, release = request?.release;
+          if (request) request.release = undefined;
+          release?.(true);
         }}
         onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
         onScroll={e => {

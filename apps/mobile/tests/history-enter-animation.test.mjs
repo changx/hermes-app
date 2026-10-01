@@ -54,7 +54,11 @@ async function harness({ reduced = false } = {}) {
   const list = () => root.root.findByType('FlashList').props;
   const item = (value, target = 'Cell') => list().renderItem({ item: value, target });
   return { root, list, item, scrolls, lifecycle,
-    async pull() { await act(async () => { await list().refreshControl.props.onRefresh(); }); },
+    async pull() { await act(async () => {
+      list().onScrollBeginDrag();
+      list().onScrollEndDrag({ nativeEvent: { contentOffset: { y: -80 }, velocity: { y: 0 } } });
+      await list().refreshControl.props.onRefresh();
+    }); },
     async update(values) { props = { ...props, ...values }; await act(async () => root.update(React.createElement(ChatTimeline, props))); },
     async mountRow(value) { let rendered; await act(async () => { rendered = create(item(value)); }); return rendered; },
     async flush() { await act(async () => { const pending = [...frames.values()]; frames.clear(); for (const fn of pending) fn(); }); },
