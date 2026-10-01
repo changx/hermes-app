@@ -1,7 +1,7 @@
 /** P1-03 owner-scoped transport. No runtime imports or platform globals. */
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
-export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
+export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
 export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
 export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; last_message_at?: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
@@ -68,10 +68,11 @@ const validReceipt = (v: unknown): Receipt => {
   const x = obj(v); const states = ['queued','running','completed','failed','interrupted','unknown','received'];
   if (!states.includes(x.state as string) || x.durable !== true || (x.admission !== undefined && x.admission !== 'followup')) throw new ProtocolError('invalid receipt');
   if (x.handed_off !== undefined && x.handed_off !== true) throw new ProtocolError('invalid receipt');
+  if (x.version !== undefined) num(x.version);
   if (x.ref_seq !== undefined && (!Number.isSafeInteger(x.ref_seq) || (x.ref_seq as number) <= 0)) throw new ProtocolError('invalid receipt reference');
   if (x.processing !== undefined && x.processing !== null && !['running','completed','failed','interrupted','unknown'].includes(x.processing as string)) throw new ProtocolError('invalid receipt');
   if (x.feedback !== undefined && (typeof x.feedback !== 'string' || !x.feedback.length || x.feedback.length > 2000)) throw new ProtocolError('invalid receipt');
-  return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true, ...(x.ref_seq !== undefined ? { ref_seq: x.ref_seq as number } : {}), ...(x.admission === 'followup' ? { admission: 'followup' as const } : {}), ...(x.handed_off === true ? { handed_off: true as const } : {}), ...(x.processing !== undefined ? { processing: x.processing as ReceiptProcessing } : {}), ...(x.feedback !== undefined ? { feedback: x.feedback as string } : {}) };
+  return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true, ...(x.version !== undefined ? { version: x.version as number } : {}), ...(x.ref_seq !== undefined ? { ref_seq: x.ref_seq as number } : {}), ...(x.admission === 'followup' ? { admission: 'followup' as const } : {}), ...(x.handed_off === true ? { handed_off: true as const } : {}), ...(x.processing !== undefined ? { processing: x.processing as ReceiptProcessing } : {}), ...(x.feedback !== undefined ? { feedback: x.feedback as string } : {}) };
 };
 const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x.project_id); str(x.title); if (typeof x.archived !== 'boolean' && x.archived !== 0 && x.archived !== 1) throw new ProtocolError('invalid thread'); return x as unknown as Thread };
 const validSummary = (v: unknown): ThreadSummary => { const x = validThread(v) as unknown as ThreadSummary; num(x.last_ref); num(x.read_ref); num(x.unread_count); if(x.last_message_at!==undefined){try{x.last_message_at=timestamp(x.last_message_at)}catch{delete x.last_message_at}} if(x.active_receipts!==undefined)x.active_receipts=arr(x.active_receipts).map(validReceipt);if(x.pending_interactions!==undefined)x.pending_interactions=arr(x.pending_interactions).map(validInteraction);return x };
@@ -185,12 +186,15 @@ export class HermesClient {
     if(this.boundToken!==null && token!==this.boundToken)throw new ProtocolError('credential changed; create a new client');
     this.boundToken=token;return token;
   }
-  private storeReceipt(receipt: Receipt) {
+  private storeReceipt(receipt: Receipt, notify = true) {
     const previous=this.receipts.get(receipt.id);
     const identity=JSON.stringify([receipt.thread_id,receipt.client_message_id]);
     if (this.receiptIdentity.has(receipt.id) && this.receiptIdentity.get(receipt.id)!==identity) throw new ProtocolError('receipt identity mismatch');
     this.receiptIdentity.set(receipt.id,identity);
     if (previous?.ref_seq !== undefined && receipt.ref_seq !== undefined && previous.ref_seq !== receipt.ref_seq) throw new ProtocolError('receipt reference mismatch');
+    // All new-server receipt representations carry the durable event version.
+    // A delayed history/ACK cannot undo a newer callback, feedback or state.
+    if (previous?.version !== undefined && (receipt.version === undefined || receipt.version < previous.version)) return;
     if (previous?.ref_seq !== undefined && receipt.ref_seq === undefined) receipt = { ...receipt, ref_seq: previous.ref_seq };
     const positionAdded = previous && previous.ref_seq === undefined && receipt.ref_seq !== undefined;
     if (positionAdded) previous.ref_seq = receipt.ref_seq;
@@ -202,15 +206,35 @@ export class HermesClient {
       const next = keepCallback
         ? { ...receipt, processing: previous.processing } : receipt;
       if (previous?.feedback && receipt.feedback === undefined) next.feedback = previous.feedback;
-      this.receipts.set(receipt.id,next); this.changed();
+      this.receipts.set(receipt.id,next); if (notify) this.changed();
     } else if (previous && receipt.processing !== undefined && receipt.processing !== previous.processing &&
                !['completed', 'failed', 'interrupted'].includes(previous.processing ?? '')) {
       // Terminal lifecycle bookkeeping can lag an actual callback; keep the
       // lifecycle fence but apply the independent callback evidence.
-      this.receipts.set(receipt.id, { ...previous, processing: receipt.processing, ...(receipt.feedback !== undefined ? { feedback: receipt.feedback } : {}) }); this.changed();
+      this.receipts.set(receipt.id, { ...previous, ...(receipt.version !== undefined ? {version:receipt.version} : {}), processing: receipt.processing, ...(receipt.feedback !== undefined ? { feedback: receipt.feedback } : {}) }); if (notify) this.changed();
     } else if (previous && receipt.feedback !== undefined && receipt.feedback !== previous.feedback) {
-      this.receipts.set(receipt.id, { ...previous, feedback: receipt.feedback }); this.changed();
-    } else if (positionAdded) this.changed();
+      this.receipts.set(receipt.id, { ...previous, ...(receipt.version !== undefined ? {version:receipt.version} : {}), feedback: receipt.feedback }); if (notify) this.changed();
+    } else {
+      if (previous && receipt.version !== undefined) previous.version = receipt.version;
+      if (positionAdded && notify) this.changed();
+    }
+  }
+  private historyReceipts(page: readonly Message[], threadId: string, value: unknown): Receipt[] {
+    if (value === undefined) return []; // Legacy server: bounded hydration remains.
+    const receipts = arr(value).map(validReceipt), seen = new Set<string>();
+    if (receipts.length > page.length) throw new ProtocolError('too many history receipts');
+    for (const r of receipts) {
+      const matches = page.filter(m => m.role === 'user' && m.receipt_id === r.id);
+      const message = matches[0];
+      if (matches.length !== 1 || r.thread_id !== threadId || r.id !== message.receipt_id ||
+          r.client_message_id !== message.client_message_id || r.ref_seq !== message.ref_seq ||
+          r.version === undefined || seen.has(r.id)) throw new ProtocolError('history receipt identity mismatch');
+      const identity = this.receiptIdentity.get(r.id), previous = this.receipts.get(r.id);
+      if (identity !== undefined && identity !== JSON.stringify([r.thread_id,r.client_message_id])) throw new ProtocolError('receipt identity mismatch');
+      if (previous?.ref_seq !== undefined && previous.ref_seq !== r.ref_seq) throw new ProtocolError('receipt reference mismatch');
+      seen.add(r.id);
+    }
+    return receipts;
   }
   private reconcileActiveReceipts(summary: ThreadSummary) {
     if (summary.active_receipts === undefined) return;
@@ -298,7 +322,11 @@ export class HermesClient {
     const seq=++this.fetchSequence, epoch=this.projectionEpoch;
     const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,ref_seq:refSeq,limit}),undefined,signal);
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
+    const receipts=this.historyReceipts(page,threadId,x.receipts);
     if (refSeq!==undefined && (page.length!==1 || page[0].ref_seq!==refSeq)) throw new ProtocolError('message reference mismatch');
+    if(epoch!==this.projectionEpoch)return {messages:page,next_cursor:optionalCursor(x.next_cursor),incomplete_turns:arr(x.incomplete_turns),turn_outcomes:arr(x.turn_outcomes)};
+    // Publish the page only after its matching states are available to UI.
+    for(const r of receipts)this.storeReceipt(r,false);
     if(!page.length && !existing.length && after===undefined && afterRefSeq===undefined && x.next_cursor===null) this.knownEmptyThreads.add(threadId);
     if(page.length) this.knownEmptyThreads.delete(threadId);
     const byRef=new Map(existing.map(m=>[m.ref_seq,m]));
@@ -312,6 +340,9 @@ export class HermesClient {
     const seq=++this.fetchSequence, epoch=this.projectionEpoch;
     const x = await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({latest:before?undefined:'true',before,limit}),undefined,signal);
     const page = arr(x.messages).map(validMessage);
+    const receipts=this.historyReceipts(page,threadId,x.receipts);
+    if(epoch!==this.projectionEpoch)return {messages:page,older_cursor:optionalCursor(x.older_cursor)};
+    for(const r of receipts)this.storeReceipt(r,false);
     const byRef = new Map((this.messages.get(threadId)||[]).map(m=>[m.ref_seq,m]));
     if(epoch===this.projectionEpoch) page.forEach(m=>{ const key=threadId+':'+m.ref_seq; if(seq >= (this.messageSequence.get(key)||0)) { byRef.set(m.ref_seq,m); this.messageSequence.set(key,seq) } });
     this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq));
