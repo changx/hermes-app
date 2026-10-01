@@ -387,7 +387,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </View>}
     </View>)}</ScrollView>}
 
-    <BlurView blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerSurface}>
+    <View collapsable={false} style={styles.composerSurface}>
+      {/* Keep the native blur out of the input subtree. Explicit sibling layers
+          keep interactive content above the effect during keyboard/IME updates. */}
+      <BlurView pointerEvents="none" blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerBackdrop} />
+      <View collapsable={false} style={styles.composerForeground}>
       {hasRunningReceipt(props.threadId, props.receipts) && <View style={styles.runningRow}>
         <View style={styles.runningIndicator}>{props.typingIndicator}</View>
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.statusStopButton, props.busy && styles.disabled]}>
@@ -396,7 +400,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </View>}
       {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
         : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
-    </BlurView>
+      </View>
+    </View>
     </KeyboardStickyView>
   </KeyboardGestureArea>;
 });
@@ -434,8 +439,10 @@ const styles = StyleSheet.create({
   // Center the content-sized native input, not text inside a fixed-height UITextView.
   composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   composeInput: { maxHeight: 102, padding: 0, color: '#172a40' },
-  // One shadow around the shared status, attachment, and input blur surface.
+  // One shadow around the shared surface; blur never owns interactive content.
   composerSurface: { backgroundColor: 'rgba(248, 250, 253, 0.78)', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
+  composerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 },
+  composerForeground: { zIndex: 1 },
   composer: { backgroundColor: 'transparent', borderTopWidth: 1, borderColor: 'rgba(205, 215, 227, 0.72)', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }
 });
