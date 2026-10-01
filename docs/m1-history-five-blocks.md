@@ -30,5 +30,16 @@ RN 文档明确 onScrollEndDrag 是停止拖动、可能刚开始滑行，不是
 - https://docs.swmansion.com/react-native-reanimated/docs/scroll/useAnimatedScrollHandler/
 - 同时只读核对当前 RN iOS ScrollView/PullToRefresh 原生代码。
 
-候选在 `jamie/session-five-block-history`，尚未发布；本轮没有更改回弹行为、运行目录或服务。
+候选在 `jamie/session-five-block-history` 验证后，经 Jamie 明确要求“部署”，将提交 `71ca64f` 快进合入 main 并更新现有手机测试入口。本次仅发布 5 段配置，回弹协调方案仍未实施。
+
+## 授权发布记录
+
+- 发布目录再次通过 TypeScript 与完整 mobile 355/355；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 与各自实际 launchAsset 确认默认 5 段，保留用户起始边界、松手门控、220ms FadeIn、FlashList 与独立 tail 恢复。
+- App.tsx、ChatTimeline.tsx、共享 SDK 发布前后 SHA-256 一致，回弹/渲染行为没有变更。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态保持一致；其他任务两个文档的哈希一致，未提交它们。
+- 入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。尚未完成真机 5 段及回弹观感验收。
+- 回滚分支 `rollback/session-five-block-before-71ca64f` 指向发布前 `2ece049`；只回退本轮文件并重启 Expo，不覆盖其他任务工作区修改。
+- 私有发布证据位于下方目录 `release/release-verification.json`，含两平台实际 bundle 哈希、5 段检查项、行为源码哈希及 Gateway 状态；另保存发布目录测试日志。
+- 无核心/plugin/服务端/依赖升级，未重启 Gateway，未远程推送或发布签名包。
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-five-block-history/`。
