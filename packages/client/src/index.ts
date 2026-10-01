@@ -172,6 +172,8 @@ export class HermesClient {
   supportsLatest = false;
   supportsSendIdentity = false;
   readonly tailIncomplete = new Set<string>();
+  private tailContinuations = new Map<string, { cursor: string }>();
+  private tailRecoveryJobs = new Map<string, { promise: Promise<Message[]>; signal?: AbortSignal }>();
   private knownEmptyThreads = new Set<string>();
   constructor(private readonly options: Options) {}
   private changed() { this.options.onChange?.() }
@@ -334,6 +336,7 @@ export class HermesClient {
       if(!this.knownEmptyThreads.has(threadId)) return this.messages.get(threadId)||[];
       const page=await this.history(threadId,undefined,100,signal);
       if(page.next_cursor) {
+        this.tailContinuations.set(threadId, { cursor: page.next_cursor });
         this.tailIncomplete.add(threadId); this.changed();
         throw new ProtocolError('message catch-up exceeds empty-thread page; locate latest in thread');
       }
@@ -347,11 +350,45 @@ export class HermesClient {
     }
     // Keep the event unacknowledged so reconnect can retry after explicit
     // user-driven history location; never silently claim a complete tail.
+    this.tailContinuations.set(threadId, { cursor: cursor! });
     this.tailIncomplete.add(threadId); this.changed();
     throw new ProtocolError('message catch-up exceeds 300 refs; locate latest in thread');
   }
   /** Only after an explicit complete forward history traversal by the caller. */
-  resumeTail(threadId:string) { if(this.tailIncomplete.delete(threadId)) this.changed() }
+  resumeTail(threadId:string) { this.tailContinuations.delete(threadId); if(this.tailIncomplete.delete(threadId)) this.changed() }
+
+  /** Continue the exact unfinished forward page, without reopening a UI or
+   * jumping to a latest window (which could skip the intervening messages). */
+  recoverHistoryTail(threadId: string, signal?: AbortSignal): Promise<Message[]> {
+    const existing = this.tailRecoveryJobs.get(threadId);
+    if (existing && !existing.signal?.aborted) return existing.promise;
+    let job: { promise: Promise<Message[]>; signal?: AbortSignal };
+    const promise = this.continueHistoryTail(threadId, signal).finally(() => {
+      if (this.tailRecoveryJobs.get(threadId) === job) this.tailRecoveryJobs.delete(threadId);
+    });
+    job = { promise, signal }; this.tailRecoveryJobs.set(threadId, job);
+    return promise;
+  }
+  private async continueHistoryTail(threadId: string, signal?: AbortSignal): Promise<Message[]> {
+    if (!this.tailIncomplete.has(threadId)) return this.messages.get(threadId) || [];
+    const continuation = this.tailContinuations.get(threadId), epoch = this.projectionEpoch;
+    if (!continuation) throw new ProtocolError('history continuation unavailable');
+    const seen = new Set<string>();
+    for (let pageCount = 0; pageCount < 20; pageCount++) {
+      if (signal?.aborted || epoch !== this.projectionEpoch) throw new Error('aborted');
+      if (this.tailContinuations.get(threadId) !== continuation) return this.messages.get(threadId) || [];
+      const cursor = continuation.cursor;
+      if (seen.has(cursor)) throw new ProtocolError('history continuation did not advance');
+      seen.add(cursor);
+      const page = await this.history(threadId, cursor, 100, signal);
+      if (signal?.aborted || epoch !== this.projectionEpoch) throw new Error('aborted');
+      if (this.tailContinuations.get(threadId) !== continuation) return this.messages.get(threadId) || [];
+      if (page.next_cursor === null) { this.resumeTail(threadId); return this.messages.get(threadId) || []; }
+      if (seen.has(page.next_cursor)) throw new ProtocolError('history continuation did not advance');
+      continuation.cursor = page.next_cursor;
+    }
+    throw new ProtocolError('history recovery page budget exceeded');
+  }
   private async refreshSummaries(rank: number, signal?: AbortSignal) {
     let after: string | null = null;
     do {
@@ -419,7 +456,7 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.messageSequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.messageSequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.tailContinuations.clear(); this.tailRecoveryJobs.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
   /** Starts one recovery loop; resolves immediately, not as a readiness signal. */
   async connect(): Promise<void> {
     if (this.controller) return;

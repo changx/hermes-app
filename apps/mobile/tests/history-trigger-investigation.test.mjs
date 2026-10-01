@@ -10,13 +10,14 @@ import * as blocks from '../src/historyBlocks.ts';
 import { HermesClient } from '../../../packages/client/dist/index.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const source = readFileSync(process.env.HISTORY_APP_SOURCE ?? new URL('../src/App.tsx', import.meta.url), 'utf8');
 const u = ref => ({ id: String(ref), ref_seq: ref, role: 'user', text: 'Synthetic user' });
 const a = ref => ({ id: String(ref), ref_seq: ref, role: 'assistant', text: 'Synthetic reply' });
 const latest = [u(100), a(101), u(110), a(111), u(120), a(121)];
 
 async function harness() {
   let sdk, props, api, finishOlder, finishRepair, olderDone = false, latestRequests = 0;
+  const Focus = React.createContext(true);
   const trace = [], boundaryHistory = [];
   const config = { id: 'synthetic', baseUrl: 'https://synthetic.invalid', token: 'synthetic-only' };
   class SDK {
@@ -28,6 +29,18 @@ async function harness() {
     async connect() { this.options.onConnectionState('online'); }
     close() {}
     resumeTail(id) { trace.push({ event: 'resume-tail' }); if (this.tailIncomplete.delete(id)) this.options.onChange(); }
+    async recoverHistoryTail(id, signal) {
+      trace.push({ event: 'history-request', direction: 'tail-repair' });
+      const page = await new Promise((resolve, reject) => {
+        finishRepair = resolve;
+        signal.addEventListener('abort', () => { trace.push({ event: 'repair-aborted' }); reject(new Error('aborted')); }, { once: true });
+      });
+      if (page.fail) throw new Error('synthetic offline');
+      this.messages.set(id, [...this.messages.get(id), a(122)]);
+      this.options.onChange();
+      trace.push({ event: 'history-response', direction: 'tail-repair' });
+      this.resumeTail(id);
+    }
     async markRead() {}
     async historyWindow(id, before, limit) {
       const request = { event: 'history-request', direction: before ? 'older' : 'latest', limit: limit ?? 30 };
@@ -36,7 +49,8 @@ async function harness() {
       if (before) {
         if (!olderDone) {
           page = await new Promise(resolve => { finishOlder = resolve; }); olderDone = true;
-        } else page = { messages: [u(70), a(71), u(80), a(81)], older_cursor: null };
+        } else if (before === 'synthetic-cursor-80') page = { messages: [u(70), a(71), u(80), a(81)], older_cursor: 'synthetic-cursor-60' };
+        else page = { messages: [u(40), a(41), u(50), a(51), u(60), a(61)], older_cursor: null };
       } else if (++latestRequests === 1) {
         page = { messages: latest, older_cursor: 'synthetic-cursor-90' };
       } else page = await new Promise(resolve => { finishRepair = resolve; });
@@ -52,8 +66,8 @@ async function harness() {
   const mocks = {
     react: React,
     'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
-    'expo-router': { Stack: { Screen: () => null }, useRouter: () => ({ push() {}, replace() {} }), useIsFocused: () => true,
-      useFocusEffect: callback => React.useEffect(callback, [callback]) },
+    'expo-router': { Stack: { Screen: () => null }, useRouter: () => ({ push() {}, replace() {} }), useIsFocused: () => React.useContext(Focus),
+      useFocusEffect: callback => { const focused = React.useContext(Focus); React.useEffect(() => focused ? callback() : undefined, [focused, callback]); } },
     './FontSize': { Text: 'Text', FontSizeSettings: 'FontSizeSettings' },
     'react-native-keyboard-controller': { useKeyboardState: selector => selector({ isVisible: false }) },
     'expo-router/react-navigation': { useHeaderHeight: () => 100 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
@@ -75,9 +89,10 @@ async function harness() {
   };
   const output = { exports: {} };
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText,
-    { module: output, exports: output.exports, require: name => { assert.ok(name in mocks, name); return mocks[name]; } });
+    { module: output, exports: output.exports, AbortController, require: name => { assert.ok(name in mocks, name); return mocks[name]; } });
   function Page() { api = output.exports.useApp(); return api.client ? React.createElement(output.exports.ThreadScreen, { threadId: 't' }) : null; }
-  let root; await act(async () => { root = create(React.createElement(output.exports.AppProvider, {}, React.createElement(Page))); });
+  const tree = focused => React.createElement(output.exports.AppProvider, {}, React.createElement(Focus.Provider, { value: focused }, React.createElement(Page)));
+  let root; await act(async () => { root = create(tree(true)); });
   assert.deepEqual(props.rows.map(item => item.refSeq), latest.map(item => item.ref_seq));
   trace.length = 0; boundaryHistory.length = 0;
   return { trace, boundaryHistory, get props() { return props; }, get sdk() { return sdk; },
@@ -85,7 +100,8 @@ async function harness() {
     async revision() { await act(async () => sdk.options.onChange()); },
     async flagRecovery() { await act(async () => { sdk.tailIncomplete.add('t'); sdk.options.onChange(); }); },
     async finishOlder() { await act(async () => finishOlder({ messages: [u(90), a(91)], older_cursor: 'synthetic-cursor-80' })); },
-    async finishRepair() { await act(async () => finishRepair({ messages: latest, older_cursor: 'synthetic-cursor-90' })); },
+    async finishRepair(fail = false) { await act(async () => finishRepair({ messages: latest, older_cursor: 'synthetic-cursor-90', fail })); },
+    async focus(value) { await act(async () => root.update(tree(value))); },
     async close() { await act(async () => root.unmount()); }
   };
 }
@@ -119,17 +135,57 @@ test('one load intent plus ordinary SDK revisions only continues older cursors, 
   await h.close();
 });
 
-test('a tail-recovery invalidation DURING an older load starts a second history owner and clears the visible rows', async () => {
+test('tail repair during an older load keeps the visible rows and does not reopen the conversation', async () => {
   const h = await harness(); const { promise } = await h.pull();
   await h.flagRecovery();
-  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'latest']);
-  assert.equal(h.props.rows.length, 0, 'production recovery effect hid the current conversation while the older request was pending');
+  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'tail-repair']);
+  assert.equal(h.props.rows[0].refSeq, 100);
   await h.revision();
-  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'latest']);
+  await h.revision();
+  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'tail-repair']);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows.length, 0, 'older load was invalidated by new openThread generation');
+  assert.equal(h.props.rows[0].refSeq, 70, 'the original pull still expands its 3 blocks');
   await h.finishRepair();
-  assert.equal(h.props.rows[0].refSeq, 100, 'repair reset to newest 3 blocks instead of completing the requested older expansion');
-  console.log('RECOVERY_OVERLAP', JSON.stringify({ trace: h.trace, rows_were_cleared: h.boundaryHistory.some(rows => rows.length === 0), native_refresh_events_simulated: 0 }));
+  assert.equal(h.props.rows[0].refSeq, 70, 'repair does not reset startRef or the older cursor');
+  assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
+  assert.equal(h.props.locatingBusy, false);
+  console.log('RECOVERY_FIXED', JSON.stringify({ trace: h.trace, rows_were_cleared: false, native_refresh_events_simulated: 0 }));
   await h.close();
+});
+
+test('repair completing first also leaves the pull alive; a subsequent ordinary pull is allowed', async () => {
+  const h = await harness(); const { promise } = await h.pull();
+  await h.flagRecovery(); await h.finishRepair();
+  assert.equal(h.props.rows[0].refSeq, 100);
+  await h.finishOlder(); await promise;
+  assert.equal(h.props.rows[0].refSeq, 70);
+  const next = await h.pull(); await next.promise;
+  assert.equal(h.trace.filter(item => item.event === 'one-user-load-intent').length, 2, 'no per-gesture count gate was added');
+  assert.equal(h.props.rows[0].refSeq, 40, 'the next ordinary request can really load another 3 blocks');
+  await h.close();
+});
+
+test('failed repair keeps current reading and old pagination usable, and a later revision can retry', async () => {
+  const h = await harness(); const { promise } = await h.pull();
+  await h.flagRecovery(); await h.finishRepair(true);
+  assert.equal(h.props.rows[0].refSeq, 100); assert.equal(h.sdk.tailIncomplete.has('t'), true);
+  await h.finishOlder(); await promise;
+  assert.equal(h.props.rows[0].refSeq, 70);
+  await h.revision(); await h.finishRepair();
+  assert.equal(h.sdk.tailIncomplete.has('t'), false);
+  assert.equal(h.props.rows[0].refSeq, 70);
+  assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
+  await h.close();
+});
+
+test('blur aborts repair without clearing the window; return can resume and unmount cancels its owner', async () => {
+  const h = await harness(); await h.flagRecovery();
+  await h.focus(false);
+  assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 1);
+  assert.equal(h.sdk.tailIncomplete.has('t'), true);
+  assert.equal(h.props.rows[0].refSeq, 100);
+  await h.focus(true);
+  assert.equal(h.trace.filter(item => item.direction === 'tail-repair' && item.event === 'history-request').length, 2);
+  await h.close();
+  assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 2);
 });

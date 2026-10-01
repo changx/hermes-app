@@ -261,6 +261,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const busyRef = useRef(false), markedRef = useRef(0);
   const openingRef = useRef(0);
+  const tailRepairRef = useRef<{ controller: AbortController } | null>(null);
   const appActive = useRef(AppState.currentState === 'active');
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; });
@@ -268,7 +269,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   }, []);
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
-    return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); receiptHydrator.current?.cancel(); };
+    return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, []));
   const markVisibleRead = (ref: number) => {
     if (!client || !focusedRef.current || !appActive.current || ref <= 0) return;
@@ -402,18 +403,31 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   }, [focused, client, threadId, located, visibleReceiptSignature, connectionEpoch, status]);
 
 
-  useEffect(() => {
-    if (focused && client && located && client.tailIncomplete.has(threadId)) {
-      locatedThreads.current.delete(threadId);
-      setLocated(false);
-      void openThread(threadId);
+  const recoverLatest = async () => {
+    if (!client || !focusedRef.current || !client.tailIncomplete.has(threadId) || tailRepairRef.current) return;
+    const task = { controller: new AbortController() }, opening = openingRef.current;
+    tailRepairRef.current = task;
+    try {
+      // Data repair is not navigation: retain located/startRef/older cursor and
+      // the generation of an ongoing pull. SDK continues the saved forward page.
+      await client.recoverHistoryTail(threadId, task.controller.signal);
+      if (!task.controller.signal.aborted && focusedRef.current && opening === openingRef.current)
+        setError((previous: string) => previous === 'Could not update recent messages. Your current conversation is still available.' ? '' : previous);
+    } catch {
+      if (!task.controller.signal.aborted && focusedRef.current && opening === openingRef.current)
+        setError('Could not update recent messages. Your current conversation is still available.');
+    } finally {
+      if (tailRepairRef.current === task) tailRepairRef.current = null;
     }
-  }, [focused, revision, client, threadId, located]);
+  };
+  useEffect(() => {
+    if (focused && client && located && client.tailIncomplete.has(threadId)) void recoverLatest();
+  }, [focused, revision, client, threadId, located, connectionEpoch, status]);
   useEffect(() => {
     if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor) void openThread(threadId);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
-    return () => { ++openingRef.current; receiptHydrator.current?.cancel(); };
+    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, [client, threadId]);
 
   const selected = client?.threads.get(threadId);
