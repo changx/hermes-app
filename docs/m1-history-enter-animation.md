@@ -21,7 +21,18 @@ Jamie 要求历史添加时有动画，避免新内容瞬间跳出来难以跟�
 - 完整 mobile **348/348**、TypeScript、iOS/Android Expo 导出、diff check 通过。既有键盘和消息宽度/样式回归保留；没有为通过测试放宽样式预期。
 - 物理 iPhone 的视觉节奏及 Markdown 高度变化时锚点仍待验收。轻微移动不是本次动画已解决的事实。
 
-本轮候选在隔离分支 `jamie/session-history-enter-animation`，尚未部署；没有修改运行目录或重启服务。
+本轮候选在隔离分支 `jamie/session-history-enter-animation` 验证后，经 Jamie 明确要求“部署”，将提交 `e23813b` 快进合入 main 并更新现有手机测试入口。
+
+## 授权发布记录
+
+- 发布目录再次通过 TypeScript 与完整 mobile 348/348；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 及各自实际 launchAsset 确认官方 FadeIn 220ms/system reduced motion、只对新增历史 Cell 入场、已提交 key 不重播、稳定 entering 配置；未使用列表布局动画准备。
+- App.tsx、historyBlocks.ts、共享 SDK 源码发布前后 SHA-256 一致，历史 3 段分页和恢复数据流没有改动。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态与发布前一致；其他任务的两个工作区文档哈希一致，未提交它们。
+- 入口保持 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。真实 iPhone 的视觉效果和 Markdown 高度变化仍待反馈，不将公网代码验证当作动画观感验收。
+- 回滚分支 `rollback/session-history-enter-before-e23813b` 指向发布前 `6afdf31`。仅恢复本轮客户端变化并重启 Expo，不覆盖其他任务工作区修改。
+- 私有发布证据在下方目录 `release/release-verification.json`，包含两平台实际 bundle 哈希、检查项、数据流源码哈希与 Gateway 状态；另保存发布目录测试日志。
+- 没有核心/plugin/服务端/依赖变更，没有重启 Gateway、远程推送或发布签名安装包。
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-history-enter-animation/`。
 
