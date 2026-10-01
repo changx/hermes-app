@@ -23,4 +23,15 @@ Jamie 要求修复已复现的并行加载路径，改完部署；不允许用�
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-history-recovery-fix/`，含 baseline-red / targeted-green / mobile-tests 与双平台导出日志。
 
-候选在隔离分支 `jamie/session-history-recovery-fix` 验证；尚未发布。用户已授权部署，后续发布证据另行记录。不会改其他任务的工作区文档，发布只更新客户端及 Expo，不重启 Gateway。
+候选在隔离分支 `jamie/session-history-recovery-fix` 验证后，按 Jamie“改，改完部署”的授权，将修正提交 `60b5fd4` 快进合入 main，并更新现有手机测试入口。
+
+## 授权发布记录
+
+- 发布目录重建共享 SDK 输出，TypeScript 和完整 mobile 342/342 再次通过；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 和各自实际 launchAsset 均确认独立 recoverLatest/recoverHistoryTail、保存的 forward continuation、进行中恢复共享、只在分页结束时恢复事件同步；恢复函数不含 openThread/setLocated/setStartRef/setPageCursor 或 openingRef 递增。
+- 保留按 3 段加载和 FlashList。ChatTimeline.tsx 发布前后 SHA-256 完全一致，没有新增手势次数限制。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态与本次发布前一致；另一个任务的两个工作区文档 SHA-256 一致，未提交它们。
+- 测试入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。物理 iPhone 上是否另有 native 重复触发仍待反馈，不能把已修复的代码竞态等同于全部手势问题已验收。
+- 回滚分支 `rollback/session-history-recovery-before-60b5fd4` 指向发布前 `3de1a7f`。只恢复本轮 App/共享 SDK 等文件、重建 SDK 输出并重启 Expo，不覆盖其他任务工作区修改。
+- 私有发布证据：上方目录 `release/release-verification.json`，含两平台实际 bundle 哈希、检查项、Gateway 前后状态；另保留发布目录测试日志和原下拉入口哈希。
+- 无核心/plugin/服务端/依赖升级，未重启 Gateway，未远程推送或发布签名包。
