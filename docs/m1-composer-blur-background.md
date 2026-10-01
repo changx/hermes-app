@@ -30,6 +30,14 @@ Component tests use RN substitutes and do not exercise UIKit compositing or Chin
 
 ## Deployment and device acceptance
 
-Candidate is isolated on `jamie/composer-blur-background`, based on `111953a`; not merged or deployed. Runtime discovery found the user Expo service working directory still points to the isolated `session-history-layout-stability/apps/mobile` tree, not main. This task did not replace that active test version or restart any service.
+The initial candidate `c8d8200` was isolated on `jamie/composer-blur-background`, based on `111953a`, and was not deployed during implementation. Runtime then pointed to the isolated `session-history-layout-stability/apps/mobile` tree.
+
+Jamie subsequently authorized main merge and publication. At release time Expo had already returned to main (`5ce253b`), including the history-layout, execution-state and pull-hint changes. The candidate merged that current main in isolation; integration TypeScript, 99 focused composer/keyboard/attachment/history tests, and both platform exports passed. No dependency or lockfile change; existing dependencies were reused without npm ci.
+
+Main fast-forwarded to `1ad47246bf4b90a71e87a546e4db1160fa3a3d90`, preserving all current history behavior. Only `hermes-app-expo.service` restarted (PID `3981665`, main apps/mobile cwd verified). Public iOS/Android manifests and their exact launchAssets returned HTTP 200 with SDK 57 and the explicit blur-background/foreground markers, retained history hint/divider/layout and native blur settings. Both Gateways' PIDs/start times and installed development plugin file hashes are unchanged. No Gateway/plugin/core/config/chat-data changes, remote push, or signed-build release.
+
+Release evidence is under the same private evidence directory's `release/`: before/after service and plugin hashes, `release-verification.json`, per-platform manifests, bundles/snippets, integration test/typecheck/export logs and verifier. The verifier initially expected single-quoted JSX string literals; inspected the actual retrieved bundle, corrected it to accept Metro's double-quoted literals, and passed both platforms without changing deployed code.
+
+Rollback baseline: local branch `rollback/composer-blur-before-1ad4724` at `5ce253b`; normal rollback is an explicit `git revert c8d8200f08b9bb3cabe72d91e957e96c323bb26b` followed by an Expo-only restart, without overwriting chat data. Entry remains `exps://agent.tuly.space`; reload Expo Go to load the new bundle. Native iPhone visual/IME acceptance remains pending.
 
 After authorized deployment, iPhone acceptance must cover Chinese nine-key composition/candidate selection, single/multiline input and clear-after-send, repeated keyboard open/interactive dismissal, background/foreground, attachment menu open/close, running status appearing/disappearing, draft/selection retention and scroll position. Public bundle checks cannot substitute for this acceptance.
