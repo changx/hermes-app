@@ -24,6 +24,16 @@ Jamie 先要求按轮次整块加载，随后确认简单边界即可，插话�
 - 使用实际 HermesClient 和生产 App 回调，HTTP 为明确的合成分页响应；没有将合成响应当作公网结果或真实聊天。原有 FlashList 已安装源码的长 prepend / layout refinement 回归继续通过。
 - 物理 iPhone 的段数、完整起点、连续下拉与阅读稳定性仍待确认；自动测试和导出不等同于真机验收。
 
-本轮候选在隔离分支 `jamie/session-three-turn-history`，未更新运行入口、未重启 Expo 或 Gateway。用户本次授权为“改”，未单独要求本轮发布。
+本轮候选在隔离分支 `jamie/session-three-turn-history` 验证后，Jamie 明确要求“提交部署”。提交 `de6d209` 已快进合入 main，并更新现有手机测试入口。
+
+## 授权发布记录
+
+- 发布目录再次通过 TypeScript 和完整 mobile 327/327；仅重启用户级 `hermes-app-expo.service`，没有依赖、服务端或核心变更。
+- iOS/Android 公网 manifest 和各自实际 launchAsset 均确认默认 3 段、用户消息起点、跨网络页补齐后发布完整窗口、游标保护；保留 FlashList 和原键盘包装，旧固定记录数缓存展开和自制滚动锚点不存在。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态与本次发布前一致；其他任务的两个工作区文档文件 SHA-256 保持一致。
+- 测试入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。公网资源通过不等同于 iPhone 的实际段数和阅读稳定性验收。
+- 回滚分支 `rollback/session-three-turn-history-before-de6d209` 指向发布前 `c89129c`。只回退本轮客户端变化并重启 Expo，不覆盖其他任务工作区文件。
+- 私有发布证据在下方目录的 `release/release-verification.json`，包含两平台实际 bundle 哈希、检查项与 Gateway 前后状态；另保留发布目录测试日志。
+- 未远程推送、未发布签名安装包、未重启 Gateway。
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-three-turn-history/`。
