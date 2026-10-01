@@ -116,18 +116,19 @@ export class DesktopConnectionService {
       ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].filter(({ role }) => role !== "analysis" && role !== "reasoning")
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
-    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
+    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
       const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
       return {
         id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
         role: role === "assistant" || role === "commentary" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
         text,
+        ...(display_kind ? { displayKind: display_kind } : {}),
         refSeq: ref_seq,
         ...(client_message_id ? { clientMessageId: client_message_id } : {}),
         ...(receipt ? { receiptId: receipt.id } : {}),
         ...(created_at ? { createdAt: created_at } : {}),
         ...(receipt ? { receiptState: receipt.state, processing: receipt.processing, ...(receipt.feedback ? { feedback: receipt.feedback } : {}) } : {}),
-        toolCalls: tool_calls.map(({ id: toolId, label, detail }) => ({ id: toolId, label, ...(detail ? { detail } : {}) })),
+        toolCalls: tool_calls.map(({ id: toolId, name, label, detail }) => ({ id: toolId, name, label, ...(detail ? { detail } : {}) })),
         attachments: attachments.map((attachment) => this.projectAttachment(attachment)),
       };
     });

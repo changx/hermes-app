@@ -275,9 +275,17 @@ textarea:disabled {
 .mermaid-diagram { overflow: auto; margin: 12px 0; text-align: center; white-space: normal; }
 .mermaid-diagram svg { max-width: 100%; height: auto; }
 .blocked-image { color: #746e66; font-style: italic; }
-.tool-record { margin-top: 8px; border: 1px solid #ddd8d0; border-radius: 8px; padding: 8px 10px; background: #faf9f7; white-space: normal; }
-.tool-record summary { cursor: pointer; font-size: 13px; font-weight: 650; }
-.tool-record pre { overflow: auto; white-space: pre-wrap; }
+.message:has(+ .message-continuation) { margin-bottom: 6px; }
+.message-continuation { margin-top: 0; }
+.message-tools-only { margin-bottom: 6px; }
+.message .message-role { display: flex; align-items: baseline; gap: 9px; margin-top: 0; font-size: 13px; letter-spacing: 0; text-transform: none; color: #48443e; }
+.message-time { color: #79736b; font-size: 11px; font-weight: 400; }
+.tool-records { display: grid; gap: 4px; }
+.tool-record { min-width: 0; color: #625e58; font-size: 13px; line-height: 20px; white-space: normal; }
+.tool-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.tool-icon { flex: 0 0 20px; text-align: center; }
+.tool-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message .tool-command { margin: 2px 0 0 26px; padding: 6px 10px; border: 1px solid #ddd8d0; border-radius: 6px; background: #f4f3f7; color: #48443e; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 72px; overflow: auto; white-space: pre-wrap; }
 .attachment-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; border: 1px solid #ddd8d0; border-radius: 9px; padding: 8px 10px; white-space: normal; }
 .attachment-row span:first-child { flex: 1; font-weight: 650; }
 .attachment-row span:nth-child(2) { color: #746e66; font-size: 12px; }

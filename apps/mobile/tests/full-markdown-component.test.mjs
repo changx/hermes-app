@@ -5,9 +5,25 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
+import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
+test('file timeline keeps filename and line context while full article retains the safe path', () => {
+  const detail = '/home/hermes/workspace/project/src/tenancy.py · offset=150 · limit=110';
+  const h = mount('Checking files', { canExpand: true, toolCalls: [{ id: 'file', name: 'read_file', label: 'Read file', detail }] });
+  const flatten = value => Array.isArray(value) ? value.map(flatten).join('') : value && typeof value === 'object' ? flatten(value.children ?? value.props?.children) : String(value ?? '');
+  const text = flatten(h.render());
+  assert.ok(text.includes('Reading tenancy.py L150-259'));
+  assert.ok(!text.includes('/home/hermes/workspace'));
+  const details = h.walk(h.render(false)).find(n => n.type === 'Pressable' && n.props.accessibilityLabel === 'View file details');
+  assert.ok(details);
+  details.props.onPress();
+  const web = h.walk(h.viewer()).find(n => n.type === 'WebView');
+  assert.ok(web.props.source.html.includes(detail));
+  h.unmount();
+});
+
 function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1, platform = 'ios' } = {}) {
   const copied = [], opened = [], players = [], paused = [];
   const webCalls = [], font = { scale: fontScale };
@@ -49,7 +65,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal',
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
-  const modules = { react: { ...react, default: react }, 'react-native': native,
+  const modules = { '../../../packages/client/src/toolPresentation': toolPresentation, react: { ...react, default: react }, 'react-native': native,
     './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => font },
     'expo-router': { useIsFocused: () => scope?.startsWith('viewer.') ? Number(scope.split('.')[1].split(':')[0]) === viewerStack.length - 1 : viewerStack.length === 0 },
     './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewerStack.push({ title, content, onClose }) }) },
@@ -69,6 +85,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
   }).outputText, { module: articleOutput, exports: articleOutput.exports, require: name => {
     if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(42) };
+    if (name === '../../../packages/client/src/toolPresentation') return toolPresentation;
     if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' };
     if (name === './messageMarkdown') return modules[name];
     if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
@@ -291,7 +308,7 @@ test('tool text uses native copy without an extra window, press responder or sav
     const texts = children.filter(n => n.type === 'Text');
     assert.equal(texts.length, 3);
     assert.ok(texts.every(n => n.props.selectable === true));
-    assert.equal(texts[0].children.join(''), `🔧 ${calls[0].label} · ${calls[0].detail.replace(/\s+/g, ' ')}`);
+    assert.equal(texts[0].children.join(''), `🌐 ${calls[0].label} ${calls[0].detail.replace(/\s+/g, ' ')}`);
     assert.equal(texts[2].children.join(''), calls[1].detail, 'full safe command reaches native text, including visually ellipsized lines');
     assert.equal(JSON.stringify(children).includes('never-copy-this'), false);
     assert.ok(children.every(n => n.type !== 'Modal' && n.type !== 'Pressable'));

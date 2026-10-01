@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
+import { compactFileDetail, toolDisplayLabel, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import type { DesktopAttachment, DesktopSnapshot } from "../shared/desktop-api";
 
 const drafts = new Map<string, string>();
@@ -98,13 +99,25 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   return <div className="timeline-wrap">
     <div className="message-list" aria-live="polite" ref={list} onScroll={scroll}>
       {snapshot.canLoadOlder ? <button className="load-older" type="button" onClick={() => safely(window.hermesDesktop.loadOlder())}>Load earlier messages</button> : null}
-      {snapshot.messages.length ? snapshot.messages.map((message) => <article className={`message message-${message.role}${message.optimistic ? " optimistic" : ""}`} key={message.id}>
-        <p className="message-role">{message.role === "assistant" ? "Hermes" : message.role === "user" ? "You" : "Notice"}</p>
+      {snapshot.messages.length ? snapshot.messages.map((message, index) => {
+        const previous = snapshot.messages[index - 1];
+        const continuation = message.role === "assistant" && previous?.role === "assistant" && message.displayKind !== "direct" && previous.displayKind !== "direct";
+        const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
+        const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
+        const hasTime = timestamp && Number.isFinite(timestamp.getTime());
+        return <article className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${message.optimistic ? " optimistic" : ""}`} key={message.id}>
+        {!continuation && <p className="message-role">{message.role === "assistant" ? "Hermes" : message.role === "user" ? "You" : "Notice"}{hasTime ? <time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time> : null}</p>}
         <MessageContent text={message.text} />
-        {message.toolCalls.map((tool) => <details className="tool-record" key={tool.id}><summary>{tool.label}</summary>{tool.detail ? <pre>{tool.detail}</pre> : null}</details>)}
+        <div className="tool-records">{message.toolCalls.map((tool) => {
+          const presentation = toolPresentation(tool.name);
+          return <div className="tool-record" key={tool.id}>
+            <div className="tool-line"><span className="tool-icon" aria-hidden="true">{presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{toolDisplayLabel(tool.name, tool.label)}{!presentation.command && tool.detail ? ` ${compactFileDetail(tool.name ?? '', tool.detail).replace(/\s+/g, " ")}` : ""}</span></div>
+            {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
+          </div>;
+        })}</div>
         {message.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><span>{attachment.name}</span><span>{attachment.size ? `${Math.ceil(attachment.size / 1024)} KB` : attachment.state}</span>{attachment.state === "available" ? <><button type="button" onClick={() => safely(window.hermesDesktop.downloadAttachment(attachment.id, "open"))}>Open</button><button type="button" onClick={() => safely(window.hermesDesktop.downloadAttachment(attachment.id, "save"))}>Save</button></> : null}</div>)}
         {message.receiptState ? <div className={`receipt receipt-${message.receiptState}`}>{message.processing === "running" ? "Running" : message.receiptState}{message.feedback ? ` · ${message.feedback}` : ""}{message.clientMessageId && ["failed", "interrupted", "unknown"].includes(message.receiptState) ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
-      </article>) : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
+      </article>; }) : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;

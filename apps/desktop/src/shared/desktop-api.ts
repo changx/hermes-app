@@ -11,7 +11,7 @@ export type DesktopThread = Readonly<{
   lastMessageAt?: number;
   running: boolean;
 }>;
-export type DesktopToolCall = Readonly<{ id: string; label: string; detail?: string }>;
+export type DesktopToolCall = Readonly<{ id: string; name?: string; label: string; detail?: string }>;
 export type DesktopAttachment = Readonly<{
   id: string;
   name: string;
@@ -28,6 +28,7 @@ export type DesktopInteraction = Readonly<{
 export type DesktopMessage = Readonly<{
   id: string;
   role: "user" | "assistant" | "system";
+  displayKind?: "direct" | "system_notice";
   text: string;
   refSeq?: number;
   clientMessageId?: string;

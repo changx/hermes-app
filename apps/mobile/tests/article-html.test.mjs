@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { safeFontScale } from '../src/fontScale.ts';
+import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
 
 // Execute the real article serializer against the real Markdown AST, with small
@@ -14,6 +15,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText, { module: output, exports: output.exports, URL, require: name => {
   if (name === 'expo-crypto') return { getRandomBytes: count => Uint8Array.from({ length: count }, (_, i) => i + 1) };
+  if (name === '../../../packages/client/src/toolPresentation') return toolPresentation;
   if (name === './markdownRenderer.generated') return sampleEngines;
   if (name === './messageMarkdown') return { safeLinkUrl };
   if (name === './fontScale') return { safeFontScale };

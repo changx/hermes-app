@@ -12,6 +12,7 @@ import { ARTICLE_TEXT_LIMIT, renderArticleHtml } from './articleHtml';
 import { safeLinkUrl } from './messageMarkdown';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
+import { compactFileDetail, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
 import { useViewer } from './Viewers';
 
 const copy = (value: string) => {
@@ -275,16 +276,17 @@ function RenderBlocks({ blocks, tone, allowed, onExpand, onInteraction, suspende
   return <View style={styles.blocks}>{blocks.map((block, index) => <RenderBlock key={index} block={block} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={onInteraction} suspended={suspended} />)}</View>;
 }
 
-function ToolCalls({ calls, onInteraction }: { calls?: readonly ToolCall[]; onInteraction: () => void }) {
+function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?: readonly ToolCall[]; onInteraction: () => void; compact?: boolean; onDetails?: () => void }) {
   if (!calls?.length) return null;
   // Native Text owns the long-press menu and its anchor. Do not open another
   // window or become a responder: that disrupts the composer's keyboard.
   return <View style={styles.toolCalls} onTouchStart={event => { onInteraction(); stopTouch(event); }}>{calls.map(call => {
-    const name = call.name.replace(/^functions\./, '');
-    const terminal = name === 'terminal';
-    const icon = name === 'skill_view' ? '📚' : name === 'read_file' ? '📖' : /search/.test(name) ? '🔎' : terminal || name === 'execute_code' ? '💻' : '🔧';
+    const { icon, command: terminal } = toolPresentation(call.name);
+    const detail = call.detail && compact ? compactFileDetail(call.name, call.detail) : call.detail;
+    const shortened = compact && !!call.detail && detail !== call.detail;
+    const label = <Text selectable numberOfLines={1} ellipsizeMode="tail" style={shortened ? [styles.toolLabel, styles.toolLineText] : styles.toolLabel}>{icon} {toolDisplayLabel(call.name, call.label)}{!terminal && detail ? ` ${detail.replace(/\s+/g, ' ')}` : ''}</Text>;
     return <View key={call.id} style={styles.toolCall}>
-      <Text selectable numberOfLines={1} ellipsizeMode="tail" style={styles.toolLabel}>{icon} {call.label}{!terminal && call.detail ? ` · ${call.detail.replace(/\s+/g, ' ')}` : ''}</Text>
+      {shortened && onDetails ? <View style={styles.toolLine}>{label}<Pressable accessibilityRole="button" accessibilityLabel="View file details" hitSlop={8} onPress={onDetails}><Text style={styles.toolDetailsLink}>↗</Text></Pressable></View> : label}
       {terminal && !!call.detail && <View style={styles.toolDetail}>
         <Text selectable numberOfLines={2} ellipsizeMode="tail" style={[styles.codeText, styles.toolDetailText]}>{call.detail}</Text>
       </View>}
@@ -303,7 +305,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
   if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.articleFallbackContent}>
     <Text style={styles.articleFailure}>{!page ? 'This article is too long. Showing the standard view instead.' : 'This article could not load. Showing the standard view instead.'}</Text>
     <RenderBlocks blocks={blocks} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} suspended />
-    <ToolCalls calls={toolCalls} onInteraction={() => {}} />
+    <ToolCalls calls={toolCalls} compact={false} onInteraction={() => {}} />
   </ScrollView>;
   return <WebView style={styles.articleWeb} source={{ html: page.html }} originWhitelist={['*']}
     onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
@@ -408,13 +410,16 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
   const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
   return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
     <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={expand} onInteraction={() => { gesture.current = {}; }} />
-    <ToolCalls calls={toolCalls} onInteraction={() => { gesture.current = {}; }} />
+    <ToolCalls calls={toolCalls} onDetails={canExpand ? () => expand({ kind: 'message' }) : undefined} onInteraction={() => { gesture.current = {}; }} />
   </View>;
 });
 
 const styles = StyleSheet.create({
   toolCalls: { minWidth: 0, gap: 4, paddingVertical: 0 },
   toolCall: { minWidth: 0, gap: 2 },
+  toolLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
+  toolLineText: { flex: 1, minWidth: 0 },
+  toolDetailsLink: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetailText: { paddingVertical: 4 },
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#e8eef6' },

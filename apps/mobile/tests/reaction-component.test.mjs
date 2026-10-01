@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as historyLayout from '../src/historyLayout.ts';
+import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 import { projectTimeline } from '../src/timeline.ts';
 import { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl } from '../src/messageMarkdown.ts';
 import { hasRunningReceipt } from '../src/receiptState.ts';
@@ -17,6 +18,7 @@ const react = {
   useCallback: fn => fn, useEffect: () => {}, useImperativeHandle: () => {}, useMemo: fn => fn()
 };
 const modules = {
+  '../../../packages/client/src/toolPresentation': toolPresentation,
   react: { ...react, default: react }, 'react-native': native,
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
   'expo-router': { useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
