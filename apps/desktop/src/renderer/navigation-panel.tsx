@@ -32,6 +32,6 @@ export const NavigationPanel = ({ snapshot }: { snapshot: DesktopSnapshot }) => 
         </div> : null}
       </section>;
     })}
-    {!snapshot.channels.length ? <p className="empty-state">No channels yet.</p> : null}
+    {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No channels yet.</p> : null}
   </div>;
 };

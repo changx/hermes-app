@@ -215,6 +215,9 @@ export class DesktopConnectionService {
       phase: this.phase,
       connectionState: this.connectionState,
       connectionLabel: stateLabel[this.connectionState],
+      // The SDK cursor is established only after the authoritative initial
+      // snapshot has completed, including a legitimately empty account.
+      loadingConversations: this.phase === "connected" && this.client?.cursor == null,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
       ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
       channels,
