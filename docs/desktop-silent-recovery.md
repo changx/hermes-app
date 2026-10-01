@@ -23,3 +23,9 @@ Not included: automatically repeating non-idempotent channel mutations, signing,
 - `npm run desktop:package:mac`: generated unsigned Apple Silicon candidate at `apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app`. Checked packaged executable, ASAR main/preload/renderer, recovery/wake code and absence of the old timeout banner. This Linux-produced candidate lacks macOS ASAR integrity digest restoration because codesign is unavailable; do not treat it as a signed/release build.
 - `git diff --check`: passed. No changes to main, mobile runtime, plugins, Hermes core or services.
 - Not verified: installation/launch on Mac, real sleep/wake, real weak-network/switching, Mac/iPhone end-to-end recovery. Candidate remains in an isolated branch until approved desktop deployment/device acceptance.
+
+## Authorized v0.1.3 release preparation
+
+Jamie subsequently authorized packaging and publishing. Integrated remote `v0.1.2` desktop tree navigation, kept its tool timeline/gutter improvements, and removed only the technical connection control in the merge conflict. Root/desktop/lockfile versions advance to `0.1.3`, without dependency changes.
+
+Integrated checks: desktop TypeScript/build **60/60 tests passed**, `npm audit` reports **0 vulnerabilities**. The first integrated check encountered Electron's lazy binary download racing between parallel test processes; initialized Electron once, reran successfully, and added the same one-time initialization before CI tests. The release workflow will build on macOS arm64 and publish its verified archive/checksum; Linux candidate is not used for release.
