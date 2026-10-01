@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as historyLayout from '../src/historyLayout.ts';
 import { projectTimeline } from '../src/timeline.ts';
 
 const input = [
@@ -39,7 +40,7 @@ function loadTimeline() {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardStickyView: 'KeyboardStickyView',
       KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
+    './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
     './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false },
   };
@@ -62,7 +63,7 @@ test('system notice renders as compact plain UI rather than Hermes Markdown', ()
     receipts: [], interactions: [], answers: {}, onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false }, {});
   const list = find(tree, 'FlatList');
   const element = list.props.renderItem({ item: projectTimeline(input, null, 'thread')[1] });
-  const notice = element.type(element.props);
+  const notice = find(element.type(element.props), 'View');
   assert.equal(notice.type, 'View');
   assert.equal(notice.props.accessible, true);
   assert.match(notice.props.accessibilityLabel, /^System notice:/);

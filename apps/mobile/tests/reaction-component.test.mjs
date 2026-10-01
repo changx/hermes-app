@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as historyLayout from '../src/historyLayout.ts';
 import { projectTimeline } from '../src/timeline.ts';
 import { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl } from '../src/messageMarkdown.ts';
 import { hasRunningReceipt } from '../src/receiptState.ts';
@@ -24,7 +25,7 @@ const modules = {
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
-  '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
+  './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
   './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
   './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
