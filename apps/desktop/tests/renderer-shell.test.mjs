@@ -22,6 +22,14 @@ const result = await build({
         interactions: [],
         canLoadOlder: false,
       }}));
+      export const toolMarkup = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
+        revision: 1, phase: "connected", connectionState: "online", connectionLabel: "Connected",
+        channels: [], threads: [], selectedThreadId: "fixture-thread", selectedThreadTitle: "Fixture",
+        messages: [{ id: "fixture-message", role: "assistant", text: "Public explanation", attachments: [],
+          toolCalls: [{ id: "first-tool", label: "Run command", detail: "printf '<hello>'" },
+            { id: "second-tool", label: "Read file" }] }],
+        interactions: [], canLoadOlder: false,
+      }}));
     `,
     loader: "tsx",
     resolveDir: desktopRoot,
@@ -101,6 +109,20 @@ test("renderer has a user-safe top-level error boundary", () => {
   assert.match(errorBoundary, /role="alert"/);
   assert.match(errorBoundary, /Hermes couldn’t open/);
   assert.doesNotMatch(errorBoundary, /error\.message|error\.stack/);
+});
+
+test("tool records render expanded, in order, and escape command text", () => {
+  const tools = renderedModule.exports.toolMarkup;
+  assert.doesNotMatch(tools, /<details\b|<summary\b/);
+  assert.match(tools, /class="tool-record" aria-label="Run command"/);
+  assert.match(tools, /<pre>printf &#x27;&lt;hello&gt;&#x27;<\/pre>/);
+  assert.ok(tools.indexOf('aria-label="Run command"') < tools.indexOf('aria-label="Read file"'));
+});
+
+test("conversation uses compact fixed gutters without a centered width cap", () => {
+  assert.match(styles, /\.message-list\s*{[^}]*padding:\s*18px 20px;/);
+  assert.match(styles, /\.message\s*{[^}]*max-width:\s*none;[^}]*margin:\s*0 0 20px;/);
+  assert.doesNotMatch(styles, /padding:[^;]*8vw/);
 });
 
 test("renderer source has no Node or Electron imports", () => {
