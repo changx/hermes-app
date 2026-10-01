@@ -41,14 +41,14 @@ function route(id = 't_one') {
 function timeline(bottom = 34, os = 'ios', receipts = []) {
   const tree = load('../src/ChatTimeline.tsx', {
     react,
-    'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
+    'react-native': { AppState: { currentState: 'active' }, FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
       Platform: { OS: os }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ fontScale: 1 }) },
     'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
     './FontSize': { Text: 'Text', TextInput: 'TextInput', useFontSize: () => ({ scale: 1 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom }) },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',
       KeyboardStickyView: 'KeyboardStickyView', KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
-    'react-native-reanimated': { useSharedValue: value => ({ value }), runOnJS: fn => fn },
+    'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, useSharedValue: value => ({ value }), runOnJS: fn => fn },
     '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
   }).ChatTimeline({ threadId: 't_one', rows: [], text: '', receipts, interactions: [], answers: {} }, {});
   const list = find(tree, 'FlatList').props;

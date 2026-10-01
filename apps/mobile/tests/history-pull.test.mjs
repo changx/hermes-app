@@ -18,7 +18,7 @@ const modules = {
   react: React, 'react-native': native, '@shopify/flash-list': { FlashList: 'FlashList' },
   './FontSize': { Text: 'Text', TextInput: 'TextInput' },
   'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
-  'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
+  'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
   './timeline': timeline, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },

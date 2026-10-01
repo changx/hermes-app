@@ -22,7 +22,7 @@ const modules = {
   './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },
-  'react-native-reanimated': { runOnJS: fn => fn, useSharedValue: value => ({ value }) },
+  'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
   './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
