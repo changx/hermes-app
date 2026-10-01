@@ -77,18 +77,16 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
   }, [first, following, snapshot.messages.length, snapshot.selectedThreadId]);
+  const latestVisibleRef = snapshot.messages.reduce((latest, message) => Math.max(latest, message.refSeq ?? 0), 0);
   useEffect(() => {
     const mark = () => {
-      if (!following || document.visibilityState !== "visible") return;
-      for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
-        const ref = snapshot.messages[index].refSeq;
-        if (ref) { safely(window.hermesDesktop.markVisible(ref)); break; }
-      }
+      if (!following || document.visibilityState !== "visible" || !latestVisibleRef) return;
+      safely(window.hermesDesktop.markVisible(latestVisibleRef));
     };
     mark();
     document.addEventListener("visibilitychange", mark);
     return () => document.removeEventListener("visibilitychange", mark);
-  }, [following, snapshot.messages, snapshot.selectedThreadId]);
+  }, [following, latestVisibleRef, snapshot.selectedThreadId, snapshot.connectionState]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;

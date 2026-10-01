@@ -551,9 +551,23 @@ export class DesktopConnectionService {
     }, valid);
   }
 
+  private readonly pendingReads = new WeakMap<HermesClient, Set<string>>();
+
   async markVisible(refSeq: number): Promise<void> {
-    if (!Number.isSafeInteger(refSeq) || refSeq <= 0 || !this.selectedThreadId) return;
-    await this.client?.markRead(this.selectedThreadId, refSeq).catch(() => {});
+    const client = this.client;
+    const threadId = this.selectedThreadId;
+    if (!Number.isSafeInteger(refSeq) || refSeq <= 0 || !threadId || !client) return;
+    // Equal-ref acknowledgements also publish snapshots. Never feed those back
+    // into another request, including calls racing the original acknowledgement.
+    if (refSeq <= (client.threads.get(threadId)?.read_ref ?? 0)) return;
+    let pending = this.pendingReads.get(client);
+    if (!pending) { pending = new Set(); this.pendingReads.set(client, pending); }
+    const key = `${threadId}:${refSeq}`;
+    if (pending.has(key)) return;
+    pending.add(key);
+    try { await client.markRead(threadId, refSeq); }
+    catch { /* Remains retryable after connection recovery. */ }
+    finally { pending.delete(key); }
   }
 
   async sendMessage(input: SendMessageInput): Promise<void> {
