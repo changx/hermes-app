@@ -36,6 +36,7 @@ const api: HermesDesktopApi = Object.freeze({
   pickAndUploadAttachments: (): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:pick-attachments"),
   uploadDroppedFiles: (files: readonly File[]): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:drop-attachments", files.map((file) => webUtils.getPathForFile(file))),
   deleteUnattachedAttachment: (attachmentId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-attachment", attachmentId),
+  previewAttachmentImage: (attachmentId: string): Promise<string> => ipcRenderer.invoke("desktop:preview-image", attachmentId),
   downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),
 });
 

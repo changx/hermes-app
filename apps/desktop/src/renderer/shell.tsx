@@ -1,3 +1,4 @@
+import { AttachmentView } from "./attachment-view";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
@@ -116,7 +117,7 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
             {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
           </section>;
         })}</div>
-        {message.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><span>{attachment.name}</span><span>{attachment.size ? `${Math.ceil(attachment.size / 1024)} KB` : attachment.state}</span>{attachment.state === "available" ? <><button type="button" onClick={() => safely(window.hermesDesktop.downloadAttachment(attachment.id, "open"))}>Open</button><button type="button" onClick={() => safely(window.hermesDesktop.downloadAttachment(attachment.id, "save"))}>Save</button></> : null}</div>)}
+        {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
         {message.receiptState ? <div className={`receipt receipt-${message.receiptState}`}>{message.processing === "running" ? "Running" : message.receiptState}{message.feedback ? ` · ${message.feedback}` : ""}{message.clientMessageId && ["failed", "interrupted", "unknown"].includes(message.receiptState) ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
       </article>; }) : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
     </div>
