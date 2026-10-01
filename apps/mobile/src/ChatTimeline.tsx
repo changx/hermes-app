@@ -14,6 +14,7 @@ import { MessageContent } from './MessageContent';
 import { MessageTime } from './MessageTime';
 import { messageNeedsViewport } from './messageMarkdown';
 import { hasRunningReceipt } from './receiptState';
+import { historyDrawDistance, historyItemType } from './historyLayout';
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
@@ -104,6 +105,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
   const [refreshingHistory, setRefreshingHistory] = useState(false);
+  const [renderAhead, setRenderAhead] = useState(250);
   const historyPullPending = useRef<HistoryPullRequest | null>(null);
   const historyReleased = useRef(false);
   const historyLoadProps = useRef({ hasOlder: props.hasOlder, locatingBusy: props.locatingBusy, onOlder: props.onOlder });
@@ -294,6 +296,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown} />}
         renderScrollComponent={renderScrollComponent}
+        drawDistance={renderAhead} getItemType={historyItemType}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         // List-owned position maintenance; no competing prepend scrolls.
         maintainVisibleContentPosition={historyPosition}
@@ -312,6 +315,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;
+          setRenderAhead(historyDrawDistance(viewport.current));
           if (!restored.current && content.current) {
             restored.current = true;
             if (following.current) scheduleFollow();
