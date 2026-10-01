@@ -24,7 +24,7 @@ body {
 
 .desktop-shell {
   display: grid;
-  grid-template-columns: minmax(180px, 0.72fr) minmax(240px, 0.95fr) minmax(420px, 2.1fr);
+  grid-template-columns: 48px 280px minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   min-height: 0;
@@ -230,24 +230,29 @@ textarea:disabled {
   color: #3a3733;
 }
 
-@media (max-width: 1024px) {
-  .desktop-shell {
-    grid-template-columns: minmax(240px, 0.9fr) minmax(420px, 2fr);
-  }
-
-  .channels-pane {
-    display: none;
-  }
-}
-
-@media (max-width: 760px) {
-  .desktop-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .threads-pane {
-    display: none;
-  }
+.desktop-shell.panel-collapsed { grid-template-columns: 48px minmax(0, 1fr); }
+.navigation-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #f7f5f1; }
+.navigation-panel[hidden] { display: none; }
+.activity-bar { display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 18px 4px; border-right: 1px solid #d9d5ce; background: #ebe8e2; }
+.activity-bar button { width: 38px; height: 38px; border: 0; border-radius: 7px; background: transparent; color: #514d47; font-size: 24px; }
+.activity-bar button:hover, .activity-bar button[aria-expanded="true"] { background: #fff; }
+.tree-caption, .tree-empty { color: #746e66; font-size: 12px; padding: 12px; }
+.channel-toggle { display: flex; gap: 8px; align-items: center; width: 100%; padding: 10px 12px; border: 0; background: transparent; text-align: left; color: #393631; }
+.channel-toggle strong, .thread-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-children { margin: 0 8px 8px 21px; border-left: 1px solid #d9d5ce; }
+.tree-thread { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 10px; border: 0; background: transparent; text-align: left; color: #393631; }
+.thread-title { flex: 1; }
+.tree-thread:hover, .tree-thread.selected { background: #e5e0d7; }
+.thread-status { color: #285d43; font-size: 11px; }
+.tree-more, .tree-new { width: 100%; padding: 9px 10px; border: 0; background: transparent; color: #746e66; text-align: left; font-size: 12px; }
+.thread-switcher { max-width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.palette-results small { display: block; margin-top: 4px; color: #746e66; }
+button { cursor: pointer; }
+button:focus-visible { outline: 2px solid #325c77; outline-offset: -2px; }
+@media (max-width: 900px) {
+  .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
+  .navigation-panel { position: fixed; z-index: 10; left: 48px; top: 0; bottom: 0; width: min(280px, calc(100vw - 48px)); box-shadow: 12px 0 30px rgb(0 0 0 / 18%); }
+  .conversation-header { padding: 14px; gap: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
