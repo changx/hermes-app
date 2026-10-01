@@ -156,7 +156,7 @@ export class DesktopConnectionService {
     for (const [id, thread] of projected) combined.set(id, thread);
     const receipts = [...(this.client?.receipts.values() ?? [])];
     const threads = [...combined.values()]
-      .filter((thread) => !thread.archived && (!this.selectedChannelId || thread.project_id === this.selectedChannelId))
+      .filter((thread) => !thread.archived)
       .map((thread) => ({
         id: thread.id,
         channelId: thread.project_id,
@@ -431,7 +431,6 @@ export class DesktopConnectionService {
     this.selectedChannelId = channelId;
     this.selectedThreadId = undefined;
     this.olderCursor = undefined;
-    this.listedThreads.clear();
     this.changed();
     const valid = () => this.client === client && this.selectedChannelId === channelId;
     await this.recoverRead("channels", async (signal) => {
@@ -449,7 +448,8 @@ export class DesktopConnectionService {
 
   async selectThread(threadId: string): Promise<void> {
     const thread = this.listedThreads.get(threadId) ?? this.client?.threads.get(threadId);
-    if (!thread || thread.project_id !== this.selectedChannelId || !this.client) return;
+    if (!thread || !this.client?.channels.has(thread.project_id)) return;
+    this.selectedChannelId = thread.project_id;
     this.selectedThreadId = threadId;
     this.readJobs.get("older")?.abort();
     this.olderCursor = undefined;
@@ -533,7 +533,7 @@ export class DesktopConnectionService {
       if (this.selectedThreadId === threadId) {
         this.selectedThreadId = undefined;
         this.olderCursor = undefined;
-        const fallback = this.snapshot().threads[0];
+        const fallback = this.snapshot().threads.find((thread) => thread.channelId === this.selectedChannelId);
         if (fallback) await this.selectThread(fallback.id);
       }
       this.changed();
