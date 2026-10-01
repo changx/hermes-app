@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { compactFileDetail, toolDisplayLabel, toolPresentation } from "../../../../packages/client/src/toolPresentation";
+import { orderedThreads } from "./thread-navigation";
+import { NavigationPanel } from "./navigation-panel";
 import type { DesktopAttachment, DesktopSnapshot } from "../shared/desktop-api";
 
 const drafts = new Map<string, string>();
@@ -45,10 +47,10 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
     safely(task.then(close));
   };
   if (kind === "palette") {
-    const rows = snapshot.threads.filter(({ title }) => title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+    const rows = orderedThreads(snapshot.threads).filter(({ title, channelId }) => `${title} ${snapshot.channels.find(({ id }) => id === channelId)?.name ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0, 24);
     return <div className="modal-backdrop" role="presentation" onMouseDown={close}><section className="editor-dialog palette" role="dialog" aria-modal="true" aria-label="Switch thread" onMouseDown={(event) => event.stopPropagation()}>
       <input autoFocus aria-label="Find a thread" placeholder="Switch to a thread…" value={query} onChange={(event) => setQuery(event.target.value)} />
-      <div className="palette-results">{rows.map((thread) => <button key={thread.id} type="button" onClick={() => { safely(window.hermesDesktop.selectThread(thread.id)); close(); }}>{thread.title}</button>)}</div>
+      <div className="palette-results">{rows.map((thread) => <button key={thread.id} type="button" onClick={() => { safely(window.hermesDesktop.selectThread(thread.id)); close(); }}>{thread.title}<small>{snapshot.channels.find(({ id }) => id === thread.channelId)?.name}</small></button>)}</div>
     </section></div>;
   }
   const channelEditor = kind === "new-channel" || kind === "edit-channel";
@@ -76,18 +78,16 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
   }, [first, following, snapshot.messages.length, snapshot.selectedThreadId]);
+  const latestVisibleRef = snapshot.messages.reduce((latest, message) => Math.max(latest, message.refSeq ?? 0), 0);
   useEffect(() => {
     const mark = () => {
-      if (!following || document.visibilityState !== "visible") return;
-      for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
-        const ref = snapshot.messages[index].refSeq;
-        if (ref) { safely(window.hermesDesktop.markVisible(ref)); break; }
-      }
+      if (!following || document.visibilityState !== "visible" || !latestVisibleRef) return;
+      safely(window.hermesDesktop.markVisible(latestVisibleRef));
     };
     mark();
     document.addEventListener("visibilitychange", mark);
     return () => document.removeEventListener("visibilitychange", mark);
-  }, [following, snapshot.messages, snapshot.selectedThreadId]);
+  }, [following, latestVisibleRef, snapshot.selectedThreadId, snapshot.connectionState]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;
@@ -171,30 +171,37 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
 
 export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [editor, setEditor] = useState<Editor>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") { setEditor(null); return; }
       if (!event.metaKey) return;
+      if (event.key.toLocaleLowerCase() === "b") { event.preventDefault(); setPanelOpen((open) => !open); }
       if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
       if (event.key.toLocaleLowerCase() === "n" && snapshot.selectedChannelId) { event.preventDefault(); setEditor("new-thread"); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId]);
-  if (snapshot.phase === "restoring") return <main className="loading-screen" role="status">Opening Hermes…</main>;
+  if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
   if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside></main>;
   const forget = () => { if (window.confirm("Forget this connection and remove its local drafts and queued messages?")) { drafts.clear(); draftAttachments.clear(); safely(window.hermesDesktop.forgetConnection()); } };
   const deleteChannel = () => { if (channel && window.confirm(`Delete “${channel.name}”? This cannot be undone.`)) safely(window.hermesDesktop.deleteChannel(channel.id)); };
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  return <main className="desktop-shell" aria-label="Hermes desktop">
-    <nav className="pane channels-pane" aria-labelledby="channels-heading"><header className="pane-header"><div><p className="eyebrow">Hermes</p><h1 id="channels-heading">Channels</h1></div><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button></header>
-      <div className="item-list">{snapshot.channels.length ? snapshot.channels.map((item) => <button type="button" className={item.id === snapshot.selectedChannelId ? "list-item selected" : "list-item"} key={item.id} onClick={() => safely(window.hermesDesktop.selectChannel(item.id))}><strong>{item.name}</strong></button>) : <EmptyState>{snapshot.connectionState === "online" ? "No channels yet." : "Channels will appear when Hermes connects."}</EmptyState>}</div>
-      <footer className="sidebar-footer"><button type="button" className="text-button" onClick={forget}>Forget connection</button></footer></nav>
-    <nav className="pane threads-pane" aria-labelledby="threads-heading"><header className="pane-header"><div><h2 id="threads-heading">Threads</h2>{channel?.description ? <p className="channel-description" title={channel.description}>{channel.description}</p> : null}</div><div className="header-actions">{channel ? <button type="button" aria-label="Edit channel" onClick={() => setEditor("edit-channel")}>⋯</button> : null}<button type="button" aria-label="Create a topic" onClick={() => setEditor("new-thread")} disabled={!channel}>+</button></div></header>
-      {channel ? <div className="resource-actions"><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}
-      <div className="item-list">{snapshot.selectedChannelId ? snapshot.threads.length ? snapshot.threads.map((thread) => <button type="button" className={thread.id === snapshot.selectedThreadId ? "list-item thread-item selected" : "list-item thread-item"} key={thread.id} onClick={() => safely(window.hermesDesktop.selectThread(thread.id))}><strong>{thread.title}</strong><span>{thread.running ? "Running" : thread.unreadCount ? `${thread.unreadCount} unread` : ""}</span></button>) : <EmptyState>No threads in this channel.</EmptyState> : <EmptyState>Choose a channel to see its threads.</EmptyState>}</div></nav>
-    <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">Conversation</p><h2 id="conversation-heading">{snapshot.selectedThreadTitle ?? "Choose a thread"}</h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}<button type="button" className={`connection-state state-${snapshot.connectionState}`} onClick={() => safely(window.hermesDesktop.retryConnection())} title="Retry connection">{snapshot.connectionLabel}</button></div></header>
+  return <main className={`desktop-shell${panelOpen ? "" : " panel-collapsed"}`} aria-label="Hermes desktop">
+    <nav className="activity-bar" aria-label="Navigation tools">
+      <button type="button" title="Toggle navigation (⌘B)" aria-label="Toggle navigation" aria-expanded={panelOpen} aria-controls="navigation-panel" onClick={() => setPanelOpen((open) => !open)}>☰</button>
+      <button type="button" title="Switch thread (⌘K)" aria-label="Switch thread" onClick={() => setEditor("palette")}>⌕</button>
+      <button type="button" title="New topic (⌘N)" aria-label="Create a topic" disabled={!channel} onClick={() => setEditor("new-thread")}>＋</button>
+    </nav>
+    <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
+      <header className="pane-header"><h1 id="navigation-heading">Conversations</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
+      <NavigationPanel snapshot={snapshot} />
+      <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
+    </nav>
+    <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
-      {snapshot.selectedThreadId ? <Timeline snapshot={snapshot} /> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
+      {snapshot.selectedThreadId ? <Timeline snapshot={snapshot} /> : snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
       {snapshot.interactions.map((item) => <section className="interaction-card" key={item.id}><strong>{item.kind === "approval" ? "Approval requested" : "Hermes needs clarification"}</strong><p>{item.prompt}</p><div>{item.choices.map((choice) => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
       <Composer snapshot={snapshot} />
     </section>

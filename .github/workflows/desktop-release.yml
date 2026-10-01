@@ -44,6 +44,8 @@ jobs:
           test "$(uname -m)" = "arm64"
           test "$(node --version)" = "v24.14.1"
           test "$(npm --version)" = "11.11.0"
+          # Initialize lazy Electron binary once before parallel test workers.
+          node -p 'require("electron")'
 
       - name: Run desktop checks
         run: npm run desktop:check

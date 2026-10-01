@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
-import { HermesClient, HttpError, connectionFailure, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
+import { HermesClient, HttpError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
 import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
@@ -37,6 +37,7 @@ const createConnection = (baseUrl: string): StoredConnection => {
 };
 
 const wait = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal.aborted) { reject(new Error("aborted")); return; }
   const finish = () => { signal.removeEventListener("abort", abort); resolve(); };
   const timer = setTimeout(finish, milliseconds);
   const abort = () => { clearTimeout(timer); signal.removeEventListener("abort", abort); reject(new Error("aborted")); };
@@ -87,6 +88,61 @@ export class DesktopConnectionService {
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
   private olderCursor: string | undefined;
+  private readJobs = new Map<string, AbortController>();
+  private outboxTimer: ReturnType<typeof setTimeout> | undefined;
+  private delivering = new Set<string>();
+  private connectionIssue: string | undefined;
+  private closed = false;
+  private sendRetryAfter = new Map<string, number>();
+
+  private cancelRecovery(): void {
+    for (const controller of this.readJobs.values()) controller.abort();
+    this.readJobs.clear();
+    clearTimeout(this.outboxTimer);
+    this.outboxTimer = undefined;
+  }
+
+  // Retry only reads here. Mutations without an idempotency contract must not
+  // be repeated automatically after an ambiguous response.
+  private async recoverRead(key: string, operation: (signal: AbortSignal) => Promise<void>, valid: () => boolean): Promise<void> {
+    this.readJobs.get(key)?.abort();
+    const controller = new AbortController();
+    this.readJobs.set(key, controller);
+    let attempt = 0;
+    try {
+      while (!controller.signal.aborted && valid()) {
+        try { await operation(controller.signal); return; }
+        catch (error) {
+          if (controller.signal.aborted || !valid()) return;
+          if (!isRetryableError(error)) {
+            this.stopIfUnauthorized(error);
+            this.actionError(this.connectionError(error instanceof Error ? error : new Error(String(error))) ?? "This conversation could not be opened. Choose another conversation or try again.");
+            return;
+          }
+          const delay = Math.min(10_000, 500 * 2 ** Math.min(attempt++, 5));
+          const retryAfter = error instanceof HttpError ? error.retryAfterMs ?? 0 : 0;
+          await wait(Math.max(delay, retryAfter), controller.signal);
+        }
+      }
+    } catch { /* cancelled by navigation, forget, or close */ }
+    finally { if (this.readJobs.get(key) === controller) this.readJobs.delete(key); }
+  }
+
+  private scheduleOutbox(): void {
+    if (this.closed || this.outboxTimer || this.connectionState !== "online" || !this.outbox.some((item) => item.state === "pending" || item.state === "unknown")) return;
+    this.outboxTimer = setTimeout(() => {
+      this.outboxTimer = undefined;
+      void this.flushOutbox();
+    }, 5_000);
+    this.outboxTimer.unref();
+  }
+
+  private stopIfUnauthorized(error: unknown): void {
+    if (!(error instanceof HttpError) || (error.status !== 401 && error.status !== 403)) return;
+    this.client?.close();
+    this.connectionState = "blocked";
+    this.cancelRecovery();
+  }
 
   constructor(private readonly publish: (snapshot: DesktopSnapshot) => void) {}
 
@@ -100,7 +156,7 @@ export class DesktopConnectionService {
     for (const [id, thread] of projected) combined.set(id, thread);
     const receipts = [...(this.client?.receipts.values() ?? [])];
     const threads = [...combined.values()]
-      .filter((thread) => !thread.archived && (!this.selectedChannelId || thread.project_id === this.selectedChannelId))
+      .filter((thread) => !thread.archived)
       .map((thread) => ({
         id: thread.id,
         channelId: thread.project_id,
@@ -160,8 +216,11 @@ export class DesktopConnectionService {
       phase: this.phase,
       connectionState: this.connectionState,
       connectionLabel: stateLabel[this.connectionState],
+      // The SDK cursor is established only after the authoritative initial
+      // snapshot has completed, including a legitimately empty account.
+      loadingConversations: this.phase === "connected" && this.client?.cursor == null,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
-      ...(this.errorMessage ? { errorMessage: this.errorMessage } : {}),
+      ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
       channels,
       threads,
       messages,
@@ -202,6 +261,9 @@ export class DesktopConnectionService {
   }
 
   private async startClient(connection: StoredConnection): Promise<void> {
+    this.closed = false;
+    this.connectionIssue = undefined;
+    this.cancelRecovery();
     this.client?.close();
     this.connection = connection;
     this.listedThreads.clear();
@@ -211,27 +273,29 @@ export class DesktopConnectionService {
     this.errorMessage = undefined;
     this.statusMessage = undefined;
     this.phase = "connected";
-    this.outbox = [...await this.outboxStore.list(connection.id)];
+    this.outbox = (await this.outboxStore.list(connection.id)).map((item) => item.state === "sending" ? { ...item, state: "pending" as const } : item);
     const transport = mainTransport(connection.baseUrl);
     let client: HermesClient;
     client = new HermesClient({
       ...transport,
       token: () => connection.token,
       onChange: () => { this.reconcileOutbox(); this.changed(); void this.selectInitialChannel(); },
-      onConnectionState: (state) => { this.connectionState = state; this.changed(); if (state === "online") void this.flushOutbox(); },
-      onError: (error) => { this.errorMessage = this.connectionError(error); this.changed(); },
+      onConnectionState: (state) => {
+        this.connectionState = state;
+        if (state === "online") { this.connectionIssue = undefined; void this.flushOutbox(); }
+        this.changed();
+      },
+      onError: (error) => { this.connectionIssue = this.connectionError(error); this.changed(); },
     });
     this.client = client;
     this.changed();
     await client.connect();
   }
 
-  private connectionError(error: Error): string {
-    const safe = connectionFailure(error);
-    if (safe.startsWith("HTTP 401") || safe.startsWith("HTTP 403")) return "This device is no longer authorized. Pair it again.";
-    if (safe.startsWith("HTTP 429")) return "The server is busy. Hermes will retry automatically.";
-    if (safe.includes("timed out")) return "The server did not respond. Hermes will keep trying.";
-    return "Hermes could not connect. Check the server address and network.";
+  private connectionError(error: Error): string | undefined {
+    if (isRetryableError(error)) return undefined;
+    if (error instanceof HttpError && (error.status === 401 || error.status === 403)) return "This device is no longer authorized. Pair it again.";
+    return "Hermes could not open this connection. Contact your administrator.";
   }
 
   private async selectInitialChannel(): Promise<void> {
@@ -240,9 +304,6 @@ export class DesktopConnectionService {
     try {
       const first = [...this.client.channels.values()].sort((a, b) => a.name.localeCompare(b.name))[0];
       await this.selectChannel(first.id);
-    } catch {
-      this.errorMessage = "Threads could not be loaded. Hermes will try again when the connection changes.";
-      this.changed();
     } finally {
       this.selectingInitialChannel = false;
     }
@@ -343,6 +404,9 @@ export class DesktopConnectionService {
   }
 
   async forgetConnection(): Promise<void> {
+    this.closed = true;
+    this.cancelRecovery();
+    this.connectionIssue = undefined;
     this.pairingController?.abort();
     this.pairingController = null;
     this.client?.close();
@@ -365,36 +429,44 @@ export class DesktopConnectionService {
 
   async selectChannel(channelId: string): Promise<void> {
     if (!this.client?.channels.has(channelId)) return;
+    const client = this.client;
+    this.readJobs.get("history")?.abort();
+    this.readJobs.get("older")?.abort();
     this.selectedChannelId = channelId;
     this.selectedThreadId = undefined;
     this.olderCursor = undefined;
-    this.listedThreads.clear();
     this.changed();
-    let after: string | undefined;
-    do {
-      const page = await this.client.listThreads(channelId, after, 100);
-      for (const thread of page.threads) this.listedThreads.set(thread.id, thread);
-      after = page.next_cursor ?? undefined;
-    } while (after);
-    this.changed();
+    const valid = () => this.client === client && this.selectedChannelId === channelId;
+    await this.recoverRead("channels", async (signal) => {
+      let after: string | undefined;
+      const threads = new Map<string, Thread>();
+      do {
+        const page = await client.listThreads(channelId, after, 100);
+        if (signal.aborted || !valid()) return;
+        for (const thread of page.threads) threads.set(thread.id, thread);
+        after = page.next_cursor ?? undefined;
+      } while (after);
+      if (!signal.aborted && valid()) { this.listedThreads = threads; this.changed(); }
+    }, valid);
   }
 
   async selectThread(threadId: string): Promise<void> {
     const thread = this.listedThreads.get(threadId) ?? this.client?.threads.get(threadId);
-    if (!thread || thread.project_id !== this.selectedChannelId || !this.client) return;
+    if (!thread || !this.client?.channels.has(thread.project_id)) return;
+    this.selectedChannelId = thread.project_id;
     this.selectedThreadId = threadId;
+    this.readJobs.get("older")?.abort();
     this.olderCursor = undefined;
     this.changed();
-    try {
-      if (this.client.supportsLatest) {
-        const page = await this.client.historyWindow(threadId, undefined, 50);
-        this.olderCursor = page.older_cursor ?? undefined;
-      } else await this.client.history(threadId, undefined, 50);
-      this.changed();
-    } catch {
-      this.errorMessage = "This conversation could not be loaded. Try again when the connection is online.";
-      this.changed();
-    }
+    const client = this.client;
+    const valid = () => this.client === client && this.selectedThreadId === threadId;
+    await this.recoverRead("history", async (signal) => {
+      if (client.supportsLatest) {
+        const page = await client.historyWindow(threadId, undefined, 50, signal);
+        if (!signal.aborted && valid()) this.olderCursor = page.older_cursor ?? undefined;
+      } else await client.history(threadId, undefined, 50, signal);
+      if (!signal.aborted && valid()) this.changed();
+    }, valid);
   }
 
   private requireClient(): HermesClient {
@@ -465,7 +537,7 @@ export class DesktopConnectionService {
       if (this.selectedThreadId === threadId) {
         this.selectedThreadId = undefined;
         this.olderCursor = undefined;
-        const fallback = this.snapshot().threads[0];
+        const fallback = this.snapshot().threads.find((thread) => thread.channelId === this.selectedChannelId);
         if (fallback) await this.selectThread(fallback.id);
       }
       this.changed();
@@ -475,13 +547,31 @@ export class DesktopConnectionService {
   async loadOlder(): Promise<void> {
     const client = this.requireClient(), threadId = this.selectedThreadId, before = this.olderCursor;
     if (!threadId || !before || !client.supportsLatest) return;
-    try { const page = await client.historyWindow(threadId, before, 50); this.olderCursor = page.older_cursor ?? undefined; this.changed(); }
-    catch { this.actionError("Older messages could not be loaded. Your current conversation is still available."); }
+    if (this.readJobs.has("older")) return;
+    const valid = () => this.client === client && this.selectedThreadId === threadId && this.olderCursor === before;
+    await this.recoverRead("older", async (signal) => {
+      const page = await client.historyWindow(threadId, before, 50, signal);
+      if (!signal.aborted && valid()) { this.olderCursor = page.older_cursor ?? undefined; this.changed(); }
+    }, valid);
   }
 
+  private readonly pendingReads = new WeakMap<HermesClient, Set<string>>();
+
   async markVisible(refSeq: number): Promise<void> {
-    if (!Number.isSafeInteger(refSeq) || refSeq <= 0 || !this.selectedThreadId) return;
-    await this.client?.markRead(this.selectedThreadId, refSeq).catch(() => {});
+    const client = this.client;
+    const threadId = this.selectedThreadId;
+    if (!Number.isSafeInteger(refSeq) || refSeq <= 0 || !threadId || !client) return;
+    // Equal-ref acknowledgements also publish snapshots. Never feed those back
+    // into another request, including calls racing the original acknowledgement.
+    if (refSeq <= (client.threads.get(threadId)?.read_ref ?? 0)) return;
+    let pending = this.pendingReads.get(client);
+    if (!pending) { pending = new Set(); this.pendingReads.set(client, pending); }
+    const key = `${threadId}:${refSeq}`;
+    if (pending.has(key)) return;
+    pending.add(key);
+    try { await client.markRead(threadId, refSeq); }
+    catch { /* Remains retryable after connection recovery. */ }
+    finally { pending.delete(key); }
   }
 
   async sendMessage(input: SendMessageInput): Promise<void> {
@@ -512,26 +602,36 @@ export class DesktopConnectionService {
 
   private async deliver(value: OutboxRecord): Promise<void> {
     const client = this.client;
-    if (!client || !this.connection || value.state === "blocked") return;
+    if (this.closed || !client || !this.connection || value.state === "blocked" || this.delivering.has(value.id) || Date.now() < (this.sendRetryAfter.get(value.id) ?? 0)) return;
+    const connection = this.connection;
+    if (this.connectionState !== "online") return;
+    this.delivering.add(value.id);
     const sending: OutboxRecord = { ...value, state: "sending" };
-    await this.persistOutbox(sending);
     try {
+      await this.persistOutbox(sending);
       const receipt = value.receiptId
         ? await client.getReceipt(value.receiptId)
         : await client.send(value.threadId, value.id, value.text, [...value.attachmentIds]);
+      if (this.closed || this.client !== client || this.connection !== connection) return;
+      this.sendRetryAfter.delete(value.id);
+      if (!this.outbox.some((item) => item.id === value.id)) return;
       await this.persistOutbox({ ...sending, state: receipt.state === "unknown" ? "unknown" : "pending", receiptId: receipt.id });
     } catch (error) {
+      if (this.closed || this.client !== client || this.connection !== connection || !this.outbox.some((item) => item.id === value.id)) return;
       const blocked = error instanceof HttpError && (error.status === 401 || error.status === 403);
+      this.stopIfUnauthorized(error);
+      if (error instanceof HttpError && error.retryAfterMs) this.sendRetryAfter.set(value.id, Date.now() + error.retryAfterMs);
       await this.persistOutbox({ ...value, state: blocked || !isRetryableError(error) ? "blocked" : "pending" });
-      this.actionError(blocked ? "This device is no longer authorized. Pair it again before retrying." : "The message is safely queued and will retry when Hermes reconnects.");
-    }
+      if (blocked) this.actionError("This device is no longer authorized. Pair it again before sending.");
+      else if (!isRetryableError(error)) this.actionError("This message could not be sent. Check its contents before trying again.");
+    } finally { this.delivering.delete(value.id); this.scheduleOutbox(); }
   }
 
   private async flushOutbox(): Promise<void> {
     if (this.flushingOutbox || this.connectionState !== "online") return;
     this.flushingOutbox = true;
-    try { for (const pending of [...this.outbox]) if (pending.state === "pending") await this.deliver(pending); }
-    finally { this.flushingOutbox = false; }
+    try { for (const pending of [...this.outbox]) if (pending.state === "pending" || pending.state === "unknown") await this.deliver(pending); }
+    finally { this.flushingOutbox = false; this.scheduleOutbox(); }
   }
 
   private reconcileOutbox(): void {
@@ -631,7 +731,15 @@ export class DesktopConnectionService {
     this.changed();
   }
 
+  async resumeConnection(): Promise<void> {
+    // Wake invalidates old sockets; never bypass a permanent/auth failure.
+    if (this.closed || this.connectionState === "blocked" || this.connectionState === "suspended") return;
+    await this.client?.retryNow();
+  }
+
   close(): void {
+    this.closed = true;
+    this.cancelRecovery();
     this.pairingController?.abort();
     this.client?.close();
   }

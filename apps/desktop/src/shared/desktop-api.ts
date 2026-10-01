@@ -46,6 +46,7 @@ export type DesktopSnapshot = Readonly<{
   phase: DesktopPhase;
   connectionState: ConnectionState;
   connectionLabel: string;
+  loadingConversations?: boolean;
   statusMessage?: string;
   errorMessage?: string;
   channels: readonly DesktopChannel[];

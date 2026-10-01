@@ -115,6 +115,19 @@ test("archived threads are removed from projection and selection falls back dete
   assert.equal(service.snapshot().selectedThreadId, "thread-b");
 });
 
+test("cross-channel tree and switcher retain all summaries and select the correct parent", async () => {
+  const { service, calls } = fixture();
+  service.client.channels.set("channel-b", { id: "channel-b", name: "Beta" });
+  service.client.threads.set("thread-b", { id: "thread-b", project_id: "channel-b", title: "Other", archived: false, last_message_at: 10 });
+  service.client.historyWindow = async (id) => { calls.push(["history", id]); return { messages: [], older_cursor: null }; };
+  assert.deepEqual(new Set(service.snapshot().threads.map(({ channelId }) => channelId)), new Set(["channel-a", "channel-b"]));
+  await service.selectThread("thread-b");
+  assert.equal(service.snapshot().selectedChannelId, "channel-b");
+  assert.equal(service.snapshot().selectedThreadId, "thread-b");
+  assert.deepEqual(calls, [["history", "thread-b"]]);
+  assert.equal(service.snapshot().threads.length, 2);
+});
+
 test("timeline excludes private reasoning while preserving public commentary and stable identities", () => {
   const { service } = fixture();
   service.client.messages.set("thread-a", [
