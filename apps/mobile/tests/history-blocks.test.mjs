@@ -21,54 +21,54 @@ function sdk(initial, pages) {
   return { client, requests, cursors, options: { onCursor: cursor => cursors.push(cursor) } };
 }
 
-test('default is 3 user-started blocks regardless of record count or time span', () => {
-  assert.equal(HISTORY_BLOCK_COUNT, 3);
-  const rows = [u(1), m(2), u(3), m(4), m(5), u(6), m(7), u(8), m(9)];
-  assert.deepEqual(historyBlockStart(rows), { startRef: 3, enough: true });
-  assert.deepEqual(historyBlockStart(rows, 8), { startRef: 1, enough: true });
+test('default is 5 user-started blocks regardless of record count or time span', () => {
+  assert.equal(HISTORY_BLOCK_COUNT, 5);
+  const rows = [u(1), m(2), u(3), m(4), u(5), m(6), u(7), m(8), u(9), m(10), u(11), m(12), u(13), m(14)];
+  assert.deepEqual(historyBlockStart(rows), { startRef: 5, enough: true });
+  assert.deepEqual(historyBlockStart(rows, 13), { startRef: 3, enough: true });
   assert.deepEqual(historyBlockStart(rows, 3), { startRef: 1, enough: false });
 });
 
 test('very long replies, tool batches, notices and attachments do not count as new blocks', () => {
   const rows = [u(1), ...Array.from({ length: 250 }, (_, i) => m(i + 2)), u(300),
     { ...m(301), tool_calls: [{ id: 'call', name: 'search', label: 'Search' }] },
-    { ...m(302, 'system'), display_kind: 'system_notice' }, u(400), m(401)];
+    { ...m(302, 'system'), display_kind: 'system_notice' }, u(400), m(401), u(450), m(451), u(500), m(501)];
   assert.equal(historyBlockStart(rows).startRef, 1);
   assert.equal(rows.filter(item => item.ref_seq >= historyBlockStart(rows).startRef).length, rows.length);
 });
 
 test('follow-up user messages count independently without inference, regrouping or duplication', () => {
-  const rows = [u(1), m(2), { ...u(3), receipt_id: 'followup-a' }, m(4), { ...u(5), receipt_id: 'followup-b' }, m(6)];
+  const rows = [u(1), m(2), { ...u(3), receipt_id: 'followup-a' }, m(4), { ...u(5), receipt_id: 'followup-b' }, m(6), u(7), m(8), u(9), m(10)];
   assert.deepEqual(historyBlockStart(rows), { startRef: 1, enough: true });
   assert.deepEqual(historyBlockStart(rows, 5, 1), { startRef: 3, enough: true });
-  assert.deepEqual(rows.map(item => item.ref_seq), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(rows.map(item => item.ref_seq), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
-test('cached 3-block expansion never requests network and does not add an extra current block', async () => {
-  const h = sdk([u(1), m(2), u(3), m(4), u(5), m(6), u(7), m(8)], {});
-  const result = await loadHistoryBlocks(h.client, 't', 7, 'older', h.options);
+test('cached 5-block expansion never requests network and does not add an extra current block', async () => {
+  const h = sdk([u(1), m(2), u(3), m(4), u(5), m(6), u(7), m(8), u(9), m(10), u(11), m(12)], {});
+  const result = await loadHistoryBlocks(h.client, 't', 11, 'older', h.options);
   assert.deepEqual(result, { startRef: 1, olderCursor: 'older' });
   assert.equal(h.requests.length, 0);
 });
 
-test('multiple wire pages are accumulated until the third old user boundary, not exposed mid-reply', async () => {
+test('multiple wire pages are accumulated until the fifth old user boundary, not exposed mid-reply', async () => {
   const h = sdk([u(100), m(101)], {
     c1: { messages: [m(30), u(40), m(41), u(60), m(61)], cursor: 'c2' },
-    c2: { messages: [u(1), m(2), u(20), m(21)], cursor: null }
+    c2: { messages: [u(1), m(2), u(10), m(11), u(20), m(21)], cursor: null }
   });
   const result = await loadHistoryBlocks(h.client, 't', 100, 'c1', h.options);
-  assert.deepEqual(result, { startRef: 20, olderCursor: null });
+  assert.deepEqual(result, { startRef: 1, olderCursor: null });
   assert.deepEqual(h.requests, [{ before: 'c1', limit: '100' }, { before: 'c2', limit: '100' }]);
   assert.deepEqual(h.cursors, ['c2', null]);
   const visible = h.client.messages.get('t').filter(item => item.ref_seq >= result.startRef);
-  assert.deepEqual(visible.filter(item => item.role === 'user').map(item => item.ref_seq), [20, 40, 60, 100]);
+  assert.deepEqual(visible.filter(item => item.role === 'user').map(item => item.ref_seq), [1, 10, 20, 40, 60, 100]);
   assert.ok(visible.some(item => item.ref_seq === 30), 'intervening assistant content remains in chronological order');
 });
 
-test('initial window completes 3 blocks even when the latest wire page contains only the middle of one reply', async () => {
+test('initial window completes 5 blocks even when the latest wire page contains only the middle of one reply', async () => {
   const h = sdk([m(100), m(101)], {
     c1: { messages: [u(80), m(81), m(82)], cursor: 'c2' },
-    c2: { messages: [u(1), m(2), u(50), m(51)], cursor: null }
+    c2: { messages: [u(1), m(2), u(20), m(21), u(30), m(31), u(50), m(51)], cursor: null }
   });
   const result = await loadHistoryBlocks(h.client, 't', null, 'c1', h.options);
   assert.equal(result.startRef, 1); assert.equal(h.requests.length, 2);
@@ -154,20 +154,20 @@ test('production App loadOlder publishes one completed block window and holds or
   assert.deepEqual(starts, [1]); assert.equal(holds.length, 1); assert.equal(context.historyBusy, false);
 });
 
-test('production cached re-entry selects latest 3 blocks without network', async () => {
-  const h = sdk([u(1), m(2), u(10), m(11), u(20), m(21), u(30), m(31)], {}), starts = [];
+test('production cached re-entry selects latest 5 blocks without network', async () => {
+  const h = sdk([u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)], {}), starts = [];
   h.client.threads.set('t', { last_ref: 31 });
   const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
     positions: { current: new Map([['t', { startRef: 1 }]]) }, locatedThreads: { current: new Set(['t']) }, olderCursors: { current: new Map([['t', 'oldest-cursor']]) },
     loadHistoryBlocks, historyBlockStart, setPageCursor() {}, setHistoryBusy() {}, setLocated() {},
     setStartRef: value => starts.push(value), markVisibleRead() {}, setError: value => assert.fail(value) };
   await callback('openThread', context)('t');
-  assert.deepEqual(starts, [1, 10]); assert.equal(h.requests.length, 0);
+  assert.deepEqual(starts, [1, 5]); assert.equal(h.requests.length, 0);
   assert.equal(context.olderCursors.current.get('t'), 'oldest-cursor');
 });
 
 test('fresh latest fetch does not overwrite a cursor already tracking older cached pages', async () => {
-  const h = sdk([u(1), m(2), u(10), m(11), u(20), m(21), u(30), m(31)], {}), starts = [];
+  const h = sdk([u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)], {}), starts = [];
   h.client.historyWindow = async () => ({ messages: [u(20), m(21), u(30), m(31)], older_cursor: 'fresh-tail-cursor' });
   h.client.threads.set('t', { last_ref: 31 }); h.client.resumeTail = () => {};
   const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
@@ -175,12 +175,12 @@ test('fresh latest fetch does not overwrite a cursor already tracking older cach
     loadHistoryBlocks, historyBlockStart, setPageCursor() {}, setHistoryBusy() {}, setLocated() {},
     setStartRef: value => starts.push(value), markVisibleRead() {}, setError: value => assert.fail(value) };
   await callback('openThread', context)('t');
-  assert.deepEqual(starts, [null, 10]); assert.equal(context.olderCursors.current.get('t'), 'oldest-cursor');
+  assert.deepEqual(starts, [null, 5]); assert.equal(context.olderCursors.current.get('t'), 'oldest-cursor');
 });
 
-test('production cold open selects latest 3 blocks and only marks read after that window is complete', async () => {
+test('production cold open selects latest 5 blocks and only marks read after that window is complete', async () => {
   const h = sdk([], {}), events = [];
-  h.client.historyWindow = async () => { h.client.messages.set('t', [u(1), m(2), u(10), m(11), u(20), m(21), u(30), m(31)]); return { messages: h.client.messages.get('t'), older_cursor: null }; };
+  h.client.historyWindow = async () => { h.client.messages.set('t', [u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)]); return { messages: h.client.messages.get('t'), older_cursor: null }; };
   h.client.threads.set('t', { last_ref: 31 }); h.client.resumeTail = () => events.push('resume');
   const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
     positions: { current: new Map() }, locatedThreads: { current: new Set() }, olderCursors: { current: new Map() },
@@ -188,5 +188,5 @@ test('production cold open selects latest 3 blocks and only marks read after tha
     setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => events.push(['start', value]),
     markVisibleRead: value => events.push(['read', value]), setError: value => assert.fail(value) };
   await callback('openThread', context)('t');
-  assert.deepEqual(events, [['start', null], 'resume', ['start', 10], ['read', 31]]);
+  assert.deepEqual(events, [['start', null], 'resume', ['start', 5], ['read', 31]]);
 });

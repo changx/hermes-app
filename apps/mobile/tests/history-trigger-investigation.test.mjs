@@ -13,7 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const source = readFileSync(process.env.HISTORY_APP_SOURCE ?? new URL('../src/App.tsx', import.meta.url), 'utf8');
 const u = ref => ({ id: String(ref), ref_seq: ref, role: 'user', text: 'Synthetic user' });
 const a = ref => ({ id: String(ref), ref_seq: ref, role: 'assistant', text: 'Synthetic reply' });
-const latest = [u(100), a(101), u(110), a(111), u(120), a(121)];
+const latest = [u(100), a(101), u(110), a(111), u(120), a(121), u(130), a(131), u(140), a(141)];
 
 async function harness() {
   let sdk, props, api, finishOlder, finishRepair, olderDone = false, latestRequests = 0;
@@ -23,7 +23,7 @@ async function harness() {
   class SDK {
     constructor(options) {
       sdk = this; this.options = options; this.supportsLatest = true; this.connectionState = 'online';
-      this.channels = new Map([['p', { id: 'p' }]]); this.threads = new Map([['t', { id: 't', project_id: 'p', title: 'Synthetic', last_ref: 121 }]]);
+      this.channels = new Map([['p', { id: 'p' }]]); this.threads = new Map([['t', { id: 't', project_id: 'p', title: 'Synthetic', last_ref: 141 }]]);
       this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
     }
     async connect() { this.options.onConnectionState('online'); }
@@ -36,7 +36,7 @@ async function harness() {
         signal.addEventListener('abort', () => { trace.push({ event: 'repair-aborted' }); reject(new Error('aborted')); }, { once: true });
       });
       if (page.fail) throw new Error('synthetic offline');
-      this.messages.set(id, [...this.messages.get(id), a(122)]);
+      this.messages.set(id, [...this.messages.get(id), a(142)]);
       this.options.onChange();
       trace.push({ event: 'history-response', direction: 'tail-repair' });
       this.resumeTail(id);
@@ -129,8 +129,8 @@ test('one load intent plus ordinary SDK revisions only continues older cursors, 
   await h.revision(); await h.revision();
   assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older']);
   await h.finishOlder(); await promise;
-  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'older']);
-  assert.equal(h.props.rows[0].refSeq, 70);
+  assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'older', 'older']);
+  assert.equal(h.props.rows[0].refSeq, 50);
   console.log('NORMAL_SINGLE_INTENT', JSON.stringify(h.trace));
   await h.close();
 });
@@ -144,9 +144,9 @@ test('tail repair during an older load keeps the visible rows and does not reope
   await h.revision();
   assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'tail-repair']);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 70, 'the original pull still expands its 3 blocks');
+  assert.equal(h.props.rows[0].refSeq, 50, 'the original pull still expands its 5 blocks');
   await h.finishRepair();
-  assert.equal(h.props.rows[0].refSeq, 70, 'repair does not reset startRef or the older cursor');
+  assert.equal(h.props.rows[0].refSeq, 50, 'repair does not reset startRef or the older cursor');
   assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
   assert.equal(h.props.locatingBusy, false);
   console.log('RECOVERY_FIXED', JSON.stringify({ trace: h.trace, rows_were_cleared: false, native_refresh_events_simulated: 0 }));
@@ -158,10 +158,10 @@ test('repair completing first also leaves the pull alive; a subsequent ordinary 
   await h.flagRecovery(); await h.finishRepair();
   assert.equal(h.props.rows[0].refSeq, 100);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 70);
+  assert.equal(h.props.rows[0].refSeq, 50);
   const next = await h.pull(); await next.promise;
   assert.equal(h.trace.filter(item => item.event === 'one-user-load-intent').length, 2, 'no per-gesture count gate was added');
-  assert.equal(h.props.rows[0].refSeq, 40, 'the next ordinary request can really load another 3 blocks');
+  assert.equal(h.props.rows[0].refSeq, 40, 'the next ordinary request can load the remaining older block');
   await h.close();
 });
 
@@ -170,10 +170,10 @@ test('failed repair keeps current reading and old pagination usable, and a later
   await h.flagRecovery(); await h.finishRepair(true);
   assert.equal(h.props.rows[0].refSeq, 100); assert.equal(h.sdk.tailIncomplete.has('t'), true);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 70);
+  assert.equal(h.props.rows[0].refSeq, 50);
   await h.revision(); await h.finishRepair();
   assert.equal(h.sdk.tailIncomplete.has('t'), false);
-  assert.equal(h.props.rows[0].refSeq, 70);
+  assert.equal(h.props.rows[0].refSeq, 50);
   assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
   await h.close();
 });

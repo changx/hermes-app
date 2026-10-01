@@ -1,6 +1,6 @@
 import type { Message } from '../../../packages/client/src/index';
 
-export const HISTORY_BLOCK_COUNT = 3;
+export const HISTORY_BLOCK_COUNT = 5;
 const FETCH_SIZE = 100;
 const MAX_FETCH_PAGES = 20;
 

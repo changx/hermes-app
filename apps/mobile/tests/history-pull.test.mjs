@@ -176,12 +176,12 @@ test('release rechecks live availability and uses current callback rather than s
   assert.equal(oldCalls, 0); assert.equal(newCalls, 1); await h.close();
 });
 
-test('real SDK paging with synthetic HTTP and visible 3-block publication do not start before release', async () => {
+test('real SDK paging with synthetic HTTP and visible 5-block publication do not start before release', async () => {
   const initial = [{ id: '100', ref_seq: 100, role: 'user', text: 'Synthetic user' }, { id: '101', ref_seq: 101, role: 'assistant', text: 'Synthetic reply' }];
   let requests = 0, h;
   const client = new HermesClient({ token: () => 'synthetic-only', http: { request: async () => {
     requests++;
-    return { status: 200, body: { messages: [70, 80, 90].flatMap(ref => [
+    return { status: 200, body: { messages: [70, 75, 80, 85, 90].flatMap(ref => [
       { id: String(ref), ref_seq: ref, role: 'user', text: 'Synthetic earlier user' },
       { id: String(ref + 1), ref_seq: ref + 1, role: 'assistant', text: 'Synthetic earlier reply' }
     ]), older_cursor: null } };
