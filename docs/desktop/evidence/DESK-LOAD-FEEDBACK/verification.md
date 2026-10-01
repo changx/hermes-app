@@ -1,6 +1,6 @@
 # DESK-LOAD-FEEDBACK — first-load feedback
 
-Status: Done for first-load feedback (isolated candidate; not published). User reports v0.1.3 eventually loads after a long wait and explicitly requires user-facing loading feedback, not technical network diagnostics.
+Status: Done for first-load feedback (code included in `main`; no new installation package published). User reports v0.1.3 eventually loads after a long wait and explicitly requires user-facing loading feedback, not technical network diagnostics.
 
 Scope: on the latest desktop candidate (including the read-loop fix), show natural English first-load feedback while saved access and the first authoritative conversation snapshot are loading. Suppress misleading empty-list/conversation copy during that wait. Do not expose technical states or create manual reconnect work. No transport, server, mobile, identity, credential, deployment or unrelated UI changes.
 
@@ -26,4 +26,4 @@ Acceptance:
 - Restored the normal test relay, selected the exact current user conversation, and read back 51 real messages and public tools. Already-loaded content remained visible during subsequent reconnect/sync; first-load text remained absent.
 - Initial attempts did not capture the waiting frame because data arrived quickly. One inspector SSH forward had stopped; restarted it. A duplicate lab process created during troubleshooting was stopped before the single-process delayed test. Only the successful controlled native run is counted as waiting-path evidence.
 - The temporary delayed relay and reverse tunnel were terminated after verification. The normal restricted relay is retained for the running debug App. No system proxy/DNS/TCC changes, credential reset, profile change, Gateway restart or Expo restart.
-- Development Gateway stayed PID 3838784, started Thu 2026-10-01 02:56:09 PDT. Candidate has not been merged, pushed, tagged or released for the user's MacBook.
+- Development Gateway stayed PID 3838784, started Thu 2026-10-01 02:56:09 PDT. Following the user's later code-only request, source is included in `main` with `[skip ci]` to avoid its automatic packaging workflow. No version bump, new package, tag, Release or service restart is part of this submission; the native tests described above preceded that request.

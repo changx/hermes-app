@@ -1,6 +1,6 @@
 # DESK-FIX-READ-LOOP — desktop read acknowledgement feedback fix
 
-Status: Done for the loop defect (automated regression, native macOS package and real-device verification). Candidate is on an isolated branch; not merged, pushed or published as a GitHub Release. This does not close the separate blank-window investigation.
+Status: Done for the loop defect (automated regression, native macOS package and real-device verification). Code is now included in `main` following the user's code-only submission request. This submission does not package or publish a GitHub Release. This does not close the separate blank-window investigation.
 
 ## Scope and source
 
@@ -54,4 +54,4 @@ Status: Done for the loop defect (automated regression, native macOS package and
 
 ## Remaining boundary
 
-The read-feedback defect is fixed and exercised on the latest desktop baseline. This does not prove that every cause of the user's original blank window is fixed, and no long-duration memory-stability or automatic crash-recovery claim is made. The candidate has not been published for installation on the user's MacBook.
+The read-feedback defect is fixed and exercised on the latest desktop baseline. This does not prove that every cause of the user's original blank window is fixed, and no long-duration memory-stability or automatic crash-recovery claim is made. Code-only submission to `main` uses `[skip ci]` because its push workflow otherwise packages the app. The previously verified native artifact has not been published for installation on the user's MacBook; no new package or Release is created by this submission.
