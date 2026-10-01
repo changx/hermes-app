@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
 
 const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
 import { createElement } from 'react';
@@ -11,7 +12,7 @@ const tool = (id, name, label, detail) => ({ id, name, label, detail });
 const msg = (id, text, toolCalls = [], extra = {}) => ({ id, role: 'assistant', text, toolCalls, attachments: [], ...extra });
 export const html = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
  revision: 1, phase: 'connected', selectedThreadId: 'test-thread', connectionState: 'online', connectionLabel: 'Connected', channels: [], threads: [], interactions: [], canLoadOlder: false,
- messages: [msg('a','Checking'), msg('b','',[tool('read','read_file','Read file','src/file.ts · offset=10')]), msg('c','',[tool('cmd','terminal','Run command','git status --short')]), msg('d','Result'), msg('e','Direct reply',[],{displayKind:'direct'}), msg('f','Next', [tool('legacy',undefined,'Unknown action','Safe detail')])]
+ messages: [msg('a','Checking'), msg('b','',[tool('read','read_file','Read file','src/file.ts · offset=10')]), msg('c','',[tool('cmd','terminal','Run command','git status --short')]), msg('d','Result',[],{displayKind:'final'}), msg('e','Direct reply',[],{displayKind:'direct'}), msg('f','Next', [tool('legacy',undefined,'Unknown action','Safe detail')]), msg('g','',[{...tool('server','read_file','Read file','path=/repo/private/long/a.py'),caption:'Reading a.py L1-2',icon:'📖'}])]
 }}));` }, bundle: true, external: ['react', 'react/jsx-runtime', 'react-dom/server'], format: 'cjs', platform: 'node', write: false });
 const out = { exports: {} };
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url), out, out.exports);
@@ -26,9 +27,17 @@ test('tools are compact visible action records, not collapsed cards or success c
  assert.ok(html.indexOf('terminal') < html.indexOf('Result'));
 });
 test('only continuous assistant records share a byline; direct replies break grouping', () => {
- assert.equal((html.match(/class="message-role"/g) || []).length, 3);
+ assert.equal((html.match(/class="message-role"/g) || []).length, 4);
  assert.equal((html.match(/message-continuation/g) || []).length, 3);
- assert.equal((html.match(/message-tools-only/g) || []).length, 2);
+ assert.equal((html.match(/message-tools-only/g) || []).length, 3);
  assert.match(html, /Safe detail/);
- assert.doesNotMatch(html, /message-final/);
+ assert.equal((html.match(/message-final/g) || []).length, 1);
+ assert.match(html, /Reading a.py L1-2/);
+});
+
+test('only the explicit final row gets the enlarged gap and pale result treatment', async () => {
+ const styles=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
+ assert.match(styles,/\.message-final \{[^}]*margin-top: 32px;[^}]*background: #f7f5ef;/);
+ assert.match(html,/<article class="message message-assistant message-final"><p class="message-role">Hermes<\/p>/);
+ assert.doesNotMatch(html,/<article class="[^"]*message-final[^"]*message-continuation/);
 });

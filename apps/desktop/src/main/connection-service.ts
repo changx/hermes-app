@@ -184,7 +184,7 @@ export class DesktopConnectionService {
         ...(receipt ? { receiptId: receipt.id } : {}),
         ...(created_at ? { createdAt: created_at } : {}),
         ...(receipt ? { receiptState: receipt.state, processing: receipt.processing, ...(receipt.feedback ? { feedback: receipt.feedback } : {}) } : {}),
-        toolCalls: tool_calls.map(({ id: toolId, name, label, detail }) => ({ id: toolId, name, label, ...(detail ? { detail } : {}) })),
+        toolCalls: tool_calls.map(({ id: toolId, name, label, detail, caption, icon }) => ({ id: toolId, name, label, ...(detail ? { detail } : {}), ...(caption ? { caption } : {}), ...(icon ? { icon } : {}) })),
         attachments: attachments.map((attachment) => this.projectAttachment(attachment)),
       };
     });

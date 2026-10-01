@@ -4,7 +4,7 @@ import type { Block, Inline, TableCell } from './messageMarkdown';
 import { safeLinkUrl } from './messageMarkdown';
 import { safeFontScale } from './fontScale';
 import type { ToolCall } from '../../../packages/client/src/index';
-import { toolPresentation } from '../../../packages/client/src/toolPresentation';
+import { toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
 
 // One WebView per open article, at most three locally rendered math/diagram nodes.
 // These limits apply to the current parsed AST, not separately to nested blocks.
@@ -85,8 +85,9 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
   }).join('');
   // ToolCall.label/detail are server-safe summaries. Never serialize raw arguments/results.
   const tools = toolCalls?.length ? `<section class="tools">${toolCalls.map(call => {
-    const { icon, command: terminal } = toolPresentation(call.name);
-    return `<div class="tool"><span>${icon} ${escape(call.label)}${!terminal && call.detail ? ` · ${escape(call.detail.replace(/\s+/g, ' '))}` : ''}</span>${terminal && call.detail ? `<pre>${escape(call.detail)}</pre>` : ''}</div>`;
+    const { icon: fallbackIcon, command: terminal } = toolPresentation(call.name);
+    const icon = call.icon ?? fallbackIcon;
+    return `<div class="tool"><span>${icon} ${escape(toolDisplayLabel(call.name, call.label))}${!terminal && call.detail ? ` ${escape(call.detail.replace(/\s+/g, ' '))}` : ''}</span>${terminal && call.detail ? `<pre>${escape(call.detail)}</pre>` : ''}</div>`;
   }).join('')}</section>` : '';
   const body = content(blocks);
   const nonce = Array.from(getRandomBytes(24), byte => byte.toString(16).padStart(2, '0')).join('');

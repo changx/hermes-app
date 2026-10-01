@@ -18,7 +18,7 @@ test('write/edit use capped previews; unknown tools, commands, queries remain un
  assert.ok(!compactFileDetail('write_file', '😀'.repeat(50)).includes('\ud83d...'));
 });
 test('action icons never infer outcomes and commands require exact tool type', () => {
- for (const [name,icon] of [['read_file','📖'],['write_file','✍️'],['web_extract','🌐'],['process_manage','⚙️'],['tool_describe','⚙️']]) assert.equal(toolPresentation(name).icon,icon);
+ for (const [name,icon] of [['read_file','📖'],['write_file','✍️'],['web_extract','📄'],['process_manage','⚙️'],['tool_describe','📖']]) assert.equal(toolPresentation(name).icon,icon);
  assert.equal(toolPresentation('functions.terminal').command,true);
  assert.equal(toolPresentation('terminal_fake').command,false);
  assert.equal(toolPresentation('unknown').icon,'⚙️');

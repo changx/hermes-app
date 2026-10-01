@@ -3,9 +3,9 @@
 export function toolPresentation(rawName = ''): { icon: string; command: boolean } {
   const name = rawName.replace(/^functions\./, '');
   const icons: Record<string, string> = {
-    read_file: '📖', skill_view: '📚', search_files: '🔎', web_search: '🔎',
-    web_extract: '🌐', browser: '🌐', browser_exec: '🌐', write_file: '✍️', patch: '🔧',
-    terminal: '💻', execute_code: '💻', tool_describe: '⚙️',
+    read_file: '📖', skill_view: '📚', search_files: '🔎', web_search: '🔍',
+    web_extract: '📄', browser: '🌐', browser_exec: '🌐', write_file: '✍️', patch: '🔧',
+    terminal: '💻', execute_code: '🐍', tool_describe: '📖',
     hermes_tool_search: '🔎', process_manage: '⚙️',
   };
   return { icon: icons[name] ?? '⚙️', command: name === 'terminal' };
@@ -30,7 +30,7 @@ export function compactFileDetail(rawName: string, detail: string): string {
   if (!['read_file', 'write_file', 'patch'].includes(name)) return detail;
   const fields = detail.split(' · ');
   if (name === 'read_file' && fields[0] && !fields[0].includes('://')) {
-    const path = fields[0];
+    const path = fields[0].replace(/^path=/, '');
     const file = path.endsWith('…') ? 'Path truncated' : path.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? path;
     const offset = fields.find(field => /^offset=\d+$/.test(field));
     const limit = fields.find(field => /^limit=\d+$/.test(field));

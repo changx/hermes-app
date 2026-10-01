@@ -10,8 +10,8 @@ export interface ModelSelectionConfirmation { confirmation_required: true; warni
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
-export interface ToolCall { id: string; name: string; label: string; detail?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'system_notice'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -81,6 +81,7 @@ const validEvent = (v: unknown): Event => { const x = obj(v); const event_id = n
 const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
 const displayString = (value: unknown, max: number): string => { const s = str(value); if (!s || s.length > max) throw new ProtocolError('invalid tool display'); return s };
+const displayLine = (value: unknown, max: number): string => { const s = displayString(value, max); if (/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(s)) throw new ProtocolError('invalid tool display line'); return s };
 const validModelSettings = (x: Record<string, unknown>): AgentModelSettings => {
   if (x.scope !== 'connected-default') throw new ProtocolError('invalid model settings scope');
   const rows = arr(x.providers), ids = new Set<string>();
@@ -102,6 +103,8 @@ const validToolCalls = (value: unknown): ToolCall[] => {
     if (ids.has(id)) throw new ProtocolError('duplicate tool call');
     ids.add(id);
     return { id, name: displayString(x.name, 200), label: displayString(x.label, 240),
+      ...(x.caption === undefined ? {} : { caption: displayLine(x.caption, 240) }),
+      ...(x.icon === undefined ? {} : { icon: displayLine(x.icon, 16) }),
       ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
   });
 };
@@ -109,8 +112,10 @@ const validMessage = (v: unknown): Message => {
   const x = obj(v), role = str(x.role);
   if (role === 'system' && x.display_kind !== 'system_notice') throw new ProtocolError('invalid system notice');
   if (x.display_kind === 'system_notice' && role !== 'system') throw new ProtocolError('invalid system notice');
+  if (x.display_kind === 'final' && (role !== 'assistant' || typeof x.text !== 'string' || !x.text.trim() ||
+    x.tool_calls !== undefined && (!Array.isArray(x.tool_calls) || x.tool_calls.length > 0))) throw new ProtocolError('invalid final reply');
   return { id: str(x.id), ref_seq: num(x.ref_seq), role, text: str(x.text),
-    ...(role === 'assistant' && x.display_kind === 'direct' ? {display_kind: 'direct' as const} : {}),
+    ...(role === 'assistant' && (x.display_kind === 'direct' || x.display_kind === 'final') ? {display_kind: x.display_kind} : {}),
     ...(role === 'system' ? {display_kind: 'system_notice' as const} : {}),
     ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}),
     ...(role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}),

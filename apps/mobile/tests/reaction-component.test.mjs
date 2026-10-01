@@ -80,6 +80,21 @@ test('owned timeline labels are English while message and attachment names stay 
   assert.equal(composer.props.placeholder, 'Message…');
 });
 
+test('explicit final replies use a separate byline, 32pt gap and pale body; unknown prose stays plain', () => {
+  const messages=[{id:'p',ref_seq:1,role:'assistant',text:'Result'},
+    {id:'t',ref_seq:2,role:'assistant',text:'',tool_calls:[{id:'r',name:'read_file',label:'Read file'}]},
+    {id:'f',ref_seq:3,role:'assistant',text:'Result',display_kind:'final'},
+    {id:'n',ref_seq:4,role:'assistant',text:'Next progress'}];
+  const rows=projectTimeline(messages,null,'th');
+  assert.deepEqual(rows.map(r=>r.continuation),[false,true,false,false]);
+  const styles=rows.map(row=>Object.assign({},...named(mount([row]).rowTree,'View')[0].props.style.filter(Boolean)));
+  assert.equal(styles[2].marginTop,32);assert.equal(styles[2].backgroundColor,'#f7f5ef');
+  assert.equal(styles[0].backgroundColor,undefined);assert.equal(styles[1].marginVertical,2);
+  assert.equal(named(mount([rows[2]]).rowTree,'Text').some(n=>text(n)==='Hermes'),true);
+  assert.deepEqual(projectTimeline(messages.slice(2),null,'th').map(r=>r.displayKind),['final',undefined]);
+  assert.deepEqual(rows.map(r=>r.key),['ref:1','ref:2','ref:3','ref:4']);
+});
+
 test('sender and time are adjacent for each full message, not assistant continuations', () => {
   const messages = [
     { ...msg, created_at: 0 },

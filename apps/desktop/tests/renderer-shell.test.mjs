@@ -26,8 +26,8 @@ const result = await build({
         revision: 1, phase: "connected", connectionState: "online", connectionLabel: "Connected",
         channels: [], threads: [], selectedThreadId: "fixture-thread", selectedThreadTitle: "Fixture",
         messages: [{ id: "fixture-message", role: "assistant", text: "Public explanation", attachments: [],
-          toolCalls: [{ id: "first-tool", label: "Run command", detail: "printf '<hello>'" },
-            { id: "second-tool", label: "Read file" }] }],
+          toolCalls: [{ id: "first-tool", name: "terminal", label: "Run command", detail: "printf '<hello>'" },
+            { id: "second-tool", name: "read_file", label: "Read file" }] }],
         interactions: [], canLoadOlder: false,
       }}));
     `,
@@ -115,7 +115,7 @@ test("tool records render expanded, in order, and escape command text", () => {
   const tools = renderedModule.exports.toolMarkup;
   assert.doesNotMatch(tools, /<details\b|<summary\b/);
   assert.match(tools, /class="tool-record" aria-label="Run command"/);
-  assert.match(tools, /<pre>printf &#x27;&lt;hello&gt;&#x27;<\/pre>/);
+  assert.match(tools, /<pre class="tool-command">printf &#x27;&lt;hello&gt;&#x27;<\/pre>/);
   assert.ok(tools.indexOf('aria-label="Run command"') < tools.indexOf('aria-label="Read file"'));
 });
 

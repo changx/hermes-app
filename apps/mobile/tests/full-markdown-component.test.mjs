@@ -9,6 +9,17 @@ import * as toolPresentation from '../../../packages/client/src/toolPresentation
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
+test('server Discord captions are used verbatim without duplicating file paths', () => {
+  const h=mount('',{canExpand:true,toolCalls:[{id:'r',name:'read_file',label:'Read file',caption:'Reading a.py L10-12',icon:'📖',detail:'path=/very/long/workspace/src/a.py · offset=10 · limit=3'}]});
+  const texts=h.walk(h.render(false)).filter(n=>n.type==='Text').map(n=>n.props.children.flat(Infinity).join('')).join(' ');
+  assert.ok(texts.includes('Reading a.py L10-12'));
+  assert.ok(!texts.includes('/very/long'));
+  const button=h.walk(h.render(false)).find(n=>n.type==='Pressable'&&n.props.accessibilityLabel==='View file details');
+  button.props.onPress();
+  assert.ok(h.walk(h.viewer()).find(n=>n.type==='WebView').props.source.html.includes('/very/long/workspace/src/a.py'));
+  h.unmount();
+});
+
 test('file timeline keeps filename and line context while full article retains the safe path', () => {
   const detail = '/home/hermes/workspace/project/src/tenancy.py · offset=150 · limit=110';
   const h = mount('Checking files', { canExpand: true, toolCalls: [{ id: 'file', name: 'read_file', label: 'Read file', detail }] });
@@ -308,7 +319,7 @@ test('tool text uses native copy without an extra window, press responder or sav
     const texts = children.filter(n => n.type === 'Text');
     assert.equal(texts.length, 3);
     assert.ok(texts.every(n => n.props.selectable === true));
-    assert.equal(texts[0].children.join(''), `🌐 ${calls[0].label} ${calls[0].detail.replace(/\s+/g, ' ')}`);
+    assert.equal(texts[0].children.join(''), `📄 ${calls[0].label} ${calls[0].detail.replace(/\s+/g, ' ')}`);
     assert.equal(texts[2].children.join(''), calls[1].detail, 'full safe command reaches native text, including visually ellipsized lines');
     assert.equal(JSON.stringify(children).includes('never-copy-this'), false);
     assert.ok(children.every(n => n.type !== 'Modal' && n.type !== 'Pressable'));

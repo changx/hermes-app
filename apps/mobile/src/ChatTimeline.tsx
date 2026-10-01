@@ -40,7 +40,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
     <Text style={styles.systemNoticeText}>{row.text}</Text><MessageTime seconds={row.timestamp} />
   </Animated.View></>;
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
-  const content = <Animated.View entering={own ? undefined : entering} style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
+  const finalReply = row.role === 'assistant' && row.displayKind === 'final';
+  const content = <Animated.View entering={own ? undefined : entering} style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble}>
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -452,6 +453,7 @@ const styles = StyleSheet.create({
   historyBoundaryLine: { height: StyleSheet.hairlineWidth, backgroundColor: '#bdccdf' },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
+  finalReply: { marginTop: 32, marginBottom: 8, paddingVertical: 12, paddingHorizontal: 12, borderLeftWidth: 2, borderLeftColor: '#d4c7a9', backgroundColor: '#f7f5ef' },
   systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },

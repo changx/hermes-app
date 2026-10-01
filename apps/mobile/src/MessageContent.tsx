@@ -281,10 +281,13 @@ function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?
   // Native Text owns the long-press menu and its anchor. Do not open another
   // window or become a responder: that disrupts the composer's keyboard.
   return <View style={styles.toolCalls} onTouchStart={event => { onInteraction(); stopTouch(event); }}>{calls.map(call => {
-    const { icon, command: terminal } = toolPresentation(call.name);
+    const { icon: fallbackIcon, command: terminal } = toolPresentation(call.name);
+    const icon = call.icon ?? fallbackIcon;
     const detail = call.detail && compact ? compactFileDetail(call.name, call.detail) : call.detail;
-    const shortened = compact && !!call.detail && detail !== call.detail;
-    const label = <Text selectable numberOfLines={1} ellipsizeMode="tail" style={shortened ? [styles.toolLabel, styles.toolLineText] : styles.toolLabel}>{icon} {toolDisplayLabel(call.name, call.label)}{!terminal && detail ? ` ${detail.replace(/\s+/g, ' ')}` : ''}</Text>;
+    const fileOperation = ['read_file', 'write_file', 'patch'].includes(call.name.replace(/^functions\./, ''));
+    const shortened = compact && fileOperation && !!call.detail && (detail !== call.detail || !!call.caption);
+    const caption = compact && call.caption ? call.caption : `${toolDisplayLabel(call.name, call.label)}${!terminal && detail ? ` ${detail.replace(/\s+/g, ' ')}` : ''}`;
+    const label = <Text selectable numberOfLines={1} ellipsizeMode="tail" style={shortened ? [styles.toolLabel, styles.toolLineText] : styles.toolLabel}>{icon} {caption}</Text>;
     return <View key={call.id} style={styles.toolCall}>
       {shortened && onDetails ? <View style={styles.toolLine}>{label}<Pressable accessibilityRole="button" accessibilityLabel="View file details" hitSlop={8} onPress={onDetails}><Text style={styles.toolDetailsLink}>↗</Text></Pressable></View> : label}
       {terminal && !!call.detail && <View style={styles.toolDetail}>
