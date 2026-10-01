@@ -42,6 +42,7 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
   const modules = {
     react: { ...react, default: react }, 'react-native': native,
     './FontSize': { Text: native.Text },
+    '@shopify/flash-list': { useLayoutState: react.useState },
     './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewers.push({ title, content, onClose }) }) },
     'expo-image-picker': { launchImageLibraryAsync: (...args) => imagePick(...args), launchCameraAsync: (...args) => cameraPick(...args), requestCameraPermissionsAsync: () => cameraPermission() },
     'expo-document-picker': { getDocumentAsync: (...args) => documentPick(...args) },
