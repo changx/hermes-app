@@ -1,5 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, TextInput } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
@@ -22,7 +22,7 @@ const historyPosition = { disabled: false };
 const historyEntrance = FadeIn.duration(220).reduceMotion(ReduceMotion.System);
 type HistoryPullRequest = { started: boolean; release?: (released: boolean) => void };
 
-const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments, animateHistory, onHistoryShown }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean }) {
   const own = row.role === 'user';
   const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
   // Keep the native entering configuration stable after the parent consumes
@@ -31,11 +31,15 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   if (entrance.current.key !== row.key) entrance.current = { key: row.key, animation: animateHistory ? historyEntrance : undefined };
   useEffect(() => { if (animateHistory) onHistoryShown?.(row.key); }, [animateHistory, row.key, onHistoryShown]);
   const entering = entrance.current.animation;
+  // Decoration only: it must not add row height or compete with FlashList's anchor.
+  const boundary = historyBoundary ? <View testID="history-boundary" pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.historyBoundary} /> : null;
   if (row.displayKind === 'system_notice') return <Animated.View entering={entering} accessible accessibilityLabel={`System notice: ${row.text}`} style={styles.systemNotice}>
+    {boundary}
     <Text style={styles.systemNoticeText}>{row.text}</Text><MessageTime seconds={row.timestamp} />
   </Animated.View>;
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const content = <Animated.View entering={own ? undefined : entering} style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
+    {!own && boundary}
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -46,8 +50,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </Animated.View>;
-  return own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content;
-}, (prev, next) => prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+  return own ? <Animated.View entering={entering} style={styles.userMessageRow}>{boundary}{content}</Animated.View> : content;
+}, (prev, next) => prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -105,6 +109,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const following = useRef(position?.following ?? true);
   const [showLatest, setShowLatest] = useState(!following.current);
   const [refreshingHistory, setRefreshingHistory] = useState(false);
+  const [historyHint, setHistoryHint] = useState<'idle' | 'release' | 'loading'>('idle');
   const [renderAhead, setRenderAhead] = useState(250);
   const historyPullPending = useRef<HistoryPullRequest | null>(null);
   const historyReleased = useRef(false);
@@ -119,14 +124,23 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const restored = useRef(false);
   const reducedMotion = useRef(false);
   const previousKeys = useRef<string[]>([]);
+  const historyBoundaryKey = useRef<string | null>(null);
+  const historyThread = useRef(props.threadId);
   const historyEnteringKeys = useRef(new Set<string>());
   const motionForeground = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const onHistoryShown = useCallback((key: string) => { historyEnteringKeys.current.delete(key); }, []);
   const appended = useRef(false);
   const nextKeys = rows.map(row => row.key);
+  if (historyThread.current !== props.threadId) {
+    historyThread.current = props.threadId;
+    previousKeys.current = [];
+    historyBoundaryKey.current = null;
+  }
+  if (historyBoundaryKey.current && !nextKeys.includes(historyBoundaryKey.current)) historyBoundaryKey.current = null;
   if (nextKeys.length !== previousKeys.current.length || nextKeys.some((key, i) => key !== previousKeys.current[i])) {
     appended.current = appendedAtEnd(previousKeys.current, nextKeys);
     const oldKeys = new Set(previousKeys.current), firstOld = nextKeys.indexOf(previousKeys.current[0]);
+    if (firstOld > 0 && (historyReading.current || historyPullPending.current?.started)) historyBoundaryKey.current = previousKeys.current[0];
     historyEnteringKeys.current = props.active && motionForeground.current && historyReading.current && !reducedMotion.current && firstOld > 0
       ? new Set(nextKeys.slice(0, firstOld).filter(key => !oldKeys.has(key))) : new Set();
     previousKeys.current = nextKeys;
@@ -144,7 +158,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     historyPullPending.current = null;
     request.release?.(false);
     request.release = undefined;
-    if (active.current) setRefreshingHistory(false);
+    if (active.current) { setRefreshingHistory(false); setHistoryHint('idle'); }
   }, []);
   const clearHistoryReading = useCallback(() => {
     historyReading.current = false;
@@ -204,6 +218,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     cancelPendingHistory();
     clearHistoryReading();
     setRefreshingHistory(false);
+    setHistoryHint('idle');
     if (frame.current !== null) {
       cancelAnimationFrame(frame.current);
       frame.current = null;
@@ -224,6 +239,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     following.current = false; pendingFollow.current = false; followAnimation.current = false;
     setShowLatest(true); savePosition();
     setRefreshingHistory(true);
+    setHistoryHint(historyReleased.current ? 'loading' : 'release');
     try {
       // Native refresh can fire at the pull threshold while the finger is still
       // down. Queue intent; neither cached expansion nor HTTP starts until end-drag.
@@ -234,11 +250,12 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       const current = historyLoadProps.current;
       if (historyPullPending.current !== request || !active.current || !motionForeground.current || dragging.current || !current.hasOlder || current.locatingBusy) return;
       request.started = true;
+      setHistoryHint('loading');
       await current.onOlder();
     } finally {
       if (historyPullPending.current === request) {
         historyPullPending.current = null;
-        if (active.current) setRefreshingHistory(false);
+        if (active.current) { setRefreshingHistory(false); setHistoryHint('idle'); }
       }
     }
   };
@@ -291,10 +308,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         style={styles.composeInput} underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       </Pressable>
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
+  // The app currently has an English-only interface. Keep copy in that language.
+  const historyHintText = historyHint === 'loading' ? 'Loading history…' : historyHint === 'release' ? 'Release to load'
+    : rows.length && !props.locatingMessage && !props.locatingBusy ? props.hasOlder ? 'Pull down for earlier messages' : 'Start of conversation' : '';
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments}
-        animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown} />}
+        animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
+        historyBoundary={target === 'Cell' && item.key === historyBoundaryKey.current} />}
         renderScrollComponent={renderScrollComponent}
         drawDistance={renderAhead} getItemType={historyItemType}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
@@ -307,9 +328,16 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           refreshing={refreshingHistory} onRefresh={pullOlder}
           enabled={props.active && props.hasOlder && !props.locatingBusy}
           accessibilityLabel="Load earlier messages" tintColor="#526780" colors={['#526780']} /> : undefined}
-        ListHeaderComponent={props.locatingMessage ? <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
-          {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>
-          : null}
+        ListHeaderComponent={<View>
+          <View testID="history-hint" style={styles.historyHint} accessible={!!historyHintText} accessibilityLabel={historyHintText || undefined} accessibilityLiveRegion={historyHint === 'loading' ? 'polite' : 'none'}>
+            <View style={styles.historyHintIcon} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {historyHint === 'loading' ? <ActivityIndicator size="small" color="#697b90" /> : !!historyHintText && props.hasOlder ? <Text style={styles.historyHintArrow}>↓</Text> : null}
+            </View>
+            {!!historyHintText && <Text numberOfLines={1} style={styles.historyHintText}>{historyHintText}</Text>}
+          </View>
+          {props.locatingMessage && <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
+            {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>}
+        </View>}
         ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
         onViewableItemsChanged={viewability.current}
         onLayout={e => {
@@ -410,6 +438,11 @@ const styles = StyleSheet.create({
   // Keep the real content height: growing short content to the viewport makes
   // the keyboard controller scroll empty space and push top-aligned rows away.
   messages: { paddingTop: 12, paddingBottom: 96 },
+  historyHint: { height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, gap: 6 },
+  historyHintIcon: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  historyHintArrow: { color: '#697b90', fontSize: 14 },
+  historyHintText: { color: '#697b90', fontSize: 12, lineHeight: 17, flexShrink: 1 },
+  historyBoundary: { position: 'absolute', top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#bdccdf' },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
   systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },

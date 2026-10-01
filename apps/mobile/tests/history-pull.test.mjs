@@ -13,10 +13,10 @@ import { HermesClient } from '../../../packages/client/dist/index.js';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const source = readFileSync(process.env.HISTORY_TIMELINE_SOURCE ?? new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8');
 const appHandlers = new Set();
-const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value },
+const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value, hairlineWidth: 0.5 },
   AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
   AppState: { currentState: 'active', addEventListener: (_event, handler) => { appHandlers.add(handler); return { remove() { appHandlers.delete(handler); } }; } } };
-for (const name of ['Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
+for (const name of ['ActivityIndicator', 'Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
 // The app wiring tests substitute native list views; they are not device tests.
 const modules = {
   react: React, 'react-native': native, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
@@ -85,7 +85,7 @@ test('early refresh waits for release, then starts without a timer; progress cov
   let finish, calls = 0;
   const pending = new Promise(resolve => { finish = resolve; });
   const h = await mount({ onOlder: () => { calls++; return pending; } });
-  assert.equal(h.list().ListHeaderComponent, null);
+  assert.equal(h.list().ListHeaderComponent.props.children[0].props.accessibilityLabel, 'Pull down for earlier messages');
   const control = h.list().refreshControl;
   assert.equal(h.list().renderScrollComponent({ refreshControl: control }).props.refreshControl, control);
   await act(async () => { h.list().onScrollBeginDrag(); h.list().onScroll(event(-80)); });
@@ -305,4 +305,156 @@ test('installed FlashList controller retains original key through large prepend 
   await act(async () => api.applyOffsetCorrection());
   assert.equal(corrections.length, 2, 'already stable layout is not corrected again');
   await act(async () => renderer.unmount());
+});
+
+async function headerHarness(h) {
+  let rendered;
+  await act(async () => { rendered = create(h.list().ListHeaderComponent); });
+  return {
+    rendered,
+    hint: () => rendered.root.findByProps({ testID: 'history-hint' }),
+    async sync() { await act(async () => rendered.update(h.list().ListHeaderComponent)); },
+    async close() { await act(async () => rendered.unmount()); }
+  };
+}
+const cell = (h, value, target = 'Cell') => h.list().renderItem({ item: value, target });
+async function renderCell(h, value) {
+  let rendered; await act(async () => { rendered = create(cell(h, value)); }); return rendered;
+}
+
+test('fixed English top hint changes pull/release/loading/exhausted copy without changing its native slot', async () => {
+  let finish, calls = 0;
+  const h = await mount({ onOlder: () => { calls++; return new Promise(resolve => { finish = resolve; }); } }, { released: false });
+  const header = await headerHarness(h), initial = header.hint(), slot = initial.props.style;
+  assert.equal(initial.props.accessibilityLabel, 'Pull down for earlier messages');
+  assert.equal(slot.height, 44);
+  assert.equal(header.rendered.root.findAllByType('ActivityIndicator').length, 0);
+  await h.begin(); let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await header.sync(); assert.equal(calls, 0);
+  assert.equal(header.hint().props.accessibilityLabel, 'Release to load');
+  await h.release(); await header.sync(); assert.equal(calls, 1);
+  assert.equal(header.hint().props.accessibilityLabel, 'Loading history…');
+  assert.equal(header.hint().props.accessibilityLiveRegion, 'polite');
+  assert.equal(header.rendered.root.findAllByType('ActivityIndicator').length, 1);
+  await h.update({ rows: [row(1), row(31)], startRef: 1, hasOlder: false });
+  await header.sync(); assert.equal(header.hint().props.accessibilityLabel, 'Loading history…', 'finish the request before declaring exhaustion');
+  await act(async () => { finish(); await request; }); await header.sync();
+  assert.equal(header.hint().props.accessibilityLabel, 'Start of conversation');
+  assert.equal(header.hint(), initial, 'same native header element, not conditional mount');
+  assert.equal(header.hint().props.style, slot, 'height and padding unchanged across all statuses');
+  assert.equal(header.rendered.root.findAllByType('ActivityIndicator').length, 0);
+  assert.equal(h.list().refreshControl, undefined);
+  assert.deepEqual(h.scrolls, []);
+  await header.close(); await h.close();
+});
+
+test('header keeps its slot but does not falsely claim the start while empty or locating; existing locate action survives', async () => {
+  let located = 0;
+  const h = await mount({ rows: [], hasOlder: false });
+  const header = await headerHarness(h), slot = header.hint().props.style;
+  assert.equal(header.hint().props.accessibilityLabel, undefined);
+  assert.equal(header.hint().props.accessible, false);
+  await h.update({ rows: [row(31)], hasOlder: true, locatingMessage: 'Looking for a message', locatingBusy: true, onLocateNext: () => { located++; } });
+  await header.sync();
+  assert.equal(header.hint().props.accessibilityLabel, undefined);
+  assert.ok(header.rendered.root.findAllByType('Text').some(n => n.children.includes('Looking for a message')));
+  const button = header.rendered.root.findByProps({ accessibilityLabel: 'Keep looking' });
+  assert.equal(button.props.disabled, true);
+  await h.update({ locatingBusy: false }); await header.sync();
+  header.rendered.root.findByProps({ accessibilityLabel: 'Keep looking' }).props.onPress(); assert.equal(located, 1);
+  await h.update({ locatingMessage: undefined, locatingBusy: false }); await header.sync();
+  assert.equal(header.hint().props.accessibilityLabel, 'Pull down for earlier messages');
+  assert.equal(header.hint().props.style, slot);
+  await header.close(); await h.close();
+});
+
+test('cancelled and failed pull restore the hint for retry, without creating a reading boundary', async () => {
+  const h = await mount({ onOlder: async () => { throw new Error('synthetic page failure'); } }, { released: false });
+  const header = await headerHarness(h);
+  await h.begin(); let request;
+  await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await header.sync(); assert.equal(header.hint().props.accessibilityLabel, 'Release to load');
+  await h.app('background'); await request; await header.sync();
+  assert.equal(header.hint().props.accessibilityLabel, 'Pull down for earlier messages');
+  await h.app('active'); await h.begin(); await h.release();
+  await act(async () => { await assert.rejects(h.list().refreshControl.props.onRefresh(), /synthetic page failure/); });
+  await header.sync(); assert.equal(header.hint().props.accessibilityLabel, 'Pull down for earlier messages');
+  assert.equal(cell(h, row(31)).props.historyBoundary, false);
+  assert.equal(h.list().refreshControl.props.refreshing, false);
+  await header.close(); await h.close();
+});
+
+test('successful prepends mark only the former first key; marker survives reading/remount and moves on the next batch', async () => {
+  const original = { ...row(31), role: 'user' }, older = row(10);
+  const h = await mount({ rows: [original] });
+  const rendered = await renderCell(h, original), contentNode = rendered.root.findByType('MessageContent');
+  assert.equal(rendered.root.findAllByProps({ testID: 'history-boundary' }).length, 0);
+  await act(async () => { await h.list().refreshControl.props.onRefresh(); });
+  await h.update({ rows: [older, original], startRef: 10 });
+  assert.equal(cell(h, older).props.historyBoundary, false);
+  assert.equal(cell(h, original).props.historyBoundary, true);
+  assert.equal(cell(h, original, 'Measurement').props.historyBoundary, false);
+  assert.equal(cell(h, original, 'StickyHeader').props.historyBoundary, false);
+  await act(async () => rendered.update(cell(h, original)));
+  const line = rendered.root.findByProps({ testID: 'history-boundary' });
+  assert.equal(line.props.style.position, 'absolute'); assert.equal(line.props.style.height, native.StyleSheet.hairlineWidth);
+  assert.equal(line.props.pointerEvents, 'none'); assert.equal(line.props.accessibilityElementsHidden, true);
+  assert.equal(line.props.accessibilityLabel, undefined, 'divider is deliberately text-free');
+  assert.equal(rendered.root.findByType('MessageContent'), contentNode, 'adding marker does not remount the message');
+  await h.begin(); await act(async () => h.list().onScroll(event(200)));
+  assert.equal(cell(h, original).props.historyBoundary, true, 'ordinary scrolling does not clear the marker');
+  const remount = await renderCell(h, original);
+  assert.equal(remount.root.findAllByProps({ testID: 'history-boundary' }).length, 1);
+  await act(async () => remount.unmount());
+  await h.release(); await act(async () => { await h.list().refreshControl.props.onRefresh(); });
+  await h.update({ rows: [row(1), older, original], startRef: 1 });
+  assert.equal(cell(h, older).props.historyBoundary, true);
+  assert.equal(cell(h, original).props.historyBoundary, false);
+  await act(async () => rendered.update(cell(h, original)));
+  assert.equal(rendered.root.findAllByProps({ testID: 'history-boundary' }).length, 0);
+  assert.equal(rendered.root.findByType('MessageContent'), contentNode);
+  await h.update({ threadId: 'another-thread' });
+  assert.equal(cell(h, older).props.historyBoundary, false, 'marker is local to this conversation');
+  await h.flush(); assert.deepEqual(h.scrolls, []);
+  await act(async () => rendered.unmount()); await h.close();
+});
+
+test('initial/unsolicited prepends and ordinary appends do not create a divider', async () => {
+  const h = await mount({ rows: [row(31)] });
+  await h.update({ rows: [row(10), row(31)] });
+  assert.equal(cell(h, row(31)).props.historyBoundary, false);
+  await h.update({ rows: [row(10), row(31), row(32)] });
+  assert.equal(cell(h, row(10)).props.historyBoundary, false);
+  await act(async () => { await h.list().refreshControl.props.onRefresh(); });
+  await h.update({ rows: [row(1), row(10), row(31), row(32)] });
+  assert.equal(cell(h, row(10)).props.historyBoundary, true);
+  await h.update({ rows: [row(31), row(32)] });
+  await h.update({ rows: [row(10), row(31), row(32)] });
+  assert.equal(cell(h, row(10)).props.historyBoundary, false, 'discarded marker does not resurrect');
+  await h.close();
+});
+
+test('a deliberate new drag during a started request does not lose the loaded-history divider', async () => {
+  let finish;
+  const h = await mount({ onOlder: () => new Promise(resolve => { finish = resolve; }) });
+  let request; await act(async () => { request = h.list().refreshControl.props.onRefresh(); });
+  await h.begin();
+  await h.update({ rows: [row(10), row(31)], startRef: 10 });
+  assert.equal(cell(h, row(31)).props.historyBoundary, true);
+  await act(async () => { finish(); await request; });
+  await h.close();
+});
+
+test('divider uses the original row root for assistant, tool-only and system-notice boundaries', async () => {
+  for (const original of [row(31), { ...row(31), text: '', toolCalls: [{ id: 't', name: 'synthetic' }] }, { ...row(31), displayKind: 'system_notice' }]) {
+    const h = await mount({ rows: [original] });
+    await act(async () => { await h.list().refreshControl.props.onRefresh(); });
+    await h.update({ rows: [row(1), original], startRef: 1 });
+    const rendered = await renderCell(h, original);
+    const lines = rendered.root.findAllByProps({ testID: 'history-boundary' });
+    assert.equal(lines.length, 1); assert.equal(lines[0].props.style.position, 'absolute');
+    assert.equal(lines[0].props.style.top, 0);
+    await act(async () => rendered.unmount()); await h.close();
+  }
 });
