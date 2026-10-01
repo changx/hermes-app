@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, powerMonitor, shell } from "electron";
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnectionService } from "./connection-service";
@@ -102,6 +102,7 @@ const createMainWindow = (): BrowserWindow => {
 
 app.whenReady().then(async () => {
   registerDesktopApi();
+  powerMonitor.on("resume", () => { void service.resumeConnection(); });
   createMainWindow();
   await service.initialize();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
