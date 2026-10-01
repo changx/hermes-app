@@ -149,8 +149,8 @@ test('stale callbacks and pending completions do not address a blurred/unmounted
 test('App still uses original authoritative pagination and cached window expansion', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /onOlder=\{loadOlder\}/);
-  assert.match(app, /await client\.historyWindow\(id, pageCursor\)/);
-  assert.match(app, /if \(first > 0\) \{ setStartRef\(olderStart/);
+  assert.match(app, /await loadHistoryBlocks\(client, id, visibleMessages\[0\]\?\.ref_seq \?\? null/);
+  assert.doesNotMatch(app, /setStartRef\(olderStart/);
 });
 
 // Execute the INSTALLED library's real controller, not a reimplemented anchor

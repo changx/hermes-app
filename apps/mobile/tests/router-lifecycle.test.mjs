@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
+import * as historyBlocks from '../src/historyBlocks.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
@@ -59,6 +60,7 @@ async function harness() {
       return React.createElement('Chat', { threadId: props.threadId, text: props.text });
     }) },
     './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
+    './historyBlocks': historyBlocks,
     './timeline': { windowStart: () => 0, projectTimeline: () => [] },
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments' },

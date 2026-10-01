@@ -17,7 +17,8 @@ import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
-import { locateLatest, olderStart, projectTimeline, windowStart, type TimelinePosition } from './timeline';
+import { locateLatest, projectTimeline, windowStart, type TimelinePosition } from './timeline';
+import { historyBlockStart, loadHistoryBlocks } from './historyBlocks';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { AttachmentComposer, MessageAttachments } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
@@ -291,20 +292,27 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     setPageCursor(null); setHistoryBusy(true);
     const cached = locatedThreads.current.has(id);
     setLocated(cached); setStartRef(positions.current.get(id)?.startRef ?? null);
-    if (cached) {
-      setPageCursor(olderCursors.current.get(id) ?? null);
-      setHistoryBusy(false);
-      if (!client.tailIncomplete.has(id)) markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
-      return;
-    }
     try {
+      const current = () => focusedRef.current && opening === openingRef.current;
+      const onCursor = (cursor: string | null) => { olderCursors.current.set(id, cursor); setPageCursor(cursor); };
+      if (cached) {
+        const blocks = await loadHistoryBlocks(client, id, null, olderCursors.current.get(id) ?? null, { current, onCursor });
+        if (!blocks || !current()) return;
+        onCursor(blocks.olderCursor); setStartRef(blocks.startRef);
+        if (!client.tailIncomplete.has(id)) markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
+        return;
+      }
       if (client.supportsLatest) {
         const page = await client.historyWindow(id);
         if (!focusedRef.current || opening !== openingRef.current) return;
-        olderCursors.current.set(id, page.older_cursor);
-        setPageCursor(page.older_cursor); setLocated(true); locatedThreads.current.add(id);
+        const older = olderCursors.current.has(id) && (client.messages.get(id)?.[0]?.ref_seq ?? Infinity) < (page.messages[0]?.ref_seq ?? -Infinity)
+          ? olderCursors.current.get(id)! : page.older_cursor;
+        onCursor(older);
+        const blocks = await loadHistoryBlocks(client, id, null, older, { current, onCursor });
+        if (!blocks || !current()) return;
+        onCursor(blocks.olderCursor); setLocated(true); locatedThreads.current.add(id);
         client.resumeTail(id);
-        setStartRef(page.messages[0]?.ref_seq ?? null);
+        setStartRef(blocks.startRef);
         markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
         return;
       }
@@ -317,7 +325,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
           client.resumeTail(id);
           locatedThreads.current.add(id);
           const loaded = client.messages.get(id) || [];
-          setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
+          setStartRef(historyBlockStart(loaded).startRef);
           markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
         }
       }
@@ -336,7 +344,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
         client.resumeTail(id);
         locatedThreads.current.add(id);
         const loaded = client.messages.get(id) || [];
-        setStartRef(loaded[Math.max(0, loaded.length - 30)]?.ref_seq ?? null);
+        setStartRef(historyBlockStart(loaded).startRef);
         markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
       }
     } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
@@ -345,16 +353,16 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   const loadOlder = async () => {
     if (!client || !focusedRef.current || historyBusy) return;
     timelineRef.current?.holdPosition();
-    if (first > 0) { setStartRef(olderStart(messages, visibleMessages[0]?.ref_seq ?? null)); return; }
-    if (!client.supportsLatest || !pageCursor) return;
     const opening = openingRef.current, id = threadId;
     setHistoryBusy(true);
     try {
-      const page = await client.historyWindow(id, pageCursor);
+      const blocks = await loadHistoryBlocks(client, id, visibleMessages[0]?.ref_seq ?? null, client.supportsLatest ? pageCursor : null, {
+        current: () => focusedRef.current && opening === openingRef.current,
+        onCursor: cursor => { olderCursors.current.set(id, cursor); setPageCursor(cursor); }
+      });
       if (!focusedRef.current || opening !== openingRef.current) return;
-      olderCursors.current.set(id, page.older_cursor); setPageCursor(page.older_cursor);
-      setStartRef(page.messages[0]?.ref_seq ?? startRef);
-    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
+      if (blocks) setStartRef(blocks.startRef);
+    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not load earlier messages. Your current conversation is still available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const send = () => run(async () => {
@@ -379,7 +387,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   });
 
   const messages = client?.messages.get(threadId) || [];
-  const first = windowStart(messages, startRef);
+  const first = windowStart(messages, startRef ?? historyBlockStart(messages).startRef);
   const visibleMessages = located ? messages.slice(first) : [];
   const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
   const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
@@ -418,8 +426,8 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
-      locatingMessage={!located && !historyBusy ? pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
-      onLocateNext={!located && pageCursor ? () => { void locateNext(); } : undefined} locatingBusy={historyBusy}
+      locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
+      onLocateNext={!located && pageCursor ? () => { if (client.supportsLatest) void openThread(threadId); else void locateNext(); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}
       position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={markVisibleRead}
       text={text} onText={setText} onSend={send}
