@@ -21,6 +21,17 @@ Jamie 反馈手指还在下拉时就开始加载，这不符合要求。新规�
 - 针对性 history/animation **21/21**、完整 mobile **355/355**、TypeScript、iOS/Android Expo 导出及 diff check 通过。原淡入和 tail recovery 回归保持通过。
 - 真机事件顺序和视觉体验仍待反馈；标准事件流的正确入口不等于完成全部 iPhone 故障矩阵。
 
-本轮候选位于 `jamie/session-history-release-gate`，尚未合入运行入口或部署；未重启服务。
+本轮候选在 `jamie/session-history-release-gate` 验证后，经 Jamie 明确要求“部署”，将修正提交 `4ee6650` 快进合入 main 并更新现有手机测试入口。
+
+## 授权发布记录
+
+- 发布目录再次通过 TypeScript 和完整 mobile 355/355；仅重启用户级 `hermes-app-expo.service`。
+- iOS/Android 公网 manifest 及各自实际 launchAsset 确认等待 release 的 Promise、drag-end 解开意图、等待后才执行 onOlder、当前 props/请求所有权保护；没有人为定时器。
+- 保留 220ms FadeIn、FlashList、3 段分页与独立 tail 恢复；App.tsx、historyBlocks.ts 和共享 SDK 的发布前后 SHA-256 一致。
+- Jamie 和开发 Gateway 的 PID、启动时间、状态保持一致；其他任务工作区的两个文档哈希一致，未提交它们。
+- 测试入口 `exps://agent.tuly.space`，需要 Expo Go 完整 Reload。物理 iPhone 手势顺序仍待反馈，公网资源验证不等同于真机验收。
+- 回滚分支 `rollback/session-history-release-gate-before-4ee6650` 指向发布前 `eaa520b`。只回退本轮客户端文件并重启 Expo，不覆盖其他任务工作区修改。
+- 私有发布证据在下方目录 `release/release-verification.json`，含两平台实际 bundle 哈希、检查项、数据流源码哈希及 Gateway 前后状态；另保存发布目录测试日志。
+- 无核心/plugin/服务端/依赖变更，未重启 Gateway，未远程推送或发布签名安装包。
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-history-release-gate/`，含 baseline-red、targeted-green、完整测试和导出记录。
