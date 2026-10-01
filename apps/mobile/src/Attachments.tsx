@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from './FontSize';
+import { useLayoutState } from '@shopify/flash-list';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -297,7 +298,7 @@ async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
 
 /** Authenticated SDK bytes only; no token-bearing image URLs, external viewers, or eager non-image downloads. */
 export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
-  const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
+  const [loaded, setLoaded] = useLayoutState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
   const { openViewer } = useViewer();
   const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, AbortController>()), generation = useRef(0);
   const load = async (attachment: Attachment) => {
@@ -354,7 +355,9 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
     const label = attachment.name || 'Unnamed attachment';
     return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`View attachment: ${label}`} style={styles.tile}
       disabled={attachment.state !== 'available'} onPress={() => open(attachment)}>
-      {image && entry?.uri && <Image source={{ uri: entry.uri }} style={styles.thumb} />}
+      {image && <View style={styles.thumb}>
+        {entry?.uri && <Image source={{ uri: entry.uri }} style={styles.thumb} />}
+      </View>}
       <View style={styles.fileText}><Text style={styles.title} numberOfLines={2}>{label}</Text>
         <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : entry?.status === 'loading' ? 'Loading…' : entry?.status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
       </View>

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as historyLayout from '../src/historyLayout.ts';
 import { hasRunningReceipt } from '../src/receiptState.ts';
 
 // Execute production routes/components and the pinned controller's arithmetic.
@@ -49,7 +50,7 @@ function timeline(bottom = 34, os = 'ios', receipts = []) {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView',
       KeyboardStickyView: 'KeyboardStickyView', KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
+    './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': {}, './MessageContent': {}, './MessageTime': {}, './messageMarkdown': {}, './receiptState': { hasRunningReceipt },
   }).ChatTimeline({ threadId: 't_one', rows: [], text: '', receipts, interactions: [], answers: {} }, {});
   const list = find(tree, 'FlatList').props;
   return { tree, list, scroll: list.renderScrollComponent(list), sticky: find(tree, 'KeyboardStickyView').props };

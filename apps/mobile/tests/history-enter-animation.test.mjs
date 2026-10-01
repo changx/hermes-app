@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as historyLayout from '../src/historyLayout.ts';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
@@ -38,7 +39,7 @@ async function harness({ reduced = false } = {}) {
   for (const name of ['View', 'Pressable', 'RefreshControl', 'ScrollView']) native[name] = name;
   function MessageContent() { React.useEffect(() => { lifecycle.contentMounts++; }, []); return React.createElement('MessageContent'); }
   const modules = {
-    react: React, 'react-native': native, '@shopify/flash-list': { FlashList: 'FlashList' },
+    react: React, 'react-native': native, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
     'react-native-reanimated': { View: 'HistoryAnimatedView', FadeIn, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },

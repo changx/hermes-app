@@ -2,6 +2,8 @@
 
 ## 当前状态补充
 
+LCM 修复已回移并安装到开发 profile，提交 `19845a7`；当前 Gateway 尚未激活，需外部终端仅重启开发服务后核验。相关隔离回归 1235 项通过，现有历史指纹不变；没有升级固定核心或重启 Jamie/Expo。配置、证据、恢复与待验收见 [开发实例 LCM 修复](dev-lcm-fix.md)。
+
 2026-09-28 已为隔离 `hermes-app-dev` profile 接入现有 Mac mini MCP。配置只引用开发 profile 私有环境变量，不在仓库、聊天或验证结果中保存凭据。`hermes -p hermes-app-dev mcp test macmini` 实际连接成功并发现 21 个工具；随后经 `https://agent.tuly.space` 新建自动验收 Thread，真实模型完成一次只读 `mcp__macmini__calendar_list_calendars` 调用，收据为 `completed`、结果无错误，Thread 已归档。运行中的开发 Gateway 会为新会话动态发现该 MCP，因此无需重启；开发 Gateway 与 Jamie 主 Gateway 的 PID/启动时间均保持不变。回滚备份与脱敏证据保存在私有 `workspace/hermes-app/macmini-mcp-test/`，跟踪卡 `default / t_53fe1740`。
 
 系统通知开发版 `edc541e` 已发布：Hermes 记忆/Skill 自检与 context compression 状态通过独立 `system_notice` 持久显示在对应 Thread，不写 SessionDB、不冒充 Agent 回复。插件完整 artifact 与两平台 Expo bundle 均已更新；真实 Gateway 延迟回调、压缩原位更新、公网冷读/同步事件、精确 ref/搜索和模型历史隔离通过。只重启开发 Gateway 与 Expo，Jamie 主实例、固定 Core 和 dev 配置不变；iPhone 视觉待验收。详情见[系统通知开发版发布记录](system-notices-release.md)。下方均为历史发布记录。

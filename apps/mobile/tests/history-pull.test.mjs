@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as historyLayout from '../src/historyLayout.ts';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
@@ -18,7 +19,7 @@ const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value }
 for (const name of ['Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
 // The app wiring tests substitute native list views; they are not device tests.
 const modules = {
-  react: React, 'react-native': native, '@shopify/flash-list': { FlashList: 'FlashList' },
+  react: React, 'react-native': native, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
   './FontSize': { Text: 'Text', TextInput: 'TextInput' },
   'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
