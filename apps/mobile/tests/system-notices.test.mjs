@@ -63,7 +63,7 @@ test('system notice renders as compact plain UI rather than Hermes Markdown', ()
     receipts: [], interactions: [], answers: {}, onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false }, {});
   const list = find(tree, 'FlatList');
   const element = list.props.renderItem({ item: projectTimeline(input, null, 'thread')[1] });
-  const notice = element.type(element.props);
+  const notice = find(element.type(element.props), 'View');
   assert.equal(notice.type, 'View');
   assert.equal(notice.props.accessible, true);
   assert.match(notice.props.accessibilityLabel, /^System notice:/);

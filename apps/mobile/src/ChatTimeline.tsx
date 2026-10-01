@@ -31,15 +31,16 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   if (entrance.current.key !== row.key) entrance.current = { key: row.key, animation: animateHistory ? historyEntrance : undefined };
   useEffect(() => { if (animateHistory) onHistoryShown?.(row.key); }, [animateHistory, row.key, onHistoryShown]);
   const entering = entrance.current.animation;
-  // Decoration only: it must not add row height or compete with FlashList's anchor.
-  const boundary = historyBoundary ? <View testID="history-boundary" pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.historyBoundary} /> : null;
-  if (row.displayKind === 'system_notice') return <Animated.View entering={entering} accessible accessibilityLabel={`System notice: ${row.text}`} style={styles.systemNotice}>
-    {boundary}
+  // Keep the spacer outside the original message root. FlashList measures it
+  // with this keyed cell; a Fragment adds no native wrapper or correction scroll.
+  const boundary = historyBoundary ? <View testID="history-boundary" pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.historyBoundary}>
+    <View style={styles.historyBoundaryLine} />
+  </View> : null;
+  if (row.displayKind === 'system_notice') return <>{boundary}<Animated.View entering={entering} accessible accessibilityLabel={`System notice: ${row.text}`} style={styles.systemNotice}>
     <Text style={styles.systemNoticeText}>{row.text}</Text><MessageTime seconds={row.timestamp} />
-  </Animated.View>;
+  </Animated.View></>;
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const content = <Animated.View entering={own ? undefined : entering} style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage] : styles.bubble}>
-    {!own && boundary}
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -50,7 +51,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </Animated.View>;
-  return own ? <Animated.View entering={entering} style={styles.userMessageRow}>{boundary}{content}</Animated.View> : content;
+  return <>{boundary}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
 }, (prev, next) => prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
@@ -315,7 +316,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} busy={props.busy} renderAttachments={props.renderAttachments}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
-        historyBoundary={target === 'Cell' && item.key === historyBoundaryKey.current} />}
+        historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} />}
         renderScrollComponent={renderScrollComponent}
         drawDistance={renderAhead} getItemType={historyItemType}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
@@ -442,7 +443,8 @@ const styles = StyleSheet.create({
   historyHintIcon: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   historyHintArrow: { color: '#697b90', fontSize: 14 },
   historyHintText: { color: '#697b90', fontSize: 12, lineHeight: 17, flexShrink: 1 },
-  historyBoundary: { position: 'absolute', top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#bdccdf' },
+  historyBoundary: { paddingVertical: 8, marginHorizontal: 14 },
+  historyBoundaryLine: { height: StyleSheet.hairlineWidth, backgroundColor: '#bdccdf' },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
   systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },

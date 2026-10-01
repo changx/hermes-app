@@ -45,3 +45,13 @@ FlashList, type prediction, render-ahead, stable keys, native anchor, 5-block pu
 Evidence: `/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-history-pull-hint/`.
 
 Local-only candidate: no merge, public deploy or service restart in this task. Phone visual acceptance remains pending.
+
+## Follow-up: vertical padding
+
+After de31f03 was published, Jamie asked for space above and below the divider. The new local candidate adds `paddingVertical: 8` around an inner hairline, with horizontal margins matching messages.
+
+The padded separator is a sibling before the original message root, inside the same keyed FlashList cell. An always-present React Fragment adds no native wrapper and keeps the original message subtree stable when the marker moves. This also avoids turning the row-oriented system-notice layout into a padded column. The separator now intentionally consumes layout height; it is no longer an absolute overlay.
+
+Hidden Measurement renders include the same spacer as real Cells, avoiding a shorter preliminary measurement. Sticky copies still exclude it. FlashList continues to own layout/anchor correction; no new application scroll commands. Padding/measurement parity, original native-root identity and existing hint/boundary behavior are covered by the 374 passing mobile tests. TypeScript, both exports and actual compiled padding/inner-hairline checks pass.
+
+This follow-up is local-only, not merged or deployed. Phone reading/visual acceptance after the height change remains pending.

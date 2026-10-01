@@ -394,11 +394,17 @@ test('successful prepends mark only the former first key; marker survives readin
   await h.update({ rows: [older, original], startRef: 10 });
   assert.equal(cell(h, older).props.historyBoundary, false);
   assert.equal(cell(h, original).props.historyBoundary, true);
-  assert.equal(cell(h, original, 'Measurement').props.historyBoundary, false);
+  assert.equal(cell(h, original, 'Measurement').props.historyBoundary, true, 'hidden measurement must include the same padding');
   assert.equal(cell(h, original, 'StickyHeader').props.historyBoundary, false);
   await act(async () => rendered.update(cell(h, original)));
   const line = rendered.root.findByProps({ testID: 'history-boundary' });
-  assert.equal(line.props.style.position, 'absolute'); assert.equal(line.props.style.height, native.StyleSheet.hairlineWidth);
+  assert.equal(line.props.style.paddingVertical, 8);
+  assert.equal(line.props.style.position, undefined, 'padding must create real whitespace, not another overlay');
+  assert.equal(line.children[0].props.style.height, native.StyleSheet.hairlineWidth);
+  let measured;
+  await act(async () => { measured = create(cell(h, original, 'Measurement')); });
+  assert.equal(measured.root.findByProps({ testID: 'history-boundary' }).props.style, line.props.style);
+  await act(async () => measured.unmount());
   assert.equal(line.props.pointerEvents, 'none'); assert.equal(line.props.accessibilityElementsHidden, true);
   assert.equal(line.props.accessibilityLabel, undefined, 'divider is deliberately text-free');
   assert.equal(rendered.root.findByType('MessageContent'), contentNode, 'adding marker does not remount the message');
@@ -446,15 +452,20 @@ test('a deliberate new drag during a started request does not lose the loaded-hi
   await h.close();
 });
 
-test('divider uses the original row root for assistant, tool-only and system-notice boundaries', async () => {
+test('padded divider stays outside the original assistant, tool and notice roots without remounting them', async () => {
   for (const original of [row(31), { ...row(31), text: '', toolCalls: [{ id: 't', name: 'synthetic' }] }, { ...row(31), displayKind: 'system_notice' }]) {
     const h = await mount({ rows: [original] });
+    const rendered = await renderCell(h, original);
+    const originalRoot = rendered.root.findAllByType('View')[0];
     await act(async () => { await h.list().refreshControl.props.onRefresh(); });
     await h.update({ rows: [row(1), original], startRef: 1 });
-    const rendered = await renderCell(h, original);
+    await act(async () => rendered.update(cell(h, original)));
     const lines = rendered.root.findAllByProps({ testID: 'history-boundary' });
-    assert.equal(lines.length, 1); assert.equal(lines[0].props.style.position, 'absolute');
-    assert.equal(lines[0].props.style.top, 0);
+    assert.equal(lines.length, 1); assert.equal(lines[0].props.style.paddingVertical, 8);
+    assert.equal(lines[0].children[0].props.style.height, native.StyleSheet.hairlineWidth);
+    assert.equal(lines[0].parent, originalRoot.parent, 'spacer and original message are siblings');
+    assert.ok(rendered.root.findAllByType('View').includes(originalRoot), 'original native root is retained');
+    await h.flush(); assert.deepEqual(h.scrolls, [], 'FlashList remains the only prepend anchor');
     await act(async () => rendered.unmount()); await h.close();
   }
 });
