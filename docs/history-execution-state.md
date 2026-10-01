@@ -2,7 +2,7 @@
 
 ## 范围与关联
 
-本地候选实现；未合入运行目录或部署。客户端与独立 `hermes-app-plugin` 仓库配套更新，不改 Hermes Core、真实聊天数据或其他 profile。
+客户端与独立 `hermes-app-plugin` 仓库已合入并推送主分支。手机 bundle 已发布，插件文件已安装，但开发 Gateway 会话内重启被 guard 拦截，服务端新路径尚待外部激活；见 [开发发布记录](history-execution-state-release.md)。不改 Hermes Core、真实聊天数据或其他 profile。
 
 - 复用 `message_refs.input_receipt_id → receipts.id` 的既有唯一外键，作为新消息的权威关联。
 - 客户端同时校验 `thread_id + receipt_id + client_message_id + ref_seq`，不使用正文、邻近回复或最新任务猜测。
@@ -31,4 +31,4 @@ Receipt 增加 `version`，复用已有持久 `event_version`；历史、发送 
 
 证据：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/history-receipt-snapshot/`。
 
-未部署、未重启 Gateway/Expo。iPhone 重开/翻页视觉与网络行为需在授权发布后另做真机验收。
+首次本地验证时未部署、未重启 Gateway/Expo。后续授权发布进度见 [开发发布记录](history-execution-state-release.md)；iPhone 重开/翻页视觉与网络行为仍需另做真机验收。
