@@ -193,8 +193,8 @@ function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = f
   </View>;
 }
 
-function Cell({ cell, header, tone, allowed, width, onInteraction, suspended }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object>; width: number; onInteraction: () => void; suspended: boolean }) {
-  return <View style={[styles.tableCell, { width }, header && styles.tableHeadCell]}>
+function Cell({ cell, header, tone, allowed, onInteraction, suspended }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object>; onInteraction: () => void; suspended: boolean }) {
+  return <View style={[styles.tableCell, header && styles.tableHeadCell]}>
     <View style={[styles.cellContent, cell.align === 'center' && styles.alignCenter, cell.align === 'right' && styles.alignRight]}>
       <RichText nodes={cell.children} tone={tone} allowed={allowed} style={header ? styles.tableHeadText : styles.paragraph} onInteraction={onInteraction} suspended={suspended} />
     </View>
@@ -202,20 +202,16 @@ function Cell({ cell, header, tone, allowed, width, onInteraction, suspended }: 
 }
 
 function MarkdownTable({ block, tone, allowed, onExpand, onInteraction, suspended = false, fullscreen = false }: { block: Extract<Block, { kind: 'table' }>; fullscreen?: boolean } & BlockProps) {
-  // Never squeeze a multi-column grid into the phone viewport. The frame is
-  // bounded, but the actual grid retains readable cells and scrolls inside it.
-  const columnWidth = 156;
+  // Fit the actual grid to this local container, not just a scroll viewport.
+  // Equal flexible columns wrap their content and let rows grow vertically.
   return <View style={styles.tableFrame} onTouchStart={stopTouch}>
     {!fullscreen && <ExpandButton label="View table fullscreen" onPress={() => onExpand({ kind: 'table', block })} />}
-    <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator
-      bounces={false} directionalLockEnabled automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never">
-      <View style={styles.tableBody}>
-        <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}</View>
-        {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
-          {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}
-        </View>)}
-      </View>
-    </ScrollView>
+    <View style={styles.tableBody}>
+      <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} onInteraction={onInteraction} suspended={suspended} />)}</View>
+      {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
+        {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} onInteraction={onInteraction} suspended={suspended} />)}
+      </View>)}
+    </View>
   </View>;
 }
 
@@ -436,7 +432,7 @@ const styles = StyleSheet.create({
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },
   link: { color: '#215ca7', textDecorationLine: 'underline' },
   inlineCode: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: '#dce5f0', color: '#20314a', fontSize: 14 },
-  richText: { minWidth: 0 },
+  richText: { minWidth: 0, maxWidth: '100%' },
   imageFrame: { width: '100%', maxWidth: 280, height: 168, borderWidth: 1, borderRadius: 8, borderColor: '#d6e0ed', backgroundColor: '#f2f5fa', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   imageLabel: { color: '#52657c', fontSize: 13, textAlign: 'center', padding: 10 },
@@ -475,10 +471,9 @@ const styles = StyleSheet.create({
   codeScroll: { width: '100%', maxWidth: '100%' },
   codeText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
   tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
-  tableScroll: { width: '100%', minWidth: 0, maxWidth: '100%' },
-  tableBody: { alignSelf: 'flex-start', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
+  tableBody: { width: '100%', minWidth: 0, maxWidth: '100%', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
   tableRow: { flexDirection: 'row' },
-  tableCell: { width: 156, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', padding: 8 },
+  tableCell: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', paddingVertical: 8, paddingHorizontal: '1%' },
   tableHeadCell: { backgroundColor: '#e5ecf5' },
   tableHeadText: { fontSize: 15, lineHeight: 23, fontWeight: '700' },
   cellContent: { minWidth: 0 },

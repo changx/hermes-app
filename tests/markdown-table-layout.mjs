@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-// Runs actual production markup/CSS in Chromium, not a DOM or width mock.
+// Execute production markup/CSS in Chromium. Assert the GRID, not just its wrapper.
 export async function checkTableLayout(html, selector) {
   const dir = await mkdtemp(join(tmpdir(), 'markdown-table-layout-'));
   try {
@@ -18,12 +18,14 @@ export async function checkTableLayout(html, selector) {
         results.push({width,bodyWidth:document.body.clientWidth,bodyScroll:document.body.scrollWidth,tables:tables.map(view=>{
           const parent=view.parentElement, ps=getComputedStyle(parent);
           const available=parent.clientWidth-parseFloat(ps.paddingLeft)-parseFloat(ps.paddingRight);
-          view.scrollLeft=0;
-          const grid=view.querySelector('table');
-          const result={viewport:view.clientWidth,available,scrollWidth:view.scrollWidth,cells:grid.querySelectorAll('th,td').length};
+          const grid=view.querySelector('table'), cells=[...grid.querySelectorAll('th,td')];
+          const bounds=grid.getBoundingClientRect();
+          const result={viewport:view.clientWidth,available,gridWidth:bounds.width,scrollWidth:view.scrollWidth,cells:cells.length,
+            cellOverflow:Math.max(...cells.map(c=>c.scrollWidth-c.clientWidth)),
+            rowHeight:grid.querySelector('tbody tr').getBoundingClientRect().height,
+            lastVisible:grid.querySelector('tr:last-child td:last-child').getBoundingClientRect().right<=view.getBoundingClientRect().right+1};
           view.scrollLeft=view.scrollWidth;
           result.scrollLeft=view.scrollLeft;
-          result.lastVisible=grid.querySelector('tr:last-child td:last-child').getBoundingClientRect().right<=view.getBoundingClientRect().right+1;
           return result;
         })});
       }
@@ -36,18 +38,22 @@ export async function checkTableLayout(html, selector) {
     const results = JSON.parse(/<pre id="layout-results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
     assert.ok(results, 'browser executed the geometry probe');
     for (const row of results) {
-      assert.ok(row.tables.length >= 3, 'plain, quote and list tables are rendered');
+      assert.equal(row.tables.length, 6, 'two- and four-column tables in prose, quote and list');
       assert.ok(row.bodyScroll <= row.bodyWidth + 1, `outer body overflow at ${row.width}: ${JSON.stringify(row)}`);
       for (const table of row.tables) {
-        assert.ok(table.viewport <= table.available + 1, JSON.stringify(table));
-        assert.equal(table.cells, 16, 'all eight columns and both rows survive');
-        assert.ok(table.scrollWidth > table.viewport, 'wide grid is not squeezed or clipped');
-        assert.ok(table.scrollLeft > 0 && table.lastVisible, 'last cell remains reachable by internal scroll');
+        assert.ok(Math.abs(table.viewport-table.available) <= 1, JSON.stringify(table));
+        assert.ok(Math.abs(table.gridWidth-table.available) <= 1, 'actual grid fills and fits: '+JSON.stringify(table));
+        assert.ok(table.cells === 8 || table.cells === 12, 'all original header/body cells survive');
+        assert.ok(table.scrollWidth <= table.viewport+1 && table.cellOverflow <= 1, 'contents wrap, not overflow: '+JSON.stringify(table));
+        assert.ok(table.scrollLeft === 0 && table.lastVisible, 'all columns visible without horizontal scrolling');
       }
     }
+    assert.ok(results[0].tables[0].rowHeight > results[4].tables[0].rowHeight, 'wrapped content grows vertically when narrower');
     console.log('Table layout:', JSON.stringify(results));
   } finally { await rm(dir, { recursive:true, force:true }); }
 }
 
-const table = '| A | B | C | D | E | F | G | H |\n|---|---|---|---|---|---|---|---|\n| '+ 'unbroken'.repeat(80) +' | 中文长内容 | **bold** | `code` | x | y | z | last-column |';
-export const wideTables = 'Before\n\n'+table+'\n\n> '+table.replaceAll('\n','\n> ')+'\n\n- Nested\n\n  '+table.replaceAll('\n','\n  ')+'\n\nAfter';
+const table = '| A | B | C | D |\n|---|---|---|---|\n| '+ 'unbroken'.repeat(20) +' | 中文长内容 | **bold** `'+ 'code'.repeat(12) +'` | [last-column '+ 'link'.repeat(12) +'](https://example.com) |';
+const screenshotTable = '| session 状态 | 客户端需要什么 |\n|---|---|\n| 当前打开 | 当前消息窗口、执行状态、审批等 |\n| 正在执行但没打开 | 摘要；如果希望切过去更快，可以预取最近消息 |\n| 未打开且未执行 | 列表信息，不需要正文 |\n| 从执行中变为结果 | 若之前在预取正文，再核对一次收尾结果 |\n| 用户打开任意 session | 读取服务器最新消息，不把旧缓存当成最新结果 |';
+const contexts = table => table+'\n\n> '+table.replaceAll('\n','\n> ')+'\n\n- Nested\n\n  '+table.replaceAll('\n','\n  ');
+export const wideTables = 'Before\n\n'+contexts(table)+'\n\n'+contexts(screenshotTable)+'\n\nAfter';

@@ -272,10 +272,11 @@ button:focus-visible { outline: 2px solid #325c77; outline-offset: -2px; }
 /* Markdown emits separator newlines between blocks; do not render them as spacer lines.
    Fenced code and tool commands keep their own explicit whitespace rules. */
 .message-markdown { white-space: normal; min-width: 0; max-width: 100%; }
-.markdown-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; }
+.markdown-table { width: 100%; max-width: 100%; min-width: 0; }
 .message p, .message ul, .message ol, .message table, .message pre { margin: .55em 0; }
-.message-markdown table { width: max-content; min-width: 100%; border-collapse: collapse; white-space: normal; }
-.message-markdown th, .message-markdown td { min-width: 140px; max-width: 360px; overflow-wrap: anywhere; border: 1px solid #d9d5ce; padding: 7px 9px; text-align: start; }
+.message-markdown table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; white-space: normal; }
+.message-markdown th, .message-markdown td { min-width: 0; overflow-wrap: anywhere; border: 1px solid #d9d5ce; padding: 7px 1%; text-align: start; }
+.message-markdown td code, .message-markdown th code { white-space: normal; overflow-wrap: anywhere; padding-inline: 0; }
 .message a { color: #325c77; }
 .message code { border-radius: 4px; padding: 1px 4px; background: #efede8; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .code-block { overflow: auto; border-radius: 9px; padding: 12px; color: #f5f3ef; background: #292724; white-space: pre; }

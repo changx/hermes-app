@@ -24,14 +24,14 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
 
 const { checkTableLayout, wideTables } = await import('../../../tests/markdown-table-layout.mjs');
-test('article tables explicitly bound their section and scroll viewport, never the readable grid', () => {
+test('article tables fit their actual grid to the container and wrap cells', () => {
   const html = render(wideTables).html;
   assert.match(html, /article,\.table-block\{min-width:0;max-width:100%\}/);
-  assert.match(html, /\.table-scroll\{[^}]*width:100%;min-width:0;max-width:100%;box-sizing:border-box/);
-  assert.match(html, /table\{border-collapse:collapse;width:max-content;min-width:100%\}/);
+  assert.match(html, /\.table-grid\{width:100%;min-width:0;max-width:100%;box-sizing:border-box/);
+  assert.match(html, /table\{border-collapse:collapse;width:100%;max-width:100%;table-layout:fixed\}/);
 });
-test('Chromium: full article tables stay inside prose, quotes and lists across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
-  await checkTableLayout(render(wideTables).html, '.table-scroll');
+test('Chromium: full article tables fill and fit prose, quotes and lists across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  await checkTableLayout(render(wideTables).html, '.table-grid');
 });
 
 test('article CSS scales body, headings, code inheritance, controls and captions with bounded input', () => {
@@ -78,7 +78,7 @@ test('article serializes complete semantic blocks, selectable adjacent inline pr
   assert.match(html, /aria-label="View diagram fullscreen">⤢ View diagram fullscreen/);
   assert.match(html, /aria-label="Completed"/);
   assert.equal(page.expansions[0].block.rows[0][1].children[0].kind, 'strong');
-  assert.match(html, /\.table-scroll\{overflow-x:auto/);
+  assert.match(html, /\.table-grid\{width:100%/);
   assert.match(html, /Could not render: /);
 });
 

@@ -16,12 +16,12 @@ new Function('require','module','exports',bundle.outputFiles[0].text)(createRequ
 const html = out.exports.html;
 const css = await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
 
-test('every desktop table has a bounded, keyboard-focusable internal scroll region', () => {
-  assert.equal((html.match(/class="markdown-table-scroll"/g)||[]).length,3);
-  assert.equal((html.match(/aria-label="Scrollable table" tabindex="0"/g)||[]).length,3);
-  assert.match(css,/\.markdown-table-scroll \{[^}]*max-width: 100%;[^}]*overflow-x: auto;/);
+test('every desktop table fills its container with fixed-layout wrapping columns', () => {
+  assert.equal((html.match(/class="markdown-table"/g)||[]).length,6);
+  assert.doesNotMatch(html, /Scrollable table/);
+  assert.match(css,/\.message-markdown table \{[^}]*width: 100%;[^}]*table-layout: fixed;/);
   assert.ok(html.includes('last-column') && html.includes('After'));
 });
 for (const surface of ['session','standalone']) test(`Chromium: desktop ${surface} tables obey parent content widths and resize`, { skip:!process.env.HERMES_TEST_CHROME }, async () => {
-  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table-scroll');
+  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table');
 });
