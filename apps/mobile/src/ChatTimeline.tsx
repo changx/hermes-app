@@ -1,4 +1,4 @@
-import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, TextInput } from './FontSize';
@@ -12,7 +12,6 @@ import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd
 
 import { MessageContent } from './MessageContent';
 import { MessageTime } from './MessageTime';
-import { messageNeedsViewport } from './messageMarkdown';
 import { hasRunningReceipt } from './receiptState';
 import { historyDrawDistance, historyItemType } from './historyLayout';
 
@@ -24,7 +23,6 @@ type HistoryPullRequest = { started: boolean; release?: (released: boolean) => v
 
 const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean }) {
   const own = row.role === 'user';
-  const needsViewport = useMemo(() => own && messageNeedsViewport(row.text), [own, row.text]);
   // Keep the native entering configuration stable after the parent consumes
   // eligibility; ordinary rerenders must not change the animation's nativeID.
   const entrance = useRef({ key: row.key, animation: animateHistory ? historyEntrance : undefined });
@@ -41,7 +39,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, busy, renderAttachm
   </Animated.View></>;
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
-  const content = <Animated.View entering={own ? undefined : entering} style={own ? [styles.bubble, styles.own, needsViewport && styles.ownViewport] : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble}>
+  const content = <Animated.View entering={own ? undefined : entering} style={own ? styles.userMessageBlock : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble}>
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -454,8 +452,9 @@ const styles = StyleSheet.create({
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
-  own: { maxWidth: '80%', marginHorizontal: 0, backgroundColor: '#e6f0ff', borderColor: '#d0e2fb', alignSelf: 'flex-start', borderTopLeftRadius: 4, borderTopRightRadius: 16 },
-  ownViewport: { width: '80%' },
+  // A definite-width block keeps wrapped lists and their parent on one viewport.
+  // Do not inherit the content-sized bubble's maxWidth, border or corners.
+  userMessageBlock: { alignSelf: 'stretch', minWidth: 0, padding: 13, marginVertical: 5, backgroundColor: '#e6f0ff' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, sender: { color: '#50647b', fontSize: 12, fontWeight: '600' }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },

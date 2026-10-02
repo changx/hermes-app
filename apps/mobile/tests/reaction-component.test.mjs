@@ -201,7 +201,7 @@ test('composer accepts ready attachments without text and blocks incomplete uplo
   }
 });
 
-test('assistant fills available width without a bubble; user bubble remains unchanged', () => {
+test('assistant stays unframed; user messages fill a flat blue block without bubble constraints', () => {
   const rowStyle = role => {
     const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);
     const views = named(mount(rows).rowTree, 'View');
@@ -221,17 +221,36 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(agent.backgroundColor, undefined);
   assert.equal(agent.borderRadius, undefined);
   const user = rowStyle('user');
-  assert.equal(user.alignSelf, 'flex-start');
-  assert.equal(user.width, undefined, 'short messages must shrink to their content');
-  assert.equal(user.maxWidth, '80%');
-  assert.equal(user.marginHorizontal, 0, 'gutters belong to the definite-width parent');
+  assert.equal(user.alignSelf, 'stretch');
+  assert.equal(user.width, undefined, 'the definite-width row owns the viewport');
+  assert.equal(user.maxWidth, undefined, 'no 80% bubble constraint');
+  assert.equal(user.minWidth, 0);
+  assert.equal(user.marginHorizontal, undefined, 'gutters belong to the definite-width parent');
   assert.equal(user.padding, 13);
   assert.equal(user.backgroundColor, '#e6f0ff');
-  assert.equal(user.borderColor, '#d0e2fb');
-  assert.equal(user.borderWidth, 1);
-  assert.equal(user.borderRadius, 16);
-  assert.equal(user.borderTopLeftRadius, 4);
-  assert.equal(user.borderTopRightRadius, 16);
+  for (const property of ['borderColor', 'borderWidth', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius']) {
+    assert.equal(user[property], undefined, `no inherited bubble ${property}`);
+  }
+});
+
+test('short prose, long lists and rich viewports share one full-width user block', () => {
+  const samples = ['好', '长消息 '.repeat(100),
+    '桌面端问题：\n\n1. 创建新 session 的弹窗需要选择 channel 和上传附件。\n2. '.concat('长列表内容需要自然换行。'.repeat(20), '\n3. 复制消息。\n4. 使用浅蓝 block。'),
+    '> 引用\n> 第二行', '- 外层\n  - 嵌套列表',
+    '```js\nconst n = 1;\n```', '|a|b|\n|-|-|\n|1|2|',
+    '```mermaid\nflowchart LR\nA-->B\n```', '![图](https://example.com/a.png)'];
+  let expected;
+  for (const sample of samples) {
+    const rows = projectTimeline([{ ...msg, text: sample }], null, 'th', undefined, true);
+    const views = named(mount(rows).rowTree, 'View');
+    const style = Object.assign({}, ...[views[1].props.style].flat(Infinity).filter(Boolean));
+    assert.equal(style.alignSelf, 'stretch');
+    assert.equal(style.maxWidth, undefined);
+    assert.equal(style.backgroundColor, '#e6f0ff');
+    expected ??= style;
+    assert.deepEqual(style, expected, 'Markdown kind does not switch width constraints');
+    assert.equal(named(mount(rows).rowTree, 'MessageContent')[0].props.text, sample);
+  }
 });
 
 test('user and assistant rows render the same complete Markdown and media tree', () => {
