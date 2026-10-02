@@ -4,7 +4,7 @@ import { Alert, AppState, Dimensions, Keyboard, type KeyboardEvent, type LayoutC
 import type { KeyboardAvoidingView } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import { Text } from './FontSize';
-import { KeyboardReport, type KeyboardKind, type ReportRoute } from './keyboardReport';
+import { KEYBOARD_REPORT_BUILD, KeyboardReport, type KeyboardKind, type ReportRoute } from './keyboardReport';
 
 const report = new KeyboardReport();
 const reportFile = () => new File(Paths.cache, 'hermes-keyboard-report.json');
@@ -23,7 +23,7 @@ function flush() {
   catch { storageFailed = true; }
 }
 function record(kind: string, route: ReportRoute, data: Record<string, unknown> = {}) {
-  load(); report.append(kind, route, data);
+  load(); if (!report.append(kind, route, data)) return;
   if (!writeTimer) writeTimer = setTimeout(flush, 250);
 }
 export type FormKeyboardProbe = {
@@ -132,6 +132,7 @@ export function KeyboardCaptureButton({ route }: { route: ReportRoute }) {
     <Modal visible={open} animationType="none" transparent onRequestClose={() => setOpen(false)}>
       <View style={s.backdrop}><View style={s.panel}>
         <Text style={s.title}>Keyboard report</Text>
+        <Text style={s.body}>{KEYBOARD_REPORT_BUILD}</Text>
         <Text style={s.body}>Temporary recording of keyboard events and layout sizes only. No typed text, messages, attachments, or account details are collected. Reports stay on this device until you share them.</Text>
         <Text style={s.body}>Choose your keyboard to start a fresh recording. Close this panel, open the keyboard, switch away and return. Wait for the problem, then open Report and share.</Text>
         {(['system-english', 'system-chinese', 'third-party'] as const).map((kind, index) =>

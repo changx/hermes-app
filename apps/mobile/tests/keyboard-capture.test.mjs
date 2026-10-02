@@ -5,14 +5,15 @@ import { runInNewContext } from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
-import { KeyboardReport, REPORT_LIMIT, safeReportData } from '../src/keyboardReport.ts';
+import { KEYBOARD_REPORT_BUILD, KeyboardReport, REPORT_LIMIT, GEOMETRY_LIMIT, safeReportData } from '../src/keyboardReport.ts';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 test('report allowlists geometry, rejects all text/identity fields and invalid numbers', () => {
   const data = safeReportData({ screenY: 570.123, height: 330, paddingBottom: 296, text: 'SECRET',
     token: 'SECRET', channelId: 'SECRET', part: 'SECRET', appState: 'active', focused: true,
     width: Infinity, x: NaN, y: 1e10, nativeEvent: { text: 'SECRET' } });
-  assert.deepEqual(data, { screenY: 570.12, height: 330, paddingBottom: 296, focused: true, appState: 'active' });
+  assert.deepEqual(data, { screenY: 570.12, height: 330, paddingBottom: 296,
+    widthStatus: 'positive-infinity', xStatus: 'nan', y: 1e10, focused: true, appState: 'active' });
   const report = new KeyboardReport();
   report.append('sample', 'new-topic', { token: 'SECRET', text: 'SECRET', height: 330 });
   report.append('SECRET', 'new-topic', {}); report.append('sample', 'SECRET', {});
@@ -24,7 +25,7 @@ test('bounded ring, immutable snapshot, explicit reset and privacy-safe restore/
   const report = new KeyboardReport();
   for (let i = 0; i < REPORT_LIMIT + 7; i++) report.append('sample', 'new-topic', { height: i });
   const snapshot = report.snapshot();
-  assert.equal(snapshot.entries.length, REPORT_LIMIT); assert.equal(snapshot.dropped, 7);
+  assert.equal(snapshot.entries.length, GEOMETRY_LIMIT); assert.equal(snapshot.dropped, REPORT_LIMIT + 7 - GEOMETRY_LIMIT);
   snapshot.entries[0].data.height = -99; assert.notEqual(report.snapshot().entries[0].data.height, -99);
   report.reset('third-party'); assert.equal(report.snapshot().entries.length, 0);
   assert.equal(report.snapshot().keyboard, 'third-party');
@@ -34,6 +35,41 @@ test('bounded ring, immutable snapshot, explicit reset and privacy-safe restore/
   assert.ok(!JSON.stringify(report.snapshot()).includes('SECRET'));
   report.reset('system-english'); report.restore({ ...saved, startedAt: Date.now() - 86400001 });
   assert.equal(report.snapshot().entries.length, 0);
+});
+
+test('layout storm cannot evict show or foreground events; repeated layouts are counted and throttled', () => {
+  const original = Date.now;
+  Date.now = () => 1000000;
+  try {
+    const report = new KeyboardReport();
+    report.append('app-state', 'new-topic', { appState: 'active' });
+    report.append('keyboardWillShow', 'new-topic', { screenY: 0 });
+    for (let i = 0; i < 5000; i++) report.append('layout', 'new-topic', { part: 'form', height: 100000 + i });
+    assert.equal(report.snapshot().suppressedLayouts, 4999);
+    for (let i = 0; i < 5000; i++) report.append('sample', 'new-topic', { height: 100000 + i });
+    const snapshot = report.snapshot();
+    assert.equal(snapshot.entries.length, GEOMETRY_LIMIT + 2);
+    assert.deepEqual(snapshot.entries.slice(0, 2).map(e => e.kind), ['app-state', 'keyboardWillShow']);
+    const restored = new KeyboardReport(); restored.restore(snapshot);
+    assert.equal(restored.snapshot().entries.length, GEOMETRY_LIMIT + 2);
+    assert.equal(restored.snapshot().suppressedLayouts, 4999);
+    report.reset('third-party'); assert.equal(report.snapshot().suppressedLayouts, 0);
+    assert.equal(report.append('layout', 'new-topic', { part: 'form', height: 806 }), true);
+  } finally { Date.now = original; }
+});
+
+test('large finite, NaN, infinity and missing geometry remain distinguishable through JSON and restore', () => {
+  const report = new KeyboardReport();
+  report.append('sample', 'new-topic', { height: 345678, storedBottom: NaN, paddingBottom: Infinity,
+    measuredHeight: undefined, screenY: -Infinity, width: 1e15, widthStatus: 'SECRET' });
+  const snapshot = JSON.parse(JSON.stringify(report.snapshot()));
+  const data = snapshot.entries[0].data;
+  assert.equal(data.height, 345678); assert.equal(data.storedBottomStatus, 'nan');
+  assert.equal(data.paddingBottomStatus, 'positive-infinity'); assert.equal(data.measuredHeightStatus, 'missing');
+  assert.equal(data.screenYStatus, 'negative-infinity'); assert.equal(data.width, 1e12);
+  assert.equal(data.widthStatus, 'clamped'); assert.ok(!JSON.stringify(snapshot).includes('SECRET'));
+  const restored = new KeyboardReport(); restored.restore(snapshot);
+  assert.deepEqual(restored.snapshot().entries[0].data, data);
 });
 
 function load(modules, context) {
@@ -60,7 +96,7 @@ async function harness(platform = 'ios') {
     Keyboard: { isVisible: () => true, addListener: listen }, Modal: 'Modal', View: 'View', Pressable: 'Pressable',
     Platform: { OS: platform }, Share: { share: async value => { shared.push(value); } }, StyleSheet: { create: value => value } };
   const exports = load({ react: React, 'react-native': native, 'expo-file-system': { File, Paths: { cache: '/cache' } },
-    './FontSize': { Text: 'Text' }, './keyboardReport': { KeyboardReport } }, {
+    './FontSize': { Text: 'Text' }, './keyboardReport': { KEYBOARD_REPORT_BUILD, KeyboardReport } }, {
     setTimeout(fn) { const id = ++timerID; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
   });
   function Draft() { React.useEffect(() => { draftMounts++; }, []); return React.createElement('Input', { value: 'PRIVATE DRAFT' }); }
@@ -119,6 +155,6 @@ test('Android exports geometry text, not an unsupported file URL', async () => {
   const h = await harness('android'); await h.drain();
   const share = h.root.root.findAllByType('Pressable').find(n => n.findAllByType('Text').some(text => text.props.children === 'Share report'));
   await act(async () => share.props.onPress()); assert.equal(h.shared[0].url, undefined);
-  assert.equal(JSON.parse(h.shared[0].message).build, 'keyboard-resume-capture-v1');
+  assert.equal(JSON.parse(h.shared[0].message).build, 'keyboard-resume-capture-v2');
   await h.close();
 });
