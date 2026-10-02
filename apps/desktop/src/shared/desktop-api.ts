@@ -17,6 +17,7 @@ export type DesktopAttachment = Readonly<{
   name: string;
   mime: string;
   size: number;
+  publicUrl?: string;
   state: "available" | "missing" | "deleted" | "uploading";
 }>;
 export type DesktopInteraction = Readonly<{
@@ -95,4 +96,5 @@ export interface HermesDesktopApi {
   uploadDroppedFiles(files: readonly File[]): Promise<readonly DesktopAttachment[]>;
   deleteUnattachedAttachment(attachmentId: string): Promise<void>;
   downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void>;
+  previewAttachmentImage(attachmentId: string): Promise<string>;
 }

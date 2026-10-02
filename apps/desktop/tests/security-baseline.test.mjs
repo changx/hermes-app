@@ -90,6 +90,7 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "pickAndUploadAttachments",
     "uploadDroppedFiles",
     "deleteUnattachedAttachment",
+    "previewAttachmentImage",
     "downloadAttachment",
   ]);
   assert.match(preloadSource, /ipcRenderer\.on\("desktop:snapshot"/);

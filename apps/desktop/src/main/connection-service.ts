@@ -232,8 +232,8 @@ export class DesktopConnectionService {
     });
   }
 
-  private projectAttachment({ id, name = "Attachment", mime = "application/octet-stream", size = 0, state }: Attachment): DesktopAttachment {
-    return { id, name, mime, size, state };
+  private projectAttachment({ id, name = "Attachment", mime = "application/octet-stream", size = 0, state, public_url }: Attachment): DesktopAttachment {
+    return { id, name, mime, size, state, ...(public_url ? { publicUrl: public_url } : {}) };
   }
 
   private changed(): void {
@@ -729,6 +729,18 @@ export class DesktopConnectionService {
     this.errorMessage = undefined;
     await this.client?.retryNow();
     this.changed();
+  }
+
+  async previewAttachmentImage(attachmentId: string): Promise<string> {
+    const client = this.requireClient(), threadId = this.selectedThreadId;
+    const attachment = client.attachments.get(attachmentId);
+    if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available"
+        || !/^image\/(png|jpeg|gif|webp)$/.test(attachment.mime ?? "") || !attachment.size || attachment.size > 10 * 1024 * 1024) {
+      throw new Error("The image is unavailable.");
+    }
+    const bytes = await client.download(threadId, attachmentId);
+    if (bytes.length !== attachment.size || this.client !== client || this.selectedThreadId !== threadId) throw new Error("The image is unavailable.");
+    return `data:${attachment.mime};base64,${Buffer.from(bytes).toString("base64")}`;
   }
 
   async resumeConnection(): Promise<void> {

@@ -59,6 +59,7 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:pick-attachments", async (event) => { trustedSender(event); return service.pickAndUploadAttachments(); });
   ipcMain.handle("desktop:drop-attachments", async (event, paths: unknown) => { trustedSender(event); return service.uploadAttachmentPaths(texts(paths, 8, 4096)); });
   ipcMain.handle("desktop:delete-attachment", async (event, id: unknown) => { trustedSender(event); await service.deleteUnattachedAttachment(text(id, 200)); });
+  ipcMain.handle("desktop:preview-image", async (event, id: unknown) => { trustedSender(event); return service.previewAttachmentImage(text(id, 200)); });
   ipcMain.handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { trustedSender(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action); });
 };
 
