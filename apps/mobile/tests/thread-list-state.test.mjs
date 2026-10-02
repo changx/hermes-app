@@ -29,6 +29,8 @@ test('session list uses long press and accessible rename actions and never marks
   assert.doesNotMatch(channels, /<Action label="Rename"/);
   assert.match(channels, /item\.running === true/);
   assert.doesNotMatch(channels, /markRead\(/);
+  assert.match(channels, /unreadDot: \{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4DA3FF' \}/);
+  assert.doesNotMatch(channels, /Completed · Unread/);
 });
 
 test('conversation entry awaits scoped opening and reports only a visible completed result', () => {

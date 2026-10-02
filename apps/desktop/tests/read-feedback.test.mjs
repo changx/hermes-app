@@ -14,4 +14,6 @@ test('desktop navigation has running and shared completed-unread status, not cou
   assert.match(source,/thread\.completedUnread/);
   assert.match(source,/aria-label="Completed, unread"/);
   assert.doesNotMatch(source,/Completed · Unread/);
+  const styles=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
+  assert.match(styles,/\.thread-result-unread \{[^}]*width: 7px;[^}]*height: 7px;[^}]*background: #4DA3FF;/);
 });
