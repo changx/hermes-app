@@ -17,13 +17,12 @@ test('back buttons show only the arrow', () => {
   assert.match(layout, /headerBackButtonDisplayMode: 'minimal'/);
 });
 
-test('topics show newest at the bottom from first frame without scrolling', () => {
+test('sessions show newest at the top from first frame without scrolling', () => {
   const sort = channels.match(/\.sort\(\(a, b\) => \(b\.last_message_at \?\? 0\) - \(a\.last_message_at \?\? 0\)[^\n]*/)?.[0];
-  assert.ok(sort, 'newest-first data for the inverted list');
+  assert.ok(sort, 'newest-first data for the ordinary list');
   const order = (list) => list.sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title)).map(t => t.id);
-  // Inverted FlatList renders data[0] at the bottom, so on screen top->bottom is old, mid, new.
-  assert.deepEqual(order([{ id: 'old', last_message_at: 10, last_ref: 9, title: 'a' }, { id: 'new', last_message_at: 30, last_ref: 1, title: 'b' }, { id: 'mid', last_message_at: 20, last_ref: 2, title: 'c' }]).reverse(), ['old', 'mid', 'new']);
-  assert.match(channels, /<FlatList inverted=\{threads\.length > 0\}/);
+  assert.deepEqual(order([{ id: 'old', last_message_at: 10, last_ref: 9, title: 'a' }, { id: 'new', last_message_at: 30, last_ref: 1, title: 'b' }, { id: 'mid', last_message_at: 20, last_ref: 2, title: 'c' }]), ['new', 'mid', 'old']);
+  assert.doesNotMatch(channels, /<FlatList inverted/);
   assert.match(channels, /<MessageTime seconds=\{item\.last_message_at\} \/>/);
   assert.doesNotMatch(channels, /scrollToEnd|stickToEnd|onContentSizeChange/);
 });

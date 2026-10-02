@@ -26,6 +26,7 @@ function NativeRoutes() {
       <Stack.Protected guard={!ready || (!!config && !(editing && pendingPairing))}>
         <Stack.Screen name="new-channel" options={{ title: 'New channel' }} />
         <Stack.Screen name="channels/[channelId]" options={{ title: 'Channel' }} />
+        <Stack.Screen name="channels/[channelId]/context" options={{ title: 'Channel context' }} />
         <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
         <Stack.Screen name="threads/[threadId]" options={{ title: 'Conversation' }} />
         <Stack.Screen name="settings" options={{ title: 'Agent settings' }} />

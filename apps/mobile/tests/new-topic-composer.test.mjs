@@ -53,7 +53,7 @@ async function harness(overrides = {}) {
   };
 }
 
-test('production channel list docks the composer below an anchored list and leaves channel creation unchanged', async () => {
+test('production channel list docks the composer below a top-first list and leaves channel creation unchanged', async () => {
   const source = readFileSync(new URL('../src/ChannelScreens.tsx', import.meta.url), 'utf8');
   const modules = {
     react: React, 'react-native': { FlatList: 'List', ActivityIndicator: 'Spinner', Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
@@ -71,7 +71,8 @@ test('production channel list docks the composer below an anchored list and leav
   let tree;
   await act(async () => { tree = create(React.createElement(exports.ChannelScreens, props)); });
   const list = tree.root.findByType('List'), composer = tree.root.findByType('Composer');
-  assert.equal(list.props.style.flex, 1); assert.equal(list.props.maintainVisibleContentPosition.minIndexForVisible, 0);
+  assert.equal(list.props.style.flex, 1); assert.equal(list.props.maintainVisibleContentPosition, undefined);
+  assert.equal(list.props.inverted, undefined);
   assert.equal(composer.props.enqueue, props.enqueueFirstMessage); assert.equal(composer.props.onCreated, props.onThread);
   assert.equal(composer.parent.children.indexOf(composer) > list.parent.children.indexOf(list), true);
   assert.equal(tree.root.findAllByType('Pressable').some(n => n.props.accessibilityLabel === 'New topic'), false);

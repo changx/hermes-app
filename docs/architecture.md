@@ -22,6 +22,8 @@
 
 插件代码独立维护；不使用 monkey patch、复制修改核心模块或客户端专用 fork。具体路由、执行生命周期、历史读取、提示注入和事件扩展点仍需验证，不能假定现有 plugin API 已覆盖全部需求。缺少扩展点时先报告限制和替代方案，不以修改核心补齐。必要的插件元数据由插件管理，不擅自修改核心数据库 schema，不另建重复的权威会话历史。
 
+Channel 工作空间是已确认的后续目标，不是当前已交付能力：服务端维护稳定的 Channel→目录映射；客户端 Files 只呈现目录内相对路径；AGENTS.md 专用编辑入口与 Files 中的同名文件指向同一真实文件。Context 仍使用现有 Project Description 作为简短摘要，修改时只 PATCH description，不覆盖其他设备的 name。当前 catalogue 只驻留 Channel 名称；完整 Context 由独立页面按需 getChannelInfo 读取，离开页面释放，不为入口预加载正文。现有插件尚无 Files/AGENTS.md 接口；目录绑定、文件读写权限与路径/符号链接约束、并发编辑、附件落盘衔接、正式执行扩展点及规则生效/压缩恢复语义另行验证，不能靠客户端或临时工具调用冒充实现。见 [手机 Channel 改版](mobile-channel-context.md)。
+
 用户可见的 Thread 关联底层 session lineage，但生命周期不受压缩或物理 session ID 变化影响。用户可见历史与模型请求历史分开读取；复用现有显示投影，而不是简单显示 raw transcript。
 
 ## 2. 现有代码证据

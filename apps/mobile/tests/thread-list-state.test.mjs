@@ -21,9 +21,11 @@ test('topic running status follows only an active authoritative receipt', () => 
   assert.equal(isThreadRunning('thread', [{ ...receipt, processing: null }]), true);
 });
 
-test('topic list uses an icon rename action and never marks a topic read', () => {
+test('session list uses long press and accessible rename actions and never marks a session read', () => {
   const channels = readFileSync(new URL('../src/ChannelScreens.tsx', import.meta.url), 'utf8');
-  assert.match(channels, /<IconAction label="Rename" ios="square\.and\.pencil" android="edit"/);
+  assert.match(channels, /onLongPress=\{\(\) => sessionMenu\(item\)\}/);
+  assert.match(channels, /name: 'rename', label: 'Rename session'/);
+  assert.doesNotMatch(channels, /<IconAction label="Rename"/);
   assert.doesNotMatch(channels, /<Action label="Rename"/);
   assert.match(channels, /item\.running === true/);
   assert.doesNotMatch(channels, /markRead\(/);
