@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -27,7 +28,7 @@ const modules = {
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
-  './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
+  './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
   './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
   './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
@@ -64,6 +65,25 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
   return { tree, rowTree, calls };
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
+
+test('failed local row wires long press and accessibility delete through two confirmations only', () => {
+  const alerts = [], removed = [];
+  native.Alert = { alert: (...args) => alerts.push(args) };
+  const row = projectTimeline([], null, 'th', undefined, true, [record('blocked')])[0];
+  const { rowTree } = mount([row], [], [], { onDeleteFailed: id => removed.push(id) });
+  const control = named(rowTree, 'Pressable').find(n => n.props.onLongPress);
+  assert.ok(control);
+  control.props.onLongPress();
+  assert.equal(alerts[0][0], 'Message'); assert.deepEqual(removed, []);
+  alerts[0][2][1].onPress();
+  assert.equal(alerts[1][0], 'Delete this message?'); assert.deepEqual(removed, []);
+  alerts[1][2][1].onPress(); assert.deepEqual(removed, ['c']);
+  control.props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } });
+  assert.equal(alerts.length, 3);
+  for (const candidate of [{ ...row, status: 'accepted' }, { ...row, refSeq: 1 }, { ...row, optimistic: false }])
+    assert.equal(named(mount([candidate], [], [], { onDeleteFailed() {} }).rowTree, 'Pressable').some(n => n.props.onLongPress), false);
+  assert.equal(named(mount([row], [], [], { busy: true, onDeleteFailed() {} }).rowTree, 'Pressable').some(n => n.props.onLongPress), false);
+});
 
 test('owned timeline labels are English while message and attachment names stay verbatim', () => {
   const row = { ...projectTimeline([{ ...msg, text: '原文' }], null, 'th')[0], attachments: [

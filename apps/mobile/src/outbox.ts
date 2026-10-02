@@ -180,6 +180,21 @@ export class OutboxStore {
       this.entries.delete(id);
     });
   }
+  async removeBlocked(threadId: string, id: string): Promise<void> {
+    return this.serialize(async () => {
+      const entry = this.entries.get(id);
+      if (!entry) return;
+      if (entry.record.threadId !== threadId || entry.record.status !== 'blocked')
+        throw new Error('Only a failed local message can be deleted.');
+      const key = prefix(this.config.id, entry.slot);
+      const count = pieces(entry.version === 2 ? entry.record.text : payload(entry.record)).length;
+      // Commit deletion first; an interrupted cleanup finishes on cold load.
+      await this.store.setItemAsync(key, JSON.stringify({ version: entry.version, status: 'discarding', chunks: count }));
+      for (let i = 0; i < count; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
+      await this.store.deleteItemAsync(key);
+      this.entries.delete(id);
+    });
+  }
   async clear(): Promise<void> {
     return this.serialize(async () => {
       for (let slot = 0; slot < SLOTS; slot++) {
@@ -253,6 +268,13 @@ export class MobileOutbox {
     try { await this.storage.enqueue({ ...record, status: 'queued' }); }
     catch (e) { if (!(e instanceof OutboxLimitError) && !(e instanceof OutboxIdentityError)) this.storageFault = true; throw e; }
     if (!this.alive) return;
+    this.emit(); this.wake();
+  }
+  async deleteFailed(threadId: string, clientMessageId: string): Promise<void> {
+    if (!this.alive) throw new Error('Connection closed.');
+    if (this.storageFault || this.busy.has(clientMessageId)) throw new Error('This message cannot be deleted right now.');
+    await this.storage.removeBlocked(threadId, clientMessageId);
+    this.checkedAt.delete(clientMessageId); this.noticed.delete(clientMessageId);
     this.emit(); this.wake();
   }
   setConnection(state: NetworkState) {

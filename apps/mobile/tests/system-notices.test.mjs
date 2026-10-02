@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -40,7 +41,7 @@ function loadTimeline() {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardStickyView: 'KeyboardStickyView',
       KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, useSharedValue: value => ({ value }), runOnJS: fn => fn },
-    './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
+    './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
     './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false },
   };

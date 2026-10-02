@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -49,7 +50,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler: handlers => { keyboardHandler = handlers; } },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => { const slot = index++; return hooks[slot] ??= { value }; } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
-    './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false },
+    './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': timeline.exports, './send': { sendDescription: () => '' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { messageNeedsViewport: () => false },
     './receiptState': { hasRunningReceipt }
   };
   const output = { exports: {} };

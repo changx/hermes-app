@@ -423,6 +423,11 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
       composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
       receipts={receipts} interactions={interactions} answers={answers}
       onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
+      onDeleteFailed={id => run(async () => {
+        const box = outboxRef.current;
+        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+        await box.deleteFailed(threadId, id);
+      }, 'Could not finish deleting this saved message. Try again; do not clear your app data.')}
       onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
   </View>;

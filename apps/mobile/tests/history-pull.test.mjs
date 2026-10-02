@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -19,7 +20,7 @@ const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value, 
 for (const name of ['ActivityIndicator', 'Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
 // The app wiring tests substitute native list views; they are not device tests.
 const modules = {
-  react: React, 'react-native': native, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
+  react: React, 'react-native': native, './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
   './FontSize': { Text: 'Text', TextInput: 'TextInput' },
   'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },

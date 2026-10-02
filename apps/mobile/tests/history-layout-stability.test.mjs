@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -40,7 +41,7 @@ async function chat() {
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) } };
   for (const name of ['View','Pressable','RefreshControl','ScrollView']) native[name] = name;
   const commands = [];
-  const modules = { react: React, 'react-native': native, './historyLayout': historyLayout,
+  const modules = { react: React, 'react-native': native, './failedMessageActions': failedMessageActions, './historyLayout': historyLayout,
     '@shopify/flash-list': { FlashList: 'FlashList' }, './FontSize': { Text: 'Text', TextInput: 'TextInput' },
     'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: () => ({ reduceMotion: () => undefined }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
