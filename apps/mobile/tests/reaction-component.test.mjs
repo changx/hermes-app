@@ -264,7 +264,10 @@ test('user and assistant rows render the same complete Markdown and media tree',
     assert.ok(named(rendered, 'Pressable').some(n => n.props.accessibilityLabel === 'Copy code'));
     assert.ok(rendered.some(n => n.props.accessibilityRole === 'link'));
     assert.ok(rendered.some(n => n.props.accessibilityRole === 'checkbox'));
-    assert.ok(named(rendered, 'ScrollView').filter(n => n.props.horizontal).length >= 2);
+    assert.equal(named(rendered, 'ScrollView').filter(n => n.props.horizontal).length, 2, 'table and code scroll internally');
+    const viewport = named(rendered, 'ScrollView').find(n => n.props.horizontal && n.props.onLayout);
+    assert.equal(viewport.props.style.width, '100%');
+    assert.equal(viewport.props.style.maxWidth, '100%');
     const frames = named(rendered, 'View').filter(n => n.props.style?.height === 220);
     assert.equal(frames.length, 2);
     frames.forEach(n => assert.equal(n.props.style.borderWidth, undefined));

@@ -54,6 +54,7 @@ export const MessageContent = memo(({ text }: { text: string }) => (
     rehypePlugins={[rehypeKatex]}
     urlTransform={(url) => allowedLink(url) ?? ""}
     components={{
+      table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
       a: ({ href, children }) => {
         const safe = allowedLink(href);
         return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;

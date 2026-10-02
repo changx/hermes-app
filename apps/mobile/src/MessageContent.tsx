@@ -202,14 +202,21 @@ function Cell({ cell, header, tone, allowed, width, onInteraction, suspended }: 
 }
 
 function MarkdownTable({ block, tone, allowed, onExpand, onInteraction, suspended = false, fullscreen = false }: { block: Extract<Block, { kind: 'table' }>; fullscreen?: boolean } & BlockProps) {
-  // Never squeeze a multi-column grid into the phone viewport. The frame is
-  // bounded, but the actual grid retains readable cells and scrolls inside it.
-  const columnWidth = 156;
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const columns = Math.max(1, block.header.length);
+  // Keep readable columns, but distribute spare viewport width across them.
+  // Include the grid's left border so expansion never adds an offscreen pixel.
+  const gridWidth = Math.max(viewportWidth, columns * 156 + 1);
+  const columnWidth = (gridWidth - 1) / columns;
   return <View style={styles.tableFrame} onTouchStart={stopTouch}>
     {!fullscreen && <ExpandButton label="View table fullscreen" onPress={() => onExpand({ kind: 'table', block })} />}
     <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator
+      onLayout={event => {
+        const width = event.nativeEvent.layout.width;
+        if (Number.isFinite(width) && width > 0) setViewportWidth(previous => previous === width ? previous : width);
+      }}
       bounces={false} directionalLockEnabled automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never">
-      <View style={styles.tableBody}>
+      <View style={[styles.tableBody, { width: gridWidth }]}>
         <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}</View>
         {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
           {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}
@@ -427,8 +434,8 @@ const styles = StyleSheet.create({
   toolLabel: { color: '#52657c', fontSize: 13, lineHeight: 20 },
   toolDetail: { width: '100%', maxWidth: '100%', borderRadius: 8, backgroundColor: '#e8eef6' },
 
-  root: { alignSelf: 'stretch', minWidth: 0 },
-  blocks: { alignSelf: 'stretch', minWidth: 0, gap: 8 },
+  root: { alignSelf: 'stretch', minWidth: 0, maxWidth: '100%' },
+  blocks: { alignSelf: 'stretch', minWidth: 0, maxWidth: '100%', gap: 8 },
   paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
   heading: { color: '#172a40', fontWeight: '700', flexShrink: 1 },
   h1: { fontSize: 21, lineHeight: 28 }, h2: { fontSize: 18, lineHeight: 26 },
@@ -436,7 +443,7 @@ const styles = StyleSheet.create({
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },
   link: { color: '#215ca7', textDecorationLine: 'underline' },
   inlineCode: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: '#dce5f0', color: '#20314a', fontSize: 14 },
-  richText: { minWidth: 0 },
+  richText: { minWidth: 0, maxWidth: '100%' },
   imageFrame: { width: '100%', maxWidth: 280, height: 168, borderWidth: 1, borderRadius: 8, borderColor: '#d6e0ed', backgroundColor: '#f2f5fa', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   imageLabel: { color: '#52657c', fontSize: 13, textAlign: 'center', padding: 10 },
@@ -456,15 +463,15 @@ const styles = StyleSheet.create({
   fullscreenDiagram: { flex: 1, minHeight: 0, width: '100%' },
   expandButton: { alignSelf: 'flex-end', paddingVertical: 5, paddingHorizontal: 4 },
   expandText: { color: '#215ca7', fontSize: 12 },
-  viewer: { flex: 1, backgroundColor: '#fff' },
-  insetViewer: { flex: 1, backgroundColor: '#fff', paddingBottom: 12, paddingHorizontal: 14 },
-  modalScroll: { flex: 1, minWidth: 0 },
-  modalScrollContent: { paddingBottom: 16 },
-  articleFallbackContent: { paddingBottom: 28, paddingHorizontal: 14 },
+  viewer: { flex: 1, minWidth: 0, maxWidth: '100%', backgroundColor: '#fff' },
+  insetViewer: { flex: 1, minWidth: 0, maxWidth: '100%', backgroundColor: '#fff', paddingBottom: 12, paddingHorizontal: 14 },
+  modalScroll: { flex: 1, minWidth: 0, maxWidth: '100%' },
+  modalScrollContent: { alignItems: 'stretch', paddingBottom: 16 },
+  articleFallbackContent: { alignItems: 'stretch', paddingBottom: 28, paddingHorizontal: 14 },
   articleWeb: { flex: 1, backgroundColor: '#fff' },
   articleFailure: { color: '#52657c', fontSize: 13, paddingBottom: 10 },
-  quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0 },
-  list: { gap: 5, minWidth: 0 },
+  quote: { borderLeftWidth: 3, borderLeftColor: '#9ab2d2', paddingLeft: 10, minWidth: 0, maxWidth: '100%' },
+  list: { gap: 5, minWidth: 0, maxWidth: '100%' },
   listRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   bullet: { width: 26, flexShrink: 0, color: '#425874', fontSize: 15, lineHeight: 23 },
   listBody: { flex: 1, minWidth: 0 },
@@ -475,10 +482,10 @@ const styles = StyleSheet.create({
   codeScroll: { width: '100%', maxWidth: '100%' },
   codeText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
   tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
-  tableScroll: { width: '100%', maxWidth: '100%' },
+  tableScroll: { width: '100%', minWidth: 0, maxWidth: '100%' },
   tableBody: { alignSelf: 'flex-start', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
   tableRow: { flexDirection: 'row' },
-  tableCell: { width: 156, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', padding: 8 },
+  tableCell: { width: 156, flexShrink: 0, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', padding: 8 },
   tableHeadCell: { backgroundColor: '#e5ecf5' },
   tableHeadText: { fontSize: 15, lineHeight: 23, fontWeight: '700' },
   cellContent: { minWidth: 0 },

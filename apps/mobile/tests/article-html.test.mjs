@@ -23,6 +23,18 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 } });
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
 
+const { checkTableLayout, wideTables } = await import('../../../tests/markdown-table-layout.mjs');
+test('article tables have a full-width scroll viewport and an at-least-full-width content grid', () => {
+  const html = render(wideTables).html;
+  assert.match(html, /article,\.table-block\{min-width:0;max-width:100%\}/);
+  assert.match(html, /\.table-grid\{width:100%;min-width:0;max-width:100%;box-sizing:border-box/);
+  assert.match(html, /table\{border-collapse:collapse;width:max-content;min-width:100%\}/);
+  assert.match(html, /\.table-grid\{[^}]*overflow-x:auto/);
+});
+test('Chromium: full article table viewports fill containers and grids expand or scroll across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  await checkTableLayout(render(wideTables).html, '.table-grid');
+});
+
 test('article CSS scales body, headings, code inheritance, controls and captions with bounded input', () => {
   const blocks = parseMessageMarkdown('# Heading\n\nSome `code`.\n\n```sh\nprintf ok\n```\n\n![image](https://example.com/i.png)');
   const large = output.exports.renderArticleHtml(blocks, [], 1.3).html;
@@ -67,7 +79,7 @@ test('article serializes complete semantic blocks, selectable adjacent inline pr
   assert.match(html, /aria-label="View diagram fullscreen">⤢ View diagram fullscreen/);
   assert.match(html, /aria-label="Completed"/);
   assert.equal(page.expansions[0].block.rows[0][1].children[0].kind, 'strong');
-  assert.match(html, /\.table-scroll\{overflow-x:auto/);
+  assert.match(html, /\.table-grid\{width:100%/);
   assert.match(html, /Could not render: /);
 });
 
