@@ -249,6 +249,7 @@ textarea:disabled {
 .thread-title { flex: 1; }
 .tree-thread:hover, .tree-thread.selected { background: #e5e0d7; }
 .thread-status { color: #285d43; font-size: 11px; }
+.thread-result-unread { color: #2960ad; font-size: 11px; font-weight: 600; }
 .tree-more, .tree-new { width: 100%; padding: 9px 10px; border: 0; background: transparent; color: #746e66; text-align: left; font-size: 12px; }
 .thread-switcher { max-width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .palette-results small { display: block; margin-top: 4px; color: #746e66; }

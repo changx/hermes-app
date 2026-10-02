@@ -1,12 +1,15 @@
 import type { Channel } from './index';
 
-/** Directory metadata only. No unread, messages, receipts or execution prompts. */
+/** Directory metadata and shared completed-result marker only. No counts or bodies. */
 export interface SessionDirectoryItem {
   id: string;
   project_id: string;
   title: string;
   archived: boolean;
   running: boolean;
+  completed_unread?: boolean;
+  result_version?: number;
+  result_ref?: number;
   last_message_at?: number;
 }
 export type CatalogueItem = {kind:'channel';value:Channel}|{kind:'session';value:SessionDirectoryItem};
@@ -40,6 +43,14 @@ export function parseCatalogue(value:unknown):CataloguePage {
     if(row.kind==='channel')return {kind:'channel',value:{id,name:text(entry.name)}};
     if(row.kind!=='session')throw new LiveProtocolError();
     const result:SessionDirectoryItem={id,project_id:text(entry.project_id),title:text(entry.title),archived:bool(entry.archived),running:bool(entry.running)};
+    if(entry.completed_unread!==undefined){
+      result.completed_unread=bool(entry.completed_unread);
+      for(const key of ['result_version','result_ref'] as const){
+        const number=entry[key];if(typeof number!=='number'||!Number.isSafeInteger(number)||number<0)throw new LiveProtocolError();
+        result[key]=number;
+      }
+      if((result.result_version===0)!==(result.result_ref===0)||result.completed_unread&&result.result_version===0)throw new LiveProtocolError();
+    }
     if(entry.last_message_at!==undefined){
       if(typeof entry.last_message_at!=='number'||!Number.isFinite(entry.last_message_at)||entry.last_message_at<0)throw new LiveProtocolError();
       result.last_message_at=entry.last_message_at;

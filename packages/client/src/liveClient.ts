@@ -14,7 +14,7 @@ const combine=(scope:AbortSignal|undefined,parent:AbortSignal|undefined)=>{
 };
 
 /** Lightweight account directory + one opened conversation. No history database,
- * event replay, unread reporting, background body cache or business polling. */
+ * event replay, message unread counts, background body cache or business polling. */
 export class LiveSessionClient extends HermesClient {
   private readonly liveOptions:Options;
   private liveController:AbortController|null=null;
@@ -66,7 +66,7 @@ export class LiveSessionClient extends HermesClient {
     // Direct CRUD responses must not leave descriptions/core session metadata
     // resident in the outer directory. Editors read their own temporary detail.
     for(const [id,c]of this.channels)this.channels.set(id,{id,name:c.name});
-    for(const [id,t]of this.threads)this.threads.set(id,{id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean((t as typeof t&{running?:boolean}).running)});
+    for(const [id,t]of this.threads)this.threads.set(id,{id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})});
   }
   private sendWatch():void{
     if(!this.hello||!this.liveSocket?.send)return;
@@ -112,6 +112,19 @@ export class LiveSessionClient extends HermesClient {
   override async catchUp(signal?:AbortSignal):Promise<void>{await this.refreshDirectory(signal);await this.refreshContent()}
   override async resync(signal?:AbortSignal):Promise<void>{await this.catchUp(signal)}
   override async markRead(_id:string,_ref:number):Promise<number>{return 0} // no network/read accounting
+  /** UI calls only after this exact result has been displayed in the foreground. */
+  async markResultRead(id:string,version:number,ref:number):Promise<void>{
+    if(id!==this.wanted||!this.watchReady||this.connectionState!=='online')return;
+    const thread=this.threads.get(id);
+    if(!thread?.completed_unread||thread.result_version!==version||thread.result_ref!==ref||!this.messages.get(id)?.some(m=>m.ref_seq===ref&&m.role==='assistant'))return;
+    const linked=combine(this.scope.signal,this.attempt?.signal);
+    try{
+      const body=await this.call('POST','/v1/threads/'+encodeURIComponent(id)+'/result-read',{result_version:version},linked.signal);
+      if(body.thread_id!==id)throw new ProtocolError('result acknowledgement identity mismatch');
+      // Read back the authoritative directory, not a locally invented cleared flag.
+      await this.refreshDirectory(linked.signal);
+    }finally{linked.done()}
+  }
   override checkpoint():never{throw new ProtocolError('Live conversations are not persisted')}
   override restoreCheckpoint(_value:unknown):never{throw new ProtocolError('Live conversations are read from the server')}
 

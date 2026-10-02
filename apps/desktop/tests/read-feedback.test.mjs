@@ -8,7 +8,9 @@ test('desktop removes read-position accounting from renderer, bridge and service
     assert.doesNotMatch(source,/markVisible|markRead|desktop:mark-visible|unreadCount/,path);
   }
 });
-test('desktop navigation keeps running state but no unread badge',async()=>{
+test('desktop navigation has running and shared completed-unread status, not counts',async()=>{
   const source=await readFile(new URL('../src/renderer/navigation-panel.tsx',import.meta.url),'utf8');
   assert.match(source,/running/);assert.doesNotMatch(source,/unreadCount|unread_count/);
+  assert.match(source,/thread\.completedUnread/);
+  assert.match(source,/Completed · Unread/);
 });

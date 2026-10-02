@@ -46,7 +46,8 @@ test('late history completion after pop cannot resume a hidden chat or update it
 });
 
 test('mobile has no read-position reporting in either visible or hidden timeline', () => {
-  assert.doesNotMatch(source.text, /markRead|markVisibleRead|onVisibleRef/);
+  assert.doesNotMatch(source.text, /markRead\(|markVisibleRead/);
+  assert.match(source.text, /markResultRead/);
 });
 
 test('forget stops outbox, clears saved connection and resets routed identity', async () => {

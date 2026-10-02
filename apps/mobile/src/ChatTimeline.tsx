@@ -66,6 +66,7 @@ interface Props {
   locatingBusy?: boolean;
   position?: TimelinePosition;
   onPosition(position: TimelinePosition): void;
+  onVisibleRefs?(refs: number[]): void;
 
   text: string;
   onText(value: string): void;
@@ -104,6 +105,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
   [bottom, onContentInsetChange]);
   const list = useRef<FlashListRef<TimelineRow>>(null);
+  const visibleCallback = useRef(props.onVisibleRefs);
+  visibleCallback.current = props.onVisibleRefs;
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: { item: TimelineRow; isViewable: boolean }[] }) => {
+    visibleCallback.current?.(viewableItems.filter(v => v.isViewable && v.item.refSeq !== undefined).map(v => v.item.refSeq!));
+  }, []);
 
   const blurTarget = useRef<View | null>(null);
   const following = useRef(position?.following ?? true);
@@ -336,6 +342,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         </View>}
         ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
 
+        onViewableItemsChanged={onViewableItemsChanged}
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;

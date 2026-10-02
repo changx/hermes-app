@@ -169,6 +169,9 @@ export class DesktopConnectionService {
         channelId: thread.project_id,
         title: thread.title,
         running: "running" in thread ? Boolean(thread.running) : runningThreads.has(thread.id),
+        completedUnread: thread.completed_unread,
+        resultVersion: thread.result_version,
+        resultRef: thread.result_ref,
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title));
@@ -459,6 +462,11 @@ export class DesktopConnectionService {
     this.selectedChannelId = channelId; this.selectedThreadId = undefined;
     this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
     this.client.closeConversation(); this.changed();
+  }
+
+  async markResultRead(threadId: string, version: number, ref: number): Promise<void> {
+    if (threadId !== this.selectedThreadId || !Number.isSafeInteger(version) || version <= 0 || !Number.isSafeInteger(ref) || ref <= 0) return;
+    await this.client?.markResultRead(threadId, version, ref);
   }
 
   async selectThread(threadId: string): Promise<void> {

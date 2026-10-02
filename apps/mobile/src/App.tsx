@@ -277,8 +277,11 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
   const ownedWatch = useRef<object | null>(null);
   const tailRepairRef = useRef<{ controller: AbortController } | null>(null);
   const appActive = useRef(AppState.currentState === 'active');
+  const [foreground, setForeground] = useState(appActive.current);
+  const [visibleRefs, setVisibleRefs] = useState<number[]>([]);
+  const onVisibleRefs = useCallback((refs: number[]) => setVisibleRefs(old => old.length === refs.length && old.every((v, i) => v === refs[i]) ? old : refs), []);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; });
+    const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; setForeground(appActive.current); });
     return () => sub.remove();
   }, []);
   useFocusEffect(useCallback(() => {
@@ -357,6 +360,11 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
   const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
   const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
   const rows = projectTimeline(visibleMessages, null, threadId, client?.drafts.get(threadId), client?.supportsSendIdentity, records, client?.receipts, interactions, messages);
+  const result = client?.threads.get(threadId);
+  useEffect(() => {
+    if (!client || !focused || !foreground || !located || !result?.completed_unread || !result.result_version || !result.result_ref || !visibleRefs.includes(result.result_ref)) return;
+    void client.markResultRead(threadId, result.result_version, result.result_ref).catch(() => {});
+  }, [client, threadId, focused, foreground, located, visibleRefs, result?.completed_unread, result?.result_version, result?.result_ref, connectionEpoch, status]);
 
   const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
     .map(m => [m.receipt_id, m.client_message_id]));
@@ -408,6 +416,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
       onLocateNext={!located ? () => { void openThread(threadId); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}
       position={entryPosition} onPosition={() => {}}
+      onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}

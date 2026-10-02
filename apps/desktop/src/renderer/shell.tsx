@@ -77,7 +77,7 @@ const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; c
   const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
   const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
-  return <article className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
+  return <article data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
     {!continuation && <p className="message-role">{message.role === "assistant" ? "Hermes" : message.role === "user" ? "You" : "Notice"}{hasTime ? <time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time> : null}</p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
@@ -98,6 +98,21 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [following, setFollowing] = useState(true);
   const [newCount, setNewCount] = useState(0);
   const first = snapshot.messages[0]?.id ?? "";
+  const result = snapshot.threads.find(t => t.id === snapshot.selectedThreadId);
+  useEffect(() => {
+    const root = list.current, id = snapshot.selectedThreadId;
+    if (!root || !id || !result?.completedUnread || !result.resultVersion || !result.resultRef || snapshot.loadingMessages) return;
+    const target = root.querySelector(`[data-result-ref="${result.resultRef}"]`);
+    if (!target) return;
+    const acknowledge = () => {
+      if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+      const box = target.getBoundingClientRect(), viewport = root.getBoundingClientRect();
+      if (box.bottom > viewport.top && box.top < viewport.bottom) void window.hermesDesktop.markResultRead(id, result.resultVersion!, result.resultRef!).catch(() => {});
+    };
+    const observer = new IntersectionObserver(acknowledge, { root });
+    observer.observe(target); window.addEventListener("focus", acknowledge); document.addEventListener("visibilitychange", acknowledge);
+    return () => { observer.disconnect(); window.removeEventListener("focus", acknowledge); document.removeEventListener("visibilitychange", acknowledge); };
+  }, [result?.completedUnread, result?.resultVersion, result?.resultRef, snapshot.messages, snapshot.selectedThreadId, snapshot.loadingMessages, snapshot.connectionState]);
   useLayoutEffect(() => {
     const node = list.current;
     if (!node) return;
@@ -127,7 +142,7 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-}, (before,after) => before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
+}, (before,after) => before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
 const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const threadId = snapshot.selectedThreadId;

@@ -73,6 +73,7 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "forgetConnection",
     "selectChannel",
     "selectThread",
+    "markResultRead",
     "retryConnection",
     "createChannel",
     "updateChannel",

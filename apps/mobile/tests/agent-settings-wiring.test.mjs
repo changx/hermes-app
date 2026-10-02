@@ -61,7 +61,7 @@ test('chat composer retains route-local identity and hides callbacks after blur'
     composerScope: 'conn:t_one', currentComposer, focusedRef, attachmentClearKey: 3, agentName: { name: 'Tuly' }, busy: false,
     loading: false, error: '', connectionError: '', isAgentTyping: () => true, View: 'View', Text: 'Text', Notice: 'Notice',
     Stack: { Screen: 'StackScreen' }, HeaderActions: 'HeaderActions', ChatTimeline: 'ChatTimeline', TypingIndicator: 'TypingIndicator', AttachmentComposer: 'AttachmentComposer',
-    renderAttachments() {}, setText() {}, send() {}, locateNext() {}, loadOlder() {}, markVisibleRead() {}, onAttachmentsChange() {}, setAnswers() {}, answer() {}, run() {},
+    renderAttachments() {}, setText() {}, send() {}, locateNext() {}, loadOlder() {}, onVisibleRefs() {}, onAttachmentsChange() {}, setAnswers() {}, answer() {}, run() {},
   });
   assert.equal(nodes.find(n => n.type === 'StackScreen').props.options.title, 'Conversation one');
   const header = nodes.find(n => n.type === 'StackScreen').props.options.headerRight();

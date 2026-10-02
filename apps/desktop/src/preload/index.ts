@@ -20,6 +20,7 @@ const api: HermesDesktopApi = Object.freeze({
   forgetConnection: (): Promise<void> => ipcRenderer.invoke("desktop:forget-connection"),
   selectChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:select-channel", channelId),
   selectThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:select-thread", threadId),
+  markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
   createChannel: (input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
   updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),

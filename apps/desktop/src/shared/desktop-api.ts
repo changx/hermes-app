@@ -11,6 +11,9 @@ export type DesktopThread = Readonly<{
 
   lastMessageAt?: number;
   running: boolean;
+  completedUnread?: boolean;
+  resultVersion?: number;
+  resultRef?: number;
 }>;
 export type DesktopToolCall = Readonly<{ id: string; name?: string; label: string; detail?: string; caption?: string; icon?: string }>;
 export type DesktopAttachment = Readonly<{
@@ -80,6 +83,7 @@ export interface HermesDesktopApi {
   forgetConnection(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   selectThread(threadId: string): Promise<void>;
+  markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
   createChannel(input: ChannelInput): Promise<void>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;

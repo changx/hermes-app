@@ -4,6 +4,8 @@ Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal
 
 ## Product contract (confirmed)
 
+2026-10-02 amendment: [shared completed-unread directory status](completed-unread-directory.md) is a narrow exception to the original no-read-reporting scope below. Lightweight result/read metadata belongs to the directory subscription; a foreground visible-result acknowledgement clears it across devices. No message unread counts, general read position, background bodies, replay or history cache return.
+
 - No unread counts or cross-device read-position reporting for unread accounting.
 - Only lightweight Channel/session directory and running state remain resident outside a conversation.
 - Only the currently opened conversation is fetched, subscribed and cached. Running-but-closed conversations do not preload content.

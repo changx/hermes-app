@@ -33,6 +33,42 @@ function fixture({request,ack=true}={}){
 }
 const watch=(socket,id)=>socket.sent.map(s=>s==='ping'?null:JSON.parse(s)).filter(s=>s?.thread_id===id).at(-1);
 
+test('completed-unread remains directory-only and only an opened loaded exact result can be acknowledged',async()=>{
+  const items=[{kind:'channel',value:{id:'p',name:'P'}},{...entry('A'),value:{...entry('A').value,completed_unread:true,result_version:7,result_ref:1}},entry('B')];
+  const f=fixture({request:async(method,path,body)=>{
+    if(path.startsWith('/v1/catalogue'))return {status:200,body:{items,next_after:null}};
+    if(path.endsWith('/result-read')){
+      assert.equal(method,'POST');assert.deepEqual(body,{result_version:7});
+      items[1].value.completed_unread=false;
+      return {status:200,body:{thread_id:'A',completed_unread:false,result_version:7,result_ref:1}};
+    }
+  }});
+  try{
+    await f.sdk.connect();await until(()=>f.sdk.connectionState==='online');
+    assert.equal(f.sdk.threads.get('A').completed_unread,true);assert.equal(f.sdk.messages.size,0);
+    await f.sdk.markResultRead('A',7,1);assert.ok(f.paths.every(([,p])=>!p.endsWith('/result-read')));
+    await f.sdk.openConversation('A');
+    await f.sdk.markResultRead('A',6,1);await f.sdk.markResultRead('A',7,9);await f.sdk.markResultRead('B',7,1);
+    assert.ok(f.paths.every(([,p])=>!p.endsWith('/result-read')));
+    await f.sdk.markResultRead('A',7,1);assert.equal(f.sdk.threads.get('A').completed_unread,false);
+    assert.ok(f.paths.every(([,p])=>!p.includes('/B/messages')));
+    f.sdk.closeConversation();assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.threads.get('A').result_version,7);
+  }finally{f.sdk.close()}
+});
+
+test('directory invalidation clears remote read and preserves a newer unread result without fetching its body',async()=>{
+  const f=fixture();await f.sdk.connect();
+  try{
+    await until(()=>f.sdk.connectionState==='online');
+    const items=unread=>[{kind:'channel',value:{id:'p',name:'P'}},{...entry('B'),value:{...entry('B').value,completed_unread:unread,result_version:2,result_ref:2}}];
+    f.setItems(items(true));f.sockets[0].emit({type:'directory_changed'});await until(()=>f.sdk.threads.get('B')?.completed_unread===true);
+    f.setItems(items(false));f.sockets[0].emit({type:'directory_changed'});await until(()=>f.sdk.threads.get('B')?.completed_unread===false);
+    assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.receipts.size,0);assert.ok(f.paths.every(([,p])=>!p.includes('/messages')));
+    f.sdk.suspendConnection();f.setItems(items(true));await f.sdk.connect();await until(()=>f.sdk.connectionState==='online');
+    assert.equal(f.sdk.threads.get('B').completed_unread,true);assert.equal(f.sdk.messages.size,0);
+  }finally{f.sdk.close()}
+});
+
 test('idle account keeps only directory; heartbeat and closed running state fetch no business data',async()=>{
   const {sdk,paths,sockets}=fixture();await sdk.connect();
   try{
