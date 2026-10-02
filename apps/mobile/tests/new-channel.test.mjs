@@ -17,7 +17,7 @@ test('Channels uses a safe-area floating new-channel button that opens a full-sc
 });
 
 test('new-channel full-screen editor preserves the existing creation path', () => {
-  assert.match(route, /<FormKeyboardAvoidingView>/);
+  assert.match(route, /<FormKeyboardAvoidingView diagnostics=\{diagnostics\}>/);
   assert.match(route, /<NewChannelEditor client=\{client\}/);
   assert.match(route, /router\.replace\(\{ pathname: '\/channels\/\[channelId\]'/);
   assert.match(editor, /accessibilityLabel="Channel name" placeholder="Channel name"/);

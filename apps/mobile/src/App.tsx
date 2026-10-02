@@ -26,6 +26,7 @@ import { AgentSettings, useAgentName } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
+import type { FormKeyboardProbe } from './KeyboardCapture';
 
 const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
   ? 'Message not sent. Check your access or message content. Your message is still here.'
@@ -459,15 +460,21 @@ export function Notice({ text }: { text: string }) {
   return <View style={styles.center}><Text style={styles.hint}>{text}</Text></View>;
 }
 
-export function FormKeyboardAvoidingView({ children }: { children: React.ReactNode }) {
+export function FormKeyboardAvoidingView({ children, diagnostics }: { children: React.ReactNode;
+  diagnostics?: FormKeyboardProbe & { onState: (data: Record<string, unknown>) => void } }) {
   const focused = useIsFocused();
   const keyboardVisible = useKeyboardState(state => state.isVisible);
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
+  React.useEffect(() => {
+    diagnostics?.onState({ focused, controllerVisible: keyboardVisible, headerHeight,
+      insetTop: insets.top, insetBottom: insets.bottom });
+  }, [focused, keyboardVisible, headerHeight, insets.top, insets.bottom, diagnostics]);
   // Retained forms must explicitly restore zero padding. Controller's height
   // mode returns {} on disable, leaving Reanimated's native height/flex behind.
   // The hidden-header home route still starts below the top safe-area inset.
   return <KeyboardAvoidingView style={styles.flex} behavior="padding"
+    ref={diagnostics?.ref} onLayout={diagnostics?.onLayout}
     keyboardVerticalOffset={Math.max(headerHeight, insets.top)} enabled={focused && keyboardVisible}>
     {children}
   </KeyboardAvoidingView>;
