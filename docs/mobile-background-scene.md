@@ -19,3 +19,9 @@ Jamie rejected treating App background/inactive as conversation departure. Short
 - SDK fixtures cover no background business reads, unchanged parser/media metadata identities, late read fences and remote archive during suspension. React lifecycle regression checks mounted scene identity, an older five-block boundary, draft, mock scroll/follow/selection/media state across inactive/background/active, then real route departure releasing it. Native hooks/views are test substitutes, not proof of UIKit gestures or selection behavior.
 
 This branch includes the prior unshipped `dc718d2` startup-receipt warning fix. No runtime checkout, server/core/plugin installation, credential change, service restart or release push was performed. Physical iPhone keyboard/gesture/selection/background-memory-pressure acceptance remains pending. Process death is cold restore, not ordinary background retention.
+
+## Publication outcome
+
+Jamie subsequently authorized main merge and publication. `1d35d15` (including `dc718d2`) was fast-forwarded and pushed to main. Only the existing Expo service restarted; development/Jamie Gateway PIDs and start times were unchanged. Public SDK57 iOS/Android manifests and their exact launchAssets returned 200; served modules verified transport suspension, stable message/resource ownership, exact live receipt-proof recovery and removal of the old generic startup warning. Main macOS CI run `37020918487` succeeded; the existing v0.1.8 desktop tag/assets were not moved or replaced.
+
+Mobile entry: `exps://agent.tuly.space`. Private before/after and bundle hashes: active-profile `workspace/hermes-app/mobile-background-scene/release/verification.json`. Rollback source: `b141682`. Publication does not close the physical iPhone acceptance gates above.
