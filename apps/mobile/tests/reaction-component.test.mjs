@@ -376,6 +376,8 @@ test('pill is under corresponding user message with stable footprint; controls r
 });
 test('latest action sits above the composer at the right in its shared keyboard dock', () => {
   const rows = projectTimeline([msg], null, 'th', undefined, true);
+  for (const platform of ['ios', 'android']) {
+  native.Platform.OS = platform;
   for (const accessory of [false, true]) {
   const h = mount(rows, [receipt('running')], [], { position: { offset: 20, following: false }, typingIndicator: react.createElement('TypingIndicator'),
     ...(accessory ? { composerAccessory: controls => react.createElement('Accessory', {}, controls) } : {}) });
@@ -399,8 +401,11 @@ test('latest action sits above the composer at the right in its shared keyboard 
   const surfaces = named(h.tree, 'View').filter(n => n.props.style?.boxShadow);
   assert.equal(surfaces.length, 1, 'one shadow surface for the complete composer');
   const surface = surfaces[0];
-  const [backdrop, foreground] = surface.props.children.filter(n => n && typeof n === 'object');
+  const layers = surface.props.children.filter(n => n && typeof n === 'object');
+  const foreground = layers.find(n => n.type === 'View');
+  const backdrop = layers.find(n => n.type === 'BlurView');
   assert.equal(surface.props.collapsable, false);
+  if (platform === 'android') {
   assert.equal(backdrop.type, 'BlurView');
   assert.equal(named(h.tree, 'BlurView').length, 1);
   assert.equal(backdrop.props.intensity, 72);
@@ -411,10 +416,14 @@ test('latest action sits above the composer at the right in its shared keyboard 
   assert.equal(backdrop.props.style.position, 'absolute');
   for (const edge of ['top', 'right', 'bottom', 'left']) assert.equal(backdrop.props.style[edge], 0);
   assert.equal(backdrop.props.style.zIndex, 0);
+  } else {
+    assert.equal(backdrop, undefined);
+    assert.equal(named(h.tree, 'BlurView').length, 0, 'iOS composer must not mount any native blur effect');
+  }
   assert.equal(foreground.type, 'View');
   assert.equal(foreground.props.collapsable, false);
   assert.equal(foreground.props.style.zIndex, 1);
-  assert.equal(expand(backdrop).length, 1, 'blur contains no input, running status, or accessory');
+  if (backdrop) assert.equal(expand(backdrop).length, 1, 'blur contains no input, running status, or accessory');
   assert.ok(expand(foreground).includes(composer), 'controls belong to a stable foreground sibling');
   assert.equal(named(expand(foreground), 'TextInput')[0].props.value, 'draft');
   assert.equal(surface.props.style.backgroundColor, 'rgba(248, 250, 253, 0.78)');
@@ -427,6 +436,8 @@ test('latest action sits above the composer at the right in its shared keyboard 
   assert.ok(expand(sticky).indexOf(latest) < expand(sticky).indexOf(composer));
   assert.equal(named(h.rowTree, 'Pressable').some(n => n.props.accessibilityLabel === 'Jump to latest ↓'), false);
   }
+  }
+  native.Platform.OS = 'ios';
 });
 
 test('composer keeps send while running with an independent stop that preserves draft', () => {

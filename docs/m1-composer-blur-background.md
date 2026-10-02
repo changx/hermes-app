@@ -1,5 +1,7 @@
 # Composer blur background isolation
 
+**Subsequent iPhone feedback:** screenshot `att_57ebb182c9ad4d2e8ede71965cc67177` still shows blurred input text after this deployment. The sibling-layer attempt did not resolve the reported symptom; do not treat the automated checks below as native acceptance. The next isolated iOS fallback is documented in [iOS composer native-blur fallback](m1-ios-composer-no-native-blur.md), not deployed yet.
+
 ## Scope and diagnosis
 
 Card: `t_64d903f8`. Jamie reported intermittent blurred input text with the iOS Chinese keyboard and supplied a screenshot. The image shows blurred input glyphs while the composer border and send button remain sharp. This is consistent with a native compositing/layer-order issue, but the cause has not been reproduced on a device.

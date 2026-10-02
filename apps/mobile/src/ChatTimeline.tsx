@@ -422,9 +422,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     </View>)}</ScrollView>}
 
     <View collapsable={false} style={styles.composerSurface}>
-      {/* Keep the native blur out of the input subtree. Explicit sibling layers
-          keep interactive content above the effect during keyboard/IME updates. */}
-      <BlurView pointerEvents="none" blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerBackdrop} />
+      {/* Reported iOS input blur persists despite sibling layers. Remove the
+          native effect as a fallback; Android retains its existing blur. */}
+      {Platform.OS === 'android' && <BlurView pointerEvents="none" blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerBackdrop} />}
       <View collapsable={false} style={styles.composerForeground}>
       {hasRunningReceipt(props.threadId, props.receipts) && <View style={styles.runningRow}>
         <View style={styles.runningIndicator}>{props.typingIndicator}</View>

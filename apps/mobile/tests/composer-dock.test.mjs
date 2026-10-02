@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const timeline = readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8');
 const attachments = readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
 
-test('one sticky surface keeps blur behind the running status, attachments, and input', () => {
+test('one sticky surface keeps Android blur behind controls and uses no native iOS blur', () => {
   const sticky = timeline.slice(timeline.indexOf('<KeyboardStickyView'), timeline.indexOf('</KeyboardStickyView>'));
   const surfaceOpen = sticky.indexOf('<View collapsable={false} style={styles.composerSurface}>');
   const blur = sticky.indexOf('<BlurView', surfaceOpen);
@@ -19,6 +19,7 @@ test('one sticky surface keeps blur behind the running status, attachments, and 
   assert.doesNotMatch(sticky, /<\/BlurView>/, 'blur must never contain native text input');
   assert.equal((sticky.match(/<BlurView/g) || []).length, 1);
   assert.match(sticky, /<BlurView pointerEvents="none"/);
+  assert.match(sticky, /Platform\.OS === 'android' && <BlurView/);
   assert.match(timeline, /composerBackdrop: \{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 \}/);
   assert.match(timeline, /composerForeground: \{ zIndex: 1 \}/);
   assert.match(timeline, /<BlurTargetView ref=\{blurTarget\}/);
