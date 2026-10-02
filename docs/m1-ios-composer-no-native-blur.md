@@ -1,5 +1,7 @@
 # iOS composer native-blur fallback
 
+**Publication update:** deployed in code release `6ce95ed`; public iOS ChatTimeline contains no native BlurView and Android retains it. See [combined release](client-layout-tools-blur-release.md). Earlier candidate-only wording below records the development stage; iPhone input clarity still requires acceptance.
+
 Continuation of `t_64d903f8`, based on main `7fefae5`. Jamie's new iPhone screenshot (`att_57ebb182c9ad4d2e8ede71965cc67177`) still shows the input draft blurred while border and Send remain sharp. The earlier sibling-background/foreground deployment did not eliminate the reported device symptom. Do not record it as accepted.
 
 ## Minimal candidate and tradeoff

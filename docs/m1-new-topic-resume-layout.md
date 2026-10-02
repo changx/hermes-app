@@ -1,5 +1,7 @@
 # New-topic and new-channel constrained layout candidate
 
+**Publication update:** both editor changes are merged and published to the existing Expo entry in code release `6ce95ed`; see [combined release](client-layout-tools-blur-release.md). The isolated-candidate boundary below records the earlier stage; native iPhone acceptance remains pending.
+
 Continuation of `t_6d9ddce9`, based on main `7fefae5`. The new 2026-10-01 iPhone screenshot shows the current full-screen editor, not the former EditorSheet. The first-message border and attachment/create controls overlap, with a large gap above the keyboard.
 
 ## Confirmed defect and scope
