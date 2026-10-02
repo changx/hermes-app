@@ -411,7 +411,7 @@ test('App send invokes the production animated follow handle after enqueue', asy
   const send = { exports: {} }, enqueued = [];
   runInNewContext(ts.transpileModule(snippet + '\nexports.send = send;', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
     { exports: send.exports, run: callback => callback(), outboxRef: { current: { storage: { connectionId: 'conn' }, enqueue: async record => { enqueued.push(record); } } },
-      config: { id: 'conn' }, threadId: 'th', focusedRef: { current: true }, textDrafts: { current: new Map() }, text: 'hello', newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
+      draftKey: 'conn:th', composerDrafts: { current: new Map() }, releaseComposerDraft() {}, config: { id: 'conn' }, threadId: 'th', focusedRef: { current: true }, textDrafts: { current: new Map() }, text: 'hello', newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
       timelineRef: h.ref, setText: fn => fn('hello'), attachmentsBusy: false, draftAttachments: [], composerScope: 'conn:th', currentComposer: { current: 'conn:th' }, setAttachmentDraft() {}, setAttachmentClearKey() {} });
   await send.exports.send();
   assert.equal(enqueued.length, 1);
@@ -431,7 +431,7 @@ test('send clears and shrinks only a durably saved unchanged draft', async () =>
     const output = { exports: {} };
     runInNewContext(ts.transpileModule(snippet + '\nexports.send = send;', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
       { exports: output.exports, run: callback => callback(), outboxRef: { current: { storage: { connectionId: 'conn' }, enqueue: () => gate } },
-        config: { id: 'conn' }, threadId: 'th', focusedRef: { current: true }, textDrafts: { current: new Map() }, text: original, newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
+        draftKey: 'conn:th', composerDrafts: { current: new Map() }, releaseComposerDraft() {}, config: { id: 'conn' }, threadId: 'th', focusedRef: { current: true }, textDrafts: { current: new Map() }, text: original, newSend: (...args) => args, Crypto: { randomUUID: () => 'id' },
         timelineRef: h.ref, setText: update => { draft = update(draft); h.draft(draft, () => {}); }, attachmentsBusy: false, draftAttachments: [],
         composerScope: 'conn:th', currentComposer: { current: 'conn:th' }, setAttachmentDraft() {}, setAttachmentClearKey() {} });
     const sending = output.exports.send();

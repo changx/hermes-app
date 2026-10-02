@@ -29,6 +29,8 @@ async function harness() {
     async connect() { this.options.onConnectionState('online'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
+    async openConversation(id) { this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null; }
+    closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
     resumeTail() {}
     async markRead(...args) { reads.push(args); }
   }
@@ -50,6 +52,7 @@ async function harness() {
     'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null, deleteItemAsync: async () => {} },
     'expo-crypto': { randomUUID: () => 'synthetic-send-id' },
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },
+    '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     './transport': { nativeTransport: () => ({}) },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), newSend: (...args) => args },
     './ConnectionScreen': { ConnectionScreen: 'ConnectionScreen' },
@@ -63,7 +66,7 @@ async function harness() {
     './historyBlocks': historyBlocks,
     './timeline': { windowStart: () => 0, projectTimeline: () => [] },
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
-    './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments' },
+    './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
     './AgentSettings': { AgentSettings: 'AgentSettings', useAgentName: () => name },
     './ModelSettings': { ModelSettings: 'ModelSettings' },
@@ -87,17 +90,17 @@ async function harness() {
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
 
-test('entering chat marks its latest ref read; hidden chat cannot mark read; SDK and draft survive navigation', async () => {
+test('hidden chat unmounts its timeline and releases content; SDK and user draft survive navigation without read reporting', async () => {
   const h = await harness();
-  assert.deepEqual(h.reads, [['t_one', 8]]);
+  assert.deepEqual(h.reads, []);
   await act(async () => h.timelines.get('t_one').onText('keep this draft'));
   await h.render('t_one', true);
-  h.timelines.get('t_one').onVisibleRef(9);
-  assert.equal(h.reads.length, 1);
+  assert.equal(h.api.client.currentThreadId, null);
+  assert.equal(h.api.client.messages.size, 0);
   assert.equal(h.timelines.get('t_one').text, 'keep this draft');
   await h.render('t_one', false);
-  h.timelines.get('t_one').onVisibleRef(9);
-  assert.equal(h.reads.length, 2);
+  assert.equal(h.timelines.get('t_one').onVisibleRef, undefined);
+  assert.equal(h.reads.length, 0);
   await h.render(null);
   await h.render('t_two');
   assert.equal(h.timelines.get('t_two').text, '');
@@ -117,7 +120,7 @@ test('send committing behind settings clears its retained composer, preventing d
   await h.render('t_one', false);
   assert.equal(h.timelines.get('t_one').text, '');
   assert.equal(h.timelines.get('t_one').busy, false);
-  assert.equal(h.api.textDrafts.current.has('t_one'), false);
+  assert.equal(h.api.textDrafts.current.has('connection-a:t_one'), false);
   await h.close();
 });
 

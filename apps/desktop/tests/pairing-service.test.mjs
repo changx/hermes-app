@@ -111,12 +111,15 @@ test("read-only projection loads threads for the selected channel and the select
       ["channel-a", { id: "channel-a", name: "Alpha" }],
       ["channel-b", { id: "channel-b", name: "Beta" }],
     ]),
-    threads: new Map(),
+    threads: new Map([["thread-a", { id: "thread-a", project_id: "channel-a", title: "First", running: true, last_message_at: 10 }]]),
     messages: new Map(),
     receipts: new Map(),
     interactions: new Map(),
     attachments: new Map(),
     supportsLatest: true,
+    isThreadAvailable(id) { return this.threads.has(id); },
+    closeConversation() { this.messages.clear(); },
+    async openConversation(threadId) { const page = await this.historyWindow(threadId); this.currentOlderCursor = page.older_cursor; },
     async listThreads(channelId) {
       calls.push(["threads", channelId]);
       return { threads: [{ id: "thread-a", project_id: channelId, title: "First", unread_count: 2, last_message_at: 10 }], next_cursor: null };
@@ -130,10 +133,11 @@ test("read-only projection loads threads for the selected channel and the select
     async markRead(threadId, ref) { calls.push(["read", threadId, ref]); },
   };
   await service.selectChannel("channel-a");
-  assert.deepEqual(calls, [["threads", "channel-a"]]);
-  assert.equal(service.snapshot().threads[0].unreadCount, 2);
+  assert.deepEqual(calls, []);
+  assert.equal(service.snapshot().threads[0].running, true);
+  assert.equal(service.snapshot().threads[0].unreadCount, undefined);
   await service.selectThread("thread-a");
-  assert.deepEqual(calls, [["threads", "channel-a"], ["history", "thread-a"]]);
+  assert.deepEqual(calls, [["history", "thread-a"]]);
   assert.deepEqual(service.snapshot().messages, [{
     id: "message:message-a",
     refSeq: 7,

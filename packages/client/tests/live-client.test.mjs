@@ -118,3 +118,18 @@ test('auth rejection blocks instead of repeatedly reconnecting or pairing',async
   const f=fixture({request:async(_m,p)=>p==='/v1/capabilities'?{status:403,body:{}}:undefined});await f.sdk.connect();await until(()=>f.sdk.connectionState==='blocked');
   assert.equal(f.paths.length,1);assert.equal(f.sockets.length,0);f.sdk.close();
 });
+
+test('conversation ownership survives reconnect but cannot close a later same-ID opening',async()=>{
+  const f=fixture();await f.sdk.openConversation('A');const owner=f.sdk.currentConversationKey;
+  f.sockets[0].close();await until(()=>f.sockets.length===2&&f.sdk.connectionState==='online');assert.equal(f.sdk.currentConversationKey,owner);
+  f.sdk.closeConversation();await f.sdk.openConversation('A');assert.notEqual(f.sdk.currentConversationKey,owner);f.sdk.close();
+});
+test('durable accepted echo keeps one stable input through history hydration and retains nothing after close',async()=>{
+  const f=fixture();await f.sdk.openConversation('A');
+  const receipt={id:'rA',thread_id:'A',client_message_id:'inputA',durable:true,ref_seq:5,state:'unknown',processing:'unknown'};
+  f.sdk.rememberAcceptedInput('A','inputA','original',[],1000,receipt);
+  assert.equal(f.sdk.messages.get('A').filter(m=>m.client_message_id==='inputA').length,1);
+  f.records.A.push({id:'m5',ref_seq:5,role:'user',text:'original',client_message_id:'inputA',receipt_id:'rA',created_at:1000});
+  await f.sdk.historyWindow('A');assert.equal(f.sdk.messages.get('A').filter(m=>m.client_message_id==='inputA').length,1);
+  f.sdk.closeConversation();f.sdk.rememberAcceptedInput('A','inputA','original',[],1000,receipt);assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.receipts.size,0);f.sdk.close();
+});

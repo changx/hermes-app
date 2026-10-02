@@ -81,7 +81,7 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "renameThread",
     "archiveThread",
     "loadOlder",
-    "markVisible",
+    "getChannelInfo",
     "sendMessage",
     "retryMessage",
     "stopThread",
@@ -125,7 +125,7 @@ test("renderer source tree cannot import privileged runtimes", async () => {
 
 test("build output contains only the expected runtime file classes", async () => {
   const expected = {
-    main: ["cache-worker.cjs", "cache-worker.cjs.map", "index.cjs", "index.cjs.map"],
+    main: ["index.cjs", "index.cjs.map"],
     preload: ["index.cjs", "index.cjs.map"],
     renderer: ["index.html", "index.js", "index.js.map", "styles.css"],
   };

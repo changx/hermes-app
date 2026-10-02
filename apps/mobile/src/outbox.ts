@@ -164,9 +164,15 @@ export class OutboxStore {
     });
   }
   async removeConfirmed(id: string): Promise<void> {
+    return this.removeReceived(id, false);
+  }
+  async removeAcknowledged(id: string): Promise<void> {
+    return this.removeReceived(id, true);
+  }
+  private async removeReceived(id: string, durableAck: boolean): Promise<void> {
     return this.serialize(async () => {
       const entry = this.entries.get(id);
-      if (!entry || entry.record.status !== 'accepted' || !FINAL.has(entry.record.receiptState || '')) return;
+      if (!entry || entry.record.status !== 'accepted' || (durableAck ? !entry.record.receiptId || !Number.isSafeInteger(entry.record.receiptRefSeq) || entry.record.receiptRefSeq! <= 0 : !FINAL.has(entry.record.receiptState || ''))) return;
       const key = prefix(this.config.id, entry.slot), count = pieces(entry.version === 2 ? entry.record.text : payload(entry.record)).length;
       await this.store.setItemAsync(key, JSON.stringify({ version: entry.version, status: 'discarding', chunks: count }));
       for (let i = 0; i < count; i++) await this.store.deleteItemAsync(`${key}.part.${i}`);
@@ -193,7 +199,7 @@ export class OutboxStore {
 }
 
 export type NetworkState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
-export type OutboxDeps = Pick<HermesClient, 'send' | 'getReceipt' | 'historyTail' | 'messages' | 'receipts' | 'supportsLatest'>;
+export type OutboxDeps = Pick<HermesClient, 'send' | 'getReceipt' | 'historyTail' | 'messages' | 'receipts' | 'supportsLatest'> & Partial<Pick<import('../../../packages/client/src/liveClient').LiveSessionClient, 'rememberAcceptedInput' | 'isThreadAvailable' | 'isCatalogueReady'>>;
 export function retryable(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const status = (error as Error & { status?: number }).status;
@@ -225,9 +231,10 @@ export class MobileOutbox {
   private clock: () => number;
   private random: () => number;
   private pollMs: number;
+  private readonly durableAckOnly: boolean;
   constructor(storage: OutboxStore, sdk: OutboxDeps, changed: (records: SendRecord[], notice?: string) => void,
-    clock = () => Date.now(), random = Math.random, pollMs = 12000) {
-    this.storage = storage; this.sdk = sdk; this.changed = changed; this.clock = clock; this.random = random; this.pollMs = pollMs;
+    clock = () => Date.now(), random = Math.random, pollMs = 12000, durableAckOnly = false) {
+    this.storage = storage; this.sdk = sdk; this.changed = changed; this.clock = clock; this.random = random; this.pollMs = pollMs; this.durableAckOnly = durableAckOnly;
   }
   get records() { return this.storage.records; }
   private emit(notice?: string) { if (this.alive) this.changed(this.records, notice); }
@@ -235,6 +242,9 @@ export class MobileOutbox {
     try { await this.storage.load(); }
     catch (e) { this.storageFault = true; throw e; }
     if (!this.alive) return;
+    if (this.durableAckOnly) for (const record of this.records) {
+      if (record.status === 'ambiguous' && !record.receiptId) await this.storage.update({ ...record, status: 'blocked' });
+    }
     this.emit(); this.wake();
   }
   async enqueue(record: SendRecord): Promise<void> {
@@ -247,13 +257,23 @@ export class MobileOutbox {
   }
   setConnection(state: NetworkState) {
     if (!this.alive) return;
+    const wasOnline = this.online;
     this.online = state === 'online';
+    if (this.durableAckOnly && this.online && !wasOnline) this.checkedAt.clear();
     if (!this.online) { if (this.timer) clearTimeout(this.timer); this.timer = null; }
     else this.wake();
   }
   /** Snapshot omissions are not evidence of completion; query each outstanding receipt explicitly. */
   reconcile(): void {
     if (!this.alive || !this.online || this.storageFault) return;
+    if (this.durableAckOnly) {
+      for (const record of this.records) {
+        if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId) || (this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
+        if (record.receiptRefSeq !== undefined) this.launch(record.clientMessageId, () => this.retireAcknowledged(record));
+        else if (!this.checkedAt.has(record.clientMessageId)) { this.checkedAt.set(record.clientMessageId, this.clock()); this.launch(record.clientMessageId, () => this.checkAcknowledgement(record)); }
+      }
+      return;
+    }
     for (const record of this.records) {
       if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId)) continue;
       if ((this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
@@ -334,16 +354,49 @@ export class MobileOutbox {
           soonest = Math.min(soonest, cleanupRetryAt);
           continue;
         }
+        if (this.durableAckOnly) continue;
         const nextCheck = (this.checkedAt.get(record.clientMessageId) ?? -Infinity) + this.pollMs;
         if (nextCheck > this.clock()) soonest = Math.min(soonest, nextCheck);
       }
     }
     if (soonest < Infinity) this.timer = setTimeout(() => { this.timer = null; this.wake(); }, Math.max(1, soonest - this.clock()));
   }
+  private async retireAcknowledged(record: SendRecord): Promise<void> {
+    if (!record.receiptId || !Number.isSafeInteger(record.receiptRefSeq) || record.receiptRefSeq! <= 0) {
+      this.checkedAt.set(record.clientMessageId, this.clock());
+      if (!this.noticed.has(record.clientMessageId)) { this.noticed.add(record.clientMessageId); this.emit('Your message was received, but its saved original could not be confirmed yet. It will not be sent again automatically.'); }
+      return;
+    }
+    try { await this.storage.removeAcknowledged(record.clientMessageId); }
+    catch {
+      this.cleanupRetryAt.set(record.clientMessageId, this.clock() + this.pollMs);
+      if (!this.cleanupNoticed.has(record.clientMessageId)) { this.cleanupNoticed.add(record.clientMessageId); this.emit('A received message could not be cleared from this device. Keep your app data.'); }
+      return;
+    }
+    this.checkedAt.delete(record.clientMessageId); this.cleanupRetryAt.delete(record.clientMessageId); this.cleanupNoticed.delete(record.clientMessageId); this.noticed.delete(record.clientMessageId); this.emit();
+  }
+  private async checkAcknowledgement(record: SendRecord): Promise<void> {
+    if (!record.receiptId) return;
+    const gen = this.generation, abort = new AbortController(); this.controllers.set(record.clientMessageId, abort);
+    try {
+      const receipt = await this.sdk.getReceipt(record.receiptId, abort.signal);
+      if (!this.alive || gen !== this.generation) return;
+      if (receipt.id !== record.receiptId || receipt.durable !== true) throw new OutboxIdentityError('Message acknowledgement identity mismatch');
+      const next = accepted(record, receipt);
+      try { await this.storage.update(next); }
+      catch { this.storageFault = true; this.emit('Your received message could not be updated here. Keep your app data.'); return; }
+      if (receipt.ref_seq !== undefined) this.sdk.rememberAcceptedInput?.(record.threadId, record.clientMessageId, record.text, record.attachments ?? [], record.createdAt, receipt);
+      await this.retireAcknowledged(next);
+    } finally { this.controllers.delete(record.clientMessageId); }
+  }
+
   private async submit(record: SendRecord) {
     const gen = this.generation, abort = new AbortController();
     this.controllers.set(record.clientMessageId, abort);
     try {
+      if (this.durableAckOnly && this.sdk.isCatalogueReady && this.sdk.isThreadAvailable && !this.sdk.isThreadAvailable(record.threadId)) {
+        await this.storage.update({ ...record, status: 'blocked' }); this.emit('This conversation is unavailable. Your unsent message is still saved.'); return;
+      }
       if (record.status !== 'sending') {
         try { await this.storage.update({ ...record, status: 'sending' }); }
         catch { this.storageFault = true; this.emit('Your message was not sent because it could not be saved. Keep your app data.'); return; }
@@ -353,6 +406,7 @@ export class MobileOutbox {
       // Fifth argument is the SDK's optional AbortSignal (fourth is attachments).
       const receipt = await this.sdk.send(record.threadId, record.clientMessageId, record.text, (record.attachments ?? []).map(a => a.id), abort.signal);
       if (!this.alive || gen !== this.generation) return;
+      if (this.durableAckOnly && receipt.durable !== true) throw new OutboxIdentityError('Message was not durably acknowledged');
       const next = accepted(record, receipt);
       try { await this.storage.update(next, 0, 0); }
       catch { this.storageFault = true; this.emit('Your message was received, but its status could not be saved on this device. Keep your app data.'); return; }
@@ -361,7 +415,10 @@ export class MobileOutbox {
       // A durable ACK releases the thread's submission queue; history catch-up
       // can take another network timeout and must not hold the next send hostage.
       this.wake();
-      await this.refreshHistory(next);
+      if (this.durableAckOnly) {
+        if (receipt.ref_seq !== undefined) this.sdk.rememberAcceptedInput?.(record.threadId, record.clientMessageId, record.text, record.attachments ?? [], record.createdAt, receipt);
+        await this.retireAcknowledged(next);
+      } else await this.refreshHistory(next);
     } catch (e) {
       if (!this.alive || gen !== this.generation || abort.signal.aborted) return;
       const entry = this.storage.entry(record.clientMessageId);

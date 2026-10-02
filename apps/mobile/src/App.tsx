@@ -7,7 +7,8 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { HermesClient, connectionFailure } from '../../../packages/client/src/index';
+import { connectionFailure } from '../../../packages/client/src/index';
+import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import type { Attachment, Interaction } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
@@ -17,10 +18,10 @@ import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
-import { locateLatest, projectTimeline, windowStart, type TimelinePosition } from './timeline';
+import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { historyBlockStart, loadHistoryBlocks } from './historyBlocks';
 import { VisibleReceiptHydrator } from './receiptHydration';
-import { AttachmentComposer, MessageAttachments } from './Attachments';
+import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
@@ -43,15 +44,16 @@ export function HeaderActions({ onConnection, onSettings }: { onConnection: () =
   </View>;
 }
 type AppContextValue = {
-  ready: boolean; config: Connection | null; client: HermesClient | null;
+  ready: boolean; config: Connection | null; client: LiveSessionClient | null;
   agentName: ReturnType<typeof useAgentName>; identity: number; revision: number;
   records: SendRecord[]; connectionEpoch: number; loading: boolean; status: NetworkState; error: string;
   base: string; pairingCode: string; pendingPairing: PendingPairing | null; pairingBusy: boolean;
   pairingStatus: string; busy: boolean; editing: boolean;
   setPairingCode: (value: string) => void; setEditing: (value: boolean) => void;
   saveConnection: () => void; forget: () => void; cancelPairing: () => void;
-  positions: React.RefObject<Map<string, TimelinePosition>>; textDrafts: React.RefObject<Map<string, string>>; locatedThreads: React.RefObject<Set<string>>;
-  olderCursors: React.RefObject<Map<string, string | null>>; outboxRef: React.RefObject<MobileOutbox | null>;
+  textDrafts: React.RefObject<Map<string, string>>; outboxRef: React.RefObject<MobileOutbox | null>;
+  composerDrafts: React.RefObject<Map<string, ComposerDraft>>;
+  forgottenConnections: React.RefObject<Set<string>>;
 };
 const AppContext = createContext<AppContextValue | null>(null);
 
@@ -65,17 +67,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pairingBusy, setPairingBusy] = useState(false), [pairingStatus, setPairingStatus] = useState('');
   const [pairingEpoch, setPairingEpoch] = useState(0);
   const pairingTask = useRef<{ controller: AbortController; promise: Promise<unknown> } | null>(null);
-  const [session, setSession] = useState<{ config: Connection; client: HermesClient } | null>(null);
+  const [session, setSession] = useState<{ config: Connection; client: LiveSessionClient } | null>(null);
   const client = session?.config === config ? session.client : null;
   const [identity, setIdentity] = useState(0);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
-  // Retained across a popped thread route, but scoped to this connection identity.
-  const positions = useRef(new Map<string, TimelinePosition>());
+  // Only unsent user input survives leaving a conversation.
   const textDrafts = useRef(new Map<string, string>());
-  const locatedThreads = useRef(new Set<string>());
-  const olderCursors = useRef(new Map<string, string | null>());
+  const composerDrafts = useRef(new Map<string, ComposerDraft>());
+  const forgottenConnections = useRef(new Set<string>());
   const [records, setRecords] = useState<SendRecord[]>([]);
   const outboxRef = useRef<MobileOutbox | null>(null);
   const busyRef = useRef(false);
@@ -138,12 +139,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [pendingPairing, pairingEpoch]);
 
   useEffect(() => {
-    positions.current.clear(); textDrafts.current.clear(); locatedThreads.current.clear(); olderCursors.current.clear();
     if (!config) { setSession(null); return; }
     let active = true;
     const transport = nativeTransport(config.baseUrl);
     let box: MobileOutbox | null = null;
-    const sdk = new HermesClient({ ...transport, token: () => config.token,
+    const sdk = new LiveSessionClient({ ...transport, token: () => config.token,
       onChange: () => { if (active) { setRevision((n: number) => n + 1); box?.reconcile(); } },
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
@@ -152,12 +152,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (state === 'blocked') { setLoading(false); setError('Could not connect. Contact your admin. Unsent messages are still here.'); }
       },
       onError: (failure: Error) => { if (active) console.info('[connection]', connectionFailure(failure)); },
-    } as ConstructorParameters<typeof HermesClient>[0]);
+    } as ConstructorParameters<typeof LiveSessionClient>[0]);
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;
       setRecords(items);
       if (notice) setError(sendNotice(notice));
-    });
+    }, undefined, undefined, undefined, true);
     outboxRef.current = box;
     setSession({ config, client: sdk }); setStatus('connecting'); setLoading(true); setError('');
     setRecords([]);
@@ -202,8 +202,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await SecureStore.deleteItemAsync(PAIRING_KEY);
     setPendingPairing(null);
     const old = outboxRef.current;
-    if (old) { await old.stop(); await old.storage.clear(); }
+    if (old) { await old.stop(); await old.storage.clear(); forgottenConnections.current.add(old.storage.connectionId); }
     await SecureStore.deleteItemAsync(CONFIG_KEY);
+    textDrafts.current.clear(); composerDrafts.current.forEach(releaseComposerDraft); composerDrafts.current.clear();
     setRecords([]); setSession(null); setConfig(null); setIdentity(n => n + 1); setPairingCode(''); setEditing(false); setStatus('suspended');
     router.replace('/connection');
   });
@@ -216,7 +217,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
   const value: AppContextValue = { ready, config, client, agentName, identity, revision, records, connectionEpoch,
     loading, status, error, base, pairingCode, pendingPairing, pairingBusy, pairingStatus, busy, editing,
-    setPairingCode, setEditing, saveConnection, forget, cancelPairing, positions, textDrafts, locatedThreads, olderCursors, outboxRef };
+    setPairingCode, setEditing, saveConnection, forget, cancelPairing, textDrafts, composerDrafts, forgottenConnections, outboxRef };
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
@@ -227,17 +228,27 @@ export function useApp() {
 }
 
 export function ThreadScreen({ threadId }: { threadId: string }) {
+  const focused = useIsFocused();
+  const { config } = useApp();
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+  useEffect(() => { const sub = AppState.addEventListener('change', state => setForeground(state === 'active')); return () => sub.remove(); }, []);
+  // Native Stack keeps the route, not its covered timeline or message media.
+  return focused && foreground ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} /> : null;
+}
+
+function OpenedThreadScreen({ threadId }: { threadId: string }) {
   const router = useRouter();
   const { config, client, agentName, revision, records, connectionEpoch, status, error: connectionError,
-    positions, textDrafts, locatedThreads, olderCursors, outboxRef } = useApp();
+    textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
-  const [text, setText] = useState(() => textDrafts.current.get(threadId) || ''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
+  const draftKey = `${config?.id ?? ''}:${threadId}`;
+  const [text, setText] = useState(() => textDrafts.current.get(draftKey) || ''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   useEffect(() => {
-    if (text) textDrafts.current.set(threadId, text);
-    else textDrafts.current.delete(threadId);
-  }, [text, threadId, textDrafts]);
+    if (text) textDrafts.current.set(draftKey, text);
+    else textDrafts.current.delete(draftKey);
+  }, [text, draftKey, textDrafts]);
   const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
   const [attachmentClearKey, setAttachmentClearKey] = useState(0);
   const composerScope = `${config?.id || ''}:${threadId}`;
@@ -257,13 +268,14 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const timelineRef = useRef<ChatTimelineHandle>(null);
   // Every entry opens at the latest message; keep only the loaded history window.
-  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: true, startRef: positions.current.get(threadId)?.startRef ?? null }));
+  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: true, startRef: null }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const busyRef = useRef(false), markedRef = useRef(0);
+  const busyRef = useRef(false);
   const openingRef = useRef(0);
+  const ownedWatch = useRef<object | null>(null);
   const tailRepairRef = useRef<{ controller: AbortController } | null>(null);
   const appActive = useRef(AppState.currentState === 'active');
   useEffect(() => {
@@ -274,14 +286,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     focusedRef.current = true;
     return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, []));
-  const markVisibleRead = (ref: number) => {
-    if (!client || !focusedRef.current || !appActive.current || ref <= 0) return;
-    if (ref <= markedRef.current) return;
-    markedRef.current = ref;
-    client.markRead(threadId, ref).catch(() => {
-      if (markedRef.current === ref) markedRef.current = 0;
-    });
-  };
+
   const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
@@ -291,66 +296,17 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     finally { busyRef.current = false; setBusy(false); }
   };
   const openThread = async (id: string) => {
-    if (!client || !focusedRef.current) return;
+    if (!client || !focusedRef.current || !appActive.current) return;
     const opening = ++openingRef.current;
-    setPageCursor(null); setHistoryBusy(true);
-    const cached = locatedThreads.current.has(id);
-    setLocated(cached); setStartRef(positions.current.get(id)?.startRef ?? null);
+    setPageCursor(null); setHistoryBusy(true); setLocated(false); setStartRef(null);
     try {
-      const current = () => focusedRef.current && opening === openingRef.current;
-      const onCursor = (cursor: string | null) => { olderCursors.current.set(id, cursor); setPageCursor(cursor); };
-      if (cached) {
-        const blocks = await loadHistoryBlocks(client, id, null, olderCursors.current.get(id) ?? null, { current, onCursor });
-        if (!blocks || !current()) return;
-        onCursor(blocks.olderCursor); setStartRef(blocks.startRef);
-        if (!client.tailIncomplete.has(id)) markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
-        return;
-      }
-      if (client.supportsLatest) {
-        const page = await client.historyWindow(id);
-        if (!focusedRef.current || opening !== openingRef.current) return;
-        const older = olderCursors.current.has(id) && (client.messages.get(id)?.[0]?.ref_seq ?? Infinity) < (page.messages[0]?.ref_seq ?? -Infinity)
-          ? olderCursors.current.get(id)! : page.older_cursor;
-        onCursor(older);
-        const blocks = await loadHistoryBlocks(client, id, null, older, { current, onCursor });
-        if (!blocks || !current()) return;
-        onCursor(blocks.olderCursor); setLocated(true); locatedThreads.current.add(id);
-        client.resumeTail(id);
-        setStartRef(blocks.startRef);
-        markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
-        return;
-      }
-      // The older server only exposes forward pages. Auto-scan a strictly bounded
-      // prefix; never present an oldest page as if it were the latest page.
-      const cursor = await locateLatest(after => client.history(id, after, 100), 3, () => focusedRef.current && opening === openingRef.current);
-      if (focusedRef.current && opening === openingRef.current) {
-        setPageCursor(cursor); setLocated(!cursor);
-        if (!cursor) {
-          client.resumeTail(id);
-          locatedThreads.current.add(id);
-          const loaded = client.messages.get(id) || [];
-          setStartRef(historyBlockStart(loaded).startRef);
-          markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
-        }
-      }
-    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
-    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
-  };
-  const locateNext = async () => {
-    if (!client || !focusedRef.current || !pageCursor || historyBusy) return;
-    const opening = openingRef.current, id = threadId, cursor = pageCursor;
-    setHistoryBusy(true);
-    try {
-      const page = await client.history(id, cursor, 100);
-      if (!focusedRef.current || opening !== openingRef.current) return;
-      setPageCursor(page.next_cursor); setLocated(!page.next_cursor);
-      if (!page.next_cursor) {
-        client.resumeTail(id);
-        locatedThreads.current.add(id);
-        const loaded = client.messages.get(id) || [];
-        setStartRef(historyBlockStart(loaded).startRef);
-        markVisibleRead(client.threads.get(id)?.last_ref ?? 0);
-      }
+      const openingTask = client.openConversation(id); ownedWatch.current = client.currentConversationKey;
+      await openingTask;
+      const current = () => focusedRef.current && appActive.current && opening === openingRef.current && client.currentThreadId === id;
+      if (!current()) return;
+      const blocks = await loadHistoryBlocks(client, id, null, client.currentOlderCursor, { current, onCursor: setPageCursor });
+      if (!blocks || !current()) return;
+      setPageCursor(blocks.olderCursor); setStartRef(blocks.startRef); setLocated(true);
     } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
@@ -362,7 +318,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     try {
       const blocks = await loadHistoryBlocks(client, id, visibleMessages[0]?.ref_seq ?? null, client.supportsLatest ? pageCursor : null, {
         current: () => focusedRef.current && opening === openingRef.current,
-        onCursor: cursor => { olderCursors.current.set(id, cursor); setPageCursor(cursor); }
+        onCursor: setPageCursor
       });
       if (!focusedRef.current || opening !== openingRef.current) return;
       if (blocks) setStartRef(blocks.startRef);
@@ -374,8 +330,14 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     if (!config || !focusedRef.current || !box || box.storage.connectionId !== config.id) return;
     if (attachmentsBusy) return;
     const original = text, scope = composerScope;
+    const selectedDraft = composerDrafts.current.get(draftKey);
     await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID(), draftAttachments));
-    if (outboxRef.current === box && textDrafts.current.get(threadId) === original) textDrafts.current.delete(threadId);
+    if (outboxRef.current === box && textDrafts.current.get(draftKey) === original) textDrafts.current.delete(draftKey);
+    const retainedDraft = composerDrafts.current.get(draftKey);
+    if (selectedDraft && retainedDraft && selectedDraft.items.length === retainedDraft.items.length && selectedDraft.items.every((item, index) => item === retainedDraft.items[index])) {
+      composerDrafts.current.delete(draftKey);
+      if (currentComposer.current !== scope) releaseComposerDraft(retainedDraft);
+    }
     if (currentComposer.current === scope) {
       timelineRef.current?.followLatest();
       setText((old: string) => old === original ? '' : old);
@@ -430,7 +392,7 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor) void openThread(threadId);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
-    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
+    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client?.currentThreadId === threadId && client.currentConversationKey === ownedWatch.current) client.closeConversation(); };
   }, [client, threadId]);
 
   const selected = client?.threads.get(threadId);
@@ -444,13 +406,13 @@ export function ThreadScreen({ threadId }: { threadId: string }) {
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
-      onLocateNext={!located && pageCursor ? () => { if (client.supportsLatest) void openThread(threadId); else void locateNext(); } : undefined} locatingBusy={historyBusy}
+      onLocateNext={!located ? () => { void openThread(threadId); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}
-      position={entryPosition} onPosition={value => positions.current.set(threadId, value)} onVisibleRef={markVisibleRead}
+      position={entryPosition} onPosition={() => {}}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
-      composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
+      composerAccessory={(controls, onHeight) => <AttachmentComposer key={composerScope} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{controls}</AttachmentComposer>}
       receipts={receipts} interactions={interactions} answers={answers}
       onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
       onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}

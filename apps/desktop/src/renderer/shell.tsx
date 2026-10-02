@@ -36,9 +36,18 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
   const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
   const [description, setDescription] = useState(kind === "edit-channel" ? channel?.description ?? "" : "");
   const [query, setQuery] = useState("");
-  const clientThreadId = useRef(`desktop-thread:${crypto.randomUUID()}`).current;
+  const [detailsReady, setDetailsReady] = useState(kind !== "edit-channel");
+  const [detailError, setDetailError] = useState("");
+  useEffect(() => {
+    if (kind !== "edit-channel" || !channel) return;
+    let active = true;
+    void window.hermesDesktop.getChannelInfo(channel.id).then(value => { if (active) { setName(value.name); setDescription(value.description ?? ""); setDetailsReady(true); } }, () => { if (active) setDetailError("Channel details could not be loaded. Close this form and open it again."); });
+    return () => { active = false; };
+  }, [kind, channel?.id]);
+  const clientThreadId = useRef(`th_${crypto.randomUUID().replaceAll("-", "")}`).current;
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (!detailsReady) return;
     let task: Promise<void>;
     if (kind === "new-channel") task = window.hermesDesktop.createChannel({ name, description });
     else if (kind === "edit-channel" && channel) task = window.hermesDesktop.updateChannel(channel.id, { name, description });
@@ -57,9 +66,9 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
   const channelEditor = kind === "new-channel" || kind === "edit-channel";
   const title = kind === "new-channel" ? "New channel" : kind === "edit-channel" ? "Edit channel" : kind === "new-thread" ? "New topic" : "Rename topic";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-    <h2>{title}</h2><label>{channelEditor ? "Name" : "Title"}<input autoFocus required maxLength={channelEditor ? 120 : 200} value={name} onChange={(event) => setName(event.target.value)} /></label>
-    {channelEditor ? <label>Description<textarea maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label> : null}
-    <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit">Save</button></div>
+    <h2>{title}</h2>{detailError ? <p role="alert">{detailError}</p> : null}<label>{channelEditor ? "Name" : "Title"}<input autoFocus required disabled={!detailsReady} maxLength={channelEditor ? 120 : 200} value={name} onChange={(event) => setName(event.target.value)} /></label>
+    {channelEditor ? <label>Description<textarea disabled={!detailsReady} maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label> : null}
+    <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit" disabled={!detailsReady}>Save</button></div>
   </form></div>;
 };
 
@@ -99,16 +108,6 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
   }, [first, following, snapshot.messages, snapshot.selectedThreadId]);
-  const latestVisibleRef = snapshot.messages.reduce((latest, message) => Math.max(latest, message.refSeq ?? 0), 0);
-  useEffect(() => {
-    const mark = () => {
-      if (!following || document.visibilityState !== "visible" || !latestVisibleRef) return;
-      safely(window.hermesDesktop.markVisible(latestVisibleRef));
-    };
-    mark();
-    document.addEventListener("visibilitychange", mark);
-    return () => document.removeEventListener("visibilitychange", mark);
-  }, [following, latestVisibleRef, snapshot.selectedThreadId, snapshot.connectionState]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;

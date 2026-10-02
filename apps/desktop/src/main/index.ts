@@ -56,7 +56,7 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); await service.renameThread(text(id, 200), text(title, 200)); });
   ipcMain.handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); await service.archiveThread(text(id, 200)); });
   ipcMain.handle("desktop:load-older", async (event) => { trustedSender(event); await service.loadOlder(); });
-  ipcMain.handle("desktop:mark-visible", async (event, ref: unknown) => { trustedSender(event); if (!Number.isSafeInteger(ref)) throw new Error("Invalid desktop request"); await service.markVisible(ref as number); });
+  ipcMain.handle("desktop:get-channel-info", async (event, id: unknown) => { trustedSender(event); return service.getChannelInfo(text(id, 200)); });
   ipcMain.handle("desktop:send-message", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.sendMessage({ text: text(input.text, 100_000), attachmentIds: texts(input.attachmentIds, 8, 200) } satisfies SendMessageInput); });
   ipcMain.handle("desktop:retry-message", async (event, id: unknown) => { trustedSender(event); await service.retryMessage(text(id, 128)); });
   ipcMain.handle("desktop:stop-thread", async (event) => { trustedSender(event); await service.stopThread(); });

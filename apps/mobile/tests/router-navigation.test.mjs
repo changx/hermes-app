@@ -30,9 +30,9 @@ test('late history completion after pop cannot resume a hidden chat or update it
   const gate = new Promise(resolve => { finish = resolve; });
   const events = [];
   const focusedRef = { current: true }, openingRef = { current: 0 };
-  const client = { supportsLatest: true, historyWindow: () => gate, resumeTail: () => events.push('resume') };
+  const client = { supportsLatest: true, openConversation: () => gate };
   const context = {
-    client, focusedRef, openingRef, locatedThreads: { current: new Set() }, positions: { current: new Map() }, olderCursors: { current: new Map() },
+    client, focusedRef, openingRef, appActive: { current: true }, ownedWatch: { current: null },
     setPageCursor: value => events.push(['cursor', value]), setHistoryBusy: value => events.push(['busy', value]),
     setLocated: value => events.push(['located', value]), setStartRef: value => events.push(['start', value]), setError: value => events.push(['error', value]),
   };
@@ -42,18 +42,11 @@ test('late history completion after pop cannot resume a hidden chat or update it
   finish({ messages: [{ ref_seq: 99 }], older_cursor: 'secret-cursor' });
   await pending;
   assert.deepEqual(events, [['cursor', null], ['busy', true], ['located', false], ['start', null]]);
-  assert.equal(context.olderCursors.current.size, 0);
+
 });
 
-test('hidden timeline reports do not mark a thread read', () => {
-  const read = [], focusedRef = { current: false };
-  const context = { client: { markRead: (...args) => { read.push(args); return Promise.resolve(); } }, focusedRef,
-    appActive: { current: true }, threadId: 't_one', markedRef: { current: 0 } };
-  const visible = callback('markVisibleRead', context);
-  visible(8); assert.equal(read.length, 0);
-  focusedRef.current = true; visible(8);
-  assert.deepEqual(read, [['t_one', 8]]);
-  focusedRef.current = false; visible(9); assert.equal(read.length, 1);
+test('mobile has no read-position reporting in either visible or hidden timeline', () => {
+  assert.doesNotMatch(source.text, /markRead|markVisibleRead|onVisibleRef/);
 });
 
 test('forget stops outbox, clears saved connection and resets routed identity', async () => {
@@ -68,6 +61,7 @@ test('forget stops outbox, clears saved connection and resets routed identity', 
     setIdentity: update => { identity = update(identity); }, setPairingCode: value => events.push(['code', value]),
     setEditing: value => events.push(['editing', value]), setStatus: value => events.push(['status', value]),
     router: { replace: path => events.push(['replace', path]) },
+    textDrafts: { current: new Map() }, composerDrafts: { current: new Map() }, forgottenConnections: { current: new Set() }, releaseComposerDraft() {},
   };
   await callback('forget', context)();
   assert.equal(identity, 5);

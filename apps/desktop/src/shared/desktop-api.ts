@@ -8,7 +8,7 @@ export type DesktopThread = Readonly<{
   id: string;
   channelId: string;
   title: string;
-  unreadCount: number;
+
   lastMessageAt?: number;
   running: boolean;
 }>;
@@ -88,7 +88,7 @@ export interface HermesDesktopApi {
   renameThread(threadId: string, title: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;
   loadOlder(): Promise<void>;
-  markVisible(refSeq: number): Promise<void>;
+  getChannelInfo(channelId: string): Promise<DesktopChannel>;
   sendMessage(input: SendMessageInput): Promise<void>;
   retryMessage(clientMessageId: string): Promise<void>;
   stopThread(): Promise<void>;

@@ -18,7 +18,7 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
   let activeCells = cells;
   const react = {
     createElement: (type, p, ...children) => ({ type, props: { ...p, children } }),
-    useState(initial) { const at = hook++; const store = activeCells; if (!(at in store)) store[at] = initial; return [store[at], next => { store[at] = typeof next === 'function' ? next(store[at]) : next; }]; },
+    useState(initial) { const at = hook++; const store = activeCells; if (!(at in store)) store[at] = typeof initial === 'function' ? initial() : initial; return [store[at], next => { store[at] = typeof next === 'function' ? next(store[at]) : next; }]; },
     useRef(initial) { const at = hook++; const store = activeCells; if (!(at in store)) store[at] = { current: initial }; return store[at]; },
     useEffect(fn, deps) {
       const at = hook++;
@@ -92,6 +92,18 @@ function harness({ platform = 'ios', nativePaste = true } = {}) {
     setCamera(fn) { cameraPick = fn; }, setPermission(fn) { cameraPermission = fn; },
     setImages(fn) { imagePick = fn; }, setFiles(fn) { documentPick = fn; }, setClipboard(fn) { clipboardRead = fn; } };
 }
+
+test('only unsent user-selected files survive composer unmount, not message downloads', async () => {
+  const h = harness(); let saved;
+  h.start('AttachmentComposer', { onDraftChange: value => { saved = value; } });
+  h.setClipboard(async () => ({ data: 'data:image/png;base64,AQID' }));
+  h.press('Paste'); await flush(); await flush();
+  assert.equal(saved.items.length, 1); assert.equal(saved.files.length, 1);
+  const uri = saved.files[0][1].uri;
+  h.unmount(); assert.equal(saved.items[0].status, 'ready'); assert.equal(h.disks.has(uri), true);
+  assert.equal(h.downloads.length, 0); assert.equal(h.deletions.length, 0);
+  saved.files[0][1].delete(); assert.equal(h.disks.has(uri), false);
+});
 
 test('plus menu opens inside the shared composer surface, without a separate nested shadow', () => {
   const h = harness();

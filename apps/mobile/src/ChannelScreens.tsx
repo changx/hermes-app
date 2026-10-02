@@ -3,15 +3,16 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from './FontSize';
-import type { Attachment, HermesClient, ThreadSummary } from '../../../packages/client/src/index';
+import type { Attachment, ThreadSummary } from '../../../packages/client/src/index';
+import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { NewTopicComposer } from './NewTopicComposer';
 import { channelPatch, threadPatch } from './channel-edits';
 import { MessageTime } from './MessageTime';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
-import { isThreadRunning } from './threadListState';
+
 
 type Props = {
-  client: HermesClient;
+  client: LiveSessionClient;
   channelId: string | null;
   onChannel: (id: string | null) => void;
   onThread: (id: string) => void;
@@ -59,7 +60,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNewCh
   // starts there natively, so entering a channel needs no scroll at all.
   const threads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
     .sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title));
-  const startEdit = () => { if (!channel) return; setName(channel.name); setDescription(channel.description || ''); setEditing(true); setError(''); };
+  const startEdit = () => void run(async current => { if (!channel) return; const detail = await client.getChannelInfo(channel.id); if (!current()) return; setName(detail.name); setDescription(detail.description || ''); setEditing(true); });
   const cancelChannelForm = () => { setEditing(false); setError(''); };
   const submitChannel = () => void run(async current => {
     const patch = channelPatch(name, description);
@@ -89,7 +90,7 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNewCh
       keyboardDismissMode="on-drag" contentContainerStyle={[s.list, { paddingTop: 16 }]}
       ListFooterComponent={!!channel?.description && !editing ? <Text selectable style={s.summary}>{channel.description}</Text> : null}
       renderItem={({ item }) => <View style={s.card}>
-        {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><View style={s.meta}><MessageTime seconds={item.last_message_at} />{isThreadRunning(item.id, client.receipts.values()) && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{!!item.unread_count && <Text style={s.unread}>{item.unread_count} unread</Text>}</View></Pressable><IconAction label="Rename" ios="square.and.pencil" android="edit" disabled={busy} onPress={() => rename(item)} /></View>}
+        {renaming === item.id ? <><TextInput accessibilityLabel="New topic name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <View style={s.row}><Pressable accessibilityRole="button" onPress={() => onThread(item.id)} style={s.fill}><Text style={s.heading}>{item.title}</Text><View style={s.meta}><MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}</View></Pressable><IconAction label="Rename" ios="square.and.pencil" android="edit" disabled={busy} onPress={() => rename(item)} /></View>}
       </View>}
       ListEmptyComponent={<Text style={s.empty}>No topics yet. Write a message below to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text><Text numberOfLines={2} style={s.hint}>{item.description || 'A space for a project or ongoing conversations'}</Text></Pressable>}

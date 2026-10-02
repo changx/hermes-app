@@ -41,9 +41,14 @@ const fixture = () => {
     interactions: new Map(),
     attachments: new Map(),
     supportsLatest: true,
+    isCatalogueReady: true,
+    isThreadAvailable(id) { return service.listedThreads.has(id) || this.threads.has(id); },
+    closeConversation() { this.messages.clear(); },
+    async openConversation(id) { this.closeConversation(); const page = await this.historyWindow(id); this.currentOlderCursor = page.older_cursor; },
+    rememberAcceptedInput(thread, id, text, attachments, time, receipt) { this.messages.set(thread, [{ id: 'receipt:'+receipt.id, ref_seq: receipt.ref_seq, role: 'user', text, client_message_id: id, receipt_id: receipt.id, attachments, created_at: time }]); },
     async send(threadId, clientMessageId, text, attachmentIds) {
       calls.push(["send", threadId, clientMessageId, text, attachmentIds]);
-      return { id: "receipt-a", client_message_id: clientMessageId, thread_id: threadId, state: "queued", durable: true };
+      return { id: "receipt-a", client_message_id: clientMessageId, thread_id: threadId, state: "queued", durable: true, ref_seq: 1 };
     },
     async getReceipt(id) {
       calls.push(["receipt", id]);
@@ -66,10 +71,10 @@ test("send persists before transport, keeps a stable identity, and reconciles on
   const optimistic = service.snapshot().messages;
   assert.equal(optimistic.length, 1);
   assert.equal(optimistic[0].id, `client:${calls[0][2]}`);
-  assert.equal(optimistic[0].optimistic, true);
+  assert.equal(optimistic[0].optimistic, undefined);
 
   service.client.messages.set("thread-a", [{ id: "server-a", ref_seq: 1, role: "user", text: "Hello", client_message_id: calls[0][2] }]);
-  service.reconcileOutbox();
+
   await Promise.resolve();
   const reconciled = service.snapshot().messages;
   assert.equal(reconciled.length, 1);
@@ -86,7 +91,7 @@ test("unknown delivery is reconciled by receipt and is not blindly resent", asyn
   };
   await service.sendMessage({ text: "Uncertain", attachmentIds: [] });
   const id = service.outbox[0].id;
-  assert.equal(service.outbox[0].state, "unknown");
+  assert.equal(service.outbox[0].state, "pending");
   await service.retryMessage(id);
   assert.deepEqual(calls.map(([kind]) => kind), ["send", "receipt"]);
   assert.equal(service.outbox[0].id, id);
@@ -101,8 +106,8 @@ test("history fetch does not mark read until the renderer reports a visible ref"
   };
   await service.loadOlder();
   assert.deepEqual(calls, [["history", "thread-a", "older-a"]]);
-  await service.markVisible(19);
-  assert.deepEqual(calls.at(-1), ["read", "thread-a", 19]);
+  assert.equal(service.markVisible, undefined);
+  assert.equal(calls.some(([kind]) => kind === "read"), false);
 });
 
 test("archived threads are removed from projection and selection falls back deterministically", async () => {

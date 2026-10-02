@@ -154,39 +154,31 @@ test('production App loadOlder publishes one completed block window and holds or
   assert.deepEqual(starts, [1]); assert.equal(holds.length, 1); assert.equal(context.historyBusy, false);
 });
 
-test('production cached re-entry selects latest 5 blocks without network', async () => {
-  const h = sdk([u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)], {}), starts = [];
-  h.client.threads.set('t', { last_ref: 31 });
-  const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
-    positions: { current: new Map([['t', { startRef: 1 }]]) }, locatedThreads: { current: new Set(['t']) }, olderCursors: { current: new Map([['t', 'oldest-cursor']]) },
-    loadHistoryBlocks, historyBlockStart, setPageCursor() {}, setHistoryBusy() {}, setLocated() {},
-    setStartRef: value => starts.push(value), markVisibleRead() {}, setError: value => assert.fail(value) };
-  await callback('openThread', context)('t');
-  assert.deepEqual(starts, [1, 5]); assert.equal(h.requests.length, 0);
-  assert.equal(context.olderCursors.current.get('t'), 'oldest-cursor');
-});
-
-test('fresh latest fetch does not overwrite a cursor already tracking older cached pages', async () => {
-  const h = sdk([u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)], {}), starts = [];
-  h.client.historyWindow = async () => ({ messages: [u(20), m(21), u(30), m(31)], older_cursor: 'fresh-tail-cursor' });
-  h.client.threads.set('t', { last_ref: 31 }); h.client.resumeTail = () => {};
-  const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
-    positions: { current: new Map() }, locatedThreads: { current: new Set() }, olderCursors: { current: new Map([['t', 'oldest-cursor']]) },
-    loadHistoryBlocks, historyBlockStart, setPageCursor() {}, setHistoryBusy() {}, setLocated() {},
-    setStartRef: value => starts.push(value), markVisibleRead() {}, setError: value => assert.fail(value) };
-  await callback('openThread', context)('t');
-  assert.deepEqual(starts, [null, 5]); assert.equal(context.olderCursors.current.get('t'), 'oldest-cursor');
-});
-
-test('production cold open selects latest 5 blocks and only marks read after that window is complete', async () => {
+test('production scoped entry uses fresh server state and selects latest five blocks without read reporting', async () => {
   const h = sdk([], {}), events = [];
-  h.client.historyWindow = async () => { h.client.messages.set('t', [u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)]); return { messages: h.client.messages.get('t'), older_cursor: null }; };
-  h.client.threads.set('t', { last_ref: 31 }); h.client.resumeTail = () => events.push('resume');
-  const context = { client: h.client, focusedRef: { current: true }, openingRef: { current: 0 },
-    positions: { current: new Map() }, locatedThreads: { current: new Set() }, olderCursors: { current: new Map() },
-    loadHistoryBlocks, historyBlockStart,
-    setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => events.push(['start', value]),
-    markVisibleRead: value => events.push(['read', value]), setError: value => assert.fail(value) };
+  h.client.openConversation = async id => { events.push(['open', id]); h.client.currentThreadId = id; h.client.currentConversationKey = {}; h.client.currentOlderCursor = null; h.client.messages.set(id, [u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)]); };
+  const context = { client: h.client, focusedRef: { current: true }, appActive: { current: true }, ownedWatch: { current: null }, openingRef: { current: 0 }, loadHistoryBlocks,
+    setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => events.push(['start', value]), setError: value => assert.fail(value) };
   await callback('openThread', context)('t');
-  assert.deepEqual(events, [['start', null], 'resume', ['start', 5], ['read', 31]]);
+  assert.deepEqual(events, [['start', null], ['open', 't'], ['start', 5]]);
+  assert.equal(h.requests.length, 0);
+});
+
+test('production entry waits for scoped opening before fetching user-started history blocks', async () => {
+  const h = sdk([], {}); let finish;
+  h.client.openConversation = () => new Promise(resolve => { finish = () => { h.client.currentThreadId = 't'; h.client.currentOlderCursor = null; h.client.messages.set('t', [u(10), m(11)]); resolve(); }; });
+  const starts = [], context = { client: h.client, focusedRef: { current: true }, appActive: { current: true }, ownedWatch: { current: null }, openingRef: { current: 0 }, loadHistoryBlocks,
+    setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => starts.push(value), setError: value => assert.fail(value) };
+  const pending = callback('openThread', context)('t');
+  assert.deepEqual(starts, [null]); assert.equal(h.requests.length, 0); finish(); await pending;
+  assert.deepEqual(starts, [null, 10]);
+});
+
+test('a late scoped entry cannot retain body or pagination in a closed view', async () => {
+  const h = sdk([], {}); let finish;
+  h.client.openConversation = () => new Promise(resolve => { finish = resolve; });
+  const starts = [], context = { client: h.client, focusedRef: { current: true }, appActive: { current: true }, ownedWatch: { current: null }, openingRef: { current: 0 }, loadHistoryBlocks,
+    setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => starts.push(value), setError: value => assert.fail(value) };
+  const pending = callback('openThread', context)('t'); context.focusedRef.current = false; ++context.openingRef.current; finish(); await pending;
+  assert.deepEqual(starts, [null]); assert.equal(h.requests.length, 0);
 });

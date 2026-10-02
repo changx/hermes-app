@@ -13,6 +13,7 @@ export type OutboxRecord = Readonly<{
   createdAt: number;
   state: OutboxState;
   receiptId?: string;
+  receiptRefSeq?: number;
 }>;
 
 type OutboxData = { version: 1; identities: Record<string, OutboxRecord[]> };
@@ -35,7 +36,8 @@ const record = (value: unknown): OutboxRecord => {
     !Array.isArray(item.attachmentIds) || item.attachmentIds.length > 8 || item.attachmentIds.some((id) => typeof id !== "string" || !id.startsWith("att_")) ||
     typeof item.createdAt !== "number" || !Number.isSafeInteger(item.createdAt) || item.createdAt < 0 ||
     !["pending", "sending", "unknown", "blocked"].includes(item.state ?? "") ||
-    (item.receiptId !== undefined && (typeof item.receiptId !== "string" || !item.receiptId || item.receiptId.length > 200))
+    (item.receiptId !== undefined && (typeof item.receiptId !== "string" || !item.receiptId || item.receiptId.length > 200)) ||
+    (item.receiptRefSeq !== undefined && (!item.receiptId || !Number.isSafeInteger(item.receiptRefSeq) || item.receiptRefSeq <= 0))
   ) throw new Error("invalid outbox record");
   return Object.freeze({
     version: 1,
@@ -46,6 +48,7 @@ const record = (value: unknown): OutboxRecord => {
     createdAt: item.createdAt,
     state: item.state,
     ...(item.receiptId ? { receiptId: item.receiptId } : {}),
+    ...(item.receiptRefSeq !== undefined ? { receiptRefSeq: item.receiptRefSeq } : {}),
   }) as OutboxRecord;
 };
 const data = (value: unknown): OutboxData => {

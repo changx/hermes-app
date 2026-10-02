@@ -19,7 +19,7 @@ function harness({ reject = false, uploading = false, switchThread = false, pop 
   const events = [], attachments = [{ id: 'att_a', thread_id: 't', state: 'available' }];
   const context = {
     config: { id: 'connection' }, threadId: 't', text: '', composerScope: 'connection:t', currentComposer: { current: 'connection:t' }, focusedRef: { current: true },
-    draftAttachments: attachments, attachmentsBusy: uploading, textDrafts: { current: new Map() },
+    draftKey: 'connection:t', composerDrafts: { current: new Map() }, releaseComposerDraft() {}, draftAttachments: attachments, attachmentsBusy: uploading, textDrafts: { current: new Map() },
     Crypto: { randomUUID: () => 'uuid' },
     newSend: (...args) => { events.push(['record', ...args]); return { attachments: args[4], text: args[2] }; },
     outboxRef: { current: { storage: { connectionId: 'connection' }, enqueue: async record => { events.push(['enqueue', record]); if (switchThread) context.currentComposer.current = 'connection:other'; if (pop) { context.focusedRef.current = false; context.currentComposer.current = ''; } if (reject) throw Error('storage unavailable'); } } },

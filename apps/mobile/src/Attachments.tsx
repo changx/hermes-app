@@ -51,17 +51,22 @@ export type AttachmentComposerHandle = {
   uploadTo: (threadId: string) => Promise<Attachment[]>;
   discardFrom: (threadId: string) => Promise<void>;
 };
+// User-selected, unsent files only. Never retain downloaded message media here.
+export type ComposerDraft = { items: DraftAttachment[]; files: Array<[number, File]> };
+export function releaseComposerDraft(draft: ComposerDraft) { draft.files.forEach(([, file]) => forgetFile(file)); }
 
 /** Ready server metadata reaches onChange. With no threadId, files stay local until uploadTo(). */
-export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, onSelectionChange, handleRef, disabled = false }: {
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, onSelectionChange, handleRef, initialDraft, onDraftChange, disabled = false }: {
   client: HermesClient; threadId: string | null; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; onSelectionChange?: (count: number) => void; handleRef?: React.MutableRefObject<AttachmentComposerHandle | null>; disabled?: boolean;
+  initialDraft?: ComposerDraft; onDraftChange?: (draft: ComposerDraft) => void;
 }) {
-  const [items, setItems] = useState<DraftAttachment[]>([]);
+  const [items, setItems] = useState<DraftAttachment[]>(() => initialDraft?.items ?? []);
   const [notice, setNotice] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const { openViewer } = useViewer();
-  const itemsRef = useRef(items), callbacks = useRef(onChange), selectionCallback = useRef(onSelectionChange), epoch = useRef(0), nextKey = useRef(0);
-  const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>());
+  const itemsRef = useRef(items), callbacks = useRef(onChange), selectionCallback = useRef(onSelectionChange), epoch = useRef(0), nextKey = useRef(items.reduce((key, item) => Math.max(key, item.key), 0));
+  const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>(initialDraft?.files));
+  const draftCallback = useRef(onDraftChange); draftCallback.current = onDraftChange;
   const stagedThread = useRef<string | null>(null);
   const identity = useRef({ client, threadId, clearKey });
   callbacks.current = onChange;
@@ -70,6 +75,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     itemsRef.current = next; setItems(next);
     callbacks.current(uploadedInOrder(next), threadId ? draftBusy(next) : next.some(item => item.status === 'uploading'));
     selectionCallback.current?.(next.length);
+    draftCallback.current?.({ items: next, files: [...owned.current] });
   };
   const cleanup = () => {
     ++epoch.current;
@@ -83,8 +89,13 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       cleanup(); identity.current = { client, threadId, clearKey }; update([]); setNotice(''); setMenuOpen(false);
     }
   }, [client, threadId, clearKey]);
-  useEffect(() => { callbacks.current([], false); }, []);
-  useEffect(() => () => cleanup(), []);
+  useEffect(() => { callbacks.current(uploadedInOrder(itemsRef.current), threadId ? draftBusy(itemsRef.current) : false); }, []);
+  useEffect(() => () => {
+    if (!draftCallback.current) { cleanup(); return; }
+    ++epoch.current; controllers.current.forEach(controller => controller.abort()); controllers.current.clear();
+    draftCallback.current({ items: itemsRef.current.map(item => item.status === 'uploading' ? { ...item, status: 'failed', error: friendlyFailure } : item), files: [...owned.current] });
+    owned.current.clear();
+  }, []);
 
   const upload = async (key: number, source: PickedAttachment, generation: number) => {
     const controller = new AbortController(); controllers.current.set(key, controller);

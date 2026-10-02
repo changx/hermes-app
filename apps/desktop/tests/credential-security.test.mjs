@@ -48,5 +48,5 @@ test("starting a different identity closes the old client before clearing projec
   assert.ok(start.indexOf("this.client?.close()") < start.indexOf("this.listedThreads.clear()"));
   assert.match(start, /this\.selectedChannelId = undefined/);
   assert.match(start, /this\.selectedThreadId = undefined/);
-  assert.match(start, /client = new HermesClient/);
+  assert.match(start, /client = new LiveSessionClient/);
 });

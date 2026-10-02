@@ -67,7 +67,7 @@ export function retrySend(config: Connection, record: SendRecord): SendRecord {
   return { ...record, status: 'sending' };
 }
 export function accepted(record: SendRecord, receipt: Receipt): SendRecord {
-  if (receipt.client_message_id !== record.clientMessageId || receipt.thread_id !== record.threadId) throw new Error('The confirmation does not match this message.');
+  if (receipt.client_message_id !== record.clientMessageId || receipt.thread_id !== record.threadId || record.receiptId && receipt.id !== record.receiptId) throw new Error('The confirmation does not match this message.');
   if (receipt.ref_seq !== undefined && (!Number.isSafeInteger(receipt.ref_seq) || receipt.ref_seq <= 0 || record.receiptRefSeq !== undefined && record.receiptRefSeq !== receipt.ref_seq)) throw new Error('The confirmation reference does not match this message.');
   const keepCallback = receipt.processing === undefined ||
     ['completed', 'failed', 'interrupted'].includes(record.receiptProcessing ?? '');

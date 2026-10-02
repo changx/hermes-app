@@ -68,7 +68,7 @@ interface Props {
   locatingBusy?: boolean;
   position?: TimelinePosition;
   onPosition(position: TimelinePosition): void;
-  onVisibleRef(ref: number): void;
+
   text: string;
   onText(value: string): void;
   onSend(): void;
@@ -88,7 +88,7 @@ interface Props {
   busy: boolean;
 }
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
-  const { rows, startRef, position, onPosition, onVisibleRef } = props;
+  const { rows, startRef, position, onPosition } = props;
   const { bottom } = useSafeAreaInsets();
 
   const dockHeight = useRef(0);
@@ -228,8 +228,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     keyboardMoving.current = false; nativeMoving.value = false;
     pendingFollow.current = false; followAnimation.current = false;
   }, [props.active]);
-  const callbacks = useRef({ onPosition, onVisibleRef, startRef });
-  callbacks.current = { onPosition, onVisibleRef, startRef };
+  const callbacks = useRef({ onPosition, startRef });
+  callbacks.current = { onPosition, startRef };
   const savePosition = useCallback(() => callbacks.current.onPosition({ offset: offset.current, following: following.current, startRef: callbacks.current.startRef }), []);
   const pullOlder = async () => {
     if (!active.current || !motionForeground.current || !historyLoadProps.current.hasOlder || historyLoadProps.current.locatingBusy || historyPullPending.current) return;
@@ -296,12 +296,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     // conversation. Explicit send/latest actions remain animated.
     if (newOutput && following.current) scheduleFollow();
   }, [rows, scheduleFollow]);
-  const visible = useRef({ onVisibleRef });
-  visible.current.onVisibleRef = onVisibleRef;
-  const viewability = useRef(({ viewableItems }: { viewableItems: Array<{ item: TimelineRow }> }) => {
-    const refs = viewableItems.map(v => v.item.refSeq).filter((v): v is number => v !== undefined);
-    if (refs.length) visible.current.onVisibleRef(Math.max(...refs));
-  });
+
   const composerControls = <><Pressable accessible={false} focusable={false} style={styles.composeField} onPress={() => composerInput.current?.focus()}>
       <TextInput ref={composerInput} nativeID={composerID} accessibilityLabel="Message text" multiline
         // Fabric iOS: reset empty measurement without fixing font height.
@@ -341,7 +336,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>}
         </View>}
         ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
-        onViewableItemsChanged={viewability.current}
+
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;

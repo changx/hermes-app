@@ -25,14 +25,13 @@ test('topic list uses an icon rename action and never marks a topic read', () =>
   const channels = readFileSync(new URL('../src/ChannelScreens.tsx', import.meta.url), 'utf8');
   assert.match(channels, /<IconAction label="Rename" ios="square\.and\.pencil" android="edit"/);
   assert.doesNotMatch(channels, /<Action label="Rename"/);
-  assert.match(channels, /isThreadRunning\(item\.id, client\.receipts\.values\(\)\)/);
+  assert.match(channels, /item\.running === true/);
   assert.doesNotMatch(channels, /markRead\(/);
 });
 
-test('conversation entry marks the latest ref read only after latest history is located', () => {
+test('conversation entry awaits scoped opening and has no unread accounting', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /if \(cached\) \{[\s\S]*?if \(!client\.tailIncomplete\.has\(id\)\) markVisibleRead\(client\.threads\.get\(id\)\?\.last_ref \?\? 0\)/);
-  assert.match(app, /await client\.historyWindow\(id\);[\s\S]*?setStartRef\([^\n]+\);\n\s*markVisibleRead\(client\.threads\.get\(id\)\?\.last_ref \?\? 0\);/);
-  assert.match(app, /const page = await client\.history\(id, cursor, 100\);[\s\S]*?if \(!page\.next_cursor\) \{[\s\S]*?markVisibleRead\(client\.threads\.get\(id\)\?\.last_ref \?\? 0\);/);
-  assert.match(app, /onVisibleRef=\{markVisibleRead\}/);
+  assert.match(app, /await openingTask/);
+  assert.match(app, /client\.openConversation\(id\)/);
+  assert.doesNotMatch(app, /markRead|markVisibleRead|onVisibleRef|locatedThreads|olderCursors/);
 });

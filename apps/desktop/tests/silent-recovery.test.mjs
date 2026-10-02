@@ -23,6 +23,10 @@ const fixture = () => {
   service.client = {
     channels: new Map([["channel-a", { id: "channel-a", name: "Alpha" }], ["channel-b", { id: "channel-b", name: "Beta" }]]),
     threads: new Map(), messages: new Map(), receipts: new Map(), interactions: new Map(), attachments: new Map(), supportsLatest: true,
+    isCatalogueReady: true, isThreadAvailable(id) { return service.listedThreads.has(id) || this.threads.has(id); },
+    closeConversation() { this.messages.clear(); },
+    async openConversation(id) { const page = await this.historyWindow(id); this.currentOlderCursor = page.older_cursor; },
+    rememberAcceptedInput() {},
     async send(thread, id, text, attachments) { sends.push([thread, id, text, attachments]); return { id: "receipt-a", state: "queued" }; },
     async historyWindow() { return { older_cursor: null }; },
     close() {}, async retryNow() {},
@@ -50,15 +54,15 @@ test("failed history retries in background without losing messages or displaying
   service.close();
 });
 
-test("channel reads retry and late responses cannot replace a newer channel", async () => {
+test("channel selection performs no catalogue or body reads", async () => {
   const { service } = fixture();
-  let release;
-  service.client.listThreads = async id => id === "channel-a" ? await new Promise(resolve => { release = resolve; }) : { threads: [{ id: "thread-b", project_id: id, title: "Beta" }], next_cursor: null };
+  service.client.listThreads = async () => { throw Error('unexpected business read'); };
   const old = service.selectChannel("channel-a");
   await service.selectChannel("channel-b");
-  release({ threads: [{ id: "stale", project_id: "channel-a", title: "Stale" }], next_cursor: null });
+
   await old;
-  assert.deepEqual([...service.listedThreads.keys()], ["thread-b"]);
+  assert.equal(service.selectedChannelId, "channel-b");
+  assert.deepEqual([...service.listedThreads.keys()], ["thread-a"]);
   service.close();
 });
 
@@ -79,7 +83,7 @@ test("HTTP-only send failure recovers on a timer with the identical ID and paylo
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { service, sends } = fixture();
   let attempt = 0;
-  service.client.send = async (...args) => { sends.push(args); if (++attempt === 1) throw new TimeoutError("lost ACK"); return { id: "receipt-a", state: "queued" }; };
+  service.client.send = async (...args) => { sends.push(args); if (++attempt === 1) throw new TimeoutError("lost ACK"); return { id: "receipt-a", state: "queued", durable:true, thread_id:args[0], client_message_id:args[1], ref_seq:7 }; };
   await service.sendMessage({ text: "Exact original", attachmentIds: [] });
   assert.equal(service.snapshot().errorMessage, undefined);
   assert.equal(service.outbox[0].state, "pending");
@@ -90,16 +94,18 @@ test("HTTP-only send failure recovers on a timer with the identical ID and paylo
   service.close();
 });
 
-test("unknown execution is polled by receipt and never automatically re-executed", async (t) => {
+test("unknown execution is checked only on explicit recovery, never polled or re-executed", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { service, sends } = fixture();
-  service.client.send = async (...args) => { sends.push(args); return { id: "receipt-a", state: "unknown" }; };
+  service.client.send = async (...args) => { sends.push(args); return { id: "receipt-a", state: "unknown", durable:true, thread_id:args[0], client_message_id:args[1] }; };
   let queried = 0;
-  service.client.getReceipt = async () => { queried++; return { id: "receipt-a", state: "unknown" }; };
+  service.client.getReceipt = async () => { queried++; return { id: "receipt-a", state: "unknown", durable:true, thread_id:'thread-a', client_message_id:service.outbox[0].id }; };
   await service.sendMessage({ text: "Only once", attachmentIds: [] });
   t.mock.timers.tick(5000);
   await turn();
   assert.equal(sends.length, 1);
+  assert.equal(queried, 0);
+  await service.retryMessage(service.outbox[0].id);
   assert.equal(queried, 1);
   service.close();
 });
@@ -150,7 +156,7 @@ test("wake refreshes a live connection but does not retry revoked or permanently
   service.close();
 });
 
-test("channel list failure retries automatically without requiring a connection state change", async () => {
+test("channel navigation uses the directory without a redundant list request", async () => {
   const { service } = fixture();
   let attempts = 0;
   service.client.listThreads = async () => {
@@ -158,9 +164,9 @@ test("channel list failure retries automatically without requiring a connection 
     return { threads: [{ id: "recovered", project_id: "channel-a", title: "Recovered" }], next_cursor: null };
   };
   await service.selectChannel("channel-a");
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 0);
   assert.equal(service.snapshot().errorMessage, undefined);
-  assert.ok(service.listedThreads.has("recovered"));
+  assert.ok(service.listedThreads.has("thread-a"));
   service.close();
 });
 
@@ -190,8 +196,8 @@ test("concurrent send recovery owns only one in-flight request and late ACK cann
   await service.deliver(pending);
   assert.equal(sends.length, 1);
   service.client.messages.set("thread-a", [{ id: "confirmed", ref_seq: 1, role: "user", text: pending.text, client_message_id: pending.id }]);
-  service.reconcileOutbox();
-  release({ id: "receipt-a", state: "queued" });
+  assert.equal(service.outbox.length, 1, 'a body row is not durable local ACK cleanup');
+  release({ id: "receipt-a", state: "queued", durable:true, thread_id:pending.threadId, client_message_id:pending.id, ref_seq:1 });
   await send;
   assert.equal(service.outbox.length, 0);
   service.close();

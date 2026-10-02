@@ -32,7 +32,11 @@ export class LiveSessionClient extends HermesClient {
   private contentJob:Promise<void>|null=null;
   private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>}|null=null;
   private directoryReady=false;
+  private older:string|null=null;
+  private conversationKey:object={};
+  get currentOlderCursor():string|null{return this.older}
   get currentThreadId():string|null{return this.wanted}
+  get currentConversationKey():object{return this.conversationKey}
   get isCatalogueReady():boolean{return this.directoryReady}
   isThreadAvailable(id:string):boolean{const t=this.threads.get(id);return Boolean(t&&!t.archived&&this.channels.has(t.project_id))}
 
@@ -65,9 +69,10 @@ export class LiveSessionClient extends HermesClient {
     this.changed();return promise;
   }
   closeConversation():void{
+    this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
     if(this.liveController)return;
@@ -86,6 +91,24 @@ export class LiveSessionClient extends HermesClient {
   override async markRead(_id:string,_ref:number):Promise<number>{return 0} // no network/read accounting
   override checkpoint():never{throw new ProtocolError('Live conversations are not persisted')}
   override restoreCheckpoint(_value:unknown):never{throw new ProtocolError('Live conversations are read from the server')}
+
+  /** A matching durable ACK is sufficient to retire the local sending queue.
+   * Keep an accepted echo only while this exact conversation is open. */
+  rememberAcceptedInput(threadId:string,clientId:string,text:string,attachments:import('./index').Attachment[],createdAt:number|undefined,receipt:Receipt):void{
+    if(receipt.thread_id!==threadId||receipt.client_message_id!==clientId||receipt.durable!==true||!Number.isSafeInteger(receipt.ref_seq)||receipt.ref_seq!<=0)throw new ProtocolError('accepted input identity mismatch');
+    if(this.wanted!==threadId||!this.watchReady)return;
+    const rows=this.messages.get(threadId)||[];
+    if(!rows.some(row=>row.client_message_id===clientId)){
+      this.messages.set(threadId,[...rows,{id:'receipt:'+receipt.id,ref_seq:receipt.ref_seq!,role:'user',text,client_message_id:clientId,receipt_id:receipt.id,attachments,...(createdAt===undefined?{}:{created_at:createdAt})}].sort((a,b)=>a.ref_seq-b.ref_seq));
+    }
+    this.storeReceipt(receipt,false);this.changed();
+  }
+  override async createChannel(name:string,description=''){const result=await super.createChannel(name,description);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async updateChannel(id:string,patch:{name?:string;description?:string}){const result=await super.updateChannel(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async deleteChannel(id:string){await super.deleteChannel(id);await this.refreshDirectory(this.attempt?.signal)}
+  override async createThread(id:string,title:string,clientId?:string){const result=await super.createThread(id,title,clientId);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async updateThread(id:string,patch:{title?:string;archived?:boolean}){const result=await super.updateThread(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async archiveThread(id:string){const result=await super.archiveThread(id);await this.refreshDirectory(this.attempt?.signal);return result}
 
   async getChannelInfo(id:string,signal?:AbortSignal):Promise<Channel>{
     const body=await this.call('GET','/v1/channels/'+encodeURIComponent(id),undefined,signal),raw=body.channel as Record<string,unknown>;
@@ -129,7 +152,7 @@ export class LiveSessionClient extends HermesClient {
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
         const start=this.messages.get(id)?.[0]?.ref_seq;
-        if(start===undefined)await super.historyWindow(id,undefined,30,linked.signal);
+        if(start===undefined){const page=await super.historyWindow(id,undefined,30,linked.signal);if(this.wanted===id&&this.watchId===watchId)this.older=page.older_cursor}
         else{
           // References are sparse and owned. Refresh the first exact row,
           // then read forward from that real anchor; never invent start-1.
@@ -156,8 +179,9 @@ export class LiveSessionClient extends HermesClient {
   override async search(id:string,text:string,after?:string,limit=20,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.search(id,text,after,limit,s.signal)}finally{s.done()}}
   override async getInteraction(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getInteraction(id,key,s.signal)}finally{s.done()}}
   override async answerInteraction(item:Interaction,choice:string){if(item.thread_id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.answerInteraction(item,choice)}
-  override async getAttachment(id:string,key:string,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.getAttachment(id,key,s.signal)}finally{s.done()}}
-  override async download(id:string,key:string,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.download(id,key,s.signal)}finally{s.done()}}
+  override async getAttachment(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getAttachment(id,key,s.signal)}finally{s.done()}}
+  override async download(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.download(id,key,s.signal)}finally{s.done()}}
+  override async upload(id:string,name:string,bytes:Uint8Array,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.upload(id,name,bytes,s.signal)}finally{s.done();this.prune()}}
 
   private async runLive(controller:AbortController):Promise<void>{
     let retries=0;

@@ -28,6 +28,8 @@ async function harness() {
     }
     async connect() { this.options.onConnectionState('online'); }
     close() {}
+    async openConversation(id) { this.currentThreadId = id; this.currentConversationKey = {}; const page = await this.historyWindow(id); this.currentOlderCursor = page.older_cursor; }
+    closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); this.tailIncomplete.clear(); }
     resumeTail(id) { trace.push({ event: 'resume-tail' }); if (this.tailIncomplete.delete(id)) this.options.onChange(); }
     async recoverHistoryTail(id, signal) {
       trace.push({ event: 'history-request', direction: 'tail-repair' });
@@ -73,6 +75,7 @@ async function harness() {
     'expo-router/react-navigation': { useHeaderHeight: () => 100 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
     'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null }, 'expo-crypto': {},
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String }, './transport': { nativeTransport: () => ({}) },
+    '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }) },
     './ConnectionScreen': { ConnectionScreen: 'ConnectionScreen' }, './pairing': { CONFIG_KEY: 'config', PAIRING_KEY: 'pairing', restorePairing: () => null },
     './outbox': { MobileOutbox: Box, OutboxStore: class { constructor(_, value) { this.connectionId = value.id; } } },
@@ -178,14 +181,13 @@ test('failed repair keeps current reading and old pagination usable, and a later
   await h.close();
 });
 
-test('blur aborts repair without clearing the window; return can resume and unmount cancels its owner', async () => {
+test('blur aborts repair and releases the hidden window; unmount cannot restore it', async () => {
   const h = await harness(); await h.flagRecovery();
   await h.focus(false);
   assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 1);
-  assert.equal(h.sdk.tailIncomplete.has('t'), true);
-  assert.equal(h.props.rows[0].refSeq, 100);
-  await h.focus(true);
-  assert.equal(h.trace.filter(item => item.direction === 'tail-repair' && item.event === 'history-request').length, 2);
+  assert.equal(h.sdk.tailIncomplete.has('t'), false);
+  assert.equal(h.sdk.messages.size, 0);
+  assert.equal(h.sdk.currentThreadId, null);
   await h.close();
-  assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 2);
+  assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 1);
 });

@@ -9,7 +9,7 @@ async function load(contents, external){
   new Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
   return mod.exports;
 }
-const {DesktopConnectionService,HermesClient}=await load(`export { DesktopConnectionService } from './src/main/connection-service'; export { HermesClient } from '@hermes-app/client';`,['electron']);
+const {DesktopConnectionService,LiveSessionClient}=await load(`export { DesktopConnectionService } from './src/main/connection-service'; export { LiveSessionClient } from '@hermes-app/client/live';`,['electron']);
 const {render}=await load(`import {createElement} from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import {DesktopShellView} from './src/renderer/shell'; export const render=(snapshot)=>renderToStaticMarkup(createElement(DesktopShellView,{snapshot}));`,['react','react-dom/server','react/jsx-runtime']);
 const base={revision:1,phase:'connected',connectionState:'retrying',connectionLabel:'Reconnecting',channels:[],threads:[],messages:[],interactions:[],canLoadOlder:false};
 
@@ -25,16 +25,16 @@ test('real SDK snapshot completion ends first-load feedback even for an empty ac
   let release;const gate=new Promise(resolve=>{release=resolve;});
   const service=new DesktopConnectionService(()=>{});service.phase='connected';
   const states=[];
-  const client=new HermesClient({token:()=> 'controlled-test-token',socket:{connect:async()=>{throw new Error('not used');}},http:{request:async(_method,path)=>{
-    if(path.startsWith('/v1/snapshot')){await gate;return {status:200,body:{waterline:'test-waterline',threads:[],next_after:null}};}
-    if(path==='/v1/channels')return {status:200,body:{channels:[]}};
+  const client=new LiveSessionClient({token:()=> 'controlled-test-token',socket:{connect:async()=>{throw new Error('not used');}},http:{request:async(_method,path)=>{
+    if(path.startsWith('/v1/catalogue')){await gate;return {status:200,body:{items:[],next_after:null}};}
     throw new Error('unexpected controlled route');
   }},onChange:()=>states.push(service.snapshot().loadingConversations)});
   service.client=client;
   const pending=client.snapshot();
   assert.equal(service.snapshot().loadingConversations,true);
   release();await pending;
-  assert.equal(client.cursor,'test-waterline');
+  assert.equal(client.isCatalogueReady,true);
+  assert.equal(client.cursor,null);
   assert.equal(service.snapshot().loadingConversations,false);
   assert.equal(states.at(-1),false);
   assert.match(render(service.snapshot()),/No channels yet/);
