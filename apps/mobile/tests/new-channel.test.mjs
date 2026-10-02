@@ -24,7 +24,9 @@ test('new-channel full-screen editor preserves the existing creation path', () =
   assert.doesNotMatch(editor, /autoFocus/);
   assert.match(editor, /accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines \(optional\)"[\s\S]*?multiline/);
   assert.match(editor, /form: \{ flex: 1, gap: 12 \}/);
-  assert.match(editor, /description: \{ flex: 1, minHeight: 180, textAlignVertical: 'top' \}/);
+  assert.match(editor, /descriptionArea: \{ flex: 1, minHeight: 0 \}/);
+  assert.match(editor, /description: \{ flex: 1, minHeight: 0, textAlignVertical: 'top' \}/);
+  assert.match(editor, /channelActions: \{ flexShrink: 0, gap: 12 \}/);
   assert.match(editor, /client\.createChannel\(patch\.name, patch\.description\)/);
   assert.match(editor, /if \(current\(\)\) onCreated\(made\.id\)/);
 });

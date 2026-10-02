@@ -59,13 +59,17 @@ export function NewChannelEditor({ client, onCreated }: {
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <View style={s.form}>
       <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b"
-        value={name} onChangeText={setName} style={s.input} editable={!busy} maxLength={200} />
-      <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)"
-        placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline
-        style={[s.input, s.description]} editable={!busy} />
-      <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
-      <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'}
-        disabled={busy || !name.trim()} onPress={submit} /></View>
+        value={name} onChangeText={setName} style={[s.input, s.channelName]} editable={!busy} maxLength={200} />
+      <View style={s.descriptionArea} collapsable={false}>
+        <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)"
+          placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline
+          style={[s.input, s.description]} editable={!busy} />
+      </View>
+      <View style={s.channelActions} collapsable={false}>
+        <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
+        <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'}
+          disabled={busy || !name.trim()} onPress={submit} /></View>
+      </View>
     </View>
   </View>;
 }
@@ -138,7 +142,10 @@ const s = StyleSheet.create({
   form: { flex: 1, gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' },
-  description: { flex: 1, minHeight: 180, textAlignVertical: 'top' },
+  channelName: { flexShrink: 0 },
+  descriptionArea: { flex: 1, minHeight: 0 },
+  description: { flex: 1, minHeight: 0, textAlignVertical: 'top' },
+  channelActions: { flexShrink: 0, gap: 12 },
   // Keep native text measurement inside a bounded flex slot. A 180pt minimum
   // overflows the remaining slot while iOS changes the keyboard/window layout.
   messageArea: { flex: 1, minHeight: 0, marginBottom: 12 },
