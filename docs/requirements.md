@@ -18,6 +18,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 手机版 Channel 的 session list 底部直接提供多行输入框及完整附件加号菜单，发送第一条消息即创建并进入新对话，不再要求先点击新建加号打开全屏编辑器。复用现有持久发送队列、附件和原生导航；实现候选、草稿与离线边界及真机验收见 [session list 底部输入栏](m1-session-list-composer.md)。
 
+桌面新建 Session 弹窗提供 Channel 选择和附件；Channel 树 hover/focus 工具栏可打开同一弹窗，默认选择该行 Channel。桌面会话输入栏沿用移动端的紧凑多行输入、同排附件/停止/发送控件设计。桌面与移动端的用户消息统一使用靠左的蓝色泡泡；左右对齐将来作为设置项，本次不提供空设置入口。实现候选、附件创建后上传到草稿的语义与真机边界见 [桌面 Session 输入与蓝泡泡](desktop-session-composer.md)。
+
 ### R03 Channel Description 公共上下文
 
 Channel 的 Topic / Description 可保存背景、目标、约束及必要参考提示。创建新 Thread/Session 时，将这些内容设置为该 Session 头部的公共上下文；后续对话沿用已有 Session 上下文，不要求每条用户消息重新携带或重复追加 Description，也不要求逐轮重新读取 Channel 说明。说明不只是展示文字，应在该 Session 执行时实际生效。

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { build } from "esbuild";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const bundle = await build({
   entryPoints: [new URL("../src/main/connection-service.ts", import.meta.url).pathname],
@@ -148,4 +151,38 @@ test("timeline excludes private reasoning while preserving public commentary and
     { id: "message:user-b", role: "user", text: "Same text" },
   ]);
   assert.equal(JSON.stringify(messages).includes("secret reasoning"), false);
+});
+
+test("new session uses explicit channel rather than selected conversation, returning authoritative ID", async () => {
+  const { service, calls } = fixture();
+  service.client.channels.set("channel-b", { id: "channel-b", name: "Beta" });
+  service.client.createThread = async (...args) => { calls.push(["create", ...args]); return { id: "server-created", project_id: "channel-b", title: "New", archived: false }; };
+  service.client.historyWindow = async () => ({ messages: [], older_cursor: null });
+  assert.equal(await service.createThread({ channelId: "channel-b", title: "New", clientThreadId: "th_abcdefgh" }), "server-created");
+  assert.deepEqual(calls[0], ["create", "channel-b", "New", "th_abcdefgh"]);
+  assert.equal(service.selectedChannelId, "channel-b");
+  await assert.rejects(service.createThread({ channelId: "missing", title: "New", clientThreadId: "th_abcdefgh" }));
+  assert.equal(calls.length, 1);
+});
+
+test("new-session file upload is scoped explicitly and cleans a partial upload on failure", async () => {
+  const { service } = fixture();
+  const folder = await mkdtemp(join(tmpdir(), "session-upload-"));
+  try {
+    const first = join(folder, "one.txt"), second = join(folder, "two.txt");
+    await writeFile(first, "one"); await writeFile(second, "two");
+    service.listedThreads.set("new-id", { id: "new-id", project_id: "channel-a", title: "New", archived: false });
+    const uploaded = [], deleted = [];
+    service.client.upload = async (thread, name) => {
+      uploaded.push([thread, name]); if (name === "two.txt") throw Error("failure");
+      return { id: "file-one", thread_id: thread, name, size: 3, mime: "text/plain", state: "available" };
+    };
+    service.client.deleteUnattached = async (...args) => deleted.push(args);
+    await assert.rejects(service.uploadAttachmentPaths([first, second], "new-id"));
+    assert.deepEqual(uploaded, [["new-id", "one.txt"], ["new-id", "two.txt"]]);
+    assert.deepEqual(deleted, [["new-id", "file-one"]]);
+    assert.equal(service.selectedThreadId, "thread-a");
+    await assert.rejects(service.uploadAttachmentPaths([first], "missing"));
+    assert.equal(uploaded.length, 2);
+  } finally { await rm(folder, { recursive: true, force: true }); }
 });

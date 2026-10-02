@@ -527,14 +527,15 @@ export class DesktopConnectionService {
     } catch { this.actionError("The channel could not be deleted. Check that it is empty and that you have permission."); }
   }
 
-  async createThread(input: ThreadInput): Promise<void> {
-    const client = this.requireClient(), channelId = this.selectedChannelId;
+  async createThread(input: ThreadInput): Promise<string> {
+    const client = this.requireClient(), channelId = input.channelId ?? this.selectedChannelId;
     const title = input.title.trim();
-    if (!channelId || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(input.clientThreadId)) throw new Error("Enter a topic title.");
+    if (!channelId || !client.channels.has(channelId) || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(input.clientThreadId)) throw new Error("Choose a channel and enter a topic title.");
     try {
       const thread = await client.createThread(channelId, title, input.clientThreadId);
       this.listedThreads.set(thread.id, thread);
       await this.selectThread(thread.id);
+      return thread.id;
     } catch { this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed."); }
   }
 
@@ -682,15 +683,18 @@ export class DesktopConnectionService {
     catch { this.actionError("That request is no longer pending. Hermes will refresh its status."); await this.client?.getInteraction(item.thread_id, item.id).catch(() => {}); }
   }
 
-  async pickAndUploadAttachments(): Promise<readonly DesktopAttachment[]> {
+  async pickAndUploadAttachments(targetThreadId?: string): Promise<readonly DesktopAttachment[]> {
+    const threadId = targetThreadId ?? this.selectedThreadId;
     const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], title: "Attach files to Hermes" });
     if (result.canceled) return [];
-    return this.uploadAttachmentPaths(result.filePaths);
+    if (!threadId) return [];
+    return this.uploadAttachmentPaths(result.filePaths, threadId);
   }
 
-  async uploadAttachmentPaths(filePaths: readonly string[]): Promise<readonly DesktopAttachment[]> {
-    const client = this.requireClient(), threadId = this.selectedThreadId;
+  async uploadAttachmentPaths(filePaths: readonly string[], targetThreadId?: string): Promise<readonly DesktopAttachment[]> {
+    const client = this.requireClient(), threadId = targetThreadId ?? this.selectedThreadId;
     if (!threadId) return [];
+    if (!client.isThreadAvailable(threadId)) throw new Error("This conversation is unavailable.");
     if (filePaths.length > 8) throw new Error("Choose no more than eight files.");
     const files: Array<{ path: string; name: string; bytes: Uint8Array }> = [];
     for (const filePath of filePaths) {

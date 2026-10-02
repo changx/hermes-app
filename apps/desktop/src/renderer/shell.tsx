@@ -1,10 +1,11 @@
 import { AttachmentView } from "./attachment-view";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { orderedThreads } from "./thread-navigation";
 import { NavigationPanel } from "./navigation-panel";
+import { NewSessionDialog } from "./new-session-dialog";
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
 const drafts = new Map<string, string>();
@@ -31,7 +32,7 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
 };
 
 type Editor = "new-channel" | "edit-channel" | "new-thread" | "rename-thread" | "palette" | null;
-const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; snapshot: DesktopSnapshot; close: () => void }) => {
+const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | "new-thread">; snapshot: DesktopSnapshot; close: () => void }) => {
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
   const [description, setDescription] = useState(kind === "edit-channel" ? channel?.description ?? "" : "");
@@ -44,14 +45,13 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
     void window.hermesDesktop.getChannelInfo(channel.id).then(value => { if (active) { setName(value.name); setDescription(value.description ?? ""); setDetailsReady(true); } }, () => { if (active) setDetailError("Channel details could not be loaded. Close this form and open it again."); });
     return () => { active = false; };
   }, [kind, channel?.id]);
-  const clientThreadId = useRef(`th_${crypto.randomUUID().replaceAll("-", "")}`).current;
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!detailsReady) return;
     let task: Promise<void>;
     if (kind === "new-channel") task = window.hermesDesktop.createChannel({ name, description });
     else if (kind === "edit-channel" && channel) task = window.hermesDesktop.updateChannel(channel.id, { name, description });
-    else if (kind === "new-thread") task = window.hermesDesktop.createThread({ title: name, clientThreadId });
     else if (kind === "rename-thread" && snapshot.selectedThreadId) task = window.hermesDesktop.renameThread(snapshot.selectedThreadId, name);
     else return;
     safely(task.then(close));
@@ -64,7 +64,7 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
     </section></div>;
   }
   const channelEditor = kind === "new-channel" || kind === "edit-channel";
-  const title = kind === "new-channel" ? "New channel" : kind === "edit-channel" ? "Edit channel" : kind === "new-thread" ? "New topic" : "Rename topic";
+  const title = kind === "new-channel" ? "New channel" : kind === "edit-channel" ? "Edit channel" : "Rename topic";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
     <h2>{title}</h2>{detailError ? <p role="alert">{detailError}</p> : null}<label>{channelEditor ? "Name" : "Title"}<input autoFocus required disabled={!detailsReady} maxLength={channelEditor ? 120 : 200} value={name} onChange={(event) => setName(event.target.value)} /></label>
     {channelEditor ? <label>Description<textarea disabled={!detailsReady} maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label> : null}
@@ -134,61 +134,77 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [text, setText] = useState(threadId ? drafts.get(threadId) ?? "" : "");
   const [attachments, setAttachments] = useState<readonly DesktopAttachment[]>(threadId ? draftAttachments.get(threadId) ?? [] : []);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setText(threadId ? drafts.get(threadId) ?? "" : ""); setAttachments(threadId ? draftAttachments.get(threadId) ?? [] : []); }, [threadId]);
+  const [error, setError] = useState("");
+  const input = useRef<HTMLTextAreaElement>(null);
+  const working = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => {
+    if (!input.current) return;
+    input.current.style.height = "0px";
+    input.current.style.height = `${Math.min(120, Math.max(42, input.current.scrollHeight))}px`;
+  }, [text]);
   const update = (value: string) => { setText(value); if (threadId) drafts.set(threadId, value); };
+  const finish = () => { working.current = false; if (mounted.current) setBusy(false); };
   const submit = async () => {
-    if (!threadId || busy || (!text.trim() && !attachments.length)) return;
-    setBusy(true);
+    if (!threadId || working.current || (!text.trim() && !attachments.length)) return;
+    working.current = true; setBusy(true); setError("");
     try {
       await window.hermesDesktop.sendMessage({ text, attachmentIds: attachments.map(({ id }) => id) });
-      drafts.delete(threadId); draftAttachments.delete(threadId); setText(""); setAttachments([]);
-    } catch { /* snapshot carries the safe error; retain draft */ }
-    finally { setBusy(false); }
+      drafts.delete(threadId); draftAttachments.delete(threadId);
+      if (mounted.current) { setText(""); setAttachments([]); }
+    } catch { if (mounted.current) setError("Your message could not be saved. Your draft is still here."); }
+    finally { finish(); }
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); safely(submit()); }
   };
-  const attach = async () => {
-    setBusy(true);
-    try { const items = await window.hermesDesktop.pickAndUploadAttachments(); rememberAttachments(items); }
-    finally { setBusy(false); }
-  };
   const rememberAttachments = (items: readonly DesktopAttachment[]) => {
-    const next = [...attachments, ...items].slice(0, 8);
-    setAttachments(next);
+    const next = [...attachments, ...items];
+    // Keep selected uploads, never silently truncate files already uploaded.
+    if (next.length > 8) {
+      items.forEach(item => safely(window.hermesDesktop.deleteUnattachedAttachment(item.id)));
+      if (mounted.current) setError("A message can include up to eight files."); return;
+    }
+    if (mounted.current) setAttachments(next);
     if (threadId) draftAttachments.set(threadId, next);
   };
-  const drop = async (event: React.DragEvent<HTMLElement>) => {
-    event.preventDefault();
-    if (!threadId || busy || !event.dataTransfer.files.length) return;
-    setBusy(true);
-    try { rememberAttachments(await window.hermesDesktop.uploadDroppedFiles([...event.dataTransfer.files])); }
-    finally { setBusy(false); }
+  const attach = async (files?: readonly File[]) => {
+    if (!threadId || working.current) return;
+    working.current = true; setBusy(true); setError("");
+    try { rememberAttachments(files ? await window.hermesDesktop.uploadDroppedFiles(files, threadId) : await window.hermesDesktop.pickAndUploadAttachments(threadId)); }
+    catch { if (mounted.current) setError("The files could not be uploaded. Check their size and try again."); }
+    finally { finish(); }
   };
   const remove = (attachment: DesktopAttachment) => {
     const next = attachments.filter(({ id }) => id !== attachment.id); setAttachments(next); if (threadId) draftAttachments.set(threadId, next); safely(window.hermesDesktop.deleteUnattachedAttachment(attachment.id));
   };
   const running = snapshot.threads.find(({ id }) => id === threadId)?.running ?? false;
-  return <footer className="composer" aria-label="Message composer" onDragOver={(event) => event.preventDefault()} onDrop={(event) => safely(drop(event))}>
-    {attachments.length ? <div className="composer-attachments">{attachments.map((item) => <span key={item.id}>{item.name}<button type="button" aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button></span>)}</div> : null}
-    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy} aria-label="Attach files">＋</button><textarea aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={(event) => update(event.target.value)} onKeyDown={keyDown} />{running ? <button type="button" className="stop-button" onClick={() => safely(window.hermesDesktop.stopThread())}>Stop</button> : null}<button type="button" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>Send</button></div>
+  return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
+    {error && <p role="alert">{error}</p>}
+    {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span key={item.id}>{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button></span>)}</div> : null}
+    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files">＋</button><textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} />{running ? <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" onClick={() => safely(window.hermesDesktop.stopThread())}>■</button> : null}<button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>↑</button></div>
   </footer>;
 };
 
 export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [editor, setEditor] = useState<Editor>(null);
+  const [newSessionChannel, setNewSessionChannel] = useState<string>();
+  const [preparedDraft, setPreparedDraft] = useState(0);
+  const openNewSession = useCallback((channelId?: string) => { setNewSessionChannel(channelId); setEditor("new-thread"); }, []);
   const [panelOpen, setPanelOpen] = useState(true);
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
+      if (editor === "new-thread") return;
       if (event.key === "Escape") { setEditor(null); return; }
       if (!event.metaKey) return;
       if (event.key.toLocaleLowerCase() === "b") { event.preventDefault(); setPanelOpen((open) => !open); }
       if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
-      if (event.key.toLocaleLowerCase() === "n" && snapshot.selectedChannelId) { event.preventDefault(); setEditor("new-thread"); }
+      if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); openNewSession(snapshot.selectedChannelId); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
-  }, [snapshot.selectedChannelId]);
+  }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
   if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
   if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside></main>;
   const forget = () => { if (window.confirm("Forget this connection and remove its local drafts and queued messages?")) { drafts.clear(); draftAttachments.clear(); safely(window.hermesDesktop.forgetConnection()); } };
@@ -198,20 +214,20 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     <nav className="activity-bar" aria-label="Navigation tools">
       <button type="button" title="Toggle navigation (⌘B)" aria-label="Toggle navigation" aria-expanded={panelOpen} aria-controls="navigation-panel" onClick={() => setPanelOpen((open) => !open)}>☰</button>
       <button type="button" title="Switch thread (⌘K)" aria-label="Switch thread" onClick={() => setEditor("palette")}>⌕</button>
-      <button type="button" title="New topic (⌘N)" aria-label="Create a topic" disabled={!channel} onClick={() => setEditor("new-thread")}>＋</button>
+      <button type="button" title="New session (⌘N)" aria-label="Create a session" disabled={!snapshot.channels.length} onClick={() => openNewSession(snapshot.selectedChannelId)}>＋</button>
     </nav>
     <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
       <header className="pane-header"><h1 id="navigation-heading">Conversations</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
-      <NavigationPanel snapshot={snapshot} />
+      <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} />
       <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
       {snapshot.selectedThreadId ? <Timeline key={snapshot.selectedThreadId} snapshot={snapshot} /> : snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
       {snapshot.interactions.map((item) => <section className="interaction-card" key={item.id}><strong>{item.kind === "approval" ? "Approval requested" : "Hermes needs clarification"}</strong><p>{item.prompt}</p><div>{item.choices.map((choice) => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-      <Composer snapshot={snapshot} />
+      <Composer key={`${snapshot.selectedThreadId}:${preparedDraft}`} snapshot={snapshot} />
     </section>
-    {editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
+    {editor === "new-thread" ? <NewSessionDialog snapshot={snapshot} initialChannelId={newSessionChannel} close={() => setEditor(null)} prepared={(threadId, attachments) => { draftAttachments.set(threadId, attachments); setPreparedDraft(value => value + 1); }} /> : editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
   </main>;
 };
 

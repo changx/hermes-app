@@ -64,7 +64,7 @@ export type DesktopSnapshot = Readonly<{
 
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
-export type ThreadInput = Readonly<{ title: string; clientThreadId: string }>;
+export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[] }>;
 export type DesktopRuntimeInfo = Readonly<{
   platform: NodeJS.Platform;
@@ -84,7 +84,7 @@ export interface HermesDesktopApi {
   createChannel(input: ChannelInput): Promise<void>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
-  createThread(input: ThreadInput): Promise<void>;
+  createThread(input: ThreadInput): Promise<string>;
   renameThread(threadId: string, title: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;
   loadOlder(): Promise<void>;
@@ -94,8 +94,8 @@ export interface HermesDesktopApi {
   stopThread(): Promise<void>;
   cancelQueued(receiptId: string): Promise<void>;
   answerInteraction(interactionId: string, choice: string): Promise<void>;
-  pickAndUploadAttachments(): Promise<readonly DesktopAttachment[]>;
-  uploadDroppedFiles(files: readonly File[]): Promise<readonly DesktopAttachment[]>;
+  pickAndUploadAttachments(threadId?: string): Promise<readonly DesktopAttachment[]>;
+  uploadDroppedFiles(files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]>;
   deleteUnattachedAttachment(attachmentId: string): Promise<void>;
   downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void>;
   previewAttachmentImage(attachmentId: string): Promise<string>;
