@@ -1,0 +1,44 @@
+# OPEN-SESSION-LIVE — cross-end refactor
+
+Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal and the v0.1.6 cache/replay design. App baseline main 4a80671; App branch refactor/open-session-live; standalone plugin branch feat/plugin-open-session-live based on cf90647. Never modify Hermes core or other profiles.
+
+## Product contract (confirmed)
+
+- No unread counts or cross-device read-position reporting for unread accounting.
+- Only lightweight Channel/session directory and running state remain resident outside a conversation.
+- Only the currently opened conversation is fetched, subscribed and cached. Running-but-closed conversations do not preload content.
+- Closing/switching cancels content requests, unsubscribes and releases messages, parsing/media/WebView state. Late replies cannot repopulate released content. A viewer may retain its explicitly displayed message/file, not the entire covered chat timeline.
+- No client SQLite history database, event replay, timestamp alignment, per-entity sync version chain or periodic business reads. A normal heartbeat detects a broken connection; it does not read catalogue or messages.
+- Initial open, reconnect and foreground recovery retrieve fresh current state. Subscribe acknowledgement must precede the initial content read; events during that read request another reconciliation so there is no handoff gap.
+- Server owns all original history and accepted tasks; leaving/closing the App never cancels an accepted model task. Preserve stable message IDs/order, public tool records, latest/older pagination, approvals and attachment security.
+- Credentials and unconfirmed sends retain secure durable storage. Drafts/unsent originals must not be silently deleted. Authenticated durable matching ACK proves receipt independently of execution outcome; unknown execution is never re-run automatically.
+- Existing archive versus hard-delete product contract is unchanged. Directory removal/archive makes an opened target unavailable and blocks new delivery, retaining local user input for recovery.
+- Offline restart has no stored server history; this is an accepted tradeoff, not a defect to hide with a new database.
+
+## Simplest wire boundary
+
+Reuse existing authenticated capabilities/history/receipt/interaction/attachment APIs. Add one lightweight catalogue endpoint and one live WebSocket route in the plugin. Catalogue contains only directory fields and running state (no unread, receipt bodies, prompts or messages). Live connection observes directory/running changes for the account; watch command selects at most one Thread for content notifications. Frames are state/change hints, not replay instructions. No client event cursor, data version or local sync journal.
+
+`GET /v1/catalogue?after=<ordinary page anchor>&limit=30` returns directory items and next_after; full pagination must succeed before applying absence. Ordinary history/catalogue pagination is not a synchronization cursor.
+
+`WS /v1/live`: hello; `{type:watch,thread_id:<id|null>,request_id:<ephemeral request identity>}`; matching watching acknowledgement; directory_changed, session_state (running), conversation_changed scoped to the watched request. Request identity is only to ignore stale subscription responses, not a stored entity version. Ping/pong is health-only. Slow consumers close/reconnect instead of silently dropping required changes.
+
+Plugin-owned Store post-commit notifications wake the publisher, including writes through formal history hooks; never notify before a failed/rolled-back write. Reuse existing server metadata/change records privately for reliable publication; do not add another authoritative store or make clients replay it. Old /snapshot,/sync,/events remain server-compatible for already published clients until their upgrade; candidate apps use only the new scoped path.
+
+## Kanban work breakdown
+
+Root milestone reuses t_92271ef6. Child membership is recorded here and in card bodies; dependency links represent real prerequisites only, never root blocking children.
+
+Card IDs: LIVE-01 `t_01cb5839`; LIVE-02 `t_1f9d2e89`; LIVE-03 `t_e08b7715`; LIVE-04 `t_3cb44f68`; LIVE-05 `t_f4b80248`; LIVE-06 `t_87a706db`; LIVE-07 `t_680b55b9`. Root's retained coordinator workspace points at the withdrawn clean worktree; implementation uses the explicit App/plugin child workspaces above. No dispatcher workers are launched automatically.
+
+| Work | Scope | Acceptance | Dependency |
+|---|---|---|---|
+| LIVE-01 contract | Replace superseded requirements/architecture; exact scope/handshake/storage boundaries | No contradictory unread/cache/poll/replay requirements; fixtures cover packet types and scope | none |
+| LIVE-02 plugin | Catalogue + scoped live route + post-commit publisher; no core changes | Auth, one watch, A/B/A, handoff, reliable committed changes, directory/archive, idle no business reads; isolated HTTP/WS | LIVE-01 |
+| LIVE-03 SDK | Single-open-session lifecycle, health-only connection, fresh directory/reconnect, one-shot send proof | No /sync, no background body fetch or periodic read; immediate release and stale-response fences; message IDs/order and pagination preserved | LIVE-01, LIVE-02 |
+| LIVE-04 desktop | Remove SQLite/cache worker/unread/read-reporting; use scoped client; release reader/media state | Switch/close/forget/remote removal release content; stable delta rendering; credential/outbox retained; TS/build/native package | LIVE-03 |
+| LIVE-05 mobile | Scoped focus/foreground/viewer lifetimes; no unread; release hidden timeline/reader media | Source/tests enforce one conversation; navigation/keyboard/history anchors unchanged; TS/Android+iOS exports; device behavior separate | LIVE-03 |
+| LIVE-06 durable input | ACK/outbox and local drafts without background content cache/polling | ACK loss same-ID retry, crash restore, unknown no re-run, storage failure explicit, closed-session sends never populate history | LIVE-03 |
+| LIVE-07 integration | Dual-client fault/resource matrix and artifacts | Real isolated Gateway HTTP/WS; server tasks survive client close; scopes/memory retained objects bounded; native Mac smoke; iPhone/signed mobile gates explicit | LIVE-02..06 |
+
+Signing, production deployment, remote push, service restart, new hard-delete/cascade operations and published-client replacement require their own authorization. Main/runtime remain unchanged during implementation.
