@@ -323,6 +323,37 @@ test('production table stays bounded, scrolls horizontally and retains inline ce
   assert.deepEqual(h.copied, ['const x = 1;\n']);
 });
 
+test('Session, independent table viewer and article fallback share bounded native table viewports', () => {
+  for (const platform of ['ios', 'android']) {
+    const h = mount('Before\n\n> | A | B | C |\n> |---|---|---|\n> | x | y | z |\n\nAfter', { canExpand: true, platform });
+    const check = nodes => {
+      const frame = findStyle(nodes, s => s?.width === '100%' && s?.minWidth === 0 && s?.overflow === 'hidden');
+      assert.equal(frame.props.style.maxWidth, '100%');
+      const scroll = nodes.find(n => n.type === 'ScrollView' && n.props.horizontal);
+      assert.equal(scroll.props.style.width, '100%');
+      assert.equal(scroll.props.style.minWidth, 0);
+      assert.equal(scroll.props.style.maxWidth, '100%');
+      assert.equal(scroll.props.contentOffset, undefined);
+    };
+    check(h.walk(h.render()));
+    const root = h.walk(h.render(false)).find(n => n.props.onTouchEnd);
+    assert.equal(root.props.style.maxWidth, '100%');
+    h.walk(h.render(false)).find(n => n.props.accessibilityLabel === 'View table fullscreen').props.onPress();
+    const viewer = h.walk(h.viewer());
+    check(viewer);
+    const vertical = viewer.find(n => n.type === 'ScrollView' && !n.props.horizontal);
+    assert.equal(vertical.props.style.maxWidth, '100%');
+    assert.equal(vertical.props.contentContainerStyle.alignItems, 'stretch');
+    h.close();
+    doubleTapArticle(h);
+    h.walk(h.viewer()).find(n => n.type === 'WebView').props.onError();
+    const fallback = h.walk(h.viewer());
+    check(fallback);
+    assert.equal(fallback.find(n => n.type === 'ScrollView' && !n.props.horizontal).props.contentContainerStyle.alignItems, 'stretch');
+    h.unmount();
+  }
+});
+
 test('tool text uses native copy without an extra window, press responder or saved coordinates', () => {
   const calls = [
     { id: 'a', name: 'web_extract', label: '阅读网页', detail: 'https://example.com/very/long/path/…  https://other.example', arguments: { raw: 'never-copy-this' } },

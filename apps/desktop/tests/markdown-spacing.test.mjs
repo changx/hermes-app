@@ -22,7 +22,7 @@ const styles = await readFile(new URL('../src/renderer/styles.css', import.meta.
 
 test('Markdown owns its whitespace without changing content or code indentation', () => {
   assert.match(html, /^<div class="message-markdown">/);
-  assert.match(styles, /\.message-markdown\s*\{\s*white-space: normal;\s*\}/);
+  assert.match(styles, /\.message-markdown\s*\{\s*white-space: normal;[^}]*\}/);
   assert.match(html, /<\/p>\n<ul>/, 'renderer separators remain in markup, not altered message text');
   assert.match(html, /function check\(\) \{\n  return 1;\n\}/);
   assert.match(html, /<ol>/);

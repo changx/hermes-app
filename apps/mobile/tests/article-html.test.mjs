@@ -23,6 +23,17 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 } });
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
 
+const { checkTableLayout, wideTables } = await import('../../../tests/markdown-table-layout.mjs');
+test('article tables explicitly bound their section and scroll viewport, never the readable grid', () => {
+  const html = render(wideTables).html;
+  assert.match(html, /article,\.table-block\{min-width:0;max-width:100%\}/);
+  assert.match(html, /\.table-scroll\{[^}]*width:100%;min-width:0;max-width:100%;box-sizing:border-box/);
+  assert.match(html, /table\{border-collapse:collapse;width:max-content;min-width:100%\}/);
+});
+test('Chromium: full article tables stay inside prose, quotes and lists across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  await checkTableLayout(render(wideTables).html, '.table-scroll');
+});
+
 test('article CSS scales body, headings, code inheritance, controls and captions with bounded input', () => {
   const blocks = parseMessageMarkdown('# Heading\n\nSome `code`.\n\n```sh\nprintf ok\n```\n\n![image](https://example.com/i.png)');
   const large = output.exports.renderArticleHtml(blocks, [], 1.3).html;
