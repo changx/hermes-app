@@ -15,6 +15,15 @@ await Promise.all([
 
 await Promise.all([
   build({
+    entryPoints: [resolve(root, "src/main/cache-worker.ts")],
+    outfile: resolve(dist, "main/cache-worker.cjs"),
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    sourcemap: true,
+  }),
+  build({
     entryPoints: [resolve(root, "src/main/index.ts")],
     outfile: resolve(dist, "main/index.cjs"),
     bundle: true,

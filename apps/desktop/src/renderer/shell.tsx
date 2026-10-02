@@ -1,11 +1,11 @@
 import { AttachmentView } from "./attachment-view";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { orderedThreads } from "./thread-navigation";
 import { NavigationPanel } from "./navigation-panel";
-import type { DesktopAttachment, DesktopSnapshot } from "../shared/desktop-api";
+import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
 const drafts = new Map<string, string>();
 const draftAttachments = new Map<string, readonly DesktopAttachment[]>();
@@ -63,7 +63,27 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
   </form></div>;
 };
 
-const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; continuation: boolean }) => {
+  const finalReply = message.role === "assistant" && message.displayKind === "final";
+  const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
+  const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
+  const hasTime = timestamp && Number.isFinite(timestamp.getTime());
+  return <article className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
+    {!continuation && <p className="message-role">{message.role === "assistant" ? "Hermes" : message.role === "user" ? "You" : "Notice"}{hasTime ? <time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time> : null}</p>}
+    <MessageContent text={message.text} />
+    <div className="tool-records">{message.toolCalls.map((tool) => {
+      const presentation = toolPresentation(tool.name);
+      return <section className="tool-record" key={tool.id} aria-label={tool.label}>
+        <div className="tool-line"><span className="tool-icon" aria-hidden="true">{tool.icon ?? presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{compactToolCaption(tool.name ?? '', tool.label, tool.detail, tool.caption)}</span></div>
+        {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
+      </section>;
+    })}</div>
+    {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
+    {message.receiptState ? <div className={`receipt receipt-${message.receiptState}`}>{message.processing === "running" ? "Running" : message.receiptState}{message.feedback ? ` · ${message.feedback}` : ""}{message.clientMessageId && ["failed", "interrupted", "unknown"].includes(message.receiptState) ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
+  </article>;
+});
+
+const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const list = useRef<HTMLDivElement>(null);
   const previous = useRef({ threadId: "", first: "", height: 0, count: 0 });
   const [following, setFollowing] = useState(true);
@@ -78,7 +98,7 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
     else if (following) node.scrollTop = node.scrollHeight;
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
-  }, [first, following, snapshot.messages.length, snapshot.selectedThreadId]);
+  }, [first, following, snapshot.messages, snapshot.selectedThreadId]);
   const latestVisibleRef = snapshot.messages.reduce((latest, message) => Math.max(latest, message.refSeq ?? 0), 0);
   useEffect(() => {
     const mark = () => {
@@ -103,27 +123,12 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
       {snapshot.messages.length ? snapshot.messages.map((message, index) => {
         const previous = snapshot.messages[index - 1];
         const continuation = message.role === "assistant" && previous?.role === "assistant" && !message.displayKind && !previous.displayKind;
-        const finalReply = message.role === "assistant" && message.displayKind === "final";
-        const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
-        const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
-        const hasTime = timestamp && Number.isFinite(timestamp.getTime());
-        return <article className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`} key={message.id}>
-        {!continuation && <p className="message-role">{message.role === "assistant" ? "Hermes" : message.role === "user" ? "You" : "Notice"}{hasTime ? <time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time> : null}</p>}
-        <MessageContent text={message.text} />
-        <div className="tool-records">{message.toolCalls.map((tool) => {
-          const presentation = toolPresentation(tool.name);
-          return <section className="tool-record" key={tool.id} aria-label={tool.label}>
-            <div className="tool-line"><span className="tool-icon" aria-hidden="true">{tool.icon ?? presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{compactToolCaption(tool.name ?? '', tool.label, tool.detail, tool.caption)}</span></div>
-            {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
-          </section>;
-        })}</div>
-        {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
-        {message.receiptState ? <div className={`receipt receipt-${message.receiptState}`}>{message.processing === "running" ? "Running" : message.receiptState}{message.feedback ? ` · ${message.feedback}` : ""}{message.clientMessageId && ["failed", "interrupted", "unknown"].includes(message.receiptState) ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
-      </article>; }) : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
+        return <MessageRow key={message.id} message={message} continuation={continuation} />;
+      }) : snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-busy="true"><h3>Loading messages…</h3></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-};
+}, (before,after) => before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
 const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const threadId = snapshot.selectedThreadId;
@@ -203,7 +208,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
-      {snapshot.selectedThreadId ? <Timeline snapshot={snapshot} /> : snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
+      {snapshot.selectedThreadId ? <Timeline key={snapshot.selectedThreadId} snapshot={snapshot} /> : snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
       {snapshot.interactions.map((item) => <section className="interaction-card" key={item.id}><strong>{item.kind === "approval" ? "Approval requested" : "Hermes needs clarification"}</strong><p>{item.prompt}</p><div>{item.choices.map((choice) => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
       <Composer snapshot={snapshot} />
     </section>

@@ -1,4 +1,5 @@
 import type { ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
+import type { DesktopUpdate } from "./snapshot-delta";
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 
@@ -48,6 +49,7 @@ export type DesktopSnapshot = Readonly<{
   connectionState: ConnectionState;
   connectionLabel: string;
   loadingConversations?: boolean;
+  loadingMessages?: boolean;
   statusMessage?: string;
   errorMessage?: string;
   channels: readonly DesktopChannel[];
@@ -72,7 +74,7 @@ export type DesktopRuntimeInfo = Readonly<{
 export interface HermesDesktopApi {
   getRuntimeInfo(): DesktopRuntimeInfo;
   getSnapshot(): Promise<DesktopSnapshot>;
-  subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void;
+  subscribe(listener: (snapshot: DesktopUpdate) => void): () => void;
   pair(request: PairingRequest): Promise<void>;
   cancelPairing(): Promise<void>;
   forgetConnection(): Promise<void>;

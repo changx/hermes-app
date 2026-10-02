@@ -19,7 +19,23 @@ export interface HttpTransport { request(method: string, path: string, token: st
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
-export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
+export interface ClientCheckpoint {
+  schema: 1;
+  cursor: string | null;
+  lastEventId: number;
+  channels: Channel[];
+  threads: ThreadSummary[];
+  receipts: Receipt[];
+  interactions: Interaction[];
+  attachments: Attachment[];
+  messages: Array<[string, Message[]]>;
+  versions: Array<[string, number]>;
+  fetchSequence: number;
+  entitySequence: Array<[string, number]>;
+  messageSequence: Array<[string, number]>;
+  knownEmptyThreads: string[];
+}
+export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onCheckpoint?: (checkpoint: ClientCheckpoint) => Promise<void>; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 export class ResyncRequired extends ProtocolError { constructor(message: string) { super(message); this.name = 'ResyncRequired' } }
 export class ExpiredCursor extends ResyncRequired { constructor() { super('expired sync cursor'); this.name = 'ExpiredCursor' } }
@@ -174,6 +190,7 @@ export class HermesClient {
   private _connectionState: ConnectionState = 'suspended';
   get connectionState(): ConnectionState { return this._connectionState }
   private capabilitiesReady = false;
+  get hasCapabilities(): boolean { return this.capabilitiesReady }
   private boundToken: string | null = null;
   supportsLatest = false;
   supportsSendIdentity = false;
@@ -182,7 +199,78 @@ export class HermesClient {
   private tailRecoveryJobs = new Map<string, { promise: Promise<Message[]>; signal?: AbortSignal }>();
   private knownEmptyThreads = new Set<string>();
   constructor(private readonly options: Options) {}
-  private changed() { this.options.onChange?.() }
+
+  checkpoint(): ClientCheckpoint {
+    return {
+      schema:1,cursor:this.cursor,lastEventId:this.lastEventId,
+      channels:[...this.channels.values()],threads:[...this.threads.values()],receipts:[...this.receipts.values()],
+      interactions:[...this.interactions.values()],attachments:[...this.attachments.values()],messages:[...this.messages],
+      versions:[...this.versions],fetchSequence:this.fetchSequence,entitySequence:[...this.entitySequence],messageSequence:[...this.messageSequence],
+      knownEmptyThreads:[...this.knownEmptyThreads],
+    };
+  }
+
+  /** Restore only into a fresh, owner-scoped client, before any requests. */
+  restoreCheckpoint(value: unknown): void {
+    if (this.controller || this.cursor !== null || this.fetchSequence !== 0) throw new ProtocolError('client already initialized');
+    const x=obj(value);
+    if (x.schema !== 1) throw new ProtocolError('unsupported cache schema');
+    const cursor=x.cursor===null?null:str(x.cursor),lastEventId=num(x.lastEventId),fetchSequence=num(x.fetchSequence);
+    if (cursor===null && lastEventId) throw new ProtocolError('invalid cache checkpoint');
+    const unique = <T extends {id:string}>(values: unknown, validate:(value:unknown)=>T): T[] => {
+      const rows=arr(values).map(validate);
+      if (new Set(rows.map(row=>row.id)).size!==rows.length) throw new ProtocolError('duplicate cache identity');
+      return rows;
+    };
+    const channels=unique(x.channels,validChannel),threads=unique(x.threads,validSummary),receipts=unique(x.receipts,validReceipt);
+    const interactions=unique(x.interactions,validInteraction),attachments=unique(x.attachments,validAttachment);
+    const messages=arr(x.messages).map(value=>{
+      const pair=arr(value); if(pair.length!==2)throw new ProtocolError('invalid cache messages');
+      const id=str(pair[0]),rows=unique(pair[1],validMessage);
+      if (new Set(rows.map(row=>row.ref_seq)).size!==rows.length) throw new ProtocolError('duplicate cache reference');
+      return [id,rows.sort((a,b)=>a.ref_seq-b.ref_seq)] as [string,Message[]];
+    });
+    if (new Set(messages.map(([id])=>id)).size!==messages.length) throw new ProtocolError('duplicate cache thread');
+    const ranks=(value:unknown): Array<[string,number]> => {
+      const pairs=arr(value).map(value=>{const pair=arr(value);if(pair.length!==2)throw new ProtocolError('invalid cache rank');return [str(pair[0]),num(pair[1])] as [string,number]});
+      if(new Set(pairs.map(([key])=>key)).size!==pairs.length)throw new ProtocolError('duplicate cache rank');
+      return pairs;
+    };
+    const versions=ranks(x.versions),entitySequence=ranks(x.entitySequence),messageSequence=ranks(x.messageSequence);
+    if([...entitySequence,...messageSequence].some(([,rank])=>rank>fetchSequence))throw new ProtocolError('invalid cache sequence');
+    const knownEmptyThreads=arr(x.knownEmptyThreads).map(str);
+    // Validate everything before mutating any live projection.
+    this.batchChanges(()=>{
+      for(const row of channels)this.channels.set(row.id,row);
+      for(const row of threads)this.threads.set(row.id,row);
+      for(const row of receipts)this.storeReceipt(row,false);
+      for(const row of interactions)if(row.state==='pending')this.interactions.set(row.id,row);
+      for(const row of attachments)this.attachments.set(row.id,row);
+      for(const [id,rows] of messages)this.messages.set(id,rows);
+      this.versions=new Map(versions);this.entitySequence=new Map(entitySequence);this.messageSequence=new Map(messageSequence);
+      this.fetchSequence=fetchSequence;this.knownEmptyThreads=new Set(knownEmptyThreads);
+      this.cursor=cursor;this.lastEventId=lastEventId;this.changed();
+    });
+  }
+
+  private notificationDepth = 0;
+  private notificationPending = false;
+  private changed() {
+    if (this.notificationDepth) { this.notificationPending = true; return }
+    this.options.onChange?.();
+  }
+  // Only batch synchronous projection commits, never hold UI notifications
+  // across an HTTP await: one slow session must not hide another's updates.
+  private batchChanges(commit: () => void) {
+    this.notificationDepth++;
+    try { commit() }
+    finally {
+      if (--this.notificationDepth === 0 && this.notificationPending) {
+        this.notificationPending = false;
+        this.options.onChange?.();
+      }
+    }
+  }
   private state(next: ConnectionState) { if(this._connectionState!==next) { this._connectionState=next; this.options.onConnectionState?.(next) } }
   private token(): string {
     const token=this.options.token();
@@ -429,14 +517,16 @@ export class HermesClient {
     let after: string | null = null;
     do {
       const x=await this.call('GET','/v1/snapshot'+query({after,limit:100}),undefined,signal);
-      for (const summary of arr(x.threads).map(validSummary)) {
-        const key='summary:'+summary.id;
-        if (rank >= (this.versions.get(key)||0)) {
-          const old=this.threads.get(summary.id);
-          if (old && summary.read_ref<old.read_ref) { summary.read_ref=old.read_ref; summary.unread_count=old.unread_count }
-          this.threads.set(summary.id,summary); this.reconcileActiveReceipts(summary); this.versions.set(key,rank); this.changed()
+      this.batchChanges(() => {
+        for (const summary of arr(x.threads).map(validSummary)) {
+          const key='summary:'+summary.id;
+          if (rank >= (this.versions.get(key)||0)) {
+            const old=this.threads.get(summary.id);
+            if (old && summary.read_ref<old.read_ref) { summary.read_ref=old.read_ref; summary.unread_count=old.unread_count }
+            this.threads.set(summary.id,summary); this.reconcileActiveReceipts(summary); this.versions.set(key,rank); this.changed()
+          }
         }
-      }
+      });
       after=optionalCursor(x.next_after);
     } while(after);
   }
@@ -448,35 +538,77 @@ export class HermesClient {
     if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
     await this.listChannels(signal);
     if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
-    for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) { this.threads.set(t.id,t); this.reconcileActiveReceipts(t) } for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
+    this.batchChanges(() => {
+      for (const t of pages) { const key='thread:'+t.id; if ((this.versions.get(key)||0)===0) { this.threads.set(t.id,t); this.reconcileActiveReceipts(t) } for(const item of t.pending_interactions||[])this.interactions.set(item.id,item) }
+    });
+    if (this.options.onCheckpoint) await this.options.onCheckpoint({...this.checkpoint(),cursor:earliest,lastEventId:0});
+    if (signal?.aborted || epoch!==this.projectionEpoch) throw new Error('aborted');
     this.cursor=earliest; this.lastEventId=0; this.changed();
   }
-  private async applyEvent(event: Event, signal?: AbortSignal) {
-    if (event.event_id<=this.lastEventId) return;
-    if (this.lastEventId && event.event_id!==this.lastEventId+1) throw new ResyncRequired('event gap');
-    const key=event.kind+':'+event.thread_id+':'+event.ref;
-    if (event.version>(this.versions.get(key)||0)) {
-      if (event.kind==='channel') await this.listChannels(signal);
-      else if (event.kind==='thread') await this.getThread(event.thread_id,event.event_id,signal);
-      else if (event.kind==='message') {
-        // An edit can target an older row, outside both the tail and latest page.
-        // Refresh its exact owned reference before acknowledging this version.
-        if (event.version>1) {
-          const ref=Number(event.ref);
-          if (!Number.isSafeInteger(ref) || ref<=0) throw new ProtocolError('invalid message reference');
-          await this.history(event.thread_id,undefined,1,signal,undefined,ref);
-        }
-        await this.historyTail(event.thread_id,signal); await this.refreshSummaries(event.event_id,signal);
-      }
-      else if (event.kind==='receipt') await this.getReceipt(event.ref,signal);
-      else if (event.kind==='interaction') await this.getInteraction(event.thread_id,event.ref,signal);
-      else if (event.kind==='attachment') await this.getAttachment(event.thread_id,event.ref,signal);
-      else if (event.kind==='read') await this.refreshSummaries(event.event_id,signal);
-      if (signal?.aborted) throw new Error('aborted');
-      this.versions.set(key,event.version);
+  private async applyEvents(events: readonly Event[], signal?: AbortSignal) {
+    const epoch = this.projectionEpoch;
+    const pending: Event[] = [];
+    let last = this.lastEventId;
+    let gap = false;
+    for (const event of events) {
+      if (event.event_id <= last) continue;
+      if (last && event.event_id !== last + 1) { gap = true; break }
+      pending.push(event); last = event.event_id;
     }
-    if (signal?.aborted) throw new Error('aborted');
-    this.lastEventId=event.event_id; this.cursor=event.cursor;
+    const owned = new Map<string, Event>();
+    for (const event of pending) {
+      const key = event.kind+':'+event.thread_id+':'+event.ref;
+      if (event.version > (this.versions.get(key) || 0) && event.version > (owned.get(key)?.version || 0)) owned.set(key,event);
+    }
+    const messageGroups = new Map<string, Event[]>();
+    const reads: Array<() => Promise<unknown>> = [];
+    let summariesRank = 0;
+    let channels = false;
+    for (const event of owned.values()) {
+      if (event.kind === 'channel') channels = true;
+      else if (event.kind === 'message') {
+        const group = messageGroups.get(event.thread_id) || [];
+        group.push(event); messageGroups.set(event.thread_id,group);
+        summariesRank = Math.max(summariesRank,event.event_id);
+      } else if (event.kind === 'read') summariesRank = Math.max(summariesRank,event.event_id);
+      else if (event.kind === 'thread') reads.push(() => this.getThread(event.thread_id,event.event_id,signal));
+      else if (event.kind === 'receipt') reads.push(() => this.getReceipt(event.ref,signal));
+      else if (event.kind === 'interaction') reads.push(() => this.getInteraction(event.thread_id,event.ref,signal));
+      else if (event.kind === 'attachment') reads.push(() => this.getAttachment(event.thread_id,event.ref,signal));
+    }
+    if (channels) reads.push(() => this.listChannels(signal));
+    for (const [threadId, group] of messageGroups) reads.push(async () => {
+      // Exact edits can sit outside the latest/tail window. Never coalesce
+      // different edited refs into a tail-only read.
+      for (const event of group) if (event.version > 1) {
+        const ref = Number(event.ref);
+        if (!Number.isSafeInteger(ref) || ref <= 0) throw new ProtocolError('invalid message reference');
+        await this.history(threadId,undefined,1,signal,undefined,ref);
+      }
+      try { await this.historyTail(threadId,signal) }
+      catch (error) {
+        if (!this.tailIncomplete.has(threadId)) throw error;
+        await this.recoverHistoryTail(threadId,signal);
+      }
+    });
+    if (summariesRank) reads.push(() => this.refreshSummaries(summariesRank,signal));
+    // No selection/priority here. Independent sessions publish as their reads
+    // finish. Wait for every owner to settle before acknowledging this page;
+    // failed pages replay idempotently and cannot leave detached mutations.
+    const outcomes = await Promise.allSettled(reads.map(read => read()));
+    if (signal?.aborted || epoch !== this.projectionEpoch) throw new Error('aborted');
+    const failure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+    if (failure) throw failure.reason;
+    const nextVersions = new Map(this.versions);
+    for (const [key,event] of owned) nextVersions.set(key,event.version);
+    const tail=pending.at(-1);
+    if (this.options.onCheckpoint) await this.options.onCheckpoint({
+      ...this.checkpoint(),cursor:tail?.cursor ?? this.cursor,lastEventId:tail?.event_id ?? this.lastEventId,versions:[...nextVersions],
+    });
+    if (signal?.aborted || epoch !== this.projectionEpoch) throw new Error('aborted');
+    for (const [key,event] of owned) this.versions.set(key,Math.max(this.versions.get(key)||0,event.version));
+    for (const event of pending) { this.lastEventId = event.event_id; this.cursor = event.cursor }
+    if (gap) throw new ResyncRequired('event gap');
   }
   async catchUp(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) throw new Error('aborted');
@@ -485,7 +617,10 @@ export class HermesClient {
     const job=(async()=>{ if (this.cursor===null) await this.snapshot(signal); let more=true; while(more) {
       const x=await this.call('GET','/v1/sync'+query({cursor:this.cursor,limit:200}),undefined,signal);
       const events=arr(x.events).map(validEvent); str(x.waterline); const next=str(x.next_cursor); more=x.has_more===true;
-      for (const event of events) await this.applyEvent(event,signal);
+      if (!events.length && next!==this.cursor) throw new ResyncRequired('empty page advanced cursor');
+      if (events.length && next!==events.at(-1)!.cursor) throw new ResyncRequired('page cursor mismatch');
+      if (more && !events.length) throw new ResyncRequired('empty continuation page');
+      await this.applyEvents(events,signal);
       if (!events.length && next!==this.cursor) throw new ResyncRequired('empty page advanced cursor');
       if (events.length && next!==this.cursor) throw new ResyncRequired('page cursor mismatch');
       if (more && !events.length) throw new ResyncRequired('empty continuation page');

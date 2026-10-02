@@ -2,13 +2,19 @@ import { app, BrowserWindow, ipcMain, powerMonitor, shell } from "electron";
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnectionService } from "./connection-service";
+import type { DesktopSnapshot } from "../shared/desktop-api";
+import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
 
 const SNAPSHOT_EVENT = "desktop:snapshot";
 let mainWindow: BrowserWindow | null = null;
+let publishedSnapshot: DesktopSnapshot | undefined;
 
 const service = new DesktopConnectionService((snapshot) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(SNAPSHOT_EVENT, snapshot);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(SNAPSHOT_EVENT, publishedSnapshot ? snapshotDelta(publishedSnapshot,snapshot) : snapshot);
+    publishedSnapshot = snapshot;
+  }
 });
 
 const trustedSender = (event: Electron.IpcMainInvokeEvent): void => {

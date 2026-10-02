@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
@@ -9,8 +10,8 @@ const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
 const api: HermesDesktopApi = Object.freeze({
   getRuntimeInfo: (): DesktopRuntimeInfo => runtimeInfo,
   getSnapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("desktop:get-snapshot"),
-  subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void {
-    const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot) => listener(snapshot);
+  subscribe(listener: (snapshot: DesktopUpdate) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopUpdate) => listener(snapshot);
     ipcRenderer.on("desktop:snapshot", receive);
     return () => ipcRenderer.removeListener("desktop:snapshot", receive);
   },

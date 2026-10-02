@@ -22,6 +22,8 @@ const snapshot = (revision, label = "Offline") => ({
   channels: [],
   threads: [],
   messages: [],
+  interactions: [],
+  canLoadOlder: false,
 });
 
 test("desktop external store keeps stable snapshots and releases bridge listeners", async () => {

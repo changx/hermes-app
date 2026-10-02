@@ -6,6 +6,7 @@ import { HermesClient, HttpError, isRetryableError, type Attachment, type Connec
 import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
+import { CacheStorageError, ProjectionCacheWorker } from "./projection-cache-worker";
 import { mainTransport, normalizeBaseUrl } from "./transport";
 
 const stateLabel: Record<ConnectionState, string> = {
@@ -73,6 +74,7 @@ export class DesktopConnectionService {
   private readonly store = new CredentialStore();
   private readonly outboxStore = new OutboxStore();
   private client: HermesClient | null = null;
+  private cache: ProjectionCacheWorker | null = null;
   private connection: StoredConnection | null = null;
   private pairingController: AbortController | null = null;
   private pairingStarting = false;
@@ -88,6 +90,8 @@ export class DesktopConnectionService {
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
   private olderCursor: string | undefined;
+  private visibleStartRef: number | undefined;
+  private loadingMessages = false;
   private readJobs = new Map<string, AbortController>();
   private outboxTimer: ReturnType<typeof setTimeout> | undefined;
   private delivering = new Set<string>();
@@ -169,7 +173,7 @@ export class DesktopConnectionService {
     const selected = this.selectedThreadId ? combined.get(this.selectedThreadId) : undefined;
     const receiptByClient = new Map(receipts.map((receipt) => [receipt.client_message_id, receipt]));
     const durable = this.selectedThreadId
-      ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].filter(({ role }) => role !== "analysis" && role !== "reasoning")
+      ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (this.visibleStartRef === undefined || ref_seq >= this.visibleStartRef))
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
     const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
@@ -219,6 +223,7 @@ export class DesktopConnectionService {
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && this.client?.cursor == null,
+      loadingMessages: this.loadingMessages,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
       ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
       channels,
@@ -253,9 +258,11 @@ export class DesktopConnectionService {
         this.changed();
         void this.completePairing(state.pairing);
       }
-    } catch {
+    } catch (error) {
       this.phase = "unpaired";
-      this.errorMessage = "The saved connection could not be opened. You can forget it and pair again.";
+      this.errorMessage = error instanceof CacheStorageError
+        ? "Local conversation history could not be opened. Free some disk space and restart Hermes."
+        : "The saved connection could not be opened. You can forget it and pair again.";
       this.changed();
     }
   }
@@ -265,6 +272,9 @@ export class DesktopConnectionService {
     this.connectionIssue = undefined;
     this.cancelRecovery();
     this.client?.close();
+    await this.cache?.close();
+    const cache = new ProjectionCacheWorker(join(app.getPath("userData"),"conversation-cache",`${connection.id}.sqlite`),connection.id);
+    this.cache = cache;
     this.connection = connection;
     this.listedThreads.clear();
     this.selectedChannelId = undefined;
@@ -279,6 +289,10 @@ export class DesktopConnectionService {
     client = new HermesClient({
       ...transport,
       token: () => connection.token,
+      onCheckpoint: async (checkpoint) => {
+        if (this.closed || this.client !== client || this.cache !== cache) throw new Error("aborted");
+        await cache.save(checkpoint);
+      },
       onChange: () => { this.reconcileOutbox(); this.changed(); void this.selectInitialChannel(); },
       onConnectionState: (state) => {
         this.connectionState = state;
@@ -288,11 +302,18 @@ export class DesktopConnectionService {
       onError: (error) => { this.connectionIssue = this.connectionError(error); this.changed(); },
     });
     this.client = client;
+    const checkpoint = await cache.load();
+    if (this.closed || this.client !== client || this.cache !== cache) return;
+    if (checkpoint) {
+      try { client.restoreCheckpoint(checkpoint); }
+      catch { await cache.clear(); }
+    }
     this.changed();
     await client.connect();
   }
 
   private connectionError(error: Error): string | undefined {
+    if (error instanceof CacheStorageError) return "Conversation history could not be saved on this device. Free some disk space; Hermes will try again.";
     if (isRetryableError(error)) return undefined;
     if (error instanceof HttpError && (error.status === 401 || error.status === 403)) return "This device is no longer authorized. Pair it again.";
     return "Hermes could not open this connection. Contact your administrator.";
@@ -411,6 +432,9 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
+    const cache = this.cache;
+    this.cache = null;
+    if (cache) { try { await cache.clear(); } finally { await cache.close(); } }
     const connectionId = this.connection?.id;
     this.connection = null;
     this.outbox = [];
@@ -455,17 +479,25 @@ export class DesktopConnectionService {
     if (!thread || !this.client?.channels.has(thread.project_id)) return;
     this.selectedChannelId = thread.project_id;
     this.selectedThreadId = threadId;
+    this.visibleStartRef = this.client?.messages.get(threadId)?.slice(-50)[0]?.ref_seq;
+    this.loadingMessages = true;
     this.readJobs.get("older")?.abort();
     this.olderCursor = undefined;
     this.changed();
     const client = this.client;
     const valid = () => this.client === client && this.selectedThreadId === threadId;
     await this.recoverRead("history", async (signal) => {
+      // A cold cache can be shown before network bootstrap. Never mistake
+      // not-yet-negotiated capabilities for a forward-only legacy server.
+      if (client.hasCapabilities === false) await client.capabilities(signal);
       if (client.supportsLatest) {
         const page = await client.historyWindow(threadId, undefined, 50, signal);
-        if (!signal.aborted && valid()) this.olderCursor = page.older_cursor ?? undefined;
+        if (!signal.aborted && valid()) {
+          if (page.messages?.length) this.visibleStartRef = page.messages[0].ref_seq;
+          this.olderCursor = page.older_cursor ?? undefined;
+        }
       } else await client.history(threadId, undefined, 50, signal);
-      if (!signal.aborted && valid()) this.changed();
+      if (!signal.aborted && valid()) { this.loadingMessages = false; this.changed(); }
     }, valid);
   }
 
@@ -551,7 +583,10 @@ export class DesktopConnectionService {
     const valid = () => this.client === client && this.selectedThreadId === threadId && this.olderCursor === before;
     await this.recoverRead("older", async (signal) => {
       const page = await client.historyWindow(threadId, before, 50, signal);
-      if (!signal.aborted && valid()) { this.olderCursor = page.older_cursor ?? undefined; this.changed(); }
+      if (!signal.aborted && valid()) {
+        if (page.messages?.length) this.visibleStartRef = Math.min(this.visibleStartRef ?? Infinity,page.messages[0].ref_seq);
+        this.olderCursor = page.older_cursor ?? undefined; this.changed();
+      }
     }, valid);
   }
 
@@ -754,5 +789,8 @@ export class DesktopConnectionService {
     this.cancelRecovery();
     this.pairingController?.abort();
     this.client?.close();
+    const cache = this.cache;
+    this.cache = null;
+    void cache?.close().catch(() => {});
   }
 }

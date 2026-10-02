@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -46,7 +46,7 @@ const allowedLink = (href: string | undefined): string | undefined => {
   } catch { return undefined; }
 };
 
-export const MessageContent = ({ text }: { text: string }) => (
+export const MessageContent = memo(({ text }: { text: string }) => (
   <div className="message-markdown">
   <ReactMarkdown
     skipHtml
@@ -68,4 +68,4 @@ export const MessageContent = ({ text }: { text: string }) => (
     }}
   >{text}</ReactMarkdown>
   </div>
-);
+));

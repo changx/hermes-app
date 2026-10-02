@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
-import type { DesktopSnapshot } from "../shared/desktop-api";
+import { memo, useEffect, useState } from "react";
+import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
 import { threadWindow } from "./thread-navigation";
 
-export const NavigationPanel = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+const ThreadRow = memo(({thread,selected}: {thread:DesktopThread;selected:boolean}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}>
+  <span className="thread-title">{thread.title}</span>{thread.running ? <span className="thread-status">Running</span> : null}{thread.unreadCount ? <span className="unread-count">{thread.unreadCount}</span> : null}
+</button>);
+
+export const NavigationPanel = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [expanded, setExpanded] = useState(() => new Set(snapshot.selectedChannelId ? [snapshot.selectedChannelId] : []));
   const [batches, setBatches] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
@@ -23,9 +27,7 @@ export const NavigationPanel = ({ snapshot }: { snapshot: DesktopSnapshot }) => 
           <span aria-hidden="true">{open ? "▾" : "▸"}</span><strong>{channel.name}</strong>
         </button>
         {open ? <div id={`branch-${channel.id}`} className="thread-children">
-          {page.rows.map((thread) => <button type="button" key={thread.id} className={`tree-thread${thread.id === snapshot.selectedThreadId ? " selected" : ""}`} aria-current={thread.id === snapshot.selectedThreadId ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}>
-            <span className="thread-title">{thread.title}</span>{thread.running ? <span className="thread-status">Running</span> : thread.unreadCount ? <span className="unread-count">{thread.unreadCount}</span> : null}
-          </button>)}
+          {page.rows.map((thread) => <ThreadRow key={thread.id} thread={thread} selected={thread.id === snapshot.selectedThreadId} />)}
           {!page.rows.length ? <p className="tree-empty">No recent activity</p> : null}
           {page.hasMore ? <button className="tree-more" type="button" onClick={() => setBatches((old) => ({ ...old, [channel.id]: (old[channel.id] ?? 0) + 1 }))}>Load more threads</button> : null}
           <button className="tree-new" type="button" onClick={() => void window.hermesDesktop.selectChannel(channel.id).catch(() => {})}>Select channel</button>
@@ -34,4 +36,4 @@ export const NavigationPanel = ({ snapshot }: { snapshot: DesktopSnapshot }) => 
     })}
     {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No channels yet.</p> : null}
   </div>;
-};
+}, (before,after) => before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations);
