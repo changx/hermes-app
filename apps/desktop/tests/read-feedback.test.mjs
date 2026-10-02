@@ -12,5 +12,6 @@ test('desktop navigation has running and shared completed-unread status, not cou
   const source=await readFile(new URL('../src/renderer/navigation-panel.tsx',import.meta.url),'utf8');
   assert.match(source,/running/);assert.doesNotMatch(source,/unreadCount|unread_count/);
   assert.match(source,/thread\.completedUnread/);
-  assert.match(source,/Completed · Unread/);
+  assert.match(source,/aria-label="Completed, unread"/);
+  assert.doesNotMatch(source,/Completed · Unread/);
 });

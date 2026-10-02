@@ -3,7 +3,7 @@ import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
 import { threadWindow } from "./thread-navigation";
 
 const ThreadRow = memo(({thread,selected}: {thread:DesktopThread;selected:boolean}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}>
-  <span className="thread-title">{thread.title}</span>{thread.running ? <span className="thread-status">Running</span> : null}{thread.completedUnread ? <span className="thread-result-unread" aria-label="Completed, unread">● Completed · Unread</span> : null}
+  <span className="thread-title">{thread.title}</span>{thread.running ? <span className="thread-status">Running</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}
 </button>);
 
 export const NavigationPanel = memo(({ snapshot, onNewSession }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void }) => {
