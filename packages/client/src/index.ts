@@ -3,7 +3,7 @@ export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'inte
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
 export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; last_message_at?: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
+export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; running?: boolean; last_message_at?: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
 export interface AgentModelSettings { scope: 'connected-default'; provider: string; model: string; providers: {id: string; name: string; models: string[]}[] }
 export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }
@@ -255,13 +255,13 @@ export class HermesClient {
 
   private notificationDepth = 0;
   private notificationPending = false;
-  private changed() {
+  protected changed() {
     if (this.notificationDepth) { this.notificationPending = true; return }
     this.options.onChange?.();
   }
   // Only batch synchronous projection commits, never hold UI notifications
   // across an HTTP await: one slow session must not hide another's updates.
-  private batchChanges(commit: () => void) {
+  protected batchChanges(commit: () => void) {
     this.notificationDepth++;
     try { commit() }
     finally {
@@ -271,15 +271,15 @@ export class HermesClient {
       }
     }
   }
-  private state(next: ConnectionState) { if(this._connectionState!==next) { this._connectionState=next; this.options.onConnectionState?.(next) } }
-  private token(): string {
+  protected state(next: ConnectionState) { if(this._connectionState!==next) { this._connectionState=next; this.options.onConnectionState?.(next) } }
+  protected token(): string {
     const token=this.options.token();
     if(!token)throw new ProtocolError('missing token');
     // A new credential may mean a different owner. Never reuse old projections.
     if(this.boundToken!==null && token!==this.boundToken)throw new ProtocolError('credential changed; create a new client');
     this.boundToken=token;return token;
   }
-  private storeReceipt(receipt: Receipt, notify = true) {
+  protected storeReceipt(receipt: Receipt, notify = true) {
     const previous=this.receipts.get(receipt.id);
     const identity=JSON.stringify([receipt.thread_id,receipt.client_message_id]);
     if (this.receiptIdentity.has(receipt.id) && this.receiptIdentity.get(receipt.id)!==identity) throw new ProtocolError('receipt identity mismatch');
@@ -344,7 +344,7 @@ export class HermesClient {
     }
     if (changed) this.changed();
   }
-  private async call(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  protected async call(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
     if (signal?.aborted) throw new Error('aborted');
     const token = this.token();
     const response = await bounded(s => this.options.http.request(method, path, token, body, s),timeout(this.options.requestTimeoutMs,15000),signal);
@@ -399,9 +399,9 @@ export class HermesClient {
     const r = validReceipt(x.receipt);
     if (r.thread_id !== threadId || r.client_message_id !== clientMessageId) throw new ProtocolError('receipt identity mismatch');
     if(epoch!==this.projectionEpoch)return r;
-    this.storeReceipt(r); return this.receipts.get(r.id)!;
+    this.storeReceipt(r); return this.receipts.get(r.id) ?? r;
   }
-  async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const epoch=this.projectionEpoch; const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); if(epoch!==this.projectionEpoch)return r; this.storeReceipt(r); return this.receipts.get(id)! }
+  async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const epoch=this.projectionEpoch; const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); if(epoch!==this.projectionEpoch)return r; this.storeReceipt(r); return this.receipts.get(id) ?? r }
   async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const epoch=this.projectionEpoch;const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(epoch!==this.projectionEpoch)return item;if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
   async answerInteraction(item:Interaction,choice:string):Promise<void> {const x=await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/interactions/'+idPath(item.id)+'/answer',{choice,receipt_id:item.receipt_id,generation:item.generation});if(x.state!=='settled'||x.request_id!==item.id)throw new ProtocolError('answer not settled');this.interactions.delete(item.id);this.changed()}
   async stop(threadId:string):Promise<boolean> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/stop',{});return x.stopped===true}
@@ -666,6 +666,31 @@ export class HermesClient {
       this.options.onResync?.();this.changed();
     });
   }
+  /** Release server content only; directory, credentials and durable input are not touched. */
+  protected releaseContent(): void {
+    ++this.projectionEpoch;
+    this.messages.clear();this.receipts.clear();this.receiptIdentity.clear();this.interactions.clear();this.attachments.clear();this.drafts.clear();
+    this.versions.clear();this.messageSequence.clear();this.tailIncomplete.clear();this.tailContinuations.clear();this.tailRecoveryJobs.clear();this.knownEmptyThreads.clear();
+  }
+  protected retainContent(threadId:string|null): void {
+    for(const id of this.messages.keys())if(id!==threadId)this.messages.delete(id);
+    for(const id of this.drafts.keys())if(id!==threadId)this.drafts.delete(id);
+    for(const [id,row]of this.receipts)if(row.thread_id!==threadId){this.receipts.delete(id);this.receiptIdentity.delete(id)}
+    for(const [id,row]of this.interactions)if(row.thread_id!==threadId)this.interactions.delete(id);
+    for(const [id,row]of this.attachments)if(row.thread_id!==threadId)this.attachments.delete(id);
+    for(const key of this.messageSequence.keys())if(threadId===null||!key.startsWith(threadId+':'))this.messageSequence.delete(key);
+    for(const id of this.knownEmptyThreads)if(id!==threadId)this.knownEmptyThreads.delete(id);
+    for(const id of this.tailIncomplete)if(id!==threadId)this.tailIncomplete.delete(id);
+    for(const id of this.tailContinuations.keys())if(id!==threadId)this.tailContinuations.delete(id);
+    for(const id of this.tailRecoveryJobs.keys())if(id!==threadId)this.tailRecoveryJobs.delete(id);
+  }
+  protected decodeScopedState(value:unknown,threadId:string):{receipts:Receipt[];interactions:Interaction[]} {
+    const body=obj(value);if(body.thread_id!==threadId)throw new ProtocolError('live state identity mismatch');
+    const receipts=arr(body.active_receipts).map(validReceipt),interactions=arr(body.pending_interactions).map(validInteraction);
+    if(receipts.length>32||interactions.length>20||receipts.some(r=>r.thread_id!==threadId)||interactions.some(i=>i.thread_id!==threadId))throw new ProtocolError('live state scope mismatch');
+    return {receipts,interactions};
+  }
+
   /** Starts one recovery loop; resolves immediately, not as a readiness signal. */
   async connect(): Promise<void> {
     if (this.controller) return;
