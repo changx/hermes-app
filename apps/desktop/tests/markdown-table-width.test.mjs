@@ -16,10 +16,10 @@ new Function('require','module','exports',bundle.outputFiles[0].text)(createRequ
 const html = out.exports.html;
 const css = await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
 
-test('every desktop table fills its container with fixed-layout wrapping columns', () => {
-  assert.equal((html.match(/class="markdown-table"/g)||[]).length,6);
-  assert.doesNotMatch(html, /Scrollable table/);
-  assert.match(css,/\.message-markdown table \{[^}]*width: 100%;[^}]*table-layout: fixed;/);
+test('desktop tables have full-width scroll viewports and at-least-full-width content grids', () => {
+  assert.equal((html.match(/class="markdown-table"/g)||[]).length,9);
+  assert.match(html, /aria-label="Scrollable table" tabindex="0"/);
+  assert.match(css,/\.message-markdown table \{[^}]*width: max-content;[^}]*min-width: 100%;/);
   assert.ok(html.includes('last-column') && html.includes('After'));
 });
 for (const surface of ['session','standalone']) test(`Chromium: desktop ${surface} tables obey parent content widths and resize`, { skip:!process.env.HERMES_TEST_CHROME }, async () => {

@@ -24,13 +24,14 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
 
 const { checkTableLayout, wideTables } = await import('../../../tests/markdown-table-layout.mjs');
-test('article tables fit their actual grid to the container and wrap cells', () => {
+test('article tables have a full-width scroll viewport and an at-least-full-width content grid', () => {
   const html = render(wideTables).html;
   assert.match(html, /article,\.table-block\{min-width:0;max-width:100%\}/);
   assert.match(html, /\.table-grid\{width:100%;min-width:0;max-width:100%;box-sizing:border-box/);
-  assert.match(html, /table\{border-collapse:collapse;width:100%;max-width:100%;table-layout:fixed\}/);
+  assert.match(html, /table\{border-collapse:collapse;width:max-content;min-width:100%\}/);
+  assert.match(html, /\.table-grid\{[^}]*overflow-x:auto/);
 });
-test('Chromium: full article tables fill and fit prose, quotes and lists across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: full article table viewports fill containers and grids expand or scroll across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   await checkTableLayout(render(wideTables).html, '.table-grid');
 });
 

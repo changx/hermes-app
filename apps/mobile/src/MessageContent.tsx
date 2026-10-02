@@ -193,8 +193,8 @@ function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = f
   </View>;
 }
 
-function Cell({ cell, header, tone, allowed, onInteraction, suspended }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object>; onInteraction: () => void; suspended: boolean }) {
-  return <View style={[styles.tableCell, header && styles.tableHeadCell]}>
+function Cell({ cell, header, tone, allowed, width, onInteraction, suspended }: { cell: TableCell; header: boolean; tone: Tone; allowed: WeakSet<object>; width: number; onInteraction: () => void; suspended: boolean }) {
+  return <View style={[styles.tableCell, { width }, header && styles.tableHeadCell]}>
     <View style={[styles.cellContent, cell.align === 'center' && styles.alignCenter, cell.align === 'right' && styles.alignRight]}>
       <RichText nodes={cell.children} tone={tone} allowed={allowed} style={header ? styles.tableHeadText : styles.paragraph} onInteraction={onInteraction} suspended={suspended} />
     </View>
@@ -202,16 +202,27 @@ function Cell({ cell, header, tone, allowed, onInteraction, suspended }: { cell:
 }
 
 function MarkdownTable({ block, tone, allowed, onExpand, onInteraction, suspended = false, fullscreen = false }: { block: Extract<Block, { kind: 'table' }>; fullscreen?: boolean } & BlockProps) {
-  // Fit the actual grid to this local container, not just a scroll viewport.
-  // Equal flexible columns wrap their content and let rows grow vertically.
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const columns = Math.max(1, block.header.length);
+  // Keep readable columns, but distribute spare viewport width across them.
+  // Include the grid's left border so expansion never adds an offscreen pixel.
+  const gridWidth = Math.max(viewportWidth, columns * 156 + 1);
+  const columnWidth = (gridWidth - 1) / columns;
   return <View style={styles.tableFrame} onTouchStart={stopTouch}>
     {!fullscreen && <ExpandButton label="View table fullscreen" onPress={() => onExpand({ kind: 'table', block })} />}
-    <View style={styles.tableBody}>
-      <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} onInteraction={onInteraction} suspended={suspended} />)}</View>
-      {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
-        {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} onInteraction={onInteraction} suspended={suspended} />)}
-      </View>)}
-    </View>
+    <ScrollView horizontal nestedScrollEnabled style={styles.tableScroll} showsHorizontalScrollIndicator
+      onLayout={event => {
+        const width = event.nativeEvent.layout.width;
+        if (Number.isFinite(width) && width > 0) setViewportWidth(previous => previous === width ? previous : width);
+      }}
+      bounces={false} directionalLockEnabled automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never">
+      <View style={[styles.tableBody, { width: gridWidth }]}>
+        <View style={styles.tableRow}>{block.header.map((cell, i) => <Cell key={i} cell={cell} header tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}</View>
+        {block.rows.map((row, i) => <View key={i} style={styles.tableRow}>
+          {row.map((cell, j) => <Cell key={j} cell={cell} header={false} tone={tone} allowed={allowed} width={columnWidth} onInteraction={onInteraction} suspended={suspended} />)}
+        </View>)}
+      </View>
+    </ScrollView>
   </View>;
 }
 
@@ -471,9 +482,10 @@ const styles = StyleSheet.create({
   codeScroll: { width: '100%', maxWidth: '100%' },
   codeText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#20314a', fontSize: 13, lineHeight: 19, padding: 10 },
   tableFrame: { width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' },
-  tableBody: { width: '100%', minWidth: 0, maxWidth: '100%', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
+  tableScroll: { width: '100%', minWidth: 0, maxWidth: '100%' },
+  tableBody: { alignSelf: 'flex-start', borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#d6e0ed' },
   tableRow: { flexDirection: 'row' },
-  tableCell: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', paddingVertical: 8, paddingHorizontal: '1%' },
+  tableCell: { width: 156, flexShrink: 0, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#d6e0ed', padding: 8 },
   tableHeadCell: { backgroundColor: '#e5ecf5' },
   tableHeadText: { fontSize: 15, lineHeight: 23, fontWeight: '700' },
   cellContent: { minWidth: 0 },

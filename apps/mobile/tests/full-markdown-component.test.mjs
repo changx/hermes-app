@@ -157,7 +157,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     return last.tree;
   };
   return { render, walk, copied, opened, players, paused, webCalls, font, setText: next => { text = next; }, background: () => appListeners.forEach(listener => listener('background')),
-    viewer: () => { render(); return last.viewers.at(-1); }, viewerAt: i => { render(); return last.viewers[i]; }, viewers: viewerStack,
+    viewer: (measure = true) => { render(measure); return last.viewers.at(-1); }, viewerAt: i => { render(); return last.viewers[i]; }, viewers: viewerStack,
     close: () => { const route = viewerStack.pop(); route?.onClose?.(); render(); },
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
 }
@@ -294,7 +294,7 @@ test('multiple tool calls use compact spacing but ordinary Markdown code keeps i
   h.unmount(); code.unmount();
 });
 
-test('production table fills its container, wraps columns and retains inline cells and code copy', () => {
+test('production table has a full-width scroll viewport, readable columns and code copy', () => {
   const text = '| left | **right** |\n|:---|---:|\n| x | [link](https://a.test) |\n\n```js\nconst x = 1;\n```';
   const h = mount(text);
   const nodes = h.walk(h.render());
@@ -302,18 +302,17 @@ test('production table fills its container, wraps columns and retains inline cel
   assert.equal(frame?.type, 'View');
   assert.equal(frame.props.style.width, '100%');
   assert.equal(frame.props.style.borderWidth, undefined, 'no full-width table outline');
-  const grid = findStyle(nodes, s => s?.borderTopWidth === 1 && s?.borderLeftWidth === 1);
-  assert.equal(grid.props.style.width, '100%', 'actual grid fills the container');
-  assert.equal(grid.props.style.maxWidth, '100%');
+  const grid = findStyle(nodes, s => s?.[0]?.borderTopWidth === 1 && s?.[0]?.borderLeftWidth === 1);
+  assert.equal(grid.props.style[0].maxWidth, undefined, 'inner grid may exceed viewport');
   const scrolls = nodes.filter(n => n.type === 'ScrollView');
-  assert.equal(scrolls.length, 1, 'only code, not the table, scrolls horizontally');
+  assert.equal(scrolls.length, 2, 'table and code scroll internally');
   for (const scroll of scrolls) {
     assert.equal(scroll.props.horizontal, true);
     assert.equal(scroll.props.style.maxWidth, '100%');
   }
-  const cells = nodes.filter(n => n.type === 'View' && n.props.style?.[0]?.flexBasis === 0);
+  const cells = nodes.filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156);
   assert.equal(cells.length, 4);
-  assert.ok(cells.every(n => n.props.style[0].minWidth === 0 && n.props.style[0].flexGrow === 1 && n.props.style[0].width === undefined));
+  assert.ok(cells.every(n => n.props.style[0].flexShrink === 0 && n.props.style[1].width >= 156));
   assert.ok(nodes.some(n => n.type === 'View' && n.props.style?.some?.(s => s?.alignItems === 'flex-end')), 'right-aligned cell');
   assert.ok(nodes.some(n => n.type === 'Animated.Text' && n.props.style?.fontWeight === '700'), 'strong formatting');
   const link = nodes.find(n => n.props.accessibilityRole === 'link');
@@ -330,11 +329,11 @@ test('Session, independent table viewer and article fallback share bounded nativ
     const check = nodes => {
       const frame = findStyle(nodes, s => s?.width === '100%' && s?.minWidth === 0 && s?.overflow === 'hidden');
       assert.equal(frame.props.style.maxWidth, '100%');
-      const grid = findStyle(nodes, s => s?.borderTopWidth === 1 && s?.borderLeftWidth === 1);
-      assert.equal(grid.props.style.width, '100%');
-      assert.equal(grid.props.style.minWidth, 0);
-      assert.equal(grid.props.style.maxWidth, '100%');
-      assert.equal(nodes.some(n => n.type === 'ScrollView' && n.props.horizontal), false);
+      const scroll = nodes.find(n => n.type === 'ScrollView' && n.props.horizontal);
+      assert.equal(scroll.props.style.width, '100%');
+      assert.equal(scroll.props.style.minWidth, 0);
+      assert.equal(scroll.props.style.maxWidth, '100%');
+      assert.equal(scroll.props.contentOffset, undefined);
     };
     check(h.walk(h.render()));
     const root = h.walk(h.render(false)).find(n => n.props.onTouchEnd);
@@ -351,6 +350,37 @@ test('Session, independent table viewer and article fallback share bounded nativ
     const fallback = h.walk(h.viewer());
     check(fallback);
     assert.equal(fallback.find(n => n.type === 'ScrollView' && !n.props.horizontal).props.contentContainerStyle.alignItems, 'stretch');
+    h.unmount();
+  }
+});
+
+test('native table measures its own viewport, expands short grids and preserves wide readable columns', () => {
+  for (const platform of ['ios', 'android']) for (const columns of [1, 2, 3, 8]) {
+    const text = '| '+Array.from({ length: columns }, (_, i) => `H${i}`).join(' | ')+' |\n| '+Array(columns).fill('---').join(' | ')+' |\n| '+Array(columns).fill('value').join(' | ')+' |';
+    const h = mount(text, { canExpand: true, platform });
+    h.render();
+    for (let surface = 0; surface < 3; surface++) {
+      let nodes = () => surface === 0 ? h.walk(h.render(false)) : h.walk(h.viewer(false));
+      if (surface === 1) h.walk(h.render(false)).find(n => n.props.accessibilityLabel === 'View table fullscreen').props.onPress();
+      if (surface === 2) {
+        h.close(); doubleTapArticle(h);
+        h.walk(h.viewer()).find(n => n.type === 'WebView').props.onError();
+      }
+      for (const width of [200, 390, 800, 320]) {
+        const scroll = nodes().find(n => n.type === 'ScrollView' && n.props.horizontal && n.props.onLayout);
+        scroll.props.onLayout({ nativeEvent: { layout: { width, height: 200 } } });
+        const grid = nodes().find(n => n.type === 'View' && n.props.style?.[0]?.borderTopWidth === 1);
+        const cells = nodes().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156);
+        assert.equal(cells.length, columns * 2);
+        const gridWidth = grid.props.style[1].width;
+        assert.equal(gridWidth, Math.max(width, columns * 156 + 1));
+        assert.ok(cells.every(n => n.props.style[1].width >= 156));
+        assert.equal(cells.slice(0, columns).reduce((sum, n) => sum + n.props.style[1].width, 1), gridWidth);
+        assert.equal(scroll.props.contentOffset, undefined, 'no deliberate horizontal reading reset');
+        scroll.props.onLayout({ nativeEvent: { layout: { width: NaN, height: 200 } } });
+        assert.equal(nodes().find(n => n.type === 'View' && n.props.style?.[0]?.borderTopWidth === 1).props.style[1].width, gridWidth);
+      }
+    }
     h.unmount();
   }
 });
@@ -409,10 +439,10 @@ test('full article tools remain HTML text, no copy bridge or extra toolbar route
 test('three-column table fits measured phone width, keeps every cell and trailing prose', () => {
   const h = mount('先说：**中文结论。**所以继续。\n\n| 产品 | 收入 | 渠道 |\n|---|---|---|\n| 甲 | 未公开 | 官网 |\n| 乙 | 订阅 | 分享 |\n| 丙 | 积分 | 搜索 |\n\n**最后：**仍需验证。');
   let nodes = h.walk(h.render());
-  const cells = () => nodes.filter(n => n.type === 'View' && n.props.style?.[0]?.flexBasis === 0);
+  const cells = () => nodes.filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156);
   assert.equal(cells().length, 12);
-  assert.ok(cells().every(n => n.props.style[0].flexGrow === 1 && n.props.style[0].width === undefined), 'columns share actual available width');
-  assert.equal(nodes.some(n => n.type === 'ScrollView' && n.props.horizontal), false);
+  assert.ok(cells().every(n => n.props.style[1].width >= 156 && n.props.style[0].flexShrink === 0), 'columns stay readable instead of squeezing to viewport');
+  assert.equal(nodes.some(n => n.type === 'ScrollView' && n.props.horizontal), true);
   const flattenText = value => Array.isArray(value) ? value.map(flattenText).join('') : value && typeof value === 'object' ? flattenText(value.children ?? value.props?.children) : String(value ?? '');
   const content = flattenText(h.render(false));
   assert.ok(content.includes('中文结论。'));
@@ -447,7 +477,7 @@ test('article, table and Mermaid push native viewer routes; nested back retains 
       assert.match(articleWeb.props.source.html, /data-expand="0"[\s\S]*data-expand="1"/);
       articleWeb.props.onMessage({ nativeEvent: { data: 'expand:0' } });
       assert.deepEqual(h.viewers.map(route => route.title), ['Message', 'Table']);
-      assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.flexBasis === 0).length, 6);
+      assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
       assert.equal(h.walk(h.viewerAt(0)).filter(n => n.type === 'WebView').length, 1, 'covered article retains its WebView');
       h.close();
       assert.deepEqual(h.viewers.map(route => route.title), ['Message']);
@@ -457,8 +487,8 @@ test('article, table and Mermaid push native viewer routes; nested back retains 
     }
     button(nodes(), 'View table fullscreen');
     assert.equal(h.viewers.at(-1).title, 'Table');
-    assert.equal(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), false);
-    assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.flexBasis === 0).length, 6);
+    assert.equal(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), true);
+    assert.equal(inside().filter(n => n.type === 'View' && n.props.style?.[0]?.width === 156).length, 6);
     h.close();
     button(nodes(), 'View diagram fullscreen');
     assert.equal(h.viewers.at(-1).title, 'Diagram');
@@ -511,7 +541,7 @@ test('article bridge accepts only bounded own-message indices and fails back to 
   assert.equal(fallback.props.contentContainerStyle.paddingHorizontal, 14, 'native fallback keeps prose inset inside its scroll content');
   assert.equal(fallback.props.contentContainerStyle.paddingBottom, 28);
   assert.ok(inside().some(n => n.type === 'Text' && n.children.includes('This article could not load. Showing the standard view instead.')));
-  assert.ok(inside().some(n => n.type === 'View' && n.props.style?.borderTopWidth === 1 && n.props.style?.width === '100%'), 'full-width table not dropped on failure');
+  assert.ok(inside().some(n => n.type === 'ScrollView' && n.props.horizontal), 'scrollable table not dropped on failure');
   h.unmount();
   const huge = mount('文'.repeat(200001), { canExpand: true });
   doubleTapArticle(huge);
