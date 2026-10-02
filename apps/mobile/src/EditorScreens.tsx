@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { Text, TextInput } from './FontSize';
@@ -42,10 +42,9 @@ function useRouteWork() {
   return run;
 }
 
-export function NewChannelEditor({ client, onCreated, onDiagnosticLayout }: {
+export function NewChannelEditor({ client, onCreated }: {
   client: HermesClient;
   onCreated: (channelId: string) => void;
-  onDiagnosticLayout?: (part: string, event: LayoutChangeEvent) => void;
 }) {
   const [name, setName] = useState(''), [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -56,17 +55,17 @@ export function NewChannelEditor({ client, onCreated, onDiagnosticLayout }: {
     const made = await client.createChannel(patch.name, patch.description);
     if (current()) onCreated(made.id);
   });
-  return <View style={s.page} onLayout={event => onDiagnosticLayout?.('page', event)}>
+  return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <View style={s.form}>
       <TextInput accessibilityLabel="Channel name" placeholder="Channel name" placeholderTextColor="#65758b"
         value={name} onChangeText={setName} style={[s.input, s.channelName]} editable={!busy} maxLength={200} />
-      <View style={s.descriptionArea} collapsable={false} onLayout={event => onDiagnosticLayout?.('description-area', event)}>
+      <View style={s.descriptionArea} collapsable={false}>
         <TextInput accessibilityLabel="Channel description" placeholder="Context, goals, or guidelines (optional)"
           placeholderTextColor="#65758b" value={description} onChangeText={setDescription} multiline
           style={[s.input, s.description]} editable={!busy} />
       </View>
-      <View style={s.channelActions} collapsable={false} onLayout={event => onDiagnosticLayout?.('channel-actions', event)}>
+      <View style={s.channelActions} collapsable={false}>
         <Text style={s.hint}>New topics will use this description. Existing conversations will not change.</Text>
         <View style={s.row}><View style={s.fill} /><Action label={busy ? 'Creating…' : 'Create channel'}
           disabled={busy || !name.trim()} onPress={submit} /></View>
@@ -75,11 +74,10 @@ export function NewChannelEditor({ client, onCreated, onDiagnosticLayout }: {
   </View>;
 }
 
-export function NewTopicEditor({ client, channelId, onCreated, onDiagnosticLayout }: {
+export function NewTopicEditor({ client, channelId, onCreated }: {
   client: HermesClient;
   channelId: string;
   onCreated: (threadId: string) => void;
-  onDiagnosticLayout?: (part: string, event: LayoutChangeEvent) => void;
 }) {
   const [message, setMessage] = useState(''), [attachmentCount, setAttachmentCount] = useState(0);
   const [attachmentBusy, setAttachmentBusy] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -117,13 +115,13 @@ export function NewTopicEditor({ client, channelId, onCreated, onDiagnosticLayou
     await client.getThread(threadId);
     if (current()) { finalized.current = true; onCreated(threadId); }
   });
-  return <View style={s.page} onLayout={event => onDiagnosticLayout?.('page', event)}>
+  return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-    <View style={s.messageArea} collapsable={false} onLayout={event => onDiagnosticLayout?.('message-area', event)}>
+    <View style={s.messageArea} collapsable={false}>
       <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message}
         onChangeText={setMessage} editable={!busy} multiline maxLength={16000} style={[s.input, s.message]} />
     </View>
-    <View style={s.topicActions} collapsable={false} onLayout={event => onDiagnosticLayout?.('topic-actions', event)}>
+    <View style={s.topicActions} collapsable={false}>
       <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={0} disabled={busy}
         onSelectionChange={setAttachmentCount} onChange={(attachments, pending) => {
           uploadedDraftAttachments.current = attachments.map(item => item.id);

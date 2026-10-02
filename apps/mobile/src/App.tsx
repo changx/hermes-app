@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
@@ -26,7 +26,6 @@ import { AgentSettings, useAgentName } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
-import type { FormKeyboardProbe } from './KeyboardCapture';
 
 const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
   ? 'Message not sent. Check your access or message content. Your message is still here.'
@@ -106,6 +105,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let foreground = AppState.currentState === 'active';
     const sub = AppState.addEventListener('change', state => {
       const next = state === 'active';
+      // End native input before background keyboard extensions can resize it.
+      // Retain drafts and leave reopening to the user's next input tap.
+      if (foreground && !next) Keyboard.dismiss();
       if (!next) pairingTask.current?.controller.abort();
       if (next && !foreground) setPairingEpoch(n => n + 1);
       foreground = next;
@@ -460,21 +462,15 @@ export function Notice({ text }: { text: string }) {
   return <View style={styles.center}><Text style={styles.hint}>{text}</Text></View>;
 }
 
-export function FormKeyboardAvoidingView({ children, diagnostics }: { children: React.ReactNode;
-  diagnostics?: FormKeyboardProbe & { onState: (data: Record<string, unknown>) => void } }) {
+export function FormKeyboardAvoidingView({ children }: { children: React.ReactNode }) {
   const focused = useIsFocused();
   const keyboardVisible = useKeyboardState(state => state.isVisible);
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
-  React.useEffect(() => {
-    diagnostics?.onState({ focused, controllerVisible: keyboardVisible, headerHeight,
-      insetTop: insets.top, insetBottom: insets.bottom });
-  }, [focused, keyboardVisible, headerHeight, insets.top, insets.bottom, diagnostics]);
   // Retained forms must explicitly restore zero padding. Controller's height
   // mode returns {} on disable, leaving Reanimated's native height/flex behind.
   // The hidden-header home route still starts below the top safe-area inset.
   return <KeyboardAvoidingView style={styles.flex} behavior="padding"
-    ref={diagnostics?.ref} onLayout={diagnostics?.onLayout}
     keyboardVerticalOffset={Math.max(headerHeight, insets.top)} enabled={focused && keyboardVisible}>
     {children}
   </KeyboardAvoidingView>;
