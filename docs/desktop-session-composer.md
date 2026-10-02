@@ -12,7 +12,7 @@
 
 ## Implementation boundary
 
-Client-only isolated branch `feat/desktop-session-composer`, based on `f14b251`. No main merge, deployment, remote push, release, native installation, plugin/shared-server protocol changes or Hermes-core modification.
+Initial candidate: client-only isolated branch `feat/desktop-session-composer`, based on `f14b251`; no publication at that stage. Subsequent authorized publication is recorded below. No plugin/shared-server protocol changes or Hermes-core modification.
 
 Desktop bridge changes are narrowly typed Channel/Thread arguments and an authoritative created Thread ID return. Existing main-process file validation, preload File-to-path extraction and authenticated upload APIs remain in use. No new filesystem or general IPC access is exposed to the renderer.
 
@@ -34,3 +34,17 @@ Mac: native file picker/drag-drop upload, dialog focus, Channel hover toolbar, r
 iPhone: left blue bubbles with text, tables and attachments; keyboard/scrolling and retained composer experience. Independent installers/release and real-device acceptance are not delivered by this candidate.
 
 Tracking: default Kanban `t_85324483`. Private evidence: active-profile `workspace/desktop-session-composer/`.
+
+## Authorized publication
+
+Jamie subsequently authorized main merge and publication. Candidate `e2cc7fa` merged with main `1c4d584` without replacing the concurrent mobile Channel Context changes. Release source `4e1641279c979083e8c9222dfc04dcf5a7878529` was pushed to main and tag `v0.1.9`.
+
+- Integrated desktop targeted tests: 23 passed / 1 browser skip; mobile targeted tests: 44 passed / 0 skips; both TypeScript checks, desktop build and iOS/Android exports passed. Candidate full suites were not repeated as a release-stage substitute for device acceptance.
+- macOS arm64 tag workflow [37030529221](https://github.com/changx/hermes-app/actions/runs/37030529221) passed locked installation, desktop checks (99 passed / 5 browser skips), zero-finding dependency audit, native packaging, archive checksum and publication. Main workflow also passed.
+- [Desktop v0.1.9](https://github.com/changx/hermes-app/releases/tag/v0.1.9) contains the unsigned, non-notarized Apple Silicon ZIP and checksum sidecar. Downloaded assets were verified: SHA-256 `f1a36fa25d5e7f813474251db69f98690fe5dc1ba26badb49c706c64f6d1337c`; plist/ASAR version `0.1.9`, Mach-O arm64, and packaged Channel selector/explicit upload scope/hover creation/mobile composer/left blue bubble code markers. No native installation was performed by this publication.
+- Mobile Expo Go entry `exps://agent.tuly.space` updated. Public iOS and Android manifests and their exact launchAssets returned HTTP 200, SDK `57.0.0`, runtime `exposdk:57.0.0`; served code verifies left blue bubbles/left corner/media bounds while preserving Channel Context, latest-first lists and first-message composer.
+- Only user-level `hermes-app-expo.service` restarted. Both Gateway PIDs/start times, installed plugin hashes and mobile lockfile hash remained unchanged. Root locked dependencies were restored because the dev-only test dependency changed; no mobile dependency installation or Gateway/plugin/core/other-profile/signing/EAS/store changes.
+
+Publication card `t_f8af393d`; private readbacks, service/hash snapshots, exact bundles, CI logs and downloaded-asset verification: active-profile `workspace/desktop-session-composer/release/`. Implementation remains in review for the native checks above; publication does not convert skipped browser or physical-device tests into passes.
+
+Rollback: reinstall intact Desktop `v0.1.8`; revert release metadata commit `4e16412` and feature merge using `git revert -m 1 d3aafa5` (baseline `1c4d584`), then restart only Expo for the mobile rollback. Preserve concurrent Channel Context changes and all server/chat data; do not reset or overwrite storage.
