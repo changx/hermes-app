@@ -113,18 +113,22 @@ export function NewTopicEditor({ client, channelId, onCreated }: {
   });
   return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-    <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message}
-      onChangeText={setMessage} editable={!busy} multiline maxLength={16000} style={[s.input, s.message]} />
-    <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={0} disabled={busy}
-      onSelectionChange={setAttachmentCount} onChange={(attachments, pending) => {
-        uploadedDraftAttachments.current = attachments.map(item => item.id);
-        setAttachmentBusy(pending);
-      }}
-      onPasteText={text => setMessage(value => value + text)}>
-      <View style={s.fill} />
-      <Action label={busy ? 'Creating…' : 'Create topic'}
-        disabled={busy || attachmentBusy || (!message.trim() && !attachmentCount)} onPress={submit} />
-    </AttachmentComposer>
+    <View style={s.messageArea} collapsable={false}>
+      <TextInput accessibilityLabel="First message" placeholder="What would you like to discuss?" value={message}
+        onChangeText={setMessage} editable={!busy} multiline maxLength={16000} style={[s.input, s.message]} />
+    </View>
+    <View style={s.topicActions} collapsable={false}>
+      <AttachmentComposer handleRef={attachmentComposer} client={client} threadId={null} clearKey={0} disabled={busy}
+        onSelectionChange={setAttachmentCount} onChange={(attachments, pending) => {
+          uploadedDraftAttachments.current = attachments.map(item => item.id);
+          setAttachmentBusy(pending);
+        }}
+        onPasteText={text => setMessage(value => value + text)}>
+        <View style={s.fill} />
+        <Action label={busy ? 'Creating…' : 'Create topic'}
+          disabled={busy || attachmentBusy || (!message.trim() && !attachmentCount)} onPress={submit} />
+      </AttachmentComposer>
+    </View>
   </View>;
 }
 
@@ -135,7 +139,11 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' },
   description: { flex: 1, minHeight: 180, textAlignVertical: 'top' },
-  message: { flex: 1, minHeight: 180, marginBottom: 12, textAlignVertical: 'top' },
+  // Keep native text measurement inside a bounded flex slot. A 180pt minimum
+  // overflows the remaining slot while iOS changes the keyboard/window layout.
+  messageArea: { flex: 1, minHeight: 0, marginBottom: 12 },
+  message: { flex: 1, minHeight: 0, textAlignVertical: 'top' },
+  topicActions: { flexShrink: 0 },
   hint: { color: '#65758b', fontSize: 13, lineHeight: 19 },
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, marginBottom: 12, borderRadius: 8 },
   action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' },
