@@ -27,6 +27,10 @@ Reuse the existing `discarding` metadata marker before cleaning chunks and metad
 
 ## Delivery boundary and device acceptance
 
-Candidate implementation only. Not merged into the running `main`, not pushed, and Expo/Gateway not restarted. No user's saved message has been deleted by development tests. Publication to the existing Expo Go test entry is a separate authorized action; this does not deliver an independent install package.
+Initially delivered as an isolated candidate. Jamie subsequently authorized publication. Client commit `11a3c61631cf48f65a0912f924976460a44884d5` was cherry-picked onto `main` from rollback baseline `177d07dea42a6c3ffeb4221ce29a689630de8afd`, pushed to origin, and only `hermes-app-expo.service` restarted.
+
+Public iOS and Android manifests and each exact launchAsset returned HTTP 200; SDK `57.0.0` and runtime `exposdk:57.0.0` confirmed. Both actual served bundles contain the Delete confirmation, long-press error-line action, outbox removal and App wiring. Gateway PIDs/start times, installed development plugin hashes and lockfile hashes were unchanged. Release evidence: active profile private `workspace/delete-local-failed/release/`.
+
+No user's saved message was deleted by development or publication. This updates the existing `exps://agent.tuly.space` Expo Go test entry, not an independent install package. Candidate tests/typecheck/exports were reused without reinstalling dependencies or repeating the suite. Rollback: `git revert 11a3c61`, push main, and restart only Expo; do not overwrite chat data.
 
 iPhone acceptance remains: long-press failed block/error line; cancel both dialogs; confirm deletion; leave/reopen and cold restart; verify other messages and Agent continue unchanged. Check text selection and keyboard/scrolling are not disrupted. If already received by Hermes, verify server history remains visible.
