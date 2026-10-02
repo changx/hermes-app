@@ -35,7 +35,16 @@ Jamie 在长列表穿出蓝气泡并与下一条回复重叠的反馈中确认�
 
 ## 交付状态
 
-仅隔离候选完成，未合入 main、未发布 Expo、未改桌面、共享协议、插件或 Hermes 核心，未重启任何服务。
+初始实现为隔离候选。Jamie 随后明确授权提交、合并与发布；客户端提交 `ac6d11f524cfe4c158f9efb32d217d9354253239` 已从基线 `5a6f70a` 快进到 main 并推送，随后只重启 `hermes-app-expo.service`。
+
+- 手机入口保持 `exps://agent.tuly.space`，这是 Expo Go 测试部署，不是独立安装包或正式发行。
+- 公网 iOS / Android manifest 及各自精确 launchAsset 都返回 HTTP 200，SDK `57.0.0`、runtime `exposdk:57.0.0`；实际服务代码确认满宽浅蓝 `userMessageBlock`、无气泡外框/圆角/80%限制，并保留 Channel Context 和首条消息输入栏。
+- 两个 Gateway 的 PID/启动时间、已安装开发插件文件哈希、根与移动端锁文件哈希前后不变；未改桌面、共享协议、插件、Hermes 核心、其他 profile 或签名/商店配置。
+- 发布阶段沿用候选已经通过的全测、TypeScript 和双平台导出，不重复安装依赖或跑全套测试。
+
+发布卡：`default / t_fc44e9d6`。精确资源回读和服务/哈希快照：私有 `workspace/mobile-user-message-block/release/`。
+
+回滚：`git revert ac6d11f`，推送 main，并仅重启 Expo；基线为 `5a6f70a`。不 reset 或覆盖聊天数据。
 
 证据：active profile 私有 `workspace/mobile-user-message-block/`（测试、类型检查、双平台导出及 bundle 标记、baseline/candidate 原生布局结果）。
 
