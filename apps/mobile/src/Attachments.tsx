@@ -62,16 +62,18 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   const { openViewer } = useViewer();
   const itemsRef = useRef(items), callbacks = useRef(onChange), selectionCallback = useRef(onSelectionChange), epoch = useRef(0), nextKey = useRef(0);
   const controllers = useRef(new Map<number, AbortController>()), owned = useRef(new Map<number, File>());
+  const stagedThread = useRef<string | null>(null);
   const identity = useRef({ client, threadId, clearKey });
   callbacks.current = onChange;
   selectionCallback.current = onSelectionChange;
   const update = (next: DraftAttachment[]) => {
     itemsRef.current = next; setItems(next);
-    callbacks.current(uploadedInOrder(next), draftBusy(next));
+    callbacks.current(uploadedInOrder(next), threadId ? draftBusy(next) : next.some(item => item.status === 'uploading'));
     selectionCallback.current?.(next.length);
   };
   const cleanup = () => {
     ++epoch.current;
+    stagedThread.current = null;
     controllers.current.forEach(controller => controller.abort()); controllers.current.clear();
     owned.current.forEach(forgetFile); owned.current.clear();
     // Never delete uploads here: after durable enqueue but before clearKey commits, they may belong to an outbox record.
@@ -194,13 +196,18 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     const file = owned.current.get(key); if (file) { forgetFile(file); owned.current.delete(key); }
     if (item.attachment?.state === 'available' && item.attachment.receipt_id == null) {
       // Only explicit removal deletes an upload this instance owns. The server refuses already-attached IDs.
-      if (threadId) void client.deleteUnattached(threadId, item.attachment.id).catch(() => {});
+      const ownerThread = threadId ?? item.attachment.thread_id;
+      void client.deleteUnattached(ownerThread, item.attachment.id).catch(() => {});
     }
   };
   const retry = (key: number) => {
     if (disabled) return;
     const item = itemsRef.current.find(entry => entry.key === key);
-    if (!item || item.status !== 'failed' || !threadId) return;
+    if (!item || item.status !== 'failed') return;
+    if (!threadId) {
+      if (stagedThread.current) void uploadTo(stagedThread.current).catch(() => {});
+      return;
+    }
     update(itemsRef.current.map(entry => entry.key === key ? { ...entry, status: 'uploading', error: undefined } : entry));
     void upload(key, item.source, epoch.current);
   };
@@ -213,8 +220,11 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   };
   const uploadTo = async (targetThreadId: string) => {
     if (threadId) return uploadedInOrder(itemsRef.current);
+    if (stagedThread.current && stagedThread.current !== targetThreadId) throw new Error('attachment target changed');
+    stagedThread.current = targetThreadId;
     const generation = epoch.current, snapshot = [...itemsRef.current];
-    if (snapshot.some(item => item.status === 'failed')) throw new Error('attachment unavailable');
+    // A locally staged first-message upload may be retried after a network
+    // failure. Keep successful uploads and retry only the remaining sources.
     update(snapshot.map(item => item.attachment ? item : { ...item, status: 'uploading', error: undefined }));
     const uploaded: Attachment[] = snapshot.flatMap(item => item.attachment ? [item.attachment] : []);
     try {

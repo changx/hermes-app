@@ -477,7 +477,7 @@ export function FormKeyboardAvoidingView({ children }: { children: React.ReactNo
 }
 
 export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
-  const { ready, config, client, error } = useApp();
+  const { ready, config, client, error, outboxRef } = useApp();
   const router = useRouter();
   if (!ready) return <Notice text="Opening…" />;
   if (!config || !client) return <Notice text="Opening…" />;
@@ -489,10 +489,14 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>
-      <ChannelScreens client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
+      <ChannelScreens key={config.id} client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
         onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })}
         onNewChannel={() => router.push('/new-channel')}
-        onNewTopic={id => router.push({ pathname: '/channels/[channelId]/new-topic', params: { channelId: id } })} />
+        enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
+          const box = outboxRef.current;
+          if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');
+          await box.enqueue(newSend(config, threadId, text, messageId, attachments));
+        }} />
     </FormKeyboardAvoidingView>
   </View>;
 }
