@@ -1,4 +1,4 @@
-import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel } from './index';
+import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type Message } from './index';
 import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError } from './liveProtocol';
 
 const wait=(ms:number,signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{
@@ -34,6 +34,8 @@ export class LiveSessionClient extends HermesClient {
   private directoryReady=false;
   private older:string|null=null;
   private conversationKey:object={};
+  private connectionSuspended=false;
+  private publishedMessages:readonly Message[]=[];
   get currentOlderCursor():string|null{return this.older}
   get currentThreadId():string|null{return this.wanted}
   get currentConversationKey():object{return this.conversationKey}
@@ -47,6 +49,20 @@ export class LiveSessionClient extends HermesClient {
   }
   private prune():void{
     this.retainContent(this.wanted);
+    // The one opened scene keeps unchanged row/resource identities through a
+    // fresh read, so reconnection alone cannot reload its mounted media parser.
+    if(this.wanted){
+      const rows=this.messages.get(this.wanted);
+      if(rows){const previous=new Map(this.publishedMessages.map(m=>[m.ref_seq,m]));let altered=false;
+        const stable=rows.map(row=>{const old=previous.get(row.ref_seq);if(!old)return row;
+          if(JSON.stringify(old)===JSON.stringify(row)){altered||=old!==row;return old}
+          const tools=JSON.stringify(old.tool_calls)===JSON.stringify(row.tool_calls)?old.tool_calls:row.tool_calls;
+          const attachments=JSON.stringify(old.attachments)===JSON.stringify(row.attachments)?old.attachments:row.attachments;
+          if(tools!==row.tool_calls||attachments!==row.attachments){altered=true;return {...row,tool_calls:tools,attachments}}
+          return row;
+        });if(altered)this.messages.set(this.wanted,stable);this.publishedMessages=this.messages.get(this.wanted)!;
+      }
+    }else this.publishedMessages=[];
     // Direct CRUD responses must not leave descriptions/core session metadata
     // resident in the outer directory. Editors read their own temporary detail.
     for(const [id,c]of this.channels)this.channels.set(id,{id,name:c.name});
@@ -65,7 +81,7 @@ export class LiveSessionClient extends HermesClient {
     // becoming an unhandled rejection, while returning the original promise.
     void promise.catch(()=>{});
     this.opened={id,resolve,reject,promise};this.sendWatch();
-    if(!this.liveController)void this.connect();
+    if(!this.liveController&&!this.connectionSuspended)void this.connect();
     this.changed();return promise;
   }
   closeConversation():void{
@@ -75,16 +91,23 @@ export class LiveSessionClient extends HermesClient {
     this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
+    this.connectionSuspended=false;
     if(this.liveController)return;
     const controller=new AbortController();this.liveController=controller;
     this.state('connecting');void this.runLive(controller);
   }
-  override close():void{
+  /** Pause transport, not the current reading scene. Reconnect reconciles the
+   * same loaded window only after the new watch acknowledgement. */
+  suspendConnection():void{
+    this.connectionSuspended=true;
     this.liveController?.abort();this.liveController=null;this.attempt?.abort();this.attempt=null;
     this.scope.abort();this.scope=new AbortController();this.liveSocket?.close();this.liveSocket=null;this.hello=false;this.watchReady=false;
-    this.directoryJob=null;this.contentJob=null;this.opened?.reject(new Error('aborted'));this.opened=null;this.releaseContent();super.close();this.changed();
+    this.directoryJob=null;this.contentJob=null;this.state('suspended');this.changed();
   }
-  override async retryNow():Promise<void>{this.close();await this.connect()}
+  override close():void{
+    this.suspendConnection();this.opened?.reject(new Error('aborted'));this.opened=null;this.publishedMessages=[];this.releaseContent();super.close();this.changed();
+  }
+  override async retryNow():Promise<void>{this.suspendConnection();await this.connect()}
   override async snapshot(signal?:AbortSignal):Promise<void>{await this.refreshDirectory(signal)}
   override async catchUp(signal?:AbortSignal):Promise<void>{await this.refreshDirectory(signal);await this.refreshContent()}
   override async resync(signal?:AbortSignal):Promise<void>{await this.catchUp(signal)}

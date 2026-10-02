@@ -174,7 +174,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!client) return;
     const sub = AppState.addEventListener('change', state => {
       appActive.current = state === 'active';
-      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.close(); setStatus('suspended'); return; }
+      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.suspendConnection(); setStatus('suspended'); return; }
       setStatus('connecting');
       client.connect().catch(() => { /* SDK retry loop owns recovery */ });
     });
@@ -230,10 +230,9 @@ export function useApp() {
 export function ThreadScreen({ threadId }: { threadId: string }) {
   const focused = useIsFocused();
   const { config } = useApp();
-  const [foreground, setForeground] = useState(AppState.currentState === 'active');
-  useEffect(() => { const sub = AppState.addEventListener('change', state => setForeground(state === 'active')); return () => sub.remove(); }, []);
-  // Native Stack keeps the route, not its covered timeline or message media.
-  return focused && foreground ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} /> : null;
+  // App backgrounding is not navigation. Keep this one current scene mounted;
+  // only a genuinely covered/popped route releases its timeline and media.
+  return focused ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} /> : null;
 }
 
 function OpenedThreadScreen({ threadId }: { threadId: string }) {
@@ -311,7 +310,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const loadOlder = async () => {
-    if (!client || !focusedRef.current || historyBusy) return;
+    if (!client || !focusedRef.current || !appActive.current || historyBusy) return;
     timelineRef.current?.holdPosition();
     const opening = openingRef.current, id = threadId;
     setHistoryBusy(true);
@@ -322,7 +321,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
       });
       if (!focusedRef.current || opening !== openingRef.current) return;
       if (blocks) setStartRef(blocks.startRef);
-    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not load earlier messages. Your current conversation is still available.'); }
+    } catch { if (appActive.current && focusedRef.current && opening === openingRef.current) setError('Could not load earlier messages. Your current conversation is still available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const send = () => run(async () => {
@@ -369,7 +368,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
 
 
   const recoverLatest = async () => {
-    if (!client || !focusedRef.current || !client.tailIncomplete.has(threadId) || tailRepairRef.current) return;
+    if (!client || !focusedRef.current || !appActive.current || !client.tailIncomplete.has(threadId) || tailRepairRef.current) return;
     const task = { controller: new AbortController() }, opening = openingRef.current;
     tailRepairRef.current = task;
     try {
@@ -379,7 +378,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
       if (!task.controller.signal.aborted && focusedRef.current && opening === openingRef.current)
         setError((previous: string) => previous === 'Could not update recent messages. Your current conversation is still available.' ? '' : previous);
     } catch {
-      if (!task.controller.signal.aborted && focusedRef.current && opening === openingRef.current)
+      if (!task.controller.signal.aborted && appActive.current && focusedRef.current && opening === openingRef.current)
         setError('Could not update recent messages. Your current conversation is still available.');
     } finally {
       if (tailRepairRef.current === task) tailRepairRef.current = null;

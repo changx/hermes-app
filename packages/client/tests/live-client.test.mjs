@@ -114,6 +114,23 @@ test('late callbacks from a closed connection cannot close or mutate its success
   assert.equal(f.sockets[1].closed,false);assert.equal(f.sdk.connectionState,'online');f.sdk.close();
 });
 
+test('suspension retains the one current scene, has no background reads, and reconnects without losing ownership',async()=>{
+ const f=fixture();await f.sdk.openConversation('A');const owner=f.sdk.currentConversationKey,rows=f.sdk.messages.get('A');const old=f.sockets[0];
+ f.sdk.suspendConnection();assert.equal(f.sdk.connectionState,'suspended');assert.equal(f.sdk.currentThreadId,'A');assert.equal(f.sdk.currentConversationKey,owner);assert.equal(f.sdk.messages.get('A'),rows);assert.equal(old.closed,true);
+ const count=f.paths.length;await new Promise(r=>setTimeout(r,65));assert.equal(f.paths.length,count);assert.equal(f.sockets.length,1);
+ f.records.A.push(message('m3','new while background'));await f.sdk.connect();await until(()=>f.sdk.messages.get('A')?.length===2);assert.equal(f.sdk.currentConversationKey,owner);assert.equal(f.sdk.messages.get('A')[0],rows[0]);assert.ok(f.paths.every(([,p])=>!p.includes('/B/messages')));
+ f.sdk.closeConversation();assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.publishedMessages.length,0);f.sdk.close();
+});
+test('fresh foreground refresh preserves unchanged tool and attachment identities for mounted readers',async()=>{
+ const f=fixture();f.records.A[0].tool_calls=[{id:'tool1',name:'web_search',label:'Search web'}];f.records.A[0].attachments=[{id:'att_A',thread_id:'A',state:'available',name:'image.png',mime:'image/png',size:1,receipt_id:null}];await f.sdk.openConversation('A');const row=f.sdk.messages.get('A')[0];assert.equal(row.tool_calls.length,1);assert.equal(row.attachments.length,1);f.sdk.suspendConnection();await f.sdk.connect();await until(()=>f.sockets.length===2&&f.sdk.connectionState==='online');await until(()=>f.paths.filter(([,p])=>p.includes('/A/live-state')).length===2);assert.equal(f.sdk.messages.get('A')[0],row);assert.equal(f.sdk.messages.get('A')[0].tool_calls,row.tool_calls);assert.equal(f.sdk.messages.get('A')[0].attachments,row.attachments);f.sdk.close();
+});
+test('late old content read during suspension cannot change the retained reading scene',async()=>{
+ let pauseNext=false;const gate=deferred();const f=fixture({request:async(_m,p)=>{if(p.includes('/A/messages')&&pauseNext){pauseNext=false;return gate.promise}}});await f.sdk.openConversation('A');const rows=f.sdk.messages.get('A');pauseNext=true;const read=f.sdk.historyWindow('A','older');await tick();f.sdk.suspendConnection();await assert.rejects(read,/aborted/);gate.resolve({status:200,body:{messages:[message('m1','late stale')],older_cursor:null}});await tick();assert.equal(f.sdk.messages.get('A'),rows);f.sdk.close();
+});
+test('remote archive during background becomes unavailable on recovery and releases content',async()=>{
+ const f=fixture();await f.sdk.openConversation('A');f.sdk.suspendConnection();f.setItems([{kind:'channel',value:{id:'p',name:'P'}},entry('B')]);await f.sdk.connect();await until(()=>f.sdk.currentThreadId===null);assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.publishedMessages.length,0);f.sdk.close();
+});
+
 test('auth rejection blocks instead of repeatedly reconnecting or pairing',async()=>{
   const f=fixture({request:async(_m,p)=>p==='/v1/capabilities'?{status:403,body:{}}:undefined});await f.sdk.connect();await until(()=>f.sdk.connectionState==='blocked');
   assert.equal(f.paths.length,1);assert.equal(f.sockets.length,0);f.sdk.close();

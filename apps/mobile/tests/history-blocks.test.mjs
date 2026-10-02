@@ -140,7 +140,7 @@ test('production App loadOlder publishes one completed block window and holds or
     ? { messages: [u(60), m(61)], cursor: 'c2' }
     : new Promise(resolve => { finish = resolve; }));
   const starts = [], holds = [], context = {
-    client: h.client, focusedRef: { current: true }, openingRef: { current: 1 }, threadId: 't', historyBusy: false,
+    client: h.client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 1 }, threadId: 't', historyBusy: false,
     timelineRef: { current: { holdPosition: () => holds.push(true) } }, visibleMessages: [u(100), m(101)], pageCursor: 'c1',
     loadHistoryBlocks, olderCursors: { current: new Map() },
     setHistoryBusy: value => { context.historyBusy = value; }, setPageCursor: value => { context.pageCursor = value; },

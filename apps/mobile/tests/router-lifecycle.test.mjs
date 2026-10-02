@@ -6,6 +6,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
 import * as historyBlocks from '../src/historyBlocks.ts';
+import * as timeline from '../src/timeline.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
@@ -13,7 +14,10 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
 }).outputText;
 
 async function harness() {
-  let api, sdkCount = 0, boxCount = 0, closed = 0, sendFinish;
+  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, sendFinish;
+  const appListeners = new Set();
+  const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
+  const scenes = new Map();
   const timelines = new Map(), reads = [], events = [];
   const Focus = React.createContext(true);
   const router = { push: value => events.push(['push', value]), replace: value => events.push(['replace', value]), back() {}, canGoBack: () => true };
@@ -26,7 +30,8 @@ async function harness() {
       this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
       this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
     }
-    async connect() { this.options.onConnectionState('online'); }
+    async connect() { this.connectionState = 'online'; this.options.onConnectionState('online'); }
+    suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
     async openConversation(id) { this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null; }
@@ -42,7 +47,7 @@ async function harness() {
   const exports = {};
   const mocks = {
     react: React,
-    'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
+    'react-native': { Keyboard: { dismiss() {} }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: appState, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => router, useIsFocused: () => React.useContext(Focus),
       useFocusEffect: cb => { const focused = React.useContext(Focus); React.useEffect(() => focused ? cb() : undefined, [focused, cb]); } },
     './FontSize': { Text: 'Text', FontSizeSettings: 'FontSizeSettings' },
@@ -59,12 +64,14 @@ async function harness() {
     './pairing': { CONFIG_KEY: 'config', PAIRING_KEY: 'pairing', restorePairing: () => null },
     './outbox': { MobileOutbox: Box, OutboxStore: class { constructor(_, config) { this.connectionId = config.id; } async clear() {} } },
     './ChatTimeline': { ChatTimeline: React.forwardRef((props, ref) => {
+      const scene = React.useRef({ offset: 0, following: true, media: {}, selection: null }); scenes.set(props.threadId, scene.current);
+      React.useEffect(() => () => { scene.current.disposed = true; }, []);
       timelines.set(props.threadId, props); React.useImperativeHandle(ref, () => ({ followLatest() {}, holdPosition() {} }));
       return React.createElement('Chat', { threadId: props.threadId, text: props.text });
     }) },
     './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
     './historyBlocks': historyBlocks,
-    './timeline': { windowStart: () => 0, projectTimeline: () => [] },
+    './timeline': timeline,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
@@ -86,7 +93,9 @@ async function harness() {
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { render, timelines, reads, events, get api() { return api; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { render, timelines, scenes, reads, events, get api() { return api; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+    async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
+    async revision() { await act(async () => api.client.options.onChange()); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
 
@@ -122,6 +131,22 @@ test('send committing behind settings clears its retained composer, preventing d
   assert.equal(h.timelines.get('t_one').busy, false);
   assert.equal(h.api.textDrafts.current.has('connection-a:t_one'), false);
   await h.close();
+});
+
+test('background and foreground retain timeline instance, older reading boundary, draft and media scene', async () => {
+  const h = await harness();
+  try {
+    h.api.client.messages.set('t_one', Array.from({length:20},(_,index)=>({id:'m'+index,ref_seq:index+1,role:index%2===0?'user':'assistant',text:'synthetic '+index})));
+    await h.revision(); await act(async()=>h.timelines.get('t_one').onOlder());
+    assert.equal(h.timelines.get('t_one').startRef,1);
+    await act(async()=>h.timelines.get('t_one').onText('keep selected draft'));
+    const scene=h.scenes.get('t_one');scene.offset=234;scene.following=false;scene.selection={start:3,end:6};const media=scene.media;
+    const messages=h.api.client.messages.get('t_one'),owner=h.api.client.currentConversationKey;
+    await h.appState('inactive');await h.appState('background');
+    assert.equal(h.scenes.get('t_one'),scene);assert.notEqual(scene.disposed,true);assert.equal(h.api.client.messages.get('t_one'),messages);assert.equal(h.api.client.currentConversationKey,owner);assert.equal(h.counts.closed,0);
+    await h.appState('active');assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,234);assert.equal(scene.following,false);assert.equal(scene.media,media);assert.deepEqual(scene.selection,{start:3,end:6});assert.equal(h.timelines.get('t_one').startRef,1);assert.equal(h.timelines.get('t_one').text,'keep selected draft');
+    await h.render('t_one',true);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
+  } finally { await h.close(); }
 });
 
 test('forget clears identity and stops the SDK; old chat is not usable', async () => {

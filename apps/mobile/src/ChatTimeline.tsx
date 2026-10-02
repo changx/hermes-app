@@ -167,14 +167,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     historyEnteringKeys.current.clear();
   }, []);
   const scheduleFollow = useCallback((animate = false) => {
-    if (!active.current) return;
+    if (!active.current || !motionForeground.current) return;
     // Automatic content/geometry corrections must never inherit an older
     // animated jump. Only the caller that explicitly requests animation gets it.
     if (animate) followAnimation.current = true;
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      if (!active.current || !following.current || dragging.current || gestureMomentum.current || momentumEligible.current) {
+      if (!active.current || !motionForeground.current || !following.current || dragging.current || gestureMomentum.current || momentumEligible.current) {
         pendingFollow.current = false;
         followAnimation.current = false;
         return;
@@ -203,6 +203,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
       if (state !== 'active') {
+        if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }
         historyReleased.current = false;
         dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
         cancelPendingHistory();
