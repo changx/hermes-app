@@ -65,7 +65,7 @@ D1-16 → D2-01/D2-02/D2-03/D2-04/D2-05/D2-06/D2-07/D2-08 → D2-09
 | Backlog | `DESK-D2-01` 至 `DESK-D2-09` 可靠性与桌面体验 |
 | Deferred | `DESK-D3-01` 签名/notarization；`DESK-D3-02` DMG/更新/公开发布 |
 | Review（代码已合入本地 main；未打包发布） | [`DESK-FIX-MARKDOWN-SPACING`](desktop/evidence/DESK-FIX-MARKDOWN-SPACING/verification.md)：正文重置 Markdown 分隔换行的空白处理；Mac 视觉确认与新版安装包待验 |
-| In progress（隔离分支；未部署） | [`CORE-DATAFLOW / t_5789850e`](core-dataflow.md)：同等 session 同步、批量归并、增量 IPC、选择性渲染与 SQLite 事务缓存；本地第一轮验证完成后继续整体审查和真机验收 |
+| Review（隔离候选；未合入或发布） | [`CORE-DATAFLOW / t_5789850e`](core-dataflow.md)：同等 session 同步、连续 resync、增量 IPC 与 SQLite worker；104 项桌面检查、双客户端网络压测及 Mac 原生包内 worker/冷读通过；真实模型多会话与终端用户体验另验 |
 | Done（代码已合入；未发布新版安装包） | [`DESK-FIX-READ-LOOP`](desktop/evidence/DESK-FIX-READ-LOOP/verification.md)：最新 `0.1.3` 已读刷新循环修复，65 项自动测试及 Mac mini 原生安装包/当前会话验证通过；不代表原始白屏原因已全部排除 |
 | Done（代码已合入；未发布新版安装包） | [`DESK-LOAD-FEEDBACK`](desktop/evidence/DESK-LOAD-FEEDBACK/verification.md)：首次等待显示自然加载提示，不提前显示空列表；69 项测试及 Mac mini 真实后端延迟加载验证通过 |
 

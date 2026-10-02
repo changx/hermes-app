@@ -31,6 +31,27 @@ test('older window extends presentation only; re-enter starts at latest and cach
   await service.selectThread('a');assert.equal(service.snapshot().messages.length,50);assert.equal(service.client.messages.get('a').length,1000);service.close();
 });
 
+test('resync refresh preserves an older reading boundary and its pagination cursor',async()=>{
+  const {service}=fixture();await service.selectThread('a');await service.loadOlder();
+  const boundary=service.visibleStartRef;service.olderCursor='reader-cursor';await service.refreshSelectedHistory(service.client);
+  assert.equal(service.visibleStartRef,boundary);assert.equal(service.olderCursor,'reader-cursor');assert.equal(service.snapshot().messages.length,100);service.close();
+});
+
+test('sidebar processing outcome overrides stale running lifecycle without affecting unread counts',()=>{
+  const {service}=fixture();service.client.threads.get('a').unread_count=3;
+  for(const processing of ['completed','failed','interrupted','unknown']) {
+    service.client.receipts.set('r',{id:'r',thread_id:'a',state:'running',processing});
+    const row=service.snapshot().threads.find(t=>t.id==='a');assert.equal(row.running,false);assert.equal(row.unreadCount,3);
+  }
+  service.client.receipts.set('r',{id:'r',thread_id:'a',state:'running',processing:'running'});assert.equal(service.snapshot().threads.find(t=>t.id==='a').running,true);service.close();
+});
+
+test('cache removal failure is actionable and cannot pretend that forget succeeded',async()=>{
+  const {service}=fixture();let deleted=false;
+  service.store={async delete(){deleted=true}};service.cache={isClosed:false,async clear(){throw Error('synthetic disk failure')},async close(){}};
+  await assert.rejects(service.forgetConnection(),/not confirmed/);assert.equal(deleted,false);assert.match(service.snapshot().errorMessage,/choose Forget connection again/);assert.ok(service.connection);service.close();
+});
+
 test('cached selection negotiates capabilities before choosing latest versus legacy history',async()=>{
   const {service,calls}=fixture();service.client.hasCapabilities=false;service.client.supportsLatest=false;
   service.client.capabilities=async()=>{calls.push(['capabilities']);service.client.hasCapabilities=true;service.client.supportsLatest=true};

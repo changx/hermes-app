@@ -9,6 +9,7 @@ const kinds = ['channels','threads','receipts','interactions','attachments'] as 
 export class SQLiteProjectionCache {
   private readonly db: DatabaseSync;
   private payloads = new Map<string,string>();
+  private metadataPayload: string | undefined;
 
   constructor(path:string, identity:string) {
     if (!/^[0-9a-f]{24}$/.test(identity)) throw new Error('Invalid cache identity');
@@ -25,6 +26,8 @@ export class SQLiteProjectionCache {
       const owner=this.db.prepare('SELECT identity FROM owner WHERE singleton=1').get();
       if(owner?.identity!==identity)throw new Error('Foreign cache identity');
       for(const row of this.db.prepare('SELECT kind,key,payload FROM entities').all())this.payloads.set(JSON.stringify([row.kind,row.key]),String(row.payload));
+      const metadata=this.db.prepare('SELECT payload FROM checkpoint WHERE singleton=1').get();
+      this.metadataPayload=metadata ? String(metadata.payload) : undefined;
     } catch(error) {this.db.close();throw error}
   }
 
@@ -38,15 +41,18 @@ export class SQLiteProjectionCache {
     const removed=[...this.payloads.keys()].filter(key=>!next.has(key));
     const changed=rows.filter(row=>this.payloads.get(JSON.stringify([row.kind,row.key]))!==row.payload);
     const metadata={schema:value.schema,cursor:value.cursor,lastEventId:value.lastEventId,versions:value.versions,fetchSequence:value.fetchSequence,entitySequence:value.entitySequence,messageSequence:value.messageSequence,knownEmptyThreads:value.knownEmptyThreads};
+    const payload=JSON.stringify(metadata);
+    if(!changed.length && !removed.length && payload===this.metadataPayload)return {changed:0,removed:0};
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const drop=this.db.prepare('DELETE FROM entities WHERE kind=? AND key=?');
       for(const key of removed){const [kind,id]=JSON.parse(key) as [string,string];drop.run(kind,id)}
       const put=this.db.prepare('INSERT INTO entities(kind,key,thread_id,row_id,ref_seq,payload) VALUES(?,?,?,?,?,?) ON CONFLICT(kind,key) DO UPDATE SET thread_id=excluded.thread_id,row_id=excluded.row_id,ref_seq=excluded.ref_seq,payload=excluded.payload');
       for(const row of changed)put.run(row.kind,row.key,row.threadId,row.rowId,row.ref,row.payload);
-      this.db.prepare('INSERT INTO checkpoint(singleton,payload) VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET payload=excluded.payload').run(JSON.stringify(metadata));
+      this.db.prepare('INSERT INTO checkpoint(singleton,payload) VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET payload=excluded.payload').run(payload);
       this.db.exec('COMMIT');
       this.payloads=next;
+      this.metadataPayload=payload;
       return {changed:changed.length,removed:removed.length};
     } catch(error) {this.db.exec('ROLLBACK');throw error}
   }
@@ -75,7 +81,7 @@ export class SQLiteProjectionCache {
 
   clear():void {
     this.db.exec('BEGIN IMMEDIATE');
-    try {this.db.exec('DELETE FROM entities; DELETE FROM checkpoint; COMMIT');this.payloads.clear()}
+    try {this.db.exec('DELETE FROM entities; DELETE FROM checkpoint; COMMIT');this.payloads.clear();this.metadataPayload=undefined}
     catch(error){this.db.exec('ROLLBACK');throw error}
   }
   close():void {this.db.close()}

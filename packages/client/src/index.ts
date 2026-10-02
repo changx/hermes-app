@@ -35,7 +35,7 @@ export interface ClientCheckpoint {
   messageSequence: Array<[string, number]>;
   knownEmptyThreads: string[];
 }
-export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onCheckpoint?: (checkpoint: ClientCheckpoint) => Promise<void>; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
+export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onCheckpoint?: (checkpoint: ClientCheckpoint) => Promise<void>; onResync?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 export class ResyncRequired extends ProtocolError { constructor(message: string) { super(message); this.name = 'ResyncRequired' } }
 export class ExpiredCursor extends ResyncRequired { constructor() { super('expired sync cursor'); this.name = 'ExpiredCursor' } }
@@ -402,12 +402,12 @@ export class HermesClient {
     this.storeReceipt(r); return this.receipts.get(r.id)!;
   }
   async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const epoch=this.projectionEpoch; const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); if(epoch!==this.projectionEpoch)return r; this.storeReceipt(r); return this.receipts.get(id)! }
-  async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
+  async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const epoch=this.projectionEpoch;const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(epoch!==this.projectionEpoch)return item;if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
   async answerInteraction(item:Interaction,choice:string):Promise<void> {const x=await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/interactions/'+idPath(item.id)+'/answer',{choice,receipt_id:item.receipt_id,generation:item.generation});if(x.state!=='settled'||x.request_id!==item.id)throw new ProtocolError('answer not settled');this.interactions.delete(item.id);this.changed()}
   async stop(threadId:string):Promise<boolean> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/stop',{});return x.stopped===true}
   async cancelQueued(threadId:string,receiptId:string):Promise<Receipt> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/receipts/'+idPath(receiptId)+'/cancel',{});const r=validReceipt(x.receipt);this.storeReceipt(r);return r}
   async upload(threadId:string,name:string,bytes:Uint8Array,signal?:AbortSignal):Promise<Attachment> {if(!this.options.http.upload)throw new ProtocolError('binary upload unavailable');const reply=await bounded(s=>this.options.http.upload!('/v1/threads/'+idPath(threadId)+'/attachments',this.token(),name,bytes,s),timeout(this.options.requestTimeoutMs,15000),signal);if(reply.status!==201)throw new HttpError(reply.status,reply.retryAfterMs,'upload');const x=obj(reply.body),raw=obj(x.attachment);const a=validAttachment({...raw,state:'available',receipt_id:null});if(a.thread_id!==threadId)throw new ProtocolError('attachment thread mismatch');this.attachments.set(a.id,a);this.changed();return a}
-  async getAttachment(threadId:string,id:string,signal?:AbortSignal):Promise<Attachment> {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id)+'/metadata',undefined,signal);const a=validAttachment(x.attachment);if(a.id!==id||a.thread_id!==threadId)throw new ProtocolError('attachment identity mismatch');this.attachments.set(id,a);this.changed();return a}
+  async getAttachment(threadId:string,id:string,signal?:AbortSignal):Promise<Attachment> {const epoch=this.projectionEpoch;const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id)+'/metadata',undefined,signal);const a=validAttachment(x.attachment);if(a.id!==id||a.thread_id!==threadId)throw new ProtocolError('attachment identity mismatch');if(epoch!==this.projectionEpoch)return a;this.attachments.set(id,a);this.changed();return a}
   async download(threadId:string,id:string,signal?:AbortSignal):Promise<Uint8Array> {if(!this.options.http.download)throw new ProtocolError('binary download unavailable');const reply=await bounded(s=>this.options.http.download!('/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id),this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,undefined,'download');return reply.body}
   async deleteUnattached(threadId:string,id:string):Promise<void> {const x=await this.call('DELETE','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id));if(x.deleted!==true)throw new ProtocolError('delete not confirmed');this.attachments.set(id,{id,thread_id:threadId,state:'deleted'});this.changed()}
   async search(threadId:string,text:string,after?:string,limit=20,signal?:AbortSignal) {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/search'+query({q:text,after,limit}),undefined,signal);return {messages:arr(x.messages).map(validMessage),next_cursor:optionalCursor(x.next_cursor)}}
@@ -530,7 +530,7 @@ export class HermesClient {
       after=optionalCursor(x.next_after);
     } while(after);
   }
-  async markRead(threadId: string, visibleRef: number) { num(visibleRef); const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/read',{ref_seq:visibleRef}); const ref=num(x.ref_seq); const old=this.threads.get(threadId); if (old && ref>=old.read_ref) { old.read_ref=ref; old.unread_count=num(x.unread_count); this.changed() } return ref }
+  async markRead(threadId: string, visibleRef: number) { const epoch=this.projectionEpoch; num(visibleRef); const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/read',{ref_seq:visibleRef}); const ref=num(x.ref_seq); const old=this.threads.get(threadId); if (epoch===this.projectionEpoch && old && ref>=old.read_ref) { old.read_ref=ref; old.unread_count=num(x.unread_count); this.changed() } return ref }
   async snapshot(signal?: AbortSignal): Promise<void> {
     const epoch=this.projectionEpoch;
     let after: string|null=null; let earliest: string|null=null; const pages: ThreadSummary[]=[];
@@ -627,7 +627,45 @@ export class HermesClient {
     } })(); const replay={job,signal}; this.replay=replay; try { await job } finally { if (this.replay===replay) this.replay=null }
   }
   /** Explicit resync after ResyncRequired; never silently rewinds a foreign/future cursor. */
-  async resync(signal?: AbortSignal) { ++this.projectionEpoch; this.cursor=null; this.lastEventId=0; this.versions.clear(); this.entitySequence.clear(); this.messageSequence.clear(); this.channels.clear(); this.threads.clear(); this.receipts.clear(); this.messages.clear(); this.interactions.clear(); this.attachments.clear(); this.tailIncomplete.clear(); this.tailContinuations.clear(); this.tailRecoveryJobs.clear(); this.knownEmptyThreads.clear(); await this.snapshot(signal); await this.catchUp(signal) }
+  async resync(signal?: AbortSignal): Promise<void> {
+    const epoch=++this.projectionEpoch;
+    // Build a replacement away from the visible projection. Do not publish
+    // an empty timeline or overwrite the durable cache on a failed reset.
+    const staged=new HermesClient({http:this.options.http,socket:this.options.socket,token:()=>this.token(),requestTimeoutMs:this.options.requestTimeoutMs});
+    staged.supportsLatest=this.supportsLatest;staged.supportsSendIdentity=this.supportsSendIdentity;
+    staged.receiptIdentity=new Map(this.receiptIdentity);
+    await staged.snapshot(signal);
+    await Promise.all([...this.messages].map(async ([id,rows])=>{
+      if (!rows.length || !staged.threads.has(id)) return;
+      // Refresh the entire previously cached interval, including edits older
+      // than the latest window. Snapshot alone cannot recover expired edits.
+      const first=rows[0].ref_seq;
+      let after: string | undefined;
+      const seen=new Set<string>();
+      for(let count=0;count<100;count++) {
+        const page=await staged.history(id,after,100,signal,after?undefined:Math.max(0,first-1));
+        if(!page.next_cursor)return;
+        if(seen.has(page.next_cursor))throw new ProtocolError('resync history cursor did not advance');
+        seen.add(page.next_cursor);after=page.next_cursor;
+      }
+      throw new ProtocolError('resync history page budget exceeded');
+    }));
+    await staged.catchUp(signal);
+    if(signal?.aborted || epoch!==this.projectionEpoch)throw new Error('aborted');
+    if(this.options.onCheckpoint)await this.options.onCheckpoint(staged.checkpoint());
+    if(signal?.aborted || epoch!==this.projectionEpoch)throw new Error('aborted');
+    ++this.projectionEpoch; // fence requests started while staging was loading
+    this.batchChanges(()=>{
+      const replace=<T>(target:Map<string,T>,source:Map<string,T>)=>{target.clear();for(const [key,value]of source)target.set(key,value)};
+      replace(this.channels,staged.channels);replace(this.threads,staged.threads);replace(this.receipts,staged.receipts);
+      replace(this.messages,staged.messages);replace(this.interactions,staged.interactions);replace(this.attachments,staged.attachments);
+      this.receiptIdentity=staged.receiptIdentity;this.versions=staged.versions;this.entitySequence=staged.entitySequence;
+      this.messageSequence=staged.messageSequence;this.fetchSequence=staged.fetchSequence;
+      this.tailIncomplete.clear();this.tailContinuations.clear();this.tailRecoveryJobs.clear();this.knownEmptyThreads=staged.knownEmptyThreads;
+      this.cursor=staged.cursor;this.lastEventId=staged.lastEventId;
+      this.options.onResync?.();this.changed();
+    });
+  }
   /** Starts one recovery loop; resolves immediately, not as a readiness signal. */
   async connect(): Promise<void> {
     if (this.controller) return;

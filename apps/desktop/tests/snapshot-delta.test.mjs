@@ -59,6 +59,21 @@ test('an IPC gap obtains one fresh baseline; repeated deltas cannot create dupli
   assert.equal(requests,2);assert.deepEqual(store.getSnapshot(),after);stop();
 });
 
+test('initial IPC failure retries automatically without pretending the user is unpaired',async(t)=>{
+  t.mock.timers.enable({apis:['setTimeout']});let requests=0;
+  const store=new DesktopSnapshotStore({subscribe(){return()=>{}},async getSnapshot(){if(++requests===1)throw Error('temporary IPC');return base()}});
+  const stop=store.subscribe(()=>{});await tick();assert.equal(store.getSnapshot().phase,'restoring');assert.equal(store.getSnapshot().revision,0);
+  t.mock.timers.tick(500);await tick();assert.equal(store.getSnapshot().revision,1);assert.equal(requests,2);stop();
+});
+
+test('failed gap recovery retains visible rows and retries even without a new event',async(t)=>{
+  t.mock.timers.enable({apis:['setTimeout']});let listener,requests=0;const before=base(),skipped={...before,revision:3},after={...skipped,revision:4,messages:[row('fresh')]};
+  const store=new DesktopSnapshotStore({subscribe(fn){listener=fn;return()=>{}},async getSnapshot(){requests++;if(requests===2)throw Error('temporary IPC');return requests===1?before:after}});
+  const stop=store.subscribe(()=>{});await tick();const visible=store.getSnapshot().messages;
+  listener(snapshotDelta(skipped,after));await tick();assert.equal(store.getSnapshot().messages,visible);
+  t.mock.timers.tick(500);await tick();assert.deepEqual(store.getSnapshot(),after);assert.equal(requests,3);stop();
+});
+
 test('an unsubscribed startup read cannot overwrite a later subscription',async()=>{
   let resolve;let calls=0;
   const store=new DesktopSnapshotStore({subscribe(){return()=>{}},getSnapshot(){return ++calls===1?new Promise(r=>resolve=r):Promise.resolve({...base(),revision:3})}});

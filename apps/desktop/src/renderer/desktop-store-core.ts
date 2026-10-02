@@ -14,6 +14,8 @@ export class DesktopSnapshotStore {
   private readonly pending = new Map<number, DesktopSnapshotDelta>();
   private restoring = false;
   private generation = 0;
+  private retryTimer:ReturnType<typeof setTimeout>|undefined;
+  private restoreFailures=0;
 
   constructor(private readonly api: HermesDesktopApi) {}
   getSnapshot = (): DesktopSnapshot => this.current;
@@ -43,23 +45,33 @@ export class DesktopSnapshotStore {
       this.baselineReady = true;
     }
     this.drain();
+    if (this.baselineReady && !this.pending.size) { this.restoreFailures=0;clearTimeout(this.retryTimer);this.retryTimer=undefined; }
     if (before !== this.current) this.notify();
     if ((!this.baselineReady || this.pending.size) && !this.restoring) this.restore();
   };
 
   private restore(): void {
     if (this.restoring) return;
+    clearTimeout(this.retryTimer); this.retryTimer=undefined;
     this.restoring = true;
     const generation = this.generation;
     void this.api.getSnapshot().then(snapshot => {
       if (generation !== this.generation) return;
       this.update(snapshot);
     }).catch(() => {
-      if (generation !== this.generation || this.baselineReady) return;
+      if (generation !== this.generation) return;
+      this.restoreFailures++;
+      if (this.baselineReady) return;
       // A local read failure must not invent a server revision.
-      this.current = Object.freeze({...this.current, phase:"unpaired",errorMessage:"Hermes could not restore the saved connection."});
+      this.current = Object.freeze({...this.current,errorMessage:"Your conversations could not be loaded yet. Hermes is trying again."});
       this.notify();
-    }).finally(() => { if (generation === this.generation) this.restoring = false; });
+    }).finally(() => {
+      if (generation !== this.generation) return;
+      this.restoring = false;
+      if ((!this.baselineReady || this.pending.size) && this.listeners.size) {
+        this.retryTimer=setTimeout(()=>{this.retryTimer=undefined;this.restore()},Math.min(10_000,250*2**Math.min(this.restoreFailures,5)));
+      }
+    });
   }
 
   private start(): void {
@@ -76,6 +88,7 @@ export class DesktopSnapshotStore {
       if (!this.listeners.size && this.stopBridge) {
         this.stopBridge(); this.stopBridge = null;
         this.generation++; this.restoring = false;
+        clearTimeout(this.retryTimer);this.retryTimer=undefined;
       }
     };
   };

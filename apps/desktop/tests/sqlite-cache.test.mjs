@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
-import {mkdtemp,rm,stat,readFile} from 'node:fs/promises';
+import {mkdtemp,rm,stat,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const root=new URL('../../../',import.meta.url).pathname;
@@ -85,6 +85,31 @@ test('SDK replay and real SQLite worker survive process-local cold reopen and co
     assert.equal(second.cursor,'c2');assert.deepEqual(second.messages.get('a').map(m=>m.ref_seq),[1,2]);
     assert.deepEqual((await worker.history('a')).map(m=>m.ref_seq),[1,2]);assert.equal((await worker.load()).cursor,'c2');
   }finally{await worker.close();await files.cleanup()}
+});
+
+test('idle checkpoints do not write SQLite pages again',async()=>{
+  const files=await disk(),cache=new SQLiteProjectionCache(files.path,identity);
+  try {
+    const value=checkpoint();cache.save(value);
+    const count=()=>cache.db.prepare('SELECT total_changes() AS n').get().n;
+    const before=count();for(let i=0;i<50;i++)cache.save(value);assert.equal(count(),before);
+  }finally{cache.close();await files.cleanup()}
+});
+
+test('worker close is single-flight and rejects new operations while draining',async()=>{
+  const files=await disk(),worker=new ProjectionCacheWorker(files.path,identity,new URL('../dist/main/cache-worker.cjs',import.meta.url).pathname);
+  try{await worker.load();const first=worker.close(),second=worker.close();assert.equal(first,second);await assert.rejects(worker.save(checkpoint()),/closed/);await first}
+  finally{await worker.close();await files.cleanup()}
+});
+
+test('hung and crashed worker faults reject all callers and have a bounded shutdown',async()=>{
+  for(const fault of ['hung','crashed']) {
+    const files=await disk(),script=join(files.dir,'fault.cjs');
+    await writeFile(script,`require('node:worker_threads').parentPort.on('message',()=>{${fault==='crashed'?'process.exit(2);':''}});`);
+    const worker=new ProjectionCacheWorker(files.path,identity,script,100);
+    try{const results=await Promise.allSettled([worker.load(),worker.save(checkpoint())]);assert.ok(results.every(r=>r.status==='rejected'&&r.reason.name==='CacheStorageError'));assert.equal(worker.isClosed,true);await worker.close()}
+    finally{await worker.close();await files.cleanup()}
+  }
 });
 
 test('restore validates all cache ranks and identities before touching a fresh client',()=>{

@@ -159,6 +159,7 @@ export class DesktopConnectionService {
     for (const [id, thread] of this.listedThreads) combined.set(id, thread);
     for (const [id, thread] of projected) combined.set(id, thread);
     const receipts = [...(this.client?.receipts.values() ?? [])];
+    const runningThreads = new Set(receipts.filter(receipt => receipt.processing != null ? receipt.processing === "running" : receipt.state === "queued" || receipt.state === "running").map(receipt => receipt.thread_id));
     const threads = [...combined.values()]
       .filter((thread) => !thread.archived)
       .map((thread) => ({
@@ -166,7 +167,7 @@ export class DesktopConnectionService {
         channelId: thread.project_id,
         title: thread.title,
         unreadCount: "unread_count" in thread && typeof thread.unread_count === "number" ? thread.unread_count : 0,
-        running: receipts.some((receipt) => receipt.thread_id === thread.id && (receipt.state === "queued" || receipt.state === "running" || receipt.processing === "running")),
+        running: runningThreads.has(thread.id),
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title));
@@ -273,7 +274,8 @@ export class DesktopConnectionService {
     this.cancelRecovery();
     this.client?.close();
     await this.cache?.close();
-    const cache = new ProjectionCacheWorker(join(app.getPath("userData"),"conversation-cache",`${connection.id}.sqlite`),connection.id);
+    const cachePath = join(app.getPath("userData"),"conversation-cache",`${connection.id}.sqlite`);
+    let cache = new ProjectionCacheWorker(cachePath,connection.id);
     this.cache = cache;
     this.connection = connection;
     this.listedThreads.clear();
@@ -291,15 +293,34 @@ export class DesktopConnectionService {
       token: () => connection.token,
       onCheckpoint: async (checkpoint) => {
         if (this.closed || this.client !== client || this.cache !== cache) throw new Error("aborted");
-        await cache.save(checkpoint);
+        try { await cache.save(checkpoint); }
+        catch (error) {
+          if (cache.isClosed && !this.closed && this.client === client && this.cache === cache) {
+            await cache.close().catch(() => {});
+            cache = new ProjectionCacheWorker(cachePath,connection.id); this.cache = cache;
+          }
+          throw error;
+        }
       },
-      onChange: () => { this.reconcileOutbox(); this.changed(); void this.selectInitialChannel(); },
+      onResync: () => {
+        if (this.closed || this.client !== client) return;
+        this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
+        this.listedThreads = new Map([...client.threads].map(([id,thread]) => [id,{...thread}]));
+        if (this.selectedThreadId && !client.threads.has(this.selectedThreadId)) {
+          this.selectedThreadId = undefined; this.olderCursor = undefined;
+        }
+        if (this.selectedChannelId && !client.channels.has(this.selectedChannelId)) this.selectedChannelId = undefined;
+        this.loadingMessages = false;
+        void this.refreshSelectedHistory(client);
+      },
+      onChange: () => { if (this.closed || this.client !== client) return; this.reconcileOutbox(); this.changed(); void this.selectInitialChannel(); },
       onConnectionState: (state) => {
+        if (this.closed || this.client !== client) return;
         this.connectionState = state;
         if (state === "online") { this.connectionIssue = undefined; void this.flushOutbox(); }
         this.changed();
       },
-      onError: (error) => { this.connectionIssue = this.connectionError(error); this.changed(); },
+      onError: (error) => { if (this.closed || this.client !== client) return; this.connectionIssue = this.connectionError(error); this.changed(); },
     });
     this.client = client;
     const checkpoint = await cache.load();
@@ -317,6 +338,19 @@ export class DesktopConnectionService {
     if (isRetryableError(error)) return undefined;
     if (error instanceof HttpError && (error.status === 401 || error.status === 403)) return "This device is no longer authorized. Pair it again.";
     return "Hermes could not open this connection. Contact your administrator.";
+  }
+
+  private async refreshSelectedHistory(client: HermesClient): Promise<void> {
+    const threadId = this.selectedThreadId;
+    if (!threadId || !client.supportsLatest) return;
+    const valid = () => !this.closed && this.client === client && this.selectedThreadId === threadId;
+    await this.recoverRead("history",async signal => {
+      const page = await client.historyWindow(threadId,undefined,50,signal);
+      if (signal.aborted || !valid()) return;
+      // Keep an older reader's window/cursor, rather than jumping to latest.
+      if (this.visibleStartRef === undefined || this.visibleStartRef >= (page.messages[0]?.ref_seq ?? Infinity)) this.olderCursor = page.older_cursor ?? undefined;
+      this.changed();
+    },valid);
   }
 
   private async selectInitialChannel(): Promise<void> {
@@ -432,9 +466,21 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
-    const cache = this.cache;
+    let cache = this.cache;
+    if (cache?.isClosed && this.connection) {
+      cache = new ProjectionCacheWorker(join(app.getPath("userData"),"conversation-cache",`${this.connection.id}.sqlite`),this.connection.id);
+      this.cache = cache;
+    }
+    if (cache) {
+      try { await cache.clear(); }
+      catch {
+        this.selectedThreadId = undefined;
+        this.errorMessage = "Local history could not be removed. Free disk space and choose Forget connection again.";
+        this.changed();
+        throw new Error("Local history removal was not confirmed.");
+      } finally { await cache.close().catch(() => {}); }
+    }
     this.cache = null;
-    if (cache) { try { await cache.clear(); } finally { await cache.close(); } }
     const connectionId = this.connection?.id;
     this.connection = null;
     this.outbox = [];

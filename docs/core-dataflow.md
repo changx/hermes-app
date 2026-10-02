@@ -1,6 +1,6 @@
 # CORE-DATAFLOW — equal-session synchronization and selective presentation
 
-Status: In progress. Authorized by Jamie in the current Hermes App thread. Baseline: local main `68f0706` (existing media and Markdown changes integrated). Worktree: `refactor/core-dataflow`.
+Status: Review — implementation, local regressions, network fixture soak and native Mac packaged-worker smoke complete; real model multi-session/device experience acceptance remains separate. Authorized by Jamie in the current Hermes App thread. Baseline: local main `68f0706` (existing media and Markdown changes integrated). Worktree: `refactor/core-dataflow`.
 
 ## Agreed constraints
 
@@ -45,4 +45,28 @@ Local main includes `feat/app-media-static` and `fix/desktop-markdown-spacing`, 
 - Private logs and render probe: `/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/core-dataflow/`.
 - Corrected integration failures during development: the build-output allowlist needed the new worker artifacts; the new older-window test fixture initially omitted a saved connection. Final full rerun passed.
 
-The overall card remains In progress. This first increment is not a released replacement. Remaining gates: lifecycle/resync UI-continuity review, long-lived multi-session traffic and cache growth, Mac native packaged-worker/device acceptance, and any separately agreed encrypted outbox/draft migration or mobile persistent-cache adoption. SDK events still use existing protocol invalidations and HTTP hydration; no server/core change, production activation, signing, installation, model traffic or service restart is claimed.
+## Completion increment
+
+- Replaced destructive resync with a staged projection. Previously cached intervals are re-read to repair expired old edits; the replacement is persisted before one atomic UI publication. Failed/aborted/superseded staging leaves the old projection and checkpoint intact. Late approval, attachment and read responses are epoch-fenced. Desktop preserves selection, older reading boundary and pagination; authoritative removal cancels the obsolete selection.
+- IPC baseline failures now retry without new events or false unpaired state. Unsubscribe cancels timers and late callbacks.
+- SQLite worker requests have deadlines, crash rejection and single-flight draining close. The service recreates a dead worker without resubmitting model execution. Idle identical checkpoints perform no SQL writes. A cache-removal failure is actionable and cannot falsely confirm Forget connection.
+- Sidebar running state uses authoritative processing outcomes before lifecycle bookkeeping. Running membership is computed once per projection rather than scanning all receipts for each session; unread remains independent.
+
+### Final verification
+
+- Linux desktop TypeScript/build + real Chromium layout: **104/104 passed**, no skips. SDK groups: **24/24 + 20/20 + 55/55 passed**. Actual pinned Linux Electron SQLite-worker tests: **10/10 passed**.
+- Mobile TypeScript, **389/389 tests**, Android and iOS exports passed on final source.
+- `scripts/dataflow-soak.mjs`: real loopback HTTP/WS, two SDK clients, actual desktop service/delta store and SQLite worker; messages and receipts are explicitly synthetic fixtures. Final run: 100 sessions, 300 rounds, 6,100 message rows, 12,060 events, 60 view switches, forced disconnect and authoritative cursor expiry/resync, 62,587 ms. Both clients' messages, read positions and unread counts matched the fixture authority; cold SQLite reopen and renderer projection matched. This is bounded network/resource stress, not genuine model traffic or a production latency claim.
+- Native Apple Silicon Mac mini: pinned Node/npm install, desktop build and tests (**103 passed, one optional Chromium layout test skipped**), unsigned native `.app` packaging. Production packaged entry launched in a dedicated empty user-data directory; root mounted, phase unpaired, sandbox retained. SQLite worker loaded from **inside app.asar**, wrote a checkpoint and cold-reopened it. Electron 44.4.5 / embedded Node 24.21.0. Mach-O arm64 and ElectronAsarIntegrity read back.
+- Native probe first attempted NODE_OPTIONS preloading, which packaged Electron rejected; used a loopback-only main-process inspector on the isolated candidate instead. No production source/permission/security-setting change, original App replacement or real credential copy. Candidate process and debug listener were closed and read back absent.
+- Initial native source archive omitted `.gitignore` required by a packaging regression; supplied that repository file and reran full native checks successfully. No gate was bypassed.
+
+### Retained artifact
+
+`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/core-dataflow/Hermes-0.1.5-core-dataflow-macOS-arm64.zip`
+
+- Native archive size: 128,776,794 bytes.
+- SHA-256: `58b04515775ebba4eb0071e3972a800f767764facad2a928fda9e2269ea57104`; Mac source archive and downloaded copy agree.
+- Unsigned development candidate; not notarized or a replacement for the published v0.1.5 Release. Probe/user-data/logs remain private, not packaged.
+
+Implementation is in Review, not a claim that every end-user gate is Done. Genuine multi-session model traffic and MacBook/iPhone visual/keyboard/network experience still need their own acceptance. Encrypted outbox/draft migration and mobile persistent-cache adoption are separate future scope, not silently included. No refactor merge into running main, remote push, service restart, public release, signing, Hermes core/plugin change or real model run was performed.
