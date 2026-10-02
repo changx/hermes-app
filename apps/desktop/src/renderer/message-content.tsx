@@ -47,6 +47,7 @@ const allowedLink = (href: string | undefined): string | undefined => {
 };
 
 export const MessageContent = ({ text }: { text: string }) => (
+  <div className="message-markdown">
   <ReactMarkdown
     skipHtml
     remarkPlugins={[remarkGfm, remarkMath]}
@@ -66,4 +67,5 @@ export const MessageContent = ({ text }: { text: string }) => (
       pre: ({ children }) => <pre className="code-block">{children}</pre>,
     }}
   >{text}</ReactMarkdown>
+  </div>
 );

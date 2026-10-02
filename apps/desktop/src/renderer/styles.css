@@ -269,6 +269,9 @@ button:focus-visible { outline: 2px solid #325c77; outline-offset: -2px; }
 .timeline-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .message-list { height: 100%; overflow: auto; }
 .message.optimistic { opacity: .78; }
+/* Markdown emits separator newlines between blocks; do not render them as spacer lines.
+   Fenced code and tool commands keep their own explicit whitespace rules. */
+.message-markdown { white-space: normal; }
 .message p, .message ul, .message ol, .message table, .message pre { margin: .55em 0; }
 .message table { width: 100%; border-collapse: collapse; white-space: normal; }
 .message th, .message td { border: 1px solid #d9d5ce; padding: 7px 9px; text-align: start; }
