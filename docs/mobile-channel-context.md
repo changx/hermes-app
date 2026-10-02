@@ -34,6 +34,14 @@ Phase 2 must verify plugin-based directory binding, existing-project/attachment 
 
 Native UI primitives/navigation in the component tests are substitutes. Exports are not an independent signed mobile package and do not prove iPhone usability. Physical-device checks remain: enter Channel at top, live activity reorder, long-press/VoiceOver rename, Markdown context view, keyboard and long-context editor, cancel/back discard prompt, save during weak network, then return to the Channel composer with its draft/attachments intact.
 
-## Delivery boundary
+## Candidate delivery boundary (before publication)
 
 Candidate branch: `feat/mobile-channel-context`; base: `f14b251`. Kanban: `t_f0e49193` (old ordering supersession noted on `t_47ae9b11`). No main merge, public push, Expo deployment, service restart, plugin install, core edit, desktop change or other-profile write. Deployment and iPhone acceptance remain separate. The attempted synchronization of the repository's protected AGENTS.md instruction file was denied by the approval guard; it remains unchanged.
+
+## Publication outcome
+
+Jamie subsequently authorized publication. Client commit `dff8a41575bacbde22cd9d0d54bdc0a5e0ee1aad` was fast-forwarded and pushed to `origin/main`; only the existing user-level `hermes-app-expo.service` restarted. No dependency install or repeat full tests/exports: the candidate gates above were reused and the mobile lockfile hash remained unchanged.
+
+Public iOS and Android manifests and each manifest's exact launchAsset returned HTTP 200, runtime `exposdk:57.0.0` and SDK `57.0.0`. The served modules contain the compact Context link/native route, ordinary top-first session list, channel/session rename options, Context-only patch/readback and draft discard guard, while retaining the first-message composer. Both Gateway PIDs/start times and installed plugin hashes were unchanged.
+
+Entry: `exps://agent.tuly.space` (Expo Go test deployment, not an independent package). Private before/after service evidence, plugin/lock hashes, manifests, exact bundles, module excerpts and `release-verification.json`: active-profile `workspace/hermes-app/mobile-channel-context/release/`. Rollback baseline is `f14b25112f2fd1bb4d4a45705cdef212338c1bdd`; revert `dff8a41` and restart only Expo if needed, without altering server/chat data. Physical iPhone acceptance and phase-2 Channel workspace/Files/AGENTS.md remain pending.
