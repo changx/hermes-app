@@ -9,11 +9,11 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../src/app/_layout.tsx', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../src/app/channels/[channelId]/new-topic.tsx', import.meta.url), 'utf8');
 
-test('Channel opens a full-screen multiline new-topic route', () => {
-  assert.match(channel, /accessibilityLabel="New topic"/);
-  assert.match(channel, /style=\{\[s\.fab, \{ bottom: 18 \+ insets\.bottom \}/);
-  assert.match(channel, /onPress=\{\(\) => onNewTopic\(channelId\)\}/);
-  assert.match(app, /pathname: '\/channels\/\[channelId\]\/new-topic'/);
+test('Channel list uses an inline composer instead of the new-topic FAB and route', () => {
+  assert.match(channel, /<NewTopicComposer key=\{channelId\}/);
+  assert.doesNotMatch(channel, /accessibilityLabel="New topic"|onNewTopic/);
+  assert.match(app, /enqueueFirstMessage=\{async/);
+  assert.doesNotMatch(app, /pathname: '\/channels\/\[channelId\]\/new-topic'/);
   assert.match(layout, /Stack\.Screen name="channels\/\[channelId\]\/new-topic" options=\{\{ title: 'New topic' \}\}/);
   assert.match(route, /<FormKeyboardAvoidingView>/);
   assert.match(editor, /accessibilityLabel="First message"[\s\S]*?multiline/);

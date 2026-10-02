@@ -333,6 +333,26 @@ test('camera permission and image results cannot cross composer lifetime', async
   }
 });
 
+test('local first-message uploads retry only unfinished files and retain one target', async () => {
+  const h = harness(), handleRef = { current: null }; let fail = true;
+  const baseUpload = h.client.upload;
+  h.client.upload = (...args) => args[1] === 'b.txt' && fail ? Promise.reject(new Error('offline')) : baseUpload(...args);
+  h.setFiles(async () => ({ canceled: false, assets: [{ uri: 'file://a', name: 'a.txt', size: 2 }, { uri: 'file://b', name: 'b.txt', size: 2 }] }));
+  h.start('AttachmentComposer', { threadId: null, handleRef }); h.press('Choose file'); await flush();
+  assert.equal(h.uploads.length, 0, 'selection must not create/upload before send');
+  await assert.rejects(handleRef.current.uploadTo('th_new'), /offline/);
+  h.render(); assert.equal(h.notices.at(-1)[1], false, 'failed local source allows a send retry');
+  assert.equal(h.uploads.length, 1);
+  fail = false; h.press('Retry: b.txt'); await flush(); h.render();
+  const uploaded = await handleRef.current.uploadTo('th_new');
+  assert.equal(h.uploads.length, 2, 'successful file is not re-uploaded');
+  assert.equal(uploaded.length, 2);
+  await assert.rejects(handleRef.current.uploadTo('th_other'), /target changed/);
+  h.press('Remove: a.txt'); await flush();
+  assert.deepEqual(h.deletions, [['th_new', 'att_1']]);
+  h.unmount(); assert.equal(h.deletions.length, 1, 'unmount never deletes submitted files');
+});
+
 test('generic paste dispatches text and URL without uploading; empty remains honest', async () => {
   const h = harness(); h.start('AttachmentComposer');
   h.setClipboardText('文字和富文本的纯文字'); h.press('Paste'); await flush();
