@@ -32,6 +32,24 @@ test('received record without original reference is checked once per reconnect, 
  for(let i=0;i<100;i++)f.box.reconcile();await flush();assert.equal(f.calls.filter(x=>x[0]==='send').length,1);assert.equal(f.calls.filter(x=>x[0]==='receipt').length,0);
  f.box.setConnection('suspended');f.box.setConnection('online');await flush();assert.equal(f.calls.filter(x=>x[0]==='receipt').length,1);assert.equal(f.box.records[0].text,'original');await f.box.stop();
 });
+test('durable queued ACK without a published reference is normal, retains input and shows no storage warning',async()=>{
+ const f=fixture({state:'queued',processing:null,ref_seq:undefined});try{await f.box.start();f.box.setConnection('online');await f.box.enqueue(makeRecord());await flush();assert.equal(f.box.records[0].status,'accepted');assert.equal(f.box.records[0].text,'original');assert.deepEqual(f.notices,[]);assert.deepEqual(f.calls.map(x=>x[0]),['send']);}finally{await f.box.stop();}
+});
+test('a matching live reference retires accepted input without another POST, receipt query or body read',async()=>{
+ const f=fixture({state:'queued',processing:null,ref_seq:undefined});try{await f.box.start();f.box.setConnection('online');await f.box.enqueue(makeRecord());await flush();f.client.receipts.set('r1',{id:'r1',thread_id:'thread',client_message_id:makeRecord().clientMessageId,state:'running',processing:'running',durable:true,ref_seq:7});f.box.reconcile();await flush();assert.equal(f.box.records.length,0);assert.deepEqual(f.calls.map(x=>x[0]),['send','echo']);}finally{await f.box.stop();}
+});
+test('foreign live confirmation cannot erase an accepted original or cause execution',async()=>{
+ const f=fixture({state:'queued',processing:null,ref_seq:undefined});try{await f.box.start();f.box.setConnection('online');await f.box.enqueue(makeRecord());await flush();f.client.receipts.set('r1',{id:'r1',thread_id:'other',client_message_id:makeRecord().clientMessageId,state:'running',durable:true,ref_seq:7});f.box.reconcile();await flush();assert.equal(f.box.records[0].text,'original');assert.equal(f.calls.filter(x=>x[0]==='send').length,1);}finally{await f.box.stop();}
+});
+test('cold start on channel list checks an old unknown receipt without new sends, body reads or a storage alarm',async()=>{
+ const f=fixture({state:'unknown',processing:null,ref_seq:undefined});const original={...makeRecord(),status:'accepted',receiptId:'r1',receiptState:'unknown'};
+ const seeded=new OutboxStore(f.store,config);await seeded.load();await seeded.enqueue(original);
+ try{await f.box.start();f.box.setConnection('online');await flush();assert.equal(f.box.records[0].text,'original');assert.equal(f.box.records[0].status,'accepted');assert.deepEqual(f.calls.map(x=>x[0]),['receipt']);assert.deepEqual(f.notices,[]);for(let i=0;i<100;i++)f.box.reconcile();await flush();assert.deepEqual(f.calls.map(x=>x[0]),['receipt']);}finally{await f.box.stop();}
+});
+test('cold start still reports a genuine receipt-proof storage failure and keeps the old original',async()=>{
+ const f=fixture();const original={...makeRecord(),status:'accepted',receiptId:'r1',receiptState:'unknown'};const seeded=new OutboxStore(f.store,config);await seeded.load();await seeded.enqueue(original);
+ try{await f.box.start();f.store.setItemAsync=async()=>{throw Error('secure storage unavailable');};f.box.setConnection('online');await flush();assert.equal(f.box.records[0].text,'original');assert.ok(f.notices.some(x=>x.includes('could not be updated')));assert.deepEqual(f.calls.map(x=>x[0]),['receipt']);}finally{await f.box.stop();}
+});
 test('archive prevents delivery but retains user input',async()=>{
  const f=fixture();f.client.isThreadAvailable=()=>false;await f.box.start();f.box.setConnection('online');await f.box.enqueue(makeRecord());await flush();assert.equal(f.calls.length,0);assert.equal(f.box.records[0].status,'blocked');assert.equal(f.box.records[0].text,'original');await f.box.stop();
 });

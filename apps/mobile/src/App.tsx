@@ -28,9 +28,9 @@ import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
 
-const sendNotice = (notice: string) => notice.includes('permissions') || notice.includes('message content')
-  ? 'Message not sent. Check your access or message content. Your message is still here.'
-  : "Could not save or confirm your message. Don't clear this app's data.";
+// Outbox emits user-facing, classified notices; do not collapse a received
+// message or recoverable local cleanup into a generic unsaved-message warning.
+const sendNotice = (notice: string) => notice;
 
 function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSymbol; android: AndroidSymbol; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.headerIconPressed]}>

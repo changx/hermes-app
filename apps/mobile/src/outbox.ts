@@ -269,7 +269,11 @@ export class MobileOutbox {
     if (this.durableAckOnly) {
       for (const record of this.records) {
         if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId) || (this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
+        const cached = this.sdk.receipts.get(record.receiptId);
         if (record.receiptRefSeq !== undefined) this.launch(record.clientMessageId, () => this.retireAcknowledged(record));
+        else if (cached?.id === record.receiptId && cached.thread_id === record.threadId && cached.client_message_id === record.clientMessageId && cached.durable === true && Number.isSafeInteger(cached.ref_seq) && cached.ref_seq! > 0) {
+          this.launch(record.clientMessageId, () => this.recordAcknowledgement(record, cached));
+        }
         else if (!this.checkedAt.has(record.clientMessageId)) { this.checkedAt.set(record.clientMessageId, this.clock()); this.launch(record.clientMessageId, () => this.checkAcknowledgement(record)); }
       }
       return;
@@ -364,7 +368,9 @@ export class MobileOutbox {
   private async retireAcknowledged(record: SendRecord): Promise<void> {
     if (!record.receiptId || !Number.isSafeInteger(record.receiptRefSeq) || record.receiptRefSeq! <= 0) {
       this.checkedAt.set(record.clientMessageId, this.clock());
-      if (!this.noticed.has(record.clientMessageId)) { this.noticed.add(record.clientMessageId); this.emit('Your message was received, but its saved original could not be confirmed yet. It will not be sent again automatically.'); }
+      // A durable queued ACK can precede publication of its history row. Keep
+      // the original until a matching live/one-shot confirmation supplies it;
+      // this normal handoff is not a local storage failure or a resend request.
       return;
     }
     try { await this.storage.removeAcknowledged(record.clientMessageId); }
@@ -381,13 +387,19 @@ export class MobileOutbox {
     try {
       const receipt = await this.sdk.getReceipt(record.receiptId, abort.signal);
       if (!this.alive || gen !== this.generation) return;
-      if (receipt.id !== record.receiptId || receipt.durable !== true) throw new OutboxIdentityError('Message acknowledgement identity mismatch');
-      const next = accepted(record, receipt);
-      try { await this.storage.update(next); }
-      catch { this.storageFault = true; this.emit('Your received message could not be updated here. Keep your app data.'); return; }
-      if (receipt.ref_seq !== undefined) this.sdk.rememberAcceptedInput?.(record.threadId, record.clientMessageId, record.text, record.attachments ?? [], record.createdAt, receipt);
-      await this.retireAcknowledged(next);
+      await this.recordAcknowledgement(record, receipt);
     } finally { this.controllers.delete(record.clientMessageId); }
+  }
+
+  private async recordAcknowledgement(record: SendRecord, receipt: Receipt): Promise<void> {
+    if (receipt.id !== record.receiptId || receipt.durable !== true) throw new OutboxIdentityError('Message acknowledgement identity mismatch');
+    const next = accepted(record, receipt);
+    const gen = this.generation;
+    try { await this.storage.update(next); }
+    catch { this.storageFault = true; this.emit('Your received message could not be updated here. Keep your app data.'); return; }
+    if (!this.alive || gen !== this.generation) return;
+    if (receipt.ref_seq !== undefined) this.sdk.rememberAcceptedInput?.(record.threadId, record.clientMessageId, record.text, record.attachments ?? [], record.createdAt, receipt);
+    await this.retireAcknowledged(next);
   }
 
   private async submit(record: SendRecord) {

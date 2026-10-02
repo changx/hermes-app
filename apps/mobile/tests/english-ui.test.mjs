@@ -29,7 +29,7 @@ test('all built-in mobile strings and HTML templates use English', () => {
   assert.deepEqual(failures, []);
 });
 
-test('translated notices still select the correct message and pairing state', () => {
+test('classified send notices retain their actual meaning and pairing state remains scoped', () => {
   const source = ts.createSourceFile('App.tsx', readFileSync(path.join(mobile, 'src/App.tsx'), 'utf8'), ts.ScriptTarget.Latest, true);
   let notice, pairing;
   const visit = node => {
@@ -45,8 +45,11 @@ test('translated notices still select the correct message and pairing state', ()
   const outbox = readFileSync(path.join(mobile, 'src/outbox.ts'), 'utf8');
   const actualNotice = outbox.match(/this\.emit\('([^']*connection permissions[^']*)'\)/)?.[1];
   assert.ok(actualNotice);
-  assert.match(context.notice(actualNotice), /^Message not sent/);
-  assert.match(context.notice('Save failed'), /^Could not save or confirm/);
+  assert.equal(context.notice(actualNotice), actualNotice);
+  const storageNotice = 'Your message was received, but its status could not be saved on this device. Keep your app data.';
+  assert.equal(context.notice(storageNotice), storageNotice);
+  const cleanupNotice = 'A received message could not be cleared from this device. Keep your app data.';
+  assert.equal(context.notice(cleanupNotice), cleanupNotice);
   const pairingSource = readFileSync(path.join(mobile, 'src/pairing.ts'), 'utf8');
   const actualStates = [...new Set(pairingSource.match(/(?:Waiting for a connection\.[^']*|Connecting securely…)/g))];
   assert.equal(actualStates.length, 2);
