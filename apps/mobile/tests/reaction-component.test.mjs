@@ -221,7 +221,7 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(agent.backgroundColor, undefined);
   assert.equal(agent.borderRadius, undefined);
   const user = rowStyle('user');
-  assert.equal(user.alignSelf, 'flex-end');
+  assert.equal(user.alignSelf, 'flex-start');
   assert.equal(user.width, undefined, 'short messages must shrink to their content');
   assert.equal(user.maxWidth, '80%');
   assert.equal(user.marginHorizontal, 0, 'gutters belong to the definite-width parent');
@@ -230,7 +230,8 @@ test('assistant fills available width without a bubble; user bubble remains unch
   assert.equal(user.borderColor, '#d0e2fb');
   assert.equal(user.borderWidth, 1);
   assert.equal(user.borderRadius, 16);
-  assert.equal(user.borderTopRightRadius, 4);
+  assert.equal(user.borderTopLeftRadius, 4);
+  assert.equal(user.borderTopRightRadius, 16);
 });
 
 test('user and assistant rows render the same complete Markdown and media tree', () => {

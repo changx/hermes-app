@@ -80,9 +80,9 @@ test("renderer shell contains activity rail, tree panel and conversation", () =>
 test("write actions reflect the current selection", () => {
   assert.match(markup, /aria-label="Create a channel"/);
   assert.doesNotMatch(markup, /aria-label="Create a channel"[^>]+disabled/);
-  assert.match(markup, /aria-label="Create a topic"[^>]+disabled/);
+  assert.match(markup, /aria-label="Create a session"[^>]+disabled/);
   assert.match(markup, /aria-label="Message"[^>]+disabled/);
-  assert.match(markup, /<button[^>]+disabled[^>]*>Send<\/button>/);
+  assert.match(markup, /aria-label="Send message"[^>]+disabled/);
 });
 
 test("narrow layout keeps rail and exposes panel as an overlay", () => {

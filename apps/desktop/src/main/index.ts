@@ -52,7 +52,7 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createChannel({ name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
   ipcMain.handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
   ipcMain.handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
-  ipcMain.handle("desktop:create-thread", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createThread({ title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80) } satisfies ThreadInput); });
+  ipcMain.handle("desktop:create-thread", async (event, value: unknown) => { trustedSender(event); const input = object(value); return service.createThread({ title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput); });
   ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); await service.renameThread(text(id, 200), text(title, 200)); });
   ipcMain.handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); await service.archiveThread(text(id, 200)); });
   ipcMain.handle("desktop:load-older", async (event) => { trustedSender(event); await service.loadOlder(); });
@@ -62,8 +62,8 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:stop-thread", async (event) => { trustedSender(event); await service.stopThread(); });
   ipcMain.handle("desktop:cancel-queued", async (event, id: unknown) => { trustedSender(event); await service.cancelQueued(text(id, 200)); });
   ipcMain.handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { trustedSender(event); await service.answerInteraction(text(id, 200), text(choice, 4000)); });
-  ipcMain.handle("desktop:pick-attachments", async (event) => { trustedSender(event); return service.pickAndUploadAttachments(); });
-  ipcMain.handle("desktop:drop-attachments", async (event, paths: unknown) => { trustedSender(event); return service.uploadAttachmentPaths(texts(paths, 8, 4096)); });
+  ipcMain.handle("desktop:pick-attachments", async (event, threadId: unknown) => { trustedSender(event); return service.pickAndUploadAttachments(threadId === undefined ? undefined : text(threadId, 200)); });
+  ipcMain.handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { trustedSender(event); return service.uploadAttachmentPaths(texts(paths, 8, 4096), threadId === undefined ? undefined : text(threadId, 200)); });
   ipcMain.handle("desktop:delete-attachment", async (event, id: unknown) => { trustedSender(event); await service.deleteUnattachedAttachment(text(id, 200)); });
   ipcMain.handle("desktop:preview-image", async (event, id: unknown) => { trustedSender(event); return service.previewAttachmentImage(text(id, 200)); });
   ipcMain.handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { trustedSender(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action); });

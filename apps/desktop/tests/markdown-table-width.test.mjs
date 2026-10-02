@@ -22,6 +22,6 @@ test('desktop tables have full-width scroll viewports and at-least-full-width co
   assert.match(css,/\.message-markdown table \{[^}]*width: max-content;[^}]*min-width: 100%;/);
   assert.ok(html.includes('last-column') && html.includes('After'));
 });
-for (const surface of ['session','standalone']) test(`Chromium: desktop ${surface} tables obey parent content widths and resize`, { skip:!process.env.HERMES_TEST_CHROME }, async () => {
-  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table');
+for (const surface of ['session','standalone','user-bubble']) test(`Chromium: desktop ${surface} tables obey parent content widths and resize`, { skip:!process.env.HERMES_TEST_CHROME }, async () => {
+  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : surface==='user-bubble' ? 'message message-user' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table');
 });

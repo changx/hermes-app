@@ -6,7 +6,7 @@ const ThreadRow = memo(({thread,selected}: {thread:DesktopThread;selected:boolea
   <span className="thread-title">{thread.title}</span>{thread.running ? <span className="thread-status">Running</span> : null}
 </button>);
 
-export const NavigationPanel = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
+export const NavigationPanel = memo(({ snapshot, onNewSession }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void }) => {
   const [expanded, setExpanded] = useState(() => new Set(snapshot.selectedChannelId ? [snapshot.selectedChannelId] : []));
   const [batches, setBatches] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
@@ -23,9 +23,9 @@ export const NavigationPanel = memo(({ snapshot }: { snapshot: DesktopSnapshot }
       const open = expanded.has(channel.id);
       const page = threadWindow(snapshot.threads, channel.id, now, batches[channel.id] ?? 0);
       return <section className="channel-branch" key={channel.id}>
-        <button type="button" className={`channel-toggle${channel.id === snapshot.selectedChannelId ? " current-channel" : ""}`} aria-expanded={open} aria-controls={`branch-${channel.id}`} onClick={() => setExpanded((old) => { const next = new Set(old); if (open) next.delete(channel.id); else next.add(channel.id); return next; })}>
+        <div className="channel-toolbar"><button type="button" className={`channel-toggle${channel.id === snapshot.selectedChannelId ? " current-channel" : ""}`} aria-expanded={open} aria-controls={`branch-${channel.id}`} onClick={() => setExpanded((old) => { const next = new Set(old); if (open) next.delete(channel.id); else next.add(channel.id); return next; })}>
           <span aria-hidden="true">{open ? "▾" : "▸"}</span><strong>{channel.name}</strong>
-        </button>
+        </button><button type="button" className="channel-new-session" aria-label={`New session in ${channel.name}`} title="New session" onClick={() => onNewSession(channel.id)}>＋</button></div>
         {open ? <div id={`branch-${channel.id}`} className="thread-children">
           {page.rows.map((thread) => <ThreadRow key={thread.id} thread={thread} selected={thread.id === snapshot.selectedThreadId} />)}
           {!page.rows.length ? <p className="tree-empty">No recent activity</p> : null}
@@ -36,4 +36,4 @@ export const NavigationPanel = memo(({ snapshot }: { snapshot: DesktopSnapshot }
     })}
     {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No channels yet.</p> : null}
   </div>;
-}, (before,after) => before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations);
+}, (before,after) => before.onNewSession === after.onNewSession && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations);
