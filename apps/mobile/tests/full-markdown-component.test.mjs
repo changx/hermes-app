@@ -9,7 +9,7 @@ import * as toolPresentation from '../../../packages/client/src/toolPresentation
 
 // Transpile and execute the production component, with the production parser.
 // This asserts the native tree and callbacks, not a simulated iPhone layout.
-test('server Discord captions are used verbatim without duplicating file paths', () => {
+test('file timeline derives basename previews while retaining full safe details', () => {
   const h=mount('',{canExpand:true,toolCalls:[{id:'r',name:'read_file',label:'Read file',caption:'Reading a.py L10-12',icon:'📖',detail:'path=/very/long/workspace/src/a.py · offset=10 · limit=3'}]});
   const texts=h.walk(h.render(false)).filter(n=>n.type==='Text').map(n=>n.props.children.flat(Infinity).join('')).join(' ');
   assert.ok(texts.includes('Reading a.py L10-12'));
@@ -17,6 +17,24 @@ test('server Discord captions are used verbatim without duplicating file paths',
   const button=h.walk(h.render(false)).find(n=>n.type==='Pressable'&&n.props.accessibilityLabel==='View file details');
   button.props.onPress();
   assert.ok(h.walk(h.viewer()).find(n=>n.type==='WebView').props.source.html.includes('/very/long/workspace/src/a.py'));
+  h.unmount();
+});
+
+test('edit rows override path and parameter captions; expanded view retains all safe paths', () => {
+  const calls = [
+    { id: 'replace', name: 'functions.patch', label: 'Edit file', caption: 'Editing /opt/projects/jamie/_worktrees/hermes...', detail: 'path=/opt/projects/jamie/_worktrees/hermes-app/task/apps/mobile/src/EditorScreens.tsx' },
+    { id: 'v4a', name: 'patch', label: 'Edit file', caption: 'Editing path=/opt/projects/jamie/_worktrees/h...', detail: 'path=/repo/tests/a.test.mjs · path=/repo/tests/b.test.mjs' },
+  ];
+  const h = mount('', { canExpand: true, toolCalls: calls });
+  const nodes = h.walk(h.render(false));
+  const text = nodes.filter(n => n.type === 'Text').map(n => n.props.children.flat(Infinity).join('')).join(' ');
+  assert.ok(text.includes('Editing EditorScreens.tsx'));
+  assert.ok(text.includes('Editing a.test.mjs · b.test.mjs'));
+  assert.ok(!text.includes('path=') && !text.includes('/opt/projects') && !text.includes('/repo/'));
+  assert.equal(nodes.filter(n => n.type === 'Pressable' && n.props.accessibilityLabel === 'View file details').length, 2);
+  nodes.find(n => n.type === 'Pressable' && n.props.accessibilityLabel === 'View file details').props.onPress();
+  const html = h.walk(h.viewer()).find(n => n.type === 'WebView').props.source.html;
+  for (const call of calls) assert.ok(html.includes(call.detail));
   h.unmount();
 });
 

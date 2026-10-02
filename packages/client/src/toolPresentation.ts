@@ -24,7 +24,7 @@ const previewCap = (text: string) => {
 
 // Parse only already-safe known file summaries, never raw tool arguments.
 // Basename + Lstart-end matches _preview_read_file/_read_file_line_label;
-// writes/edits use the Discord default 40-character preview budget.
+// All file tools use basenames within the default 40-character preview budget.
 export function compactFileDetail(rawName: string, detail: string): string {
   const name = rawName.replace(/^functions\./, '');
   if (!['read_file', 'write_file', 'patch'].includes(name)) return detail;
@@ -39,5 +39,26 @@ export function compactFileDetail(rawName: string, detail: string): string {
     const lines = start > 0 && Number.isSafeInteger(start) ? count > 1 && Number.isSafeInteger(count) && Number.isSafeInteger(start + count - 1) ? ` L${start}-${start + count - 1}` : ` L${start}` : '';
     return previewCap(file + lines);
   }
-  return previewCap(detail);
+  if (name === 'read_file') return detail;
+  const files = fields.flatMap(field => {
+    if (field === '…' || field === '...') return ['…'];
+    const path = field.startsWith('path=') ? field.slice(5) : field;
+    // This is a path-only safe summary, not an argument/JSON parser. Ignore
+    // unrelated metadata instead of presenting it as a filename.
+    if (!path || path.includes('://') || /^[A-Za-z_]\w*=/.test(path) || /^[\[{]/.test(path) || /[\r\n]/.test(path)) return [];
+    if (path.endsWith('…') || path.endsWith('...')) return ['Path truncated'];
+    return [path.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? path];
+  });
+  return previewCap(files.join(' · '));
+}
+
+// Server captions may already have discarded the basename by truncating a
+// complete path (or a V4A "path=" summary). Prefer safe detail for file rows;
+// preserve server captions for every other tool. Expanded details stay intact.
+export function compactToolCaption(rawName: string, label: string, detail?: string, caption?: string): string {
+  const name = rawName.replace(/^functions\./, '');
+  const fileOperation = ['read_file', 'write_file', 'patch'].includes(name);
+  if (caption && !(fileOperation && detail)) return caption;
+  const preview = detail && !toolPresentation(rawName).command ? compactFileDetail(rawName, detail).replace(/\s+/g, ' ') : '';
+  return `${toolDisplayLabel(rawName, label)}${preview ? ` ${preview}` : ''}`;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
-import { compactFileDetail, toolDisplayLabel, toolPresentation } from "../../../../packages/client/src/toolPresentation";
+import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { orderedThreads } from "./thread-navigation";
 import { NavigationPanel } from "./navigation-panel";
 import type { DesktopAttachment, DesktopSnapshot } from "../shared/desktop-api";
@@ -112,7 +112,7 @@ const Timeline = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
         <div className="tool-records">{message.toolCalls.map((tool) => {
           const presentation = toolPresentation(tool.name);
           return <section className="tool-record" key={tool.id} aria-label={tool.label}>
-            <div className="tool-line"><span className="tool-icon" aria-hidden="true">{tool.icon ?? presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{tool.caption ?? `${toolDisplayLabel(tool.name, tool.label)}${!presentation.command && tool.detail ? ` ${compactFileDetail(tool.name ?? '', tool.detail).replace(/\s+/g, " ")}` : ""}`}</span></div>
+            <div className="tool-line"><span className="tool-icon" aria-hidden="true">{tool.icon ?? presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{compactToolCaption(tool.name ?? '', tool.label, tool.detail, tool.caption)}</span></div>
             {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
           </section>;
         })}</div>

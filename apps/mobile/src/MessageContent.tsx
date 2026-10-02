@@ -12,7 +12,7 @@ import { ARTICLE_TEXT_LIMIT, renderArticleHtml } from './articleHtml';
 import { safeLinkUrl } from './messageMarkdown';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
-import { compactFileDetail, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
+import { compactFileDetail, compactToolCaption, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
 import { useViewer } from './Viewers';
 
 const copy = (value: string) => {
@@ -286,7 +286,7 @@ function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?
     const detail = call.detail && compact ? compactFileDetail(call.name, call.detail) : call.detail;
     const fileOperation = ['read_file', 'write_file', 'patch'].includes(call.name.replace(/^functions\./, ''));
     const shortened = compact && fileOperation && !!call.detail && (detail !== call.detail || !!call.caption);
-    const caption = compact && call.caption ? call.caption : `${toolDisplayLabel(call.name, call.label)}${!terminal && detail ? ` ${detail.replace(/\s+/g, ' ')}` : ''}`;
+    const caption = compact ? compactToolCaption(call.name, call.label, call.detail, call.caption) : `${toolDisplayLabel(call.name, call.label)}${!terminal && detail ? ` ${detail.replace(/\s+/g, ' ')}` : ''}`;
     const label = <Text selectable numberOfLines={1} ellipsizeMode="tail" style={shortened ? [styles.toolLabel, styles.toolLineText] : styles.toolLabel}>{icon} {caption}</Text>;
     return <View key={call.id} style={styles.toolCall}>
       {shortened && onDetails ? <View style={styles.toolLine}>{label}<Pressable accessibilityRole="button" accessibilityLabel="View file details" hitSlop={8} onPress={onDetails}><Text style={styles.toolDetailsLink}>↗</Text></Pressable></View> : label}

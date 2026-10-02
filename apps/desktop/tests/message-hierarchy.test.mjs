@@ -12,7 +12,7 @@ const tool = (id, name, label, detail) => ({ id, name, label, detail });
 const msg = (id, text, toolCalls = [], extra = {}) => ({ id, role: 'assistant', text, toolCalls, attachments: [], ...extra });
 export const html = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
  revision: 1, phase: 'connected', selectedThreadId: 'test-thread', connectionState: 'online', connectionLabel: 'Connected', channels: [], threads: [], interactions: [], canLoadOlder: false,
- messages: [msg('a','Checking'), msg('b','',[tool('read','read_file','Read file','src/file.ts · offset=10')]), msg('c','',[tool('cmd','terminal','Run command','git status --short')]), msg('d','Result',[],{displayKind:'final'}), msg('e','Direct reply',[],{displayKind:'direct'}), msg('f','Next', [tool('legacy',undefined,'Unknown action','Safe detail')]), msg('g','',[{...tool('server','read_file','Read file','path=/repo/private/long/a.py'),caption:'Reading a.py L1-2',icon:'📖'}])]
+ messages: [msg('a','Checking'), msg('b','',[tool('read','read_file','Read file','src/file.ts · offset=10')]), msg('c','',[tool('cmd','terminal','Run command','git status --short')]), msg('d','Result',[],{displayKind:'final'}), msg('e','Direct reply',[],{displayKind:'direct'}), msg('f','Next', [tool('legacy',undefined,'Unknown action','Safe detail')]), msg('g','',[{...tool('server','read_file','Read file','path=/repo/private/long/a.py · offset=1 · limit=2'),caption:'Reading a.py L1-2',icon:'📖'}])]
 }}));` }, bundle: true, external: ['react', 'react/jsx-runtime', 'react-dom/server'], format: 'cjs', platform: 'node', write: false });
 const out = { exports: {} };
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url), out, out.exports);
