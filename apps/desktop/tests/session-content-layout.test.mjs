@@ -36,8 +36,8 @@ export const preview=renderToStaticMarkup(createElement(DesktopShellView,{snapsh
 const mod={exports:{}};
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
 
-test('right-aligned user bubbles use intrinsic width, a 60 percent cap and gray rounded background',()=>{
-  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(60% - 16\.8px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
+test('right-aligned user bubbles use intrinsic width, an 80 percent cap and gray rounded background',()=>{
+  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(80% - 22\.4px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
   assert.doesNotMatch(css,/\.message-user:has\(/);
   assert.match(css,/\.message-final \{[^}]*margin-top: 32px;[^}]*padding: 12px 14px;[^}]*background: #f7f5ef;/);
   assert.doesNotMatch(css,/\.message-final \{[^}]*border-left:/);
@@ -73,7 +73,7 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
       const results=[];
       for(const width of [720,900,1280,1800,720]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
-        const list=document.querySelector('.message-list'),bounds=list.getBoundingClientRect(),rows=[...document.querySelectorAll('.message')];
+        const list=document.querySelector('.message-list'),bounds=list.getBoundingClientRect(),rows=[...document.querySelectorAll('.message:not([hidden])')];
         const rect=x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width}};
         results.push({width,left:bounds.left,right:bounds.left+list.clientWidth,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{textAlign:getComputedStyle(row.querySelector('.message-markdown')).textAlign,background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
       }
@@ -87,7 +87,7 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
       for(const row of result.rows){
         if(row.user){
           near(row.box.right,result.right-14,'user right gutter');
-          assert.ok(row.box.width<=(result.clientWidth-28)*.6+1,'60 percent available-width cap');
+          assert.ok(row.box.width<=(result.clientWidth-28)*.8+1,'80 percent available-width cap');
           near(row.prose.left,row.box.left+14,'bubble prose inset');
           assert.equal(row.style.textAlign,'left','bubble content remains left aligned');
         } else {
@@ -101,7 +101,7 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
         if(row.final){assert.equal(row.style.background,'rgb(247, 245, 239)');assert.equal(row.style.border,'0px');assert.equal(row.style.marginTop,'32px');}
       }
       assert.ok(result.tables.some(x=>x.scrollWidth>x.clientWidth),'wide table keeps horizontal scrolling');
-      assert.ok(result.rows[0].box.width<(result.clientWidth-28)*.6-10,'short message stays narrower than the cap');
+      assert.ok(result.rows[0].box.width<(result.clientWidth-28)*.8-10,'short message stays narrower than the cap');
     }
     if(process.env.HERMES_SESSION_EVIDENCE){
       const path=process.env.HERMES_SESSION_EVIDENCE;await mkdir(path,{recursive:true});

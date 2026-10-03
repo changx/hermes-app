@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as workPresentation from '../../../packages/client/src/workPresentation.ts';
 import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
@@ -44,6 +45,7 @@ function route(id = 't_one') {
 }
 function timeline(bottom = 34, os = 'ios', receipts = []) {
   const tree = load('../src/ChatTimeline.tsx', {
+    '../../../packages/client/src/workPresentation': workPresentation,
     react,
     'react-native': { AppState: { currentState: 'active' }, FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',
       Platform: { OS: os }, StyleSheet: { create: styles => styles }, useWindowDimensions: () => ({ fontScale: 1 }) },

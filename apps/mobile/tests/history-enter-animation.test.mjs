@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as workPresentation from '../../../packages/client/src/workPresentation.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -40,6 +41,7 @@ async function harness({ reduced = false } = {}) {
   for (const name of ['View', 'Pressable', 'RefreshControl', 'ScrollView']) native[name] = name;
   function MessageContent() { React.useEffect(() => { lifecycle.contentMounts++; }, []); return React.createElement('MessageContent'); }
   const modules = {
+    '../../../packages/client/src/workPresentation': workPresentation,
     react: React, 'react-native': native, './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
     'react-native-reanimated': { View: 'HistoryAnimatedView', FadeIn, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },

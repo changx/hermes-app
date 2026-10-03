@@ -2,6 +2,7 @@ import { AttachmentView } from "./attachment-view";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
+import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { orderedThreads } from "./thread-navigation";
 import { NavigationPanel } from "./navigation-panel";
@@ -72,12 +73,12 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
   </form></div>;
 };
 
-const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; continuation: boolean }) => {
+const MessageRow = memo(({ message, continuation, hidden = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean }) => {
   const finalReply = message.role === "assistant" && message.displayKind === "final";
   const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
   const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
-  return <article data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
+  return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
     {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
@@ -93,6 +94,9 @@ const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; c
 });
 
 const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot; active?: boolean }) => {
+  const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
+  const groups = workGroups(snapshot.messages.map(message => ({ key: message.id, role: message.role, kind: message.displayKind, seconds: message.createdAt })), !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running);
+  const choiceKey = (group: WorkGroup) => `${snapshot.selectedThreadId}:${group.key}`;
   const list = useRef<HTMLDivElement>(null);
   const previous = useRef({ threadId: "", first: "", height: 0, count: 0 });
   const [following, setFollowing] = useState(true);
@@ -137,7 +141,12 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
       {snapshot.messages.length ? snapshot.messages.map((message, index) => {
         const previous = snapshot.messages[index - 1];
         const continuation = message.role === "assistant" && previous?.role === "assistant" && !message.displayKind && !previous.displayKind;
-        return <MessageRow key={message.id} message={message} continuation={continuation} />;
+        const group = groups.get(message.id);
+        const expanded = group ? workIsExpanded(group, workChoices[choiceKey(group)]) : true;
+        return <div className="timeline-entry" key={message.id}>
+          {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span aria-hidden="true">{expanded ? '⌄' : '›'}</span></button></div>}
+          <MessageRow message={message} continuation={continuation} hidden={!expanded} />
+        </div>;
       }) : snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-busy="true"><h3>Loading messages…</h3></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}

@@ -154,7 +154,7 @@ test('no false running animation for a different selection, offline state or a p
 
 test('right-aligned gray user bubbles and mobile-like bounded composer have explicit CSS rules',async()=>{
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
-  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(60% - 16\.8px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
+  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(80% - 22\.4px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
   assert.match(css,/\.composer textarea \{[^}]*max-height: 120px;[^}]*resize: none;/);
   assert.match(css,/channel-toolbar:focus-within/);
 });

@@ -100,3 +100,13 @@ Jamie 请求手机与桌面均去掉 Agent 回复上的时间。此规则只替�
 卡片 `t_626cc866`；分支 `fix/hide-agent-timestamps`，基线 `559ca04`。手机 TypeScript 与 **506/506** 测试通过，桌面 TypeScript/构建及真实 Chromium **120/120** 测试通过，均无失败或跳过。新增组件断言在修改前失败、修改后通过，并覆盖冷历史及系统通知。顺序 iOS/Android 导出及精确 bundle 时间显示条件回读通过。
 
 证据：active profile 私有 `workspace/hide-agent-timestamps/`。未合并主分支、未发布或重启服务，未改锁文件、插件、共享协议或 Hermes 核心。导出不是独立安装包；真机视觉仍待检查。
+
+## 最新补充：80% 宽度与可折叠过程（隔离候选）
+
+用户消息上限改为 80%，其余靠右、左对齐正文、浅灰底、宽高自适应不变。公开过程标题运行时显示 `Working`；明确最终回复到达后立即折叠，显示 `Worked for {时间长度}`，点标题可重新展开。标题下有分隔线。用户追加、系统通知和最终正文不隐藏；Agent 时间继续隐藏，消息根节点、身份及顺序保留。
+
+当前耗时是当前已加载首条公开过程记录到明确最终回复的时间差，不是完整服务端执行耗时；缺时间或倒序显示 `Worked for —`，无最终标记且未运行显示 `Work recorded`。不读内部推理，不补造缺失历史，不扩展现有历史加载窗口。实现及完整边界见 [桌面与手机可折叠过程](desktop-session-composer.md#latest-follow-up-80-user-width-and-collapsible-public-work-isolated-candidate)。
+
+分支 `fix/collapsible-work`，卡 `t_5a04dba0`，基线 `f748cc9`。双端与共享 TypeScript 通过，手机 **507/507**、桌面构建及 Chromium **124/124** 测试通过，均无跳过。历史加载测试已修正新增标题后的根节点选择，并验证原消息节点在 prepend 时保留。顺序 iOS/Android 清缓存导出通过，实际 HBC 文件回读确认新宽度与过程呈现字符串。证据：active Channel workspace `collapsible-work/`。
+
+未合并主分支、推送或发布，未重启服务；未改锁文件、版本、插件或核心。原生视觉、滚动、键盘与辅助功能仍待真机验收。

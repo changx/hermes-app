@@ -292,8 +292,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .timeline-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .message-list { height: 100%; overflow: auto; }
 .message.optimistic { opacity: .78; }
-/* Match mobile's 60% cap after deducting the two 14px timeline gutters. */
-.message-user { width: fit-content; min-width: 0; max-width: calc(60% - 16.8px); margin-left: auto; margin-right: 14px; padding: 13px 14px; border: 0; border-radius: 22px; background: #f3f3f3; color: #172a40; text-align: left; }
+/* Match mobile's 80% cap after deducting the two 14px timeline gutters. */
+.message-user { width: fit-content; min-width: 0; max-width: calc(80% - 22.4px); margin-left: auto; margin-right: 14px; padding: 13px 14px; border: 0; border-radius: 22px; background: #f3f3f3; color: #172a40; text-align: left; }
+.message[hidden] { display: none; }
+.work-heading { margin: 12px 14px 8px; padding-bottom: 10px; border-bottom: 1px solid #dedede; }
+.work-toggle { display: inline-flex; align-items: center; gap: 10px; padding: 6px 0; border: 0; background: transparent; color: #727272; font: inherit; cursor: pointer; }
+.work-toggle:focus-visible { outline: 2px solid #526780; outline-offset: 3px; }
 /* Markdown emits separator newlines between blocks; do not render them as spacer lines.
    Fenced code and tool commands keep their own explicit whitespace rules. */
 .message-markdown { white-space: normal; min-width: 0; max-width: 100%; }

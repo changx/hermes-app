@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as workPresentation from '../../../packages/client/src/workPresentation.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,6 +32,7 @@ function loadTimeline() {
     useEffect() {}, useImperativeHandle() {},
   };
   const modules = {
+    '../../../packages/client/src/workPresentation': workPresentation,
     react,
     'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
     'react-native': { FlatList: 'FlatList', ScrollView: 'ScrollView', View: 'View', Pressable: 'Pressable',

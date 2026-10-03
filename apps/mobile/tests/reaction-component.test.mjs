@@ -1,5 +1,6 @@
 import test from 'node:test';
 import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
+import * as workPresentation from '../../../packages/client/src/workPresentation.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,6 +21,7 @@ const react = {
   useCallback: fn => fn, useEffect: () => {}, useImperativeHandle: () => {}, useMemo: fn => fn()
 };
 const modules = {
+  '../../../packages/client/src/workPresentation': workPresentation,
   '../../../packages/client/src/sessionLinks': sessionLinks,
   '../../../packages/client/src/toolPresentation': toolPresentation,
   react: { ...react, default: react }, 'react-native': native,
@@ -68,6 +70,27 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
   return { tree, rowTree, calls };
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
+
+test('production mobile rows: Working toggle, final auto collapse, exact retained content and reopen', () => {
+  const oldState = modules.react.useState, states = []; let cursor = 0;
+  modules.react.useState = initial => { const at = cursor++; if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial; return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next; }]; };
+  const messages = [{ id: 'p', ref_seq: 1, role: 'assistant', text: 'Public progress', created_at: 100 }, { id: 't', ref_seq: 2, role: 'assistant', text: '', created_at: 110, tool_calls: [{ id: 'cmd', name: 'terminal', label: 'Run command', detail: 'git status --short' }] }];
+  const render = raw => { cursor = 0; const rows = projectTimeline(raw, null, 'th'); const { tree } = mount(rows, [{ ...receipt('running') }]); const list = named(tree, 'FlatList')[0]; return rows.map(item => expand(list.props.renderItem({ item }))); };
+  const hidden = nodes => named(nodes, 'View').some(node => [node.props.style].flat(Infinity).some(style => style?.display === 'none') && node.props.accessibilityElementsHidden === true);
+  try {
+    let rows = render(messages); let button = named(rows[0], 'Pressable').find(n => n.props.accessibilityLabel === 'Working');
+    assert.equal(button.props.accessibilityState.expanded, true); assert.equal(hidden(rows[0]), false);
+    button.props.onPress(); rows = render(messages); assert.equal(hidden(rows[0]), true); assert.equal(hidden(rows[1]), true);
+    click(rows[0], 'Working'); rows = render(messages); assert.equal(hidden(rows[0]), false);
+    const done = [...messages, { id: 'f', ref_seq: 3, role: 'assistant', text: 'Final result', created_at: 120, display_kind: 'final' }];
+    rows = render(done); assert.equal(hidden(rows[0]), true); assert.equal(hidden(rows[1]), true); assert.equal(hidden(rows[2]), false);
+    button = named(rows[0], 'Pressable').find(n => n.props.accessibilityLabel === 'Worked for 20s'); assert.equal(button.props.accessibilityState.expanded, false);
+    assert.ok(named(rows[0], 'View').some(node => node.props.style?.borderBottomWidth === 1));
+    button.props.onPress(); rows = render(done); assert.equal(hidden(rows[0]), false); assert.equal(hidden(rows[1]), false);
+    assert.equal(named(rows[0], 'MessageContent')[0].props.text, 'Public progress'); assert.equal(named(rows[1], 'MessageContent')[0].props.toolCalls[0].detail, 'git status --short');
+    assert.equal(named(rows[2], 'MessageContent')[0].props.text, 'Final result'); assert.equal(named(rows.flat(), 'MessageTime').length, 0);
+  } finally { modules.react.useState = oldState; }
+});
 
 test('failed local row has explicit retry copy delete without competing long press', () => {
   const alerts = [], removed = [], retried = [], copied = [];
@@ -132,7 +155,7 @@ test('explicit final replies use a separate byline, 32pt gap and pale body; unkn
     {id:'n',ref_seq:4,role:'assistant',text:'Next progress'}];
   const rows=projectTimeline(messages,null,'th');
   assert.deepEqual(rows.map(r=>r.continuation),[false,true,false,false]);
-  const styles=rows.map(row=>Object.assign({},...named(mount([row]).rowTree,'View')[0].props.style.filter(Boolean)));
+  const styles=rows.map(row=>Object.assign({},...named(mount([row]).rowTree,'View').find(node => node.props.children?.some(child => child?.type === 'MessageContent')).props.style.filter(Boolean)));
   assert.equal(styles[2].marginTop,32);assert.equal(styles[2].backgroundColor,'#f7f5ef');
   assert.equal(styles[0].backgroundColor,undefined);assert.equal(styles[1].marginVertical,2);
   assert.equal(named(mount([rows[2]]).rowTree,'Text').some(n=>text(n)==='Hermes'),false);
@@ -262,7 +285,7 @@ test('composer accepts ready attachments without text and blocks incomplete uplo
   }
 });
 
-test('assistant stays unframed; user bubbles are right aligned, gray and capped at 60 percent', () => {
+test('assistant stays unframed; user bubbles are right aligned, gray and capped at 80 percent', () => {
   const rowStyle = role => {
     const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);
     const views = named(mount(rows).rowTree, 'View');
@@ -270,7 +293,7 @@ test('assistant stays unframed; user bubbles are right aligned, gray and capped 
       assert.equal(views[0].props.style.alignSelf, 'stretch');
       assert.equal(views[0].props.style.marginHorizontal, 14);
     }
-    const style = views[role === 'user' ? 1 : 0].props.style;
+    const style = named(mount(rows).rowTree, 'View').find(node => node.props.children?.some(child => child?.type === 'MessageContent')).props.style;
     return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
   };
   const agent = rowStyle('assistant');
@@ -285,7 +308,7 @@ test('assistant stays unframed; user bubbles are right aligned, gray and capped 
   assert.equal(user.alignSelf, 'flex-end');
   assert.equal(user.width, undefined, 'short text uses intrinsic width');
   assert.equal(user.height, undefined, 'content owns height');
-  assert.equal(user.maxWidth, '60%');
+  assert.equal(user.maxWidth, '80%');
   assert.equal(user.minWidth, 0);
   assert.equal(user.marginHorizontal, undefined, 'the full-width parent has no gutters');
   assert.equal(user.paddingVertical, 13);
@@ -337,7 +360,7 @@ test('short prose, long lists and rich viewports share the same intrinsic user b
     const views = named(mount(rows).rowTree, 'View');
     const style = Object.assign({}, ...[views[1].props.style].flat(Infinity).filter(Boolean));
     assert.equal(style.alignSelf, 'flex-end');
-    assert.equal(style.maxWidth, '60%');
+    assert.equal(style.maxWidth, '80%');
     assert.equal(style.width, undefined);
     assert.equal(style.height, undefined);
     assert.equal(style.backgroundColor, '#f3f3f3');
@@ -449,7 +472,7 @@ test('tool-only rows are compact without changing prose, mixed messages or user 
   const styleFor = (role, body, calls) => {
     const rows = projectTimeline([{ ...msg, role, text: body, tool_calls: calls }], null, 'th');
     const views = named(mount(rows).rowTree, 'View');
-    const style = views[role === 'user' ? 1 : 0].props.style;
+    const style = named(mount(rows).rowTree, 'View').find(node => node.props.children?.some(child => child?.type === 'MessageContent')).props.style;
     return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
   };
   assert.equal(styleFor('assistant', '', toolCalls).marginVertical, 2);

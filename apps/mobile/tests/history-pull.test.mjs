@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as workPresentation from '../../../packages/client/src/workPresentation.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -22,6 +23,7 @@ const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value, 
 for (const name of ['ActivityIndicator', 'Pressable', 'RefreshControl', 'ScrollView', 'View']) native[name] = name;
 // The app wiring tests substitute native list views; they are not device tests.
 const modules = {
+  '../../../packages/client/src/workPresentation': workPresentation,
   react: React, 'react-native': native, './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlashList' },
   './FontSize': { Text: 'Text', TextInput: 'TextInput' },
   'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
@@ -477,7 +479,7 @@ test('padded divider stays outside the original assistant, tool and notice roots
   for (const original of [row(31), { ...row(31), text: '', toolCalls: [{ id: 't', name: 'synthetic' }] }, { ...row(31), displayKind: 'system_notice' }]) {
     const h = await mount({ rows: [original] });
     const rendered = await renderCell(h, original);
-    const originalRoot = rendered.root.findAllByType('View')[0];
+    const originalRoot = original.displayKind === 'system_notice' ? rendered.root.findAllByType('View')[0] : rendered.root.findByType('MessageContent').parent;
     await act(async () => { await h.list().refreshControl.props.onRefresh(); });
     await h.update({ rows: [row(1), original], startRef: 1 });
     await act(async () => rendered.update(cell(h, original)));

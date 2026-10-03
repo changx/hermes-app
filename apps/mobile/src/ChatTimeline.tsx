@@ -12,6 +12,7 @@ import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd
 
 import { MessageContent, copyMessageText } from './MessageContent';
 import { MessageTime } from './MessageTime';
+import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../../../packages/client/src/workPresentation';
 import { hasRunningReceipt } from './receiptState';
 import { historyDrawDistance, historyItemType } from './historyLayout';
 import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
@@ -22,7 +23,7 @@ const historyPosition = { disabled: false };
 const historyEntrance = FadeIn.duration(220).reduceMotion(ReduceMotion.System);
 type HistoryPullRequest = { started: boolean; release?: (released: boolean) => void };
 
-const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary, highlighted }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean; highlighted?: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary, highlighted, work, workExpanded = true, onWorkToggle }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean; highlighted?: boolean; work?: WorkGroup; workExpanded?: boolean; onWorkToggle?: (group: WorkGroup, expanded: boolean) => void }) {
   const own = row.role === 'user';
   // Keep the native entering configuration stable after the parent consumes
   // eligibility; ordinary rerenders must not change the animation's nativeID.
@@ -42,7 +43,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
   const failedId = failedMessageId(row);
   const messageStyle = own ? styles.userMessageBubble : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
-  const content = <Animated.View entering={own ? undefined : entering} style={highlighted ? [messageStyle, { backgroundColor: '#d9eaff' }] : messageStyle}>
+  const contentStyle = work && !workExpanded ? [messageStyle, styles.workHidden] : messageStyle;
+  const content = <Animated.View entering={own ? undefined : entering} accessibilityElementsHidden={!!work && !workExpanded} importantForAccessibility={work && !workExpanded ? 'no-hide-descendants' : 'auto'} style={highlighted ? [contentStyle, { backgroundColor: '#d9eaff' }] : contentStyle}>
     {row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -58,8 +60,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </Animated.View>;
-  return <>{boundary}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
-}, (prev, next) => prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+  return <>{boundary}{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label} {workExpanded ? '⌄' : '›'}</Text></Pressable></View>}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
+}, (prev, next) => prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -102,6 +104,9 @@ interface Props {
 }
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, startRef, position, onPosition } = props;
+  const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
+  const groups = workGroups(rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp })), hasRunningReceipt(props.threadId, props.receipts));
+  const onWorkToggle = useCallback((group: WorkGroup, expanded: boolean) => setWorkChoices(old => ({ ...old, [`${props.threadId}:${group.key}`]: { completion: group.completion, expanded } })), [props.threadId]);
   const [initialTargetIndex] = useState(() => { const index = rows.findIndex(row => row.refSeq === props.targetRef); return props.targetRef !== undefined && index >= 0 ? index : undefined; });
   const [highlightedRef, setHighlightedRef] = useState(props.targetRef);
   const [highlightVisible, setHighlightVisible] = useState(false);
@@ -336,6 +341,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
+        work={groups.get(item.key)} workExpanded={!groups.has(item.key) || workIsExpanded(groups.get(item.key)!, workChoices[`${props.threadId}:${groups.get(item.key)!.key}`])} onWorkToggle={onWorkToggle}
         highlighted={highlightedRef !== undefined && item.refSeq === highlightedRef}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
         historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} />}
@@ -483,9 +489,13 @@ const styles = StyleSheet.create({
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
-  // Shrink-wrap short content; longer messages wrap within the same 60% cap.
+  // Shrink-wrap short content; longer messages wrap within the same 80% cap.
   // MessageContent list bodies retain an auto flex basis for intrinsic sizing.
-  userMessageBubble: { alignSelf: 'flex-end', maxWidth: '60%', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, borderRadius: 22, backgroundColor: '#f3f3f3' },
+  userMessageBubble: { alignSelf: 'flex-end', maxWidth: '80%', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, borderRadius: 22, backgroundColor: '#f3f3f3' },
+  workHeading: { marginHorizontal: 14, marginTop: 12, marginBottom: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#dedede' },
+  workToggle: { paddingVertical: 6, alignSelf: 'flex-start' },
+  workLabel: { color: '#727272', fontSize: 15 },
+  workHidden: { display: 'none' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   failedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
