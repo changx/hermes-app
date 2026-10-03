@@ -9,17 +9,19 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-const message = (id, role, text, extra = {}) => ({ id, role, text, toolCalls: [], attachments: [], ...extra });
+const message = (id, role, text, extra = {}) => ({ id, role, text, createdAt: 1700000000, toolCalls: [], attachments: [], ...extra });
 const longList = 'A longer user message\n\n'+Array.from({length:14}, (_,i)=>`- Item ${i+1}: ${'Long wrapped prose stays inside its own message. '.repeat(3)}\n  - A nested list item.`).join('\n');
 const table = '| First | Second | Third | Fourth |\n| --- | --- | --- | --- |\n| '+Array(4).fill('a-long-readable-table-column'.repeat(8)).join(' | ')+' |';
 const messages = [
-  message('u1','user','Apply the latest Session content design.'),
+  message('u1','user','Hi'),
   message('a1','assistant','I will align the message content and keep the desktop navigation unchanged.'),
   message('tool','assistant','',{toolCalls:[{id:'read',name:'read_file',label:'Read file',caption:'Reading styles.css L1-40',icon:'📖'},{id:'cmd',name:'terminal',label:'Run command',detail:'npm run desktop:check'}]}),
-  message('final','assistant','Updated display:\n\n- Full-width user messages\n- Aligned names and prose\n- A distinct final reply',{displayKind:'final'}),
+  message('final','assistant','Updated display:\n\n- Right-aligned gray user bubbles\n- Hidden sender names\n- A distinct final reply',{displayKind:'final'}),
   message('u2','user',longList),
   message('u3','user',table),
   message('u4','user','Attached reference.',{attachments:[{id:'image',name:'reference.png',mime:'image/png',state:'available',size:1024}]}),
+  message('u5','user','```js\n'+ 'console.log("keep code locally scrollable"); '.repeat(40)+'\n```'),
+  message('u6','user','A very long message. '.repeat(120)),
   message('a2','assistant','The next response starts after the complete user message.',{displayKind:'direct'}),
 ];
 const snapshot = {revision:1,phase:'connected',connectionState:'online',channels:[{id:'c',name:'Project'}],threads:[{id:'t',channelId:'c',title:'Session display',lastMessageAt:Date.now()/1000,running:true}],selectedChannelId:'c',selectedThreadId:'t',messages,interactions:[],canLoadOlder:false};
@@ -33,8 +35,8 @@ export const preview=renderToStaticMarkup(createElement(DesktopShellView,{snapsh
 const mod={exports:{}};
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
 
-test('full-width user and final blocks share the ordinary assistant content gutter',()=>{
-  assert.match(css,/\.message-user \{[^}]*width: 100%;[^}]*max-width: none;[^}]*border: 0;[^}]*border-radius: 0;[^}]*background: #e6f0ff;/);
+test('right-aligned user bubbles use intrinsic width, a 60 percent cap and gray rounded background',()=>{
+  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(60% - 16\.8px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
   assert.doesNotMatch(css,/\.message-user:has\(/);
   assert.match(css,/\.message-final \{[^}]*margin-top: 32px;[^}]*padding: 12px 14px;[^}]*background: #f7f5ef;/);
   assert.doesNotMatch(css,/\.message-final \{[^}]*border-left:/);
@@ -48,14 +50,16 @@ test('content layout preserves real message order, process grouping and command 
   assert.equal((html.match(/class="message-role"/g)||[]).length,messages.length-1);
   assert.equal((html.match(/message-continuation/g)||[]).length,1);
   assert.equal((html.match(/message-final/g)||[]).length,1);
-  assert.ok(html.indexOf('Apply the latest')<html.indexOf('I will align'));
+  assert.doesNotMatch(html, /class="message-role">(?:You|Hermes|Notice)/);
+  assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.length-1);
+  assert.ok(html.indexOf('Hi')<html.indexOf('I will align'));
   assert.ok(html.indexOf('Reading styles.css')<html.indexOf('Updated display'));
   assert.ok(html.indexOf('Updated display')<html.indexOf('A longer user'));
   assert.match(html,/<pre class="tool-command">npm run desktop:check<\/pre>/);
   assert.doesNotMatch(html,/<details|<summary/);
 });
 
-test('Chromium: blocks reach both edges, text aligns, long content cannot overlap following rows', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
+test('Chromium: gray bubbles shrink-wrap, align right and contain rich content across resize', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
   const folder=await mkdtemp(join(tmpdir(),'desktop-session-content-'));
   try {
     const file=join(folder,'layout.html');
@@ -65,7 +69,7 @@ test('Chromium: blocks reach both edges, text aligns, long content cannot overla
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
         const list=document.querySelector('.message-list'),bounds=list.getBoundingClientRect(),rows=[...document.querySelectorAll('.message')];
         const rect=x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width}};
-        results.push({width,left:bounds.left,right:bounds.left+list.clientWidth,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
+        results.push({width,left:bounds.left,right:bounds.left+list.clientWidth,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{textAlign:getComputedStyle(row.querySelector('.message-markdown')).textAlign,background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
       }
       document.getElementById('results').textContent=JSON.stringify(results);
     </script></body></html>`);
@@ -75,15 +79,23 @@ test('Chromium: blocks reach both edges, text aligns, long content cannot overla
     for(const result of results){
       assert.ok(result.scrollWidth<=result.clientWidth,'wide contents scroll locally, not across timeline');
       for(const row of result.rows){
-        near(row.box.left,result.left,'left edge');near(row.box.right,result.right,'right edge');
-        near(row.prose.left,result.left+14,'prose gutter');
+        if(row.user){
+          near(row.box.right,result.right-14,'user right gutter');
+          assert.ok(row.box.width<=(result.clientWidth-28)*.6+1,'60 percent available-width cap');
+          near(row.prose.left,row.box.left+14,'bubble prose inset');
+          assert.equal(row.style.textAlign,'left','bubble content remains left aligned');
+        } else {
+          near(row.box.left,result.left,'assistant left edge');near(row.box.right,result.right,'assistant right edge');
+          near(row.prose.left,result.left+14,'assistant prose gutter');
+        }
         if(row.byline)near(row.byline.left,row.prose.left,'byline and prose');
         assert.ok(row.last.bottom<=row.box.bottom+1,'last child stays inside message height');
         if(row.next)assert.ok(row.next.top>=row.box.bottom,'next row cannot overlap');
-        if(row.user){assert.equal(row.style.background,'rgb(230, 240, 255)');assert.equal(row.style.radius,'0px');assert.equal(row.style.border,'0px');}
+        if(row.user){assert.equal(row.style.background,'rgb(243, 243, 243)');assert.equal(row.style.radius,'22px');assert.equal(row.style.border,'0px');}
         if(row.final){assert.equal(row.style.background,'rgb(247, 245, 239)');assert.equal(row.style.border,'0px');assert.equal(row.style.marginTop,'32px');}
       }
       assert.ok(result.tables.some(x=>x.scrollWidth>x.clientWidth),'wide table keeps horizontal scrolling');
+      assert.ok(result.rows[0].box.width<(result.clientWidth-28)*.6-10,'short message stays narrower than the cap');
     }
     if(process.env.HERMES_SESSION_EVIDENCE){
       const path=process.env.HERMES_SESSION_EVIDENCE;await mkdir(path,{recursive:true});
