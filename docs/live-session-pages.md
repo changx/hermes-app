@@ -34,6 +34,7 @@
 - 三个 TypeScript 项目均零诊断；桌面构建成功；iOS 和 Android 离线导出成功。
 - 移动 React 回归验证 A/B 同时挂载后返回原 A，保留场景对象及模拟阅读位置，不重新 open A。
 - 桌面 Chromium 验证实际 DOM 实例和滚动位置在 A → B → A 后不变，B 从 DOM 移除。
-- 当前分支 `feat/live-session-pages`；候选工作目录 `/opt/projects/jamie/_worktrees/hermes-app/live-session-pages`。真实插件多连接联调和物理设备验收尚未在本次执行。
+- 真实隔离插件 HTTP/WS 多连接联调：1/1 通过，2 条非失败 aiohttp 警告。生产 SDK 和桌面传输同时读取 A/B 的真实 Store 提交，再释放 B 并恢复 A 的原窗口。数据为合成测试输入，不涉及用户实例或模型执行。
+- 当前分支 `feat/live-session-pages`；候选工作目录 `/opt/projects/jamie/_worktrees/hermes-app/live-session-pages`。物理设备验收仍未执行。
 
 已核对的导航参考：https://docs.expo.dev/router/basics/navigation/ 。实际栈复用另用锁定版本的 StackRouter 执行回归，避免仅凭文档推断返回行为。
