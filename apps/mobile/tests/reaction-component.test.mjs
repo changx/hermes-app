@@ -66,23 +66,45 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
 
-test('failed local row wires long press and accessibility delete through two confirmations only', () => {
-  const alerts = [], removed = [];
+test('failed local row has explicit retry copy delete without competing long press', () => {
+  const alerts = [], removed = [], retried = [], copied = [];
   native.Alert = { alert: (...args) => alerts.push(args) };
+  modules['./MessageContent'].copyMessageText = value => copied.push(value);
   const row = projectTimeline([], null, 'th', undefined, true, [record('blocked')])[0];
-  const { rowTree } = mount([row], [], [], { onDeleteFailed: id => removed.push(id) });
-  const control = named(rowTree, 'Pressable').find(n => n.props.onLongPress);
-  assert.ok(control);
-  control.props.onLongPress();
-  assert.equal(alerts[0][0], 'Message'); assert.deepEqual(removed, []);
+  const handlers = { onDeleteFailed: id => removed.push(id), onRetryFailed: id => retried.push(id) };
+  const { rowTree } = mount([row], [], [], handlers);
+  assert.equal(named(rowTree, 'Pressable').some(n => n.props.onLongPress), false);
+  for (const label of ['Retry', 'Copy', 'Delete'])
+    assert.equal(named(rowTree, 'Pressable').find(n => n.props.accessibilityLabel === label).props.accessibilityRole, 'button');
+  click(rowTree, 'Retry'); assert.deepEqual(retried, ['c']);
+  click(rowTree, 'Copy'); assert.deepEqual(copied, [row.text]);
+  click(rowTree, 'Delete');
+  assert.equal(alerts[0][0], 'Delete this message?'); assert.deepEqual(removed, []);
+  assert.equal(alerts[0][2][0].style, 'cancel');
   alerts[0][2][1].onPress();
-  assert.equal(alerts[1][0], 'Delete this message?'); assert.deepEqual(removed, []);
-  alerts[1][2][1].onPress(); assert.deepEqual(removed, ['c']);
-  control.props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } });
-  assert.equal(alerts.length, 3);
+  assert.deepEqual(removed, ['c']);
   for (const candidate of [{ ...row, status: 'accepted' }, { ...row, refSeq: 1 }, { ...row, optimistic: false }])
-    assert.equal(named(mount([candidate], [], [], { onDeleteFailed() {} }).rowTree, 'Pressable').some(n => n.props.onLongPress), false);
-  assert.equal(named(mount([row], [], [], { busy: true, onDeleteFailed() {} }).rowTree, 'Pressable').some(n => n.props.onLongPress), false);
+    assert.equal(named(mount([candidate], [], [], handlers).rowTree, 'Pressable').some(n => ['Retry', 'Copy', 'Delete'].includes(n.props.accessibilityLabel)), false);
+  const busyButtons = named(mount([row], [], [], { busy: true, ...handlers }).rowTree, 'Pressable');
+  assert.equal(busyButtons.find(n => n.props.accessibilityLabel === 'Retry').props.disabled, true);
+  assert.equal(busyButtons.find(n => n.props.accessibilityLabel === 'Delete').props.disabled, true);
+  assert.equal(busyButtons.find(n => n.props.accessibilityLabel === 'Copy').props.disabled, false);
+  const empty = mount([{ ...row, text: '', attachments: [{ id: 'att' }] }], [], [], handlers).rowTree;
+  assert.equal(named(empty, 'Pressable').some(n => n.props.accessibilityLabel === 'Copy'), false);
+});
+
+test('message copy uses exact raw text and reports clipboard failure', async () => {
+  const copied = [], alerts = [];
+  modules['expo-clipboard'].setStringAsync = async value => { copied.push(value); };
+  native.Alert = { alert: (...args) => alerts.push(args) };
+  const { copyMessageText } = load('MessageContent.tsx');
+  const source = '原文\n**Markdown**\nhttps://example.test/';
+  copyMessageText(source); await Promise.resolve();
+  assert.deepEqual(copied, [source]);
+  modules['expo-clipboard'].setStringAsync = async () => { throw Error('unavailable'); };
+  copyMessageText(source); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(alerts, [['Copy failed', 'Could not copy to the clipboard.']]);
+  modules['expo-clipboard'].setStringAsync = async () => {};
 });
 
 test('owned timeline labels are English while message and attachment names stay verbatim', () => {

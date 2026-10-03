@@ -195,6 +195,23 @@ export class OutboxStore {
       this.entries.delete(id);
     });
   }
+  async retryBlocked(threadId: string, id: string): Promise<void> {
+    return this.serialize(async () => {
+      const entry = this.entries.get(id);
+      if (!entry || entry.record.threadId !== threadId || entry.record.status !== 'blocked' ||
+          entry.record.receiptId || entry.record.receiptState || entry.record.receiptRefSeq !== undefined)
+        throw new Error('Only an unconfirmed failed message can be retried.');
+      const key = prefix(this.config.id, entry.slot);
+      const raw = await this.store.getItemAsync(key);
+      const meta = raw ? JSON.parse(raw) as Stored : null;
+      // A partially completed delete must not resurrect missing payload chunks.
+      if (!meta || meta.status !== 'blocked' || meta.clientMessageId !== id ||
+          meta.connectionId !== this.config.id || meta.threadId !== threadId)
+        throw new Error('This saved message cannot be retried right now.');
+      await this.store.setItemAsync(key, JSON.stringify({ ...meta, status: 'queued', attempts: 0, nextAttemptAt: 0 }));
+      this.entries.set(id, { ...entry, record: { ...entry.record, status: 'queued' }, attempts: 0, nextAttemptAt: 0 });
+    });
+  }
   async clear(): Promise<void> {
     return this.serialize(async () => {
       for (let slot = 0; slot < SLOTS; slot++) {
@@ -276,6 +293,19 @@ export class MobileOutbox {
     await this.storage.removeBlocked(threadId, clientMessageId);
     this.checkedAt.delete(clientMessageId); this.noticed.delete(clientMessageId);
     this.emit(); this.wake();
+  }
+  async retryFailed(threadId: string, clientMessageId: string): Promise<void> {
+    if (!this.alive) throw new Error('Connection closed.');
+    if (this.storageFault || this.busy.has(clientMessageId)) throw new Error('This message cannot be retried right now.');
+    this.busy.add(clientMessageId);
+    try {
+      await this.storage.retryBlocked(threadId, clientMessageId);
+      this.checkedAt.delete(clientMessageId); this.noticed.delete(clientMessageId);
+      this.emit();
+    } finally {
+      this.busy.delete(clientMessageId);
+      this.wake();
+    }
   }
   setConnection(state: NetworkState) {
     if (!this.alive) return;

@@ -426,6 +426,11 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
         if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
         await box.deleteFailed(threadId, id);
       }, 'Could not finish deleting this saved message. Try again; do not clear your app data.')}
+      onRetryFailed={id => run(async () => {
+        const box = outboxRef.current;
+        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+        await box.retryFailed(threadId, id);
+      }, 'Could not retry this message. It is still saved on this device.')}
       onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
   </View>;

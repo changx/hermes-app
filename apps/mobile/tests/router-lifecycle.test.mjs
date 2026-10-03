@@ -19,7 +19,7 @@ async function harness() {
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
-  const timelines = new Map(), reads = [], events = [];
+  const timelines = new Map(), reads = [], events = [], retries = [];
   const Focus = React.createContext(true);
   const router = { push: value => events.push(['push', value]), replace: value => events.push(['replace', value]), back() {}, canGoBack: () => true };
   const config = { id: 'connection-a', baseUrl: 'https://example.test', token: 'synthetic-only' };
@@ -44,6 +44,7 @@ async function harness() {
     constructor(storage, _sdk, changed) { boxCount++; this.storage = storage; outboxChanged = changed; }
     async start() {} async stop() {} reconcile() {} setConnection() {}
     enqueue() { return new Promise(resolve => { sendFinish = resolve; }); }
+    async retryFailed(...args) { retries.push(args); }
   }
   const exports = {};
   const mocks = {
@@ -95,12 +96,31 @@ async function harness() {
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { render, timelines, scenes, reads, events, get api() { return api; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { render, timelines, scenes, reads, events, retries, get api() { return api; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('App retry handler addresses exact thread/connection and refuses stale hidden or forgotten scene', async () => {
+  const h = await harness();
+  try {
+    const retry = h.timelines.get('t_one').onRetryFailed;
+    await act(async () => retry('original-id'));
+    assert.deepEqual(h.retries, [['t_one', 'original-id']]);
+    await h.render('t_one', true);
+    await act(async () => retry('hidden-id'));
+    assert.equal(h.retries.length, 1);
+    await h.render('t_two');
+    await act(async () => h.timelines.get('t_two').onRetryFailed('second-id'));
+    assert.deepEqual(h.retries.at(-1), ['t_two', 'second-id']);
+    const oldRetry = h.timelines.get('t_two').onRetryFailed;
+    await act(async () => h.api.forget());
+    await act(async () => oldRetry('forgotten-id'));
+    assert.equal(h.retries.length, 2);
+  } finally { await h.close(); }
+});
 
 test('App clears resolved failed-send banner across navigation but preserves actual storage failure', async () => {
   const h = await harness();

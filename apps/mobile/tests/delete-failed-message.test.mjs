@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { MobileOutbox, OutboxStore } from '../src/outbox.ts';
 import { connection, newSend } from '../src/send.ts';
 import { projectTimeline } from '../src/timeline.ts';
-import { failedMessageId, showFailedMessageMenu } from '../src/failedMessageActions.ts';
+import { failedMessageId, confirmFailedMessageDelete } from '../src/failedMessageActions.ts';
 
 const config = connection('https://example.test', 'test-only', 'delete-test');
 const draft = n => newSend(config, 'thread', 'original', `mob_123e4567-e89b-12d3-a456-${String(n).padStart(12, '0')}`);
@@ -31,20 +31,18 @@ test('only failed local user rows offer deletion; server rows and other states d
   }
 });
 
-test('menu and confirmation both preserve the message until final Delete', () => {
+test('explicit delete confirmation preserves the message until final Delete', () => {
   const alerts = [], removed = [];
   const alert = (...args) => alerts.push(args);
-  showFailedMessageMenu(row, id => removed.push(id), alert);
+  confirmFailedMessageDelete(row, id => removed.push(id), alert);
   assert.equal(alerts[0][2][0].style, 'cancel');
   assert.deepEqual(removed, []);
-  alerts[0][2][1].onPress();
-  assert.equal(alerts[1][0], 'Delete this message?');
-  assert.equal(alerts[1][2][0].style, 'cancel');
+  assert.equal(alerts[0][0], 'Delete this message?');
   assert.deepEqual(removed, []);
-  alerts[1][2][1].onPress();
+  alerts[0][2][1].onPress();
   assert.deepEqual(removed, ['message-id']);
-  showFailedMessageMenu({ ...row, status: 'accepted' }, () => assert.fail(), alert);
-  assert.equal(alerts.length, 2);
+  confirmFailedMessageDelete({ ...row, status: 'accepted' }, () => assert.fail(), alert);
+  assert.equal(alerts.length, 1);
 });
 
 test('confirmed delete removes durable text and timeline, survives cold load, makes no network calls', async () => {

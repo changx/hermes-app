@@ -2,7 +2,23 @@
 
 Card: `default / t_995eeaa4`; candidate branch `feat/delete-local-failed`, baseline `1606491`.
 
-## Confirmed scope
+## Follow-up: explicit failed-message actions
+
+Card `t_707f4e40`; isolated candidate `fix/failed-message-buttons`, baseline `591ffc2`. The earlier published long-press implementation below is historical; this follow-up is not yet published.
+
+- Failed local messages now show **Retry**, **Copy**, and **Delete** buttons below their error text. Do not wrap selectable prose or the error line in a long-press responder. Native text selection stays unchanged.
+- Retry changes the existing durable record from blocked to queued before network I/O. Keep the original connection/thread/client-message identity, timestamp, text and attachment IDs. Offline retry waits for the existing connection recovery. Do not replace device authorization or send with a new identity.
+- Under the storage lock, recheck exact thread, blocked state and absence of execution/reception proof. Refuse accepted/unknown execution records, missing records, in-flight work, duplicate taps, and an interrupted deletion's durable discarding marker.
+- Copy uses the original complete text, including Markdown and newlines, through the existing clipboard function. Clipboard failure is visible. Attachment-only messages have no empty Copy button.
+- Delete opens the existing irreversible local-deletion confirmation directly. Cancel leaves the record intact. Server history and Agent execution remain unchanged. Retry/Delete are disabled during an App action; Copy remains available.
+
+Verification: full mobile suite **481 tests, 480 passed, zero failed, one optional browser check skipped**; mobile TypeScript and diff check passed. Added durable retry/cold-start/attachment/state-proof/storage-failure/double-tap/interrupted-delete/lost-response regressions, actual App handler identity/navigation guards, production message-button wiring, and exact raw-text/clipboard-error coverage. Fake storage/server/native controls are explicitly test substitutes, not physical-device or live-model evidence.
+
+Both iOS and Android Expo JS exports passed. Each exact bundle selected by its export metadata contains `onRetryFailed`, `retryBlocked`, `confirmFailedMessageDelete`, and `copyMessageText`. Initial verification needed a locally built shared SDK; the first export could not follow an external generated-renderer symlink. Building the renderer in the candidate and temporarily adding the real dependency folders to Metro resolved this. Build-only Metro changes were restored; no dependency install or lockfile change.
+
+Private evidence: active Channel workspace `failed-message-buttons/` (test/typecheck/export logs and exact bundle SHA-256/markers). No main merge, remote push, service restart, plugin/core/other-profile change, existing-message deletion or real-task resubmission. Publication needs separate authorization. Physical iPhone acceptance remains: failed-message Retry/Copy/Delete, cancel/confirm, native selection without double menus, keyboard/scroll stability, offline retry and repeated taps, cold restart, and lost-response same-ID recovery. Expo exports are not independent installation packages.
+
+## Confirmed scope (earlier long-press implementation)
 
 Jamie approved a narrow local deletion action for the red failed-message row. Long-press its message block (or the red error line to avoid competing with native text selection), choose **Delete**, then confirm. Cancel at either step leaves the original unchanged. Accessibility actions expose the same confirmation flow. App-owned labels remain English.
 

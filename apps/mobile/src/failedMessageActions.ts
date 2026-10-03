@@ -8,15 +8,12 @@ export function failedMessageId(row: TimelineRow): string | undefined {
     ? row.key.slice('local:'.length) || undefined : undefined;
 }
 
-export function showFailedMessageMenu(row: TimelineRow, remove: (id: string) => void, alert: ShowAlert): void {
+export function confirmFailedMessageDelete(row: TimelineRow, remove: (id: string) => void, alert: ShowAlert): void {
   const id = failedMessageId(row);
   if (!id) return;
-  alert('Message', undefined, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: () => alert('Delete this message?',
+  alert('Delete this message?',
       'This removes the saved message from this device and cannot be undone. It does not delete a message already received by Hermes or stop the Agent.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => remove(id) }
-      ]) }
-  ]);
+      ]);
 }

@@ -10,11 +10,11 @@ import { BlurTargetView, BlurView } from 'expo-blur';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 
-import { MessageContent } from './MessageContent';
+import { MessageContent, copyMessageText } from './MessageContent';
 import { MessageTime } from './MessageTime';
 import { hasRunningReceipt } from './receiptState';
 import { historyDrawDistance, historyItemType } from './historyLayout';
-import { failedMessageId, showFailedMessageMenu } from './failedMessageActions';
+import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
@@ -22,7 +22,7 @@ const historyPosition = { disabled: false };
 const historyEntrance = FadeIn.duration(220).reduceMotion(ReduceMotion.System);
 type HistoryPullRequest = { started: boolean; release?: (released: boolean) => void };
 
-const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean }) {
   const own = row.role === 'user';
   // Keep the native entering configuration stable after the parent consumes
   // eligibility; ordinary rerenders must not change the animation's nativeID.
@@ -40,29 +40,25 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, bus
   </Animated.View></>;
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
-  const deletable = !!onDeleteFailed && !!failedMessageId(row) && !busy;
-  const menu = () => { if (deletable) showFailedMessageMenu(row, onDeleteFailed!, Alert.alert); };
+  const failedId = failedMessageId(row);
   const content = <Animated.View entering={own ? undefined : entering} style={own ? styles.userMessageBlock : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble}>
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
-    {!!row.sendError && (deletable
-      ? <Pressable onLongPress={menu} accessibilityLabel="Failed message. Hold for message actions." accessibilityActions={[{ name: 'delete', label: 'Delete message' }]}
-          onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'delete') menu(); }}>
-          <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>
-        </Pressable>
-      : <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>)}
+    {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
+    {!!failedId && <View style={styles.failedActions}>
+      {!!onRetryFailed && action('Retry', () => onRetryFailed(failedId), busy)}
+      {!!row.text && action('Copy', () => copyMessageText(row.text))}
+      {!!onDeleteFailed && action('Delete', () => confirmFailedMessageDelete(row, onDeleteFailed, Alert.alert), busy)}
+    </View>}
     {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>Attachment: {a.name || 'Unnamed attachment'} ({a.state === 'available' ? 'Available' : 'Unavailable for now'})</Text>)}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
       {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </Animated.View>;
-  return <>{boundary}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{deletable
-    ? <Pressable onLongPress={menu} accessibilityActions={[{ name: 'delete', label: 'Delete message' }]}
-        onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'delete') menu(); }}>{content}</Pressable>
-    : content}</Animated.View> : content}</>;
-}, (prev, next) => prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+  return <>{boundary}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
+}, (prev, next) => prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -95,6 +91,7 @@ interface Props {
   onAnswer(item: Interaction, choice: string): void;
   onCancel(receipt: Receipt): void;
   onDeleteFailed?(clientMessageId: string): void;
+  onRetryFailed?(clientMessageId: string): void;
   onStop(): void;
   busy: boolean;
 }
@@ -327,7 +324,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     : rows.length && !props.locatingMessage && !props.locatingBusy ? props.hasOlder ? 'Pull down for earlier messages' : 'Start of conversation' : '';
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
-      <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} busy={props.busy} renderAttachments={props.renderAttachments}
+      <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
         historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} />}
         renderScrollComponent={renderScrollComponent}
@@ -475,6 +472,7 @@ const styles = StyleSheet.create({
   // Do not inherit the content-sized bubble's maxWidth, border or corners.
   userMessageBlock: { alignSelf: 'stretch', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, backgroundColor: '#e6f0ff' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, sender: { color: '#50647b', fontSize: 12, fontWeight: '600' }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
+  failedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },

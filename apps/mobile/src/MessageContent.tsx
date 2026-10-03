@@ -15,9 +15,10 @@ import type { ToolCall } from '../../../packages/client/src/index';
 import { compactFileDetail, compactToolCaption, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
 import { useViewer } from './Viewers';
 
-const copy = (value: string) => {
+export const copyMessageText = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('Copy failed', 'Could not copy to the clipboard.'));
 };
+const copy = copyMessageText;
 
 type Tone = (color: string) => { color: Animated.AnimatedInterpolation<string> };
 type ExpandTarget = { kind: 'message' } | { kind: 'table' | 'diagram'; block: Block };
