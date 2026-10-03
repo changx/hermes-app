@@ -28,16 +28,17 @@ function clientFixture() {
 
 async function harness(file,name,client,extra={}) {
   const Focus=React.createContext(true), alerts=[], navigation=[], viewers=[], actions=[];
+  const viewer={openViewer:(title,content)=>viewers.push({title,content})};
   let prevention;
   const mocks={react:React,'react-native':{View:'View',Pressable:'Pressable',ScrollView:'ScrollView',ActivityIndicator:'ActivityIndicator',Text:'Text',TextInput:'TextInput',
-    FlatList:props=>React.createElement('List',{},props.data.length?props.data.map(item=>React.createElement(React.Fragment,{key:props.keyExtractor(item)},props.renderItem({item}))):props.ListEmptyComponent,props.ListFooterComponent),
+    FlatList:props=>React.createElement('List',props,props.data.length?props.data.map(item=>React.createElement(React.Fragment,{key:props.keyExtractor(item)},props.renderItem({item}))):props.ListEmptyComponent,props.ListFooterComponent),
     Alert:{alert:(...args)=>alerts.push(args)},StyleSheet:{create:x=>x}},
     'expo-router':{useIsFocused:()=>React.useContext(Focus),useNavigation:()=>({dispatch:action=>navigation.push(action)}),
       useFocusEffect:callback=>{const focused=React.useContext(Focus);React.useEffect(()=>focused?callback():undefined,[focused,callback]);}},
     'expo-router/react-navigation':{usePreventRemove:(prevent,callback)=>{prevention={prevent,callback};}},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:34})},'expo-symbols':{SymbolView:'Symbol'},
     '../../../packages/client/src/index':{HttpError,utf8Size},'./FontSize':{Text:'Text',TextInput:'TextInput'},'./MessageContent':{MessageContent:'Markdown'},
-    './Viewers':{useViewer:()=>({openViewer:(title,content)=>viewers.push({title,content})})},
+    './Viewers':{useViewer:()=>viewer},
     './WorkspaceFilePreview':{WorkspaceFilePreview:'Preview'},'./channel-edits':{threadPatch},'./NewTopicComposer':{NewTopicComposer:'Composer'},'./MessageTime':{MessageTime:'Time'},
   };
   function load(path){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../src/'+path,import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,{exports,console,AbortController,require:id=>{if(!(id in mocks))throw Error(id);return mocks[id];}});return exports;}
@@ -45,7 +46,7 @@ async function harness(file,name,client,extra={}) {
   const exports=load(file),props={client,channelId:'p_one',directory:'',onDirectory:path=>actions.push(['directory',path]),onAgents:()=>actions.push(['agents']),
     onContext:id=>actions.push(['context',id]),onFiles:id=>actions.push(['files',id]),onThread:()=>{},onChannel:()=>{},onNewChannel:()=>{},enqueueFirstMessage:async()=>{},...extra};
   let root;
-  const render=async(focus=true)=>act(async()=>{const tree=React.createElement(Focus.Provider,{value:focus},React.createElement(exports[name],props));if(root)root.update(tree);else root=create(tree);});
+  const render=async(focus=true,overrides={})=>act(async()=>{Object.assign(props,overrides);const tree=React.createElement(Focus.Provider,{value:focus},React.createElement(exports[name],props));if(root)root.update(tree);else root=create(tree);});
   await render();
   return {get root(){return root},alerts,navigation,viewers,actions,render,get prevention(){return prevention},
     button:label=>root.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel===label),
@@ -189,6 +190,62 @@ test('pagination appends owned metadata and detects repeated rows instead of dup
   f.client.workspace.list=async()=>({channelId:'p_one',path:'',items:[{name:++count===1?'a.txt':'b.txt',path:count===1?'a.txt':'b.txt',kind:'file',size:1}],nextAfter:count===1?'a.txt':null});
   const h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client);
   assert.ok(h.button('a.txt'));await h.press('Load more');assert.ok(h.button('a.txt'));assert.ok(h.button('b.txt'));assert.equal(h.button('Load more'),undefined);await h.close();
+});
+
+test('Files return keeps the exact mounted list/data while pending and after unchanged reconciliation',async()=>{
+  const f=clientFixture(),h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client);
+  const list=h.root.root.findByType('List'),data=list.props.data,wait=deferred(),press=h.button('docs').props.onPress;let signal;
+  assert.equal(list.props.maintainVisibleContentPosition.minIndexForVisible,0);
+  await h.render(false);
+  f.client.workspace.getState=(_cid,s)=>{signal=s;return wait.promise;};
+  await h.render(true);
+  assert.equal(h.root.root.findByType('List'),list);assert.equal(list.props.data,data);
+  assert.equal(h.root.root.findAllByType('ActivityIndicator').length,0);
+  await act(async()=>wait.resolve(state(true)));
+  assert.equal(h.root.root.findByType('List'),list);assert.equal(list.props.data,data);
+  await h.press('Refresh');assert.equal(list.props.data,data);assert.equal(h.button('docs').props.onPress,press);
+  await h.close();assert.equal(signal.aborted,true);
+});
+
+test('Files reconciliation updates changed rows, removes deleted rows and retains unchanged identity',async()=>{
+  const f=clientFixture();let files=[{name:'a.txt',path:'a.txt',kind:'file',size:1},{name:'b.txt',path:'b.txt',kind:'file',size:2},{name:'c.txt',path:'c.txt',kind:'file',size:3}];
+  f.client.workspace.list=async()=>({items:files.map(x=>({...x})),nextAfter:null});
+  const h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client),list=h.root.root.findByType('List'),old=list.props.data;
+  await h.render(false);files=[{...files[0],size:7},files[1],{name:'d.txt',path:'d.txt',kind:'file',size:4}];await h.render(true);
+  assert.equal(h.root.root.findByType('List'),list);assert.notEqual(list.props.data[0],old[0]);assert.equal(list.props.data[0].file.size,7);
+  assert.equal(list.props.data[1],old[1]);assert.equal(h.button('c.txt'),undefined);assert.ok(h.button('d.txt'));await h.close();
+});
+
+test('Files return reconciles all loaded pages rather than dropping the second page',async()=>{
+  const f=clientFixture(),calls=[];
+  f.client.workspace.list=async(_cid,_path,after)=>{calls.push(after);return {items:[{name:after?'b.txt':'a.txt',path:after?'b.txt':'a.txt',kind:'file',size:1}],nextAfter:after?null:'a.txt'};};
+  const h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client);await h.press('Load more');
+  const list=h.root.root.findByType('List'),old=list.props.data;
+  await h.render(false);await h.render(true);
+  assert.deepEqual(calls,[null,'a.txt',null,'a.txt']);assert.equal(list.props.data,old);assert.ok(h.button('b.txt'));assert.equal(h.button('Load more'),undefined);await h.close();
+});
+
+test('failed or late Files refresh cannot erase the retained list or pollute another tab',async()=>{
+  const f=clientFixture(),h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client),list=h.root.root.findByType('List'),old=list.props.data;
+  f.client.workspace.list=async()=>{throw Error('offline');};await h.press('Refresh');
+  assert.equal(h.root.root.findByType('List'),list);assert.equal(list.props.data,old);assert.match(JSON.stringify(h.root.toJSON()),/Showing the previous list/);
+  const wait=deferred();let signal;
+  f.client.workspace.list=(_cid,_dir,_after,s)=>{signal=s;return wait.promise;};await h.press('Refresh');
+  await h.press('Attachments');assert.equal(signal.aborted,true);assert.ok(h.button('note.txt'));assert.equal(h.button('docs'),undefined);
+  await act(async()=>wait.resolve({items:[{name:'late.txt',path:'late.txt',kind:'file',size:1}],nextAfter:null}));
+  assert.equal(h.button('late.txt'),undefined);assert.ok(h.button('note.txt'));await h.close();
+});
+
+test('Files scene retention is bounded to one exact channel/folder/client identity',async()=>{
+  const f=clientFixture(),h=await harness('ChannelFilesScreen.tsx','ChannelFilesScreen',f.client),wait=deferred();
+  f.client.workspace.getState=()=>wait.promise;
+  await h.render(true,{channelId:'p_other',directory:'other'});
+  assert.equal(h.root.root.findAllByType('List').length,0);assert.equal(h.button('docs'),undefined);
+  f.client.workspace.list=async(cid,path)=>({items:[{name:'owned.txt',path:path+'/owned.txt',kind:'file',size:1}],nextAfter:null});
+  await act(async()=>wait.resolve({...state(true),channelId:'p_other'}));assert.ok(h.button('owned.txt'));
+  const other=clientFixture();const blocked=deferred();other.client.workspace.getState=()=>blocked.promise;
+  await h.render(true,{client:other.client});assert.equal(h.button('owned.txt'),undefined);
+  await h.close();await act(async()=>blocked.resolve(state(true)));
 });
 
 test('native routes validate opaque channel and relative folder and key drafts by connection',()=>{

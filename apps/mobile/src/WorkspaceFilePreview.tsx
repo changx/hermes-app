@@ -31,7 +31,7 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
     if (allowed) {
       setLoading(true); setError(''); setText(null); setUri(null);
       void (async () => {
-        const bytes = attachment ? await client.download(attachment.thread_id, attachment.id, controller.signal)
+        const bytes = attachment ? await client.workspace.readAttachment(attachment, controller.signal)
           : await client.workspace.readFile(channelId, path!, controller.signal);
         if (!active) return;
         if (bytes.byteLength > (image ? 10 * 1024 * 1024 : 64 * 1024) || image && !raster(bytes)) throw new Error('Preview unavailable');

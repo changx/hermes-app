@@ -122,6 +122,15 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
       if (!(value instanceof Uint8Array) || value.byteLength > MAX_FILE) return fail('Workspace file exceeds limit');
       return value;
     },
+    /** Explicit selection from the validated Channel inventory, not a chat subscription.
+     * Reuse the authenticated attachment route; never populate conversation caches. */
+    async readAttachment(attachment: Attachment, signal?: AbortSignal): Promise<Uint8Array> {
+      const thread = id(attachment.thread_id), key = id(attachment.id);
+      if (!key.startsWith('att_') || attachment.state !== 'available' || size(attachment.size) > MAX_FILE) return fail('Attachment preview unavailable');
+      const value = await download('/v1/threads/' + encodeURIComponent(thread) + '/attachments/' + encodeURIComponent(key), signal);
+      if (!(value instanceof Uint8Array) || value.byteLength > MAX_FILE) return fail('Attachment exceeds limit');
+      return value;
+    },
     async attachments(cid: string, after: string | null = null, signal?: AbortSignal): Promise<ChannelAttachmentPage> {
       if (after !== null) id(after);
       const body = await call('GET', root(cid) + '/attachments?limit=100' + (after === null ? '' : '&after=' + encodeURIComponent(after)), undefined, signal);

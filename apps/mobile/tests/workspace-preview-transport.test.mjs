@@ -45,7 +45,7 @@ test('AGENTS JSON transport accepts escaped large documents but still bounds wir
   }finally{globalThis.fetch=original;}
 });
 
-async function preview({name='note.md',size=4,bytes=new TextEncoder().encode('text'),wait}={}){
+async function preview({name='note.md',size=4,bytes=new TextEncoder().encode('text'),wait,attachment}={}){
   const Focus=React.createContext(true),files=[],calls=[];let root;
   class File{constructor(){this.uri='cache://private-'+files.length;this.exists=false;files.push(this);}create(){this.exists=true;}write(value){this.bytes=value;}async text(){return new TextDecoder().decode(this.bytes);}delete(){this.exists=false;this.deleted=true;}}
   const exports={},mocks={react:React,'react-native':{ActivityIndicator:'Spinner',Platform:{OS:'ios'},ScrollView:'ScrollView',View:'View'},
@@ -54,8 +54,8 @@ async function preview({name='note.md',size=4,bytes=new TextEncoder().encode('te
     './FontSize':{Text:'Text'},'./Attachments':{ImageViewer:'Image'},'./MessageContent':{MessageContent:'Markdown'},
     './WorkspaceUI':{workspaceStyles:{page:{},hint:{},error:{},content:{}},WorkspaceAction:props=>React.createElement('Action',props)},};
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/WorkspaceFilePreview.tsx',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,{exports,console,AbortController,require:id=>{if(!(id in mocks))throw Error(id);return mocks[id];}});
-  const client={workspace:{async readFile(cid,path,signal){calls.push({cid,path,signal});return wait??bytes;}}};
-  const props={client,channelId:'p_one',path:name,name,size};
+  const client={async download(){throw Error('Conversation is not open');},workspace:{async readFile(cid,path,signal){calls.push({cid,path,signal});return wait??bytes;},async readAttachment(selected,signal){calls.push({attachment:selected,signal});return wait??bytes;}}};
+  const props={client,channelId:'p_one',path:attachment?undefined:name,attachment,name,size};
   const render=async(focused=true)=>act(async()=>{const node=React.createElement(Focus.Provider,{value:focused},React.createElement(exports.WorkspaceFilePreview,props));if(root)root.update(node);else root=create(node);});
   await render();return{get root(){return root},calls,files,render,async close(){await act(async()=>root.unmount());}};
 }
@@ -64,6 +64,14 @@ test('selected Markdown preview loads on demand and deletes only its owned cache
   const h=await preview({bytes:new TextEncoder().encode('# Reference')});
   assert.equal(h.calls.length,1);assert.equal(h.root.root.findByType('Markdown').props.text,'# Reference');assert.equal(h.files[0].exists,true);
   await h.close();assert.equal(h.files[0].deleted,true);
+});
+
+test('Channel attachment preview uses explicit inventory read without requiring a conversation',async()=>{
+  const attachment={id:'att_one',thread_id:'th_closed',name:'note.md',size:11,state:'available'};
+  const h=await preview({attachment,bytes:new TextEncoder().encode('# Attachment')});
+  assert.equal(h.calls.length,1);assert.equal(h.calls[0].attachment,attachment);
+  assert.equal(h.root.root.findByType('Markdown').props.text,'# Attachment');
+  await h.close();assert.equal(h.calls[0].signal.aborted,true);assert.equal(h.files[0].deleted,true);
 });
 
 test('unsupported/oversized previews do not silently download or execute content',async()=>{

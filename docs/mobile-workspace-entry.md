@@ -11,7 +11,8 @@ Channel retains latest-first sessions, Context link, completed-unread light-blue
 ## Files
 
 - Native Expo Router Files route validates exact channel ID and unmodified relative folder path; folder navigation uses the native Stack. Connection ID + channel + folder key isolates scene state across identities/targets.
-- Workspace and Attachments tabs load paginated metadata only. Refresh/re-entry reads server state; selected files alone request bytes. Attachment inventory is available without silently creating a workspace. Listings do not read session messages or acknowledge completed results.
+- Workspace and Attachments tabs load paginated metadata only. Refresh/re-entry reads server state in the background without clearing a retained scene: re-read the loaded window, publish only after all pages validate, retain unchanged row/array identity and the mounted list, and use native visible-content anchoring. Failed refresh keeps the previous list with an error. Target/client/tab changes release the old scene. Selected files alone request bytes. Attachment inventory is available without silently creating a workspace. Listings do not read session messages or acknowledge completed results.
+- Channel attachment previews use the explicit route-owned `workspace.readAttachment` API and the original authenticated Thread/attachment download endpoint. They do not use `LiveSessionClient.download`, whose open-conversation guard remains unchanged. Reading one selected attachment never opens/subscribes to its conversation or populates chat caches.
 - Workspace creation is a user-triggered “Set up channel files” action; shared SDK POSTs an empty object and reads the exact workspace back. The UI explains that existing files elsewhere are not moved.
 - Folder rows navigate deeper; root AGENTS.md opens the dedicated editor, targeting the same file. Existing attachments use their original authenticated Thread/attachment download route, not public/token-bearing URLs.
 - Selected small text/source files preview as native selectable text; Markdown reuses the existing renderer. Passive PNG/JPEG/GIF/WebP images require an actual raster signature and reuse the existing native image reader. Text is limited to 64 KiB, images to 10 MiB; unsupported formats/larger files are listed with an honest unavailable-preview message and no eager download.
@@ -41,6 +42,18 @@ Channel retains latest-first sessions, Context link, completed-unread light-blue
 - Actual candidate SDK plus native fetch transport exercised the isolated real plugin HTTP handlers, ProjectDB and files: conditional create/replace/clear, original-version conflict, UTF-8/file readback, folders and attachment inventory/download passed. No mocked API responses or production chats were used. The pinned Python SQLite runtime emitted its known WAL fallback warning; no core/runtime upgrade was performed.
 - iOS and Android Expo exports succeeded; exact generated bundles contain the Files/AGENTS routes, setup, editor/conflict controls, capability gate and save-readback validation. Private hashes/logs are under active-profile `workspace/hermes-app/mobile-workspace-entry/`.
 - Optional desktop typecheck was attempted but blocked by the pre-existing/pruned dependency tree missing `@types/node`; not recorded as passed. Desktop UI is outside this scope. Candidate reused/copies existing locked dependencies and repaired only the isolated esbuild optional binary from the matching existing mobile 0.28.1 install; no npm ci or lockfile changes.
+
+## Files return/attachment fix verification
+
+Candidate branch `fix/channel-files-preview`, task `t_b04ba284`, base `591ffc2`.
+
+- Root cause: Channel previews invoked the conversation-scoped `LiveSessionClient.download` without an open conversation. The earlier interoperability probe used the base `HermesClient` and therefore missed this guard. The updated probe uses the actual live client.
+- Actual isolated plugin HTTP + native transport verified authenticated inventory and selected attachment bytes with `currentThreadId === null`, empty message/attachment caches, and the ordinary conversation download still rejected. Existing guideline conditional-save/conflict/readback and file/folder checks also passed. Synthetic files were written to an isolated ProjectDB/home and removed after the probe; no live chats were used.
+- Production component tests verify the same list instance/data/row handler survives unchanged return/refresh, changed/deleted/new row reconciliation, loaded-page retention, refresh failure, aborted late reads, tab/client/channel/folder isolation and selected attachment preview/cache cleanup.
+- Mobile suite: 479 tests, 478 passed, zero failed, one optional Chromium skip. Shared client suite: 91 passed. Mobile and shared-client TypeScript passed. iOS/Android exports passed and exact generated bundles contain the explicit attachment reader and retained-refresh markers.
+- Dependency discovery initially blocked tests on the pruned root esbuild optional binary and Metro on external dependency symlinks. Reused the matching existing mobile binary via `ESBUILD_BINARY_PATH` and worktree-local dependency copies. No package/lockfile changes or repeated installs.
+- Not merged, deployed or restarted as part of this fix. No server/plugin/core changes. Supported formats/size limits are unchanged. Native iPhone anchor/gesture/preview acceptance remains pending; component substitutes and exported bundles do not prove UIKit behavior.
+- Private evidence: active Channel workspace `channel-files-fix/`.
 
 ## Remaining gates
 
