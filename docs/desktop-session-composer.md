@@ -93,3 +93,19 @@ User requested removing `Select channel` and correcting the missing `Agent is ru
 Final desktop TypeScript/build and **113/113 tests** passed, with 0 failed/skipped. Production-component tests cover removed navigation action/no forced navigation, selected running/idle/no selection/pending/offline state, completion retaining the draft, resumed running, independent Stop/Send and Stop while send awaits confirmation. Real Chromium checks 720/1280/1800px input and Stop geometry and both regular/reduced-motion dot styles. The content/layout/palette/security regressions remain passed.
 
 Evidence: current profile Channel workspace `desktop-running-row/`, with final check log, layout readback and regenerated production-component preview. Synthetic preview content is not a live model execution or native Mac screenshot. No main merge/push/release/installer/service restart/mobile/protocol/plugin/core/dependency/lockfile change; native Mac acceptance remains pending.
+
+## ChatGPT-style user bubbles and hidden sender names (latest isolated candidate)
+
+Jamie requested the desktop counterpart to the mobile candidate `fa8ecc0`. This decision supersedes earlier left blue bubbles, full-width blue blocks and visible sender-name rules. Desktop baseline `9c41f17`; branch `fix/desktop-chatgpt-message-style`; card `t_4059e0a8`.
+
+- Hide sender names for all chat rows. Keep valid timestamps on full messages. Assistant continuations still omit repeated timestamps; missing timestamps do not leave an empty header.
+- User bubbles align right, with a 14px right gutter. Their maximum width equals 60% of the timeline width after deducting both 14px gutters (`calc(60% - 16.8px)`).
+- Use `width: fit-content`, automatic height, `#f3f3f3` light gray, 22px corner radius, and 13px vertical / 14px horizontal padding. Prose remains left aligned.
+- Preserve assistant and final backgrounds, tool records, Markdown, attachments, timestamps, receipts and actions, message ordering/identity, history, navigation and composer handlers.
+- The change is desktop-only. The mobile candidate remains separate; no mobile/shared/plugin/core/lockfile change, service restart, main merge or publication occurred.
+
+New production component and Chromium assertions failed against the baseline, then passed after implementation. Chromium checks at 720/900/1280/1800px and resize back to 720 cover short prose, long prose, long nested lists, wide tables, long code and attachment preview containers. Bubbles stay within the cap, align right, retain left-aligned prose, contain their complete height and do not overlap following messages. Tables keep local horizontal scrolling. The short timestamped message stays content-sized at every window width.
+
+Desktop TypeScript, main/preload/renderer build and all **120 tests passed**, with **0 failures and 0 skips**, using `/usr/bin/google-chrome`. The built artifact is `apps/desktop/dist`. Private evidence: active-profile `workspace/desktop-chatgpt-message-style/`, including baseline failure, full check log, production DOM geometry and preview HTML/PNG. The preview uses synthetic fixture messages, not a live conversation or native Mac screenshot.
+
+No new installer, signing, push, Release or native installation. Installed Mac visual, scrolling and keyboard acceptance remains separate. The card stays in review.

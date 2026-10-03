@@ -152,14 +152,14 @@ test('no false running animation for a different selection, offline state or a p
   await act(async()=>tree.unmount());
 });
 
-test('full-width blue user blocks and mobile-like bounded composer have explicit CSS rules',async()=>{
+test('right-aligned gray user bubbles and mobile-like bounded composer have explicit CSS rules',async()=>{
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
-  assert.match(css,/\.message-user \{[^}]*width: 100%;[^}]*max-width: none;[^}]*border: 0;[^}]*border-radius: 0;[^}]*background: #e6f0ff;/);
+  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(60% - 16\.8px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
   assert.match(css,/\.composer textarea \{[^}]*max-height: 120px;[^}]*resize: none;/);
   assert.match(css,/channel-toolbar:focus-within/);
 });
 
-test('Chromium: production shell keeps blue blocks full-width and composer controls inside the conversation', {skip: !process.env.HERMES_TEST_CHROME}, async()=>{
+test('Chromium: production shell keeps gray bubbles right aligned and composer controls inside the conversation', {skip: !process.env.HERMES_TEST_CHROME}, async()=>{
   environment({});
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
   const {renderToStaticMarkup}=require('react-dom/server');
@@ -181,9 +181,10 @@ test('Chromium: production shell keeps blue blocks full-width and composer contr
     const dom=execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',...(reduced?['--force-prefers-reduced-motion']:[]),`--user-data-dir=${join(folder,reduced?'reduced-profile':'profile')}`,'--dump-dom',pathToFileURL(file).href],{encoding:'utf8',timeout:30000,maxBuffer:2_000_000,stdio:['ignore','pipe','pipe']});
     const results=JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)[1]);
     for(const result of results){
-      assert.equal(result.background,'rgb(230, 240, 255)');
-      assert.equal(result.bubbleLeft,result.agentLeft,'same left edge, not right-aligned');
-      assert.equal(result.bubbleWidth,result.agentWidth,'short user message uses the same full width as assistant');
+      assert.equal(result.background,'rgb(243, 243, 243)');
+      assert.ok(result.bubbleLeft>result.agentLeft,'user bubble is right aligned');
+      assert.ok(result.bubbleWidth<=(result.agentWidth-28)*.6+1,'user bubble has 60 percent cap');
+      assert.ok(Math.abs(result.bubbleLeft+result.bubbleWidth-(result.agentLeft+result.agentWidth-14))<1,'user right gutter');
       assert.equal(result.controls.length,3,'plus, input, send only');
       assert.ok(result.stop.bottom<=result.inputTop,'stop shares running row above input, not send row');
       assert.ok(result.stop.left>=result.paneLeft && result.stop.right<=result.paneRight);

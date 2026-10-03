@@ -24,7 +24,7 @@ test('application chrome is neutral light gray, not the previous warm palette', 
 
 test('semantic accents retain the actual mobile colors, including pale final replies', async () => {
   const sources = (await Promise.all(['App.tsx', 'ChatTimeline.tsx', 'MessageContent.tsx', 'ChannelScreens.tsx'].map(mobile))).join('\n');
-  for (const color of ['2960ad', '215ca7', 'e6f0ff', 'f7f5ef', '172a40', '50647b', 'e8eef6', '20314a', 'dce5f0', 'd6e0ed', 'e5ecf5', '285ea5', 'e7eef7', '294e7b', '9d1b32', 'fff0f2', '237a35', '4DA3FF']) {
+  for (const color of ['2960ad', '215ca7', 'f7f5ef', '172a40', '50647b', 'e8eef6', '20314a', 'dce5f0', 'd6e0ed', 'e5ecf5', '285ea5', 'e7eef7', '294e7b', '9d1b32', 'fff0f2', '237a35', '4DA3FF']) {
     assert.ok(sources.includes(`#${color}`), `mobile source: ${color}`);
     assert.ok(css.includes(`#${color}`), `desktop CSS: ${color}`);
   }
@@ -57,7 +57,7 @@ test('Chromium: production screens resolve neutral chrome and mobile content col
         document.documentElement.style.width = width+'px';document.body.style.width = width+'px';document.querySelector('.desktop-shell').style.width = width+'px';
         const checks = [
           ['body','color','1f2937'],['.activity-bar','backgroundColor','f3f4f6'],['.navigation-panel','backgroundColor','f9fafb'],['.conversation-pane','backgroundColor','ffffff'],
-          ['.tree-thread.selected','backgroundColor','e6edf7'],['.conversation-header','borderBottomColor','e5e7eb'],['.message-user','backgroundColor','e6f0ff'],['.message-final','backgroundColor','f7f5ef'],['.message-assistant','color','172a40'],
+          ['.tree-thread.selected','backgroundColor','e6edf7'],['.conversation-header','borderBottomColor','e5e7eb'],['.message-user','backgroundColor','f3f3f3'],['.message-final','backgroundColor','f7f5ef'],['.message-assistant','color','172a40'],
           ['.message a','color','215ca7'],['.message code','backgroundColor','dce5f0'],['.code-block','backgroundColor','e8eef6'],['.code-block code','color','20314a'],['.tool-command','backgroundColor','e8eef6'],['.tool-command','color','20314a'],['.message-markdown th','backgroundColor','e5ecf5'],
           ['.composer textarea','backgroundColor','ffffff'],['.composer textarea','color','172a40'],['.composer-row > button:last-child','backgroundColor','285ea5'],['.composer-row .attach-button','backgroundColor','e7eef7'],['.running-row .stop-button','color','425874'],
           ['.error-banner','backgroundColor','fff0f2'],['.error-banner','color','9d1b32'],['.thread-status','color','237a35'],
