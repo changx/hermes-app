@@ -116,7 +116,7 @@ test('owned timeline labels are English while message and attachment names stay 
   ] };
   const { rowTree, tree } = mount([row]);
   const visible = named(rowTree, 'Text').map(text).join(' ');
-  assert.match(visible, /You/);
+  assert.doesNotMatch(visible, /You|Hermes|Draft/);
   assert.match(visible, /Attachment: Unnamed attachment \(Available\)/);
   assert.match(visible, /Attachment: 照片\.png \(Unavailable for now\)/);
   assert.equal(named(rowTree, 'MessageContent')[0].props.text, '原文');
@@ -135,12 +135,12 @@ test('explicit final replies use a separate byline, 32pt gap and pale body; unkn
   const styles=rows.map(row=>Object.assign({},...named(mount([row]).rowTree,'View')[0].props.style.filter(Boolean)));
   assert.equal(styles[2].marginTop,32);assert.equal(styles[2].backgroundColor,'#f7f5ef');
   assert.equal(styles[0].backgroundColor,undefined);assert.equal(styles[1].marginVertical,2);
-  assert.equal(named(mount([rows[2]]).rowTree,'Text').some(n=>text(n)==='Hermes'),true);
+  assert.equal(named(mount([rows[2]]).rowTree,'Text').some(n=>text(n)==='Hermes'),false);
   assert.deepEqual(projectTimeline(messages.slice(2),null,'th').map(r=>r.displayKind),['final',undefined]);
   assert.deepEqual(rows.map(r=>r.key),['ref:1','ref:2','ref:3','ref:4']);
 });
 
-test('sender and time are adjacent for each full message, not assistant continuations', () => {
+test('sender names are hidden while full-message timestamps remain, not assistant continuation timestamps', () => {
   const messages = [
     { ...msg, created_at: 0 },
     { id: 'a1', ref_seq: 2, role: 'assistant', text: 'First', created_at: 123 },
@@ -155,9 +155,10 @@ test('sender and time are adjacent for each full message, not assistant continua
     const byline = named(rowTree, 'View').find(v => v.props.style?.flexDirection === 'row' && v.props.style?.gap === 8);
     assert.ok(byline, `byline for row ${index}`);
     const children = byline.props.children.filter(n => n && typeof n === 'object');
-    assert.equal(children[0].type, 'Text'); assert.equal(text(children[0]), expected);
-    assert.equal(children[1].type, 'MessageTime');
-    assert.equal(children[1].props.seconds, messages[index].created_at);
+    assert.equal(named(rowTree, 'Text').some(n => text(n) === expected), false);
+    assert.equal(children.length, 1);
+    assert.equal(children[0].type, 'MessageTime');
+    assert.equal(children[0].props.seconds, messages[index].created_at);
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
   }
   for (const index of [2, 3]) {
@@ -246,13 +247,13 @@ test('composer accepts ready attachments without text and blocks incomplete uplo
   }
 });
 
-test('assistant stays unframed; user messages fill a flat blue block without bubble constraints', () => {
+test('assistant stays unframed; user bubbles are right aligned, gray and capped at 60 percent', () => {
   const rowStyle = role => {
     const rows = projectTimeline([{ ...msg, role }], null, 'th', undefined, true);
     const views = named(mount(rows).rowTree, 'View');
     if (role === 'user') {
       assert.equal(views[0].props.style.alignSelf, 'stretch');
-      assert.equal(views[0].props.style.marginHorizontal, 0);
+      assert.equal(views[0].props.style.marginHorizontal, 14);
     }
     const style = views[role === 'user' ? 1 : 0].props.style;
     return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
@@ -266,20 +267,22 @@ test('assistant stays unframed; user messages fill a flat blue block without bub
   assert.equal(agent.backgroundColor, undefined);
   assert.equal(agent.borderRadius, undefined);
   const user = rowStyle('user');
-  assert.equal(user.alignSelf, 'stretch');
-  assert.equal(user.width, undefined, 'the definite-width row owns the viewport');
-  assert.equal(user.maxWidth, undefined, 'no 80% bubble constraint');
+  assert.equal(user.alignSelf, 'flex-end');
+  assert.equal(user.width, undefined, 'short text uses intrinsic width');
+  assert.equal(user.height, undefined, 'content owns height');
+  assert.equal(user.maxWidth, '60%');
   assert.equal(user.minWidth, 0);
   assert.equal(user.marginHorizontal, undefined, 'the full-width parent has no gutters');
   assert.equal(user.paddingVertical, 13);
   assert.equal(user.paddingHorizontal, 14);
-  assert.equal(user.backgroundColor, '#e6f0ff');
-  for (const property of ['borderColor', 'borderWidth', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius']) {
+  assert.equal(user.backgroundColor, '#f3f3f3');
+  assert.equal(user.borderRadius, 22);
+  for (const property of ['borderColor', 'borderWidth', 'borderTopLeftRadius', 'borderTopRightRadius']) {
     assert.equal(user[property], undefined, `no inherited bubble ${property}`);
   }
 });
 
-test('colored blocks reach both edges and their bylines align with ordinary assistant prose', () => {
+test('final reply keeps its existing edge-to-edge style independently of user bubbles', () => {
   const flat = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
   const rows = projectTimeline([
     { ...msg, role: 'assistant', id: 'plain', ref_seq: 1 },
@@ -289,7 +292,7 @@ test('colored blocks reach both edges and their bylines align with ordinary assi
   const ordinary = flat(named(mount([rows[0]]).rowTree, 'View')[0].props.style);
   const inset = ordinary.marginHorizontal;
   assert.equal(inset, 14);
-  for (const [index, color] of [[1, '#e6f0ff'], [2, '#f7f5ef']]) {
+  for (const [index, color] of [[2, '#f7f5ef']]) {
     const views = named(mount([rows[index]]).rowTree, 'View');
     const block = views.find(view => flat(view.props.style).backgroundColor === color);
     const style = flat(block.props.style);
@@ -310,7 +313,7 @@ test('colored blocks reach both edges and their bylines align with ordinary assi
   }
 });
 
-test('short prose, long lists and rich viewports share one full-width user block', () => {
+test('short prose, long lists and rich viewports share the same intrinsic user bubble constraints', () => {
   const samples = ['好', '长消息 '.repeat(100),
     '桌面端问题：\n\n1. 创建新 session 的弹窗需要选择 channel 和上传附件。\n2. '.concat('长列表内容需要自然换行。'.repeat(20), '\n3. 复制消息。\n4. 使用浅蓝 block。'),
     '> 引用\n> 第二行', '- 外层\n  - 嵌套列表',
@@ -321,12 +324,31 @@ test('short prose, long lists and rich viewports share one full-width user block
     const rows = projectTimeline([{ ...msg, text: sample }], null, 'th', undefined, true);
     const views = named(mount(rows).rowTree, 'View');
     const style = Object.assign({}, ...[views[1].props.style].flat(Infinity).filter(Boolean));
-    assert.equal(style.alignSelf, 'stretch');
-    assert.equal(style.maxWidth, undefined);
-    assert.equal(style.backgroundColor, '#e6f0ff');
+    assert.equal(style.alignSelf, 'flex-end');
+    assert.equal(style.maxWidth, '60%');
+    assert.equal(style.width, undefined);
+    assert.equal(style.height, undefined);
+    assert.equal(style.backgroundColor, '#f3f3f3');
     expected ??= style;
     assert.deepEqual(style, expected, 'Markdown kind does not switch width constraints');
     assert.equal(named(mount(rows).rowTree, 'MessageContent')[0].props.text, sample);
+  }
+});
+
+test('intrinsic lists use auto flex basis and prose stays left aligned', () => {
+  const nodes = expand(MessageContent({ text: '短文\n\n1. '.concat('长列表换行。'.repeat(40), '\n2. 第二项') }));
+  const bodies = named(nodes, 'View').filter(n => n.props.style?.flexGrow === 1);
+  assert.equal(bodies.length, 2);
+  for (const body of bodies) {
+    assert.equal(body.props.style.flex, undefined);
+    assert.equal(body.props.style.flexBasis, 'auto');
+    assert.equal(body.props.style.flexShrink, 1);
+  }
+  const prose = named(nodes, 'Text').filter(n => n.props.selectable);
+  assert.ok(prose.length >= 3);
+  for (const node of prose) {
+    const style = Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean));
+    assert.equal(style.textAlign, 'left');
   }
 });
 
@@ -393,7 +415,7 @@ test('public commentary and safe tool summaries remain ordered without repeated 
   const rendered = [];
   for (const row of rows.slice(1)) {
     const { rowTree } = mount([row]);
-    assert.equal(named(rowTree, 'Text').some(n => text(n) === 'Hermes'), !row.continuation);
+    assert.equal(named(rowTree, 'Text').some(n => text(n) === 'Hermes'), false);
     const body = named(rowTree, 'MessageContent')[0];
     assert.equal(body.props.toolCalls, row.toolCalls);
     const nodes = expand(MessageContent(body.props));

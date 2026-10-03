@@ -450,8 +450,8 @@ const styles = StyleSheet.create({
 
   root: { alignSelf: 'stretch', minWidth: 0, maxWidth: '100%' },
   blocks: { alignSelf: 'stretch', minWidth: 0, maxWidth: '100%', gap: 8 },
-  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1 },
-  heading: { color: '#172a40', fontWeight: '700', flexShrink: 1 },
+  paragraph: { color: '#172a40', fontSize: 15, lineHeight: 23, flexShrink: 1, textAlign: 'left' },
+  heading: { color: '#172a40', fontWeight: '700', flexShrink: 1, textAlign: 'left' },
   h1: { fontSize: 21, lineHeight: 28 }, h2: { fontSize: 18, lineHeight: 26 },
   h3: { fontSize: 17, lineHeight: 25 }, h4: { fontSize: 16, lineHeight: 24 }, h5: { fontSize: 15, lineHeight: 23 }, h6: { fontSize: 14, lineHeight: 22 },
   strong: { fontWeight: '700' }, em: { fontStyle: 'italic' }, strike: { textDecorationLine: 'line-through' },
@@ -488,7 +488,9 @@ const styles = StyleSheet.create({
   list: { gap: 5, minWidth: 0, maxWidth: '100%' },
   listRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   bullet: { width: 26, flexShrink: 0, color: '#425874', fontSize: 15, lineHeight: 23 },
-  listBody: { flex: 1, minWidth: 0 },
+  // Do not use flex:1 (zero basis) inside a content-sized user bubble.
+  // Measure intrinsic list width before shrinking so wrapped height stays valid.
+  listBody: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto', minWidth: 0 },
   rule: { height: 1, backgroundColor: '#d7e0eb', width: '100%' },
   codeBox: { width: '100%', minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: '#d6e0ed', backgroundColor: '#e8eef6', overflow: 'hidden' },
   codeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, gap: 8, backgroundColor: '#e5ecf5' },

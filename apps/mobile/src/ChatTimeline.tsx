@@ -41,9 +41,9 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
   const failedId = failedMessageId(row);
-  const messageStyle = own ? styles.userMessageBlock : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
+  const messageStyle = own ? styles.userMessageBubble : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
   const content = <Animated.View entering={own ? undefined : entering} style={highlighted ? [messageStyle, { backgroundColor: '#d9eaff' }] : messageStyle}>
-    {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
+    {!row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
@@ -481,12 +481,12 @@ const styles = StyleSheet.create({
   finalReply: { marginHorizontal: 0, marginTop: 32, marginBottom: 8, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#f7f5ef' },
   systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
-  userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 0 },
+  userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
-  // A definite-width block keeps wrapped lists and their parent on one viewport.
-  // Do not inherit the content-sized bubble's maxWidth, border or corners.
-  userMessageBlock: { alignSelf: 'stretch', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, backgroundColor: '#e6f0ff' },
-  byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, sender: { color: '#50647b', fontSize: 12, fontWeight: '600' }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
+  // Shrink-wrap short content; longer messages wrap within the same 60% cap.
+  // MessageContent list bodies retain an auto flex basis for intrinsic sizing.
+  userMessageBubble: { alignSelf: 'flex-end', maxWidth: '60%', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, borderRadius: 22, backgroundColor: '#f3f3f3' },
+  byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   failedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },

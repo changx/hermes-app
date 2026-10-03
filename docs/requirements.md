@@ -26,7 +26,7 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 已确认 Channel 工作空间方向（客户端与插件候选已有实现，发布/真机另行验收）：每个 Channel 绑定稳定的服务端文件系统目录，Channel 内的资料与工作文件以该目录为归属；根目录 AGENTS.md 是长期工作约定，Channel 界面提供真实文件编辑入口。Context 是简短摘要，不与 AGENTS.md 自动互相覆盖。共享目录不共享 Session 历史、不意味着安全沙箱；文件存在不等于全部自动进入模型上下文。既有文件迁移、完整文件管理及原生执行 CWD 绑定仍是后续工作，不修改核心或先放空入口。手机 Files 浏览/预览、同一真实 AGENTS.md 的原版本条件保存、冲突/草稿保护、capabilities 门控与验证边界见 [手机工作空间入口](mobile-workspace-entry.md)。
 
-桌面新建 Session 弹窗提供 Channel 选择和附件；Channel 树 hover/focus 工具栏可打开同一弹窗，默认选择该行 Channel。桌面会话输入栏沿用移动端的紧凑多行输入、同排附件/停止/发送控件设计。桌面与移动端的用户消息统一使用靠左的蓝色泡泡；左右对齐将来作为设置项，本次不提供空设置入口。实现候选、附件创建后上传到草稿的语义与真机边界见 [桌面 Session 输入与蓝泡泡](desktop-session-composer.md)。
+桌面新建 Session 弹窗提供 Channel 选择和附件；Channel 树 hover/focus 工具栏可打开同一弹窗，默认选择该行 Channel。桌面会话输入栏沿用移动端的紧凑多行输入、同排附件/停止/发送控件设计。桌面的用户消息保持既有样式。手机版最新确认规则为：隐藏发送者名字；用户消息靠右，最大宽度 60%，正文左对齐，浅灰底，宽高随内容变化。此规则替代此前手机蓝泡泡和满宽浅蓝 block 决定。隔离候选与真机边界见 [手机用户消息样式](mobile-user-message-block.md)。桌面输入栏候选与附件语义见 [桌面 Session 输入与蓝泡泡](desktop-session-composer.md)。
 
 ### R03 Channel Description 公共上下文
 
