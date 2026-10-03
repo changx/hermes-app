@@ -23,6 +23,7 @@ const messages = [
   message('u5','user','```js\n'+ 'console.log("keep code locally scrollable"); '.repeat(40)+'\n```'),
   message('u6','user','A very long message. '.repeat(120)),
   message('a2','assistant','The next response starts after the complete user message.',{displayKind:'direct'}),
+  message('notice','system','Context compressed'),
 ];
 const snapshot = {revision:1,phase:'connected',connectionState:'online',channels:[{id:'c',name:'Project'}],threads:[{id:'t',channelId:'c',title:'Session display',lastMessageAt:Date.now()/1000,running:true}],selectedChannelId:'c',selectedThreadId:'t',messages,interactions:[],canLoadOlder:false};
 const bundle = await build({stdin:{resolveDir:new URL('..',import.meta.url).pathname,loader:'tsx',contents:`
@@ -47,11 +48,16 @@ test('right-aligned user bubbles use intrinsic width, a 60 percent cap and gray 
 test('content layout preserves real message order, process grouping and command escaping',()=>{
   const html=mod.exports.html;
   assert.equal((html.match(/<article /g)||[]).length,messages.length);
-  assert.equal((html.match(/class="message-role"/g)||[]).length,messages.length-1);
+  assert.equal((html.match(/class="message-role"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
   assert.equal((html.match(/message-continuation/g)||[]).length,1);
   assert.equal((html.match(/message-final/g)||[]).length,1);
   assert.doesNotMatch(html, /class="message-role">(?:You|Hermes|Notice)/);
-  assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.length-1);
+  assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
+  for(const article of html.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/g)) {
+    const assistant=article[1].includes('message-assistant');
+    assert.equal(article[2].includes('class="message-time"'),!assistant,'user/system keep time, assistant omits it');
+    assert.equal(article[2].includes('class="message-role"'),!assistant,'no empty assistant header');
+  }
   assert.ok(html.indexOf('Hi')<html.indexOf('I will align'));
   assert.ok(html.indexOf('Reading styles.css')<html.indexOf('Updated display'));
   assert.ok(html.indexOf('Updated display')<html.indexOf('A longer user'));

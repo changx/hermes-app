@@ -28,6 +28,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 桌面新建 Session 弹窗提供 Channel 选择和附件；Channel 树 hover/focus 工具栏可打开同一弹窗，默认选择该行 Channel。桌面会话输入栏沿用移动端的紧凑多行输入、同排附件/停止/发送控件设计。桌面与手机版最新确认规则为：隐藏发送者名字；用户消息靠右，最大宽度 60%，正文左对齐，浅灰底，宽高随内容变化。此规则替代此前蓝泡泡和满宽浅蓝 block 决定，不新增对齐设置。手机隔离候选与真机边界见 [手机用户消息样式](mobile-user-message-block.md)。桌面候选与附件语义见 [桌面 Session 输入与用户消息](desktop-session-composer.md)。
 
+最新确认的时间显示规则：桌面和手机均隐藏 Agent 回复的时间，包括公开说明、工具记录、最终回复及直接回复；不保留空时间标题。用户消息和系统通知时间不变。仅改变呈现，不删除存储时间或影响消息排序。当前候选与发布边界见 [手机用户消息样式](mobile-user-message-block.md)及[桌面 Session 内容](desktop-session-composer.md)。
+
 ### R03 Channel Description 公共上下文
 
 Channel 的 Topic / Description 可保存背景、目标、约束及必要参考提示。创建新 Thread/Session 时，将这些内容设置为该 Session 头部的公共上下文；后续对话沿用已有 Session 上下文，不要求每条用户消息重新携带或重复追加 Description，也不要求逐轮重新读取 Channel 说明。说明不只是展示文字，应在该 Session 执行时实际生效。

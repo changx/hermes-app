@@ -92,3 +92,11 @@ Jamie 随后授权两端全部提交主分支并发布。手机合并 `2883bdb`�
 候选只修改 `ChatTimeline` 三个样式及组件回归。新增断言在修改前失败、修改后通过；定向组件/Markdown/删除失败消息/历史布局测试 **62 passed / 0 failed**，移动端 TypeScript 通过，iOS/Android Expo 导出成功，两个实际 JS bundle 均回读确认零外侧边距、14pt 内边距及无左侧边框。Metro 的临时依赖可见路径已恢复，不改锁文件。
 
 证据：active profile 私有 `workspace/mobile-message-edge-to-edge/`。未合并运行目录、未发布、未重启服务；iPhone 视觉和键盘仍待真机检查。上述导出不是独立安装包。
+
+## 最新补充：隐藏 Agent 回复时间（隔离候选）
+
+Jamie 请求手机与桌面均去掉 Agent 回复上的时间。此规则只替代上文保留 Agent 回复时间的决定；用户消息和系统通知时间保持不变。普通说明、工具记录、最终及直接回复均不显示时间，也不留空标题。存储时间、消息身份、顺序及历史投影不变。
+
+卡片 `t_626cc866`；分支 `fix/hide-agent-timestamps`，基线 `559ca04`。手机 TypeScript 与 **506/506** 测试通过，桌面 TypeScript/构建及真实 Chromium **120/120** 测试通过，均无失败或跳过。新增组件断言在修改前失败、修改后通过，并覆盖冷历史及系统通知。顺序 iOS/Android 导出及精确 bundle 时间显示条件回读通过。
+
+证据：active profile 私有 `workspace/hide-agent-timestamps/`。未合并主分支、未发布或重启服务，未改锁文件、插件、共享协议或 Hermes 核心。导出不是独立安装包；真机视觉仍待检查。

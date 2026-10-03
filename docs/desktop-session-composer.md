@@ -123,3 +123,11 @@ Jamie then authorized main submission and publication of both desktop and mobile
 Private evidence: active profile `workspace/chatgpt-style-release/`, including downloaded archive/ASAR, packaged code readback, release metadata, CI logs and mobile service/resource verification. Publication card `t_1a24c734`. The package is unsigned and not notarized. No signing account, App Store, EAS/TestFlight or device installation change. Installed Mac/iPhone visual and keyboard acceptance remains pending.
 
 Desktop rollback: reinstall intact `v0.1.13`. Source style rollback uses `git revert -m 1 8138302`; mobile style rollback uses `git revert -m 1 2883bdb` followed by only an Expo restart. Preserve concurrent main changes and all chat data.
+
+## Latest follow-up: hide Agent reply times (isolated candidate)
+
+Jamie requested removing Agent reply timestamps on both platforms. Candidate `fix/hide-agent-timestamps`, baseline `559ca04`, card `t_626cc866`. This supersedes timestamp retention for assistant messages only. User and system timestamps remain visible. Missing/hidden assistant times leave no empty header. The stored timestamps, identities, ordering, grouping, final background and tools remain unchanged.
+
+The implementation adds a non-assistant guard to the existing desktop/mobile timestamp presentation. Production regressions fail against the baseline and pass after the change. Desktop TypeScript/build and **120/120** tests pass with real Chromium and no skips. Mobile TypeScript and **506/506** tests pass with no skips. Serial iOS/Android exports pass; both exact output bundles and the built desktop renderer contain the assistant timestamp guard. Tests cover commentary, tools, final/direct replies, cold history, user timestamps and system notices. Existing geometry checks retain non-overlap and bubble alignment.
+
+Private evidence: active profile `workspace/hide-agent-timestamps/`, including baseline failures, checks, production DOM preview and exact exports. Isolated root dependencies were installed because the first dependency link did not expose a desktop-local package. No lockfile or dependency graph change. Temporary Metro visibility paths were restored after export. No main merge, push, publication, service restart, version bump or device installation. Native visual review remains pending.

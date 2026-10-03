@@ -26,9 +26,9 @@ test('tools are compact visible action records, not collapsed cards or success c
  assert.ok(html.indexOf('Checking') < html.indexOf('Reading'));
  assert.ok(html.indexOf('terminal') < html.indexOf('Result'));
 });
-test('only continuous assistant records omit repeated timestamps; direct replies break grouping', () => {
- assert.equal((html.match(/class="message-role"/g) || []).length, 4);
- assert.equal((html.match(/<time class="message-time"/g) || []).length, 4);
+test('all assistant records omit timestamps and empty headers; grouping stays unchanged', () => {
+ assert.equal((html.match(/class="message-role"/g) || []).length, 0);
+ assert.equal((html.match(/<time class="message-time"/g) || []).length, 0);
  assert.doesNotMatch(html, /class="message-role">(?:Hermes|You|Notice)/);
  assert.equal((html.match(/message-continuation/g) || []).length, 3);
  assert.equal((html.match(/message-tools-only/g) || []).length, 3);
@@ -40,6 +40,6 @@ test('only continuous assistant records omit repeated timestamps; direct replies
 test('only the explicit final row gets the enlarged gap and pale result treatment', async () => {
  const styles=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
  assert.match(styles,/\.message-final \{[^}]*margin-top: 32px;[^}]*background: #f7f5ef;/);
- assert.match(html,/<article class="message message-assistant message-final"><p class="message-role"><time class="message-time"/);
+ assert.match(html,/<article class="message message-assistant message-final"><div class="message-markdown">/);
  assert.doesNotMatch(html,/<article class="[^"]*message-final[^"]*message-continuation/);
 });

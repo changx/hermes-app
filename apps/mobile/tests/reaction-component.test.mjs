@@ -140,7 +140,7 @@ test('explicit final replies use a separate byline, 32pt gap and pale body; unkn
   assert.deepEqual(rows.map(r=>r.key),['ref:1','ref:2','ref:3','ref:4']);
 });
 
-test('sender names are hidden while full-message timestamps remain, not assistant continuation timestamps', () => {
+test('sender names and assistant timestamps are hidden while user timestamps remain', () => {
   const messages = [
     { ...msg, created_at: 0 },
     { id: 'a1', ref_seq: 2, role: 'assistant', text: 'First', created_at: 123 },
@@ -150,7 +150,7 @@ test('sender names are hidden while full-message timestamps remain, not assistan
   ];
   const rows = projectTimeline(messages, null, 'th');
   assert.deepEqual(rows.map(r => r.key), ['local:c', 'ref:2', 'ref:3', 'ref:4', 'local:c2']);
-  for (const [index, expected] of [[0, 'You'], [1, 'Hermes'], [4, 'You']]) {
+  for (const [index, expected] of [[0, 'You'], [4, 'You']]) {
     const { rowTree } = mount([rows[index]]);
     const byline = named(rowTree, 'View').find(v => v.props.style?.flexDirection === 'row' && v.props.style?.gap === 8);
     assert.ok(byline, `byline for row ${index}`);
@@ -161,11 +161,26 @@ test('sender names are hidden while full-message timestamps remain, not assistan
     assert.equal(children[0].props.seconds, messages[index].created_at);
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
   }
-  for (const index of [2, 3]) {
+  for (const index of [1, 2, 3]) {
     const { rowTree } = mount([rows[index]]);
     assert.equal(named(rowTree, 'MessageTime').length, 0);
+    assert.equal(named(rowTree, 'View').some(v => v.props.style?.marginBottom === 6), false, 'no empty timestamp header');
+    assert.equal(rows[index].timestamp, messages[index].created_at, 'stored timestamp is unchanged');
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
   }
+});
+
+test('cold assistant variants omit time and header; system notices retain their time', () => {
+  for (const extra of [{}, { display_kind: 'final' }, { display_kind: 'direct' }, { text: '', tool_calls: [{ id: 'r', name: 'read_file', label: 'Read file' }] }]) {
+    const row = projectTimeline([{ id: 'a', ref_seq: 1, role: 'assistant', text: 'Reply', created_at: 123, ...extra }], null, 'th')[0];
+    const tree = mount([row]).rowTree;
+    assert.equal(named(tree, 'MessageTime').length, 0);
+    assert.equal(named(tree, 'View').some(v => v.props.style?.marginBottom === 6), false);
+    assert.equal(row.timestamp, 123);
+    assert.equal(named(tree, 'MessageContent')[0].props.text, row.text);
+  }
+  const notice = { key: 'notice', role: 'assistant', displayKind: 'system_notice', text: 'Context compressed', timestamp: 123 };
+  assert.equal(named(mount([notice]).rowTree, 'MessageTime')[0].props.seconds, 123);
 });
 
 test('followup callback reaction stays visible without changing row identity or footprint', () => {
@@ -306,10 +321,7 @@ test('final reply keeps its existing edge-to-edge style independently of user bu
     for (const property of ['borderWidth', 'borderLeftWidth', 'borderLeftColor', 'borderRadius'])
       assert.equal(style[property], undefined, `no outer ${property}`);
     const children = block.props.children.filter(child => child && typeof child === 'object');
-    assert.equal(children[0].type, 'View');
-    assert.equal(children[1].type, 'MessageContent');
-    assert.equal(flat(children[0].props.style).paddingLeft, undefined, 'byline has no extra inset');
-    assert.equal(flat(children[0].props.style).marginLeft, undefined);
+    assert.equal(children[0].type, 'MessageContent', 'no timestamp header before final prose');
   }
 });
 

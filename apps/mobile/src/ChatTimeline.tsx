@@ -43,7 +43,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const failedId = failedMessageId(row);
   const messageStyle = own ? styles.userMessageBubble : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
   const content = <Animated.View entering={own ? undefined : entering} style={highlighted ? [messageStyle, { backgroundColor: '#d9eaff' }] : messageStyle}>
-    {!row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
+    {row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}

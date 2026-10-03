@@ -78,7 +78,7 @@ const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; c
   const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
   return <article data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
-    {!continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>}
+    {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
       const presentation = toolPresentation(tool.name);
