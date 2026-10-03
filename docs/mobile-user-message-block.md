@@ -109,4 +109,4 @@ Jamie 请求手机与桌面均去掉 Agent 回复上的时间。此规则只替�
 
 分支 `fix/collapsible-work`，卡 `t_5a04dba0`，基线 `f748cc9`。双端与共享 TypeScript 通过，手机 **507/507**、桌面构建及 Chromium **124/124** 测试通过，均无跳过。历史加载测试已修正新增标题后的根节点选择，并验证原消息节点在 prepend 时保留。顺序 iOS/Android 清缓存导出通过，实际 HBC 文件回读确认新宽度与过程呈现字符串。证据：active Channel workspace `collapsible-work/`。
 
-未合并主分支、推送或发布，未重启服务；未改锁文件、版本、插件或核心。原生视觉、滚动、键盘与辅助功能仍待真机验收。
+候选阶段未合并主分支、推送或发布，未重启服务。用户随后已授权发布：两轮修改以 `abb2faf` 合入并推送 main，桌面 v0.1.15 已发布，手机 `exps://agent.tuly.space` 已更新。iOS/Android 公网 manifest 及确切 JS launchAsset 均 HTTP 200，确认 80% 宽度、过程折叠、分隔线及隐藏 Agent 时间。仅 Expo 重启，Gateway/插件及手机锁文件不变；根/桌面版本元数据升级，不改依赖图。完整证据与下载核验见 [发布记录](desktop-session-composer.md#published-desktop-v0115-and-mobile-test-entry)。原生视觉、滚动、键盘与辅助功能仍待真机验收，Expo Go 不等于独立安装包。
