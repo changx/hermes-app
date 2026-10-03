@@ -195,10 +195,19 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
     const next = attachments.filter(({ id }) => id !== attachment.id); setAttachments(next); if (threadId) draftAttachments.set(threadId, next); safely(window.hermesDesktop.deleteUnattachedAttachment(attachment.id));
   };
   const running = snapshot.threads.find(({ id }) => id === threadId)?.running ?? false;
+  const online = snapshot.connectionState === "online";
+  const active = online && snapshot.interactions.length === 0;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
     {error && <p role="alert">{error}</p>}
     {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span key={item.id}>{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button></span>)}</div> : null}
-    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files">＋</button><textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} />{running ? <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" onClick={() => safely(window.hermesDesktop.stopThread())}>■</button> : null}<button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>↑</button></div>
+    {running ? <div className="running-row">
+      <div className="agent-running" role="status" aria-live="polite">
+        {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}
+        <span>{!online ? "Reconnecting…" : active ? "Agent is running" : "Waiting for your response"}</span>
+      </div>
+      <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" disabled={!online} onClick={() => safely(window.hermesDesktop.stopThread())}>■</button>
+    </div> : null}
+    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files">＋</button><textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} /><button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>↑</button></div>
   </footer>;
 };
 
@@ -232,7 +241,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
       <button type="button" title="New session (⌘N)" aria-label="Create a session" disabled={!snapshot.channels.length} onClick={() => openNewSession(snapshot.selectedChannelId)}>＋</button>
     </nav>
     <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
-      <header className="pane-header"><h1 id="navigation-heading">Conversations</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
+      <header className="pane-header"><h1 id="navigation-heading">Channels</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
       <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} />
       <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
     </nav>

@@ -70,6 +70,7 @@ test("renderer shell contains activity rail, tree panel and conversation", () =>
   assert.match(markup, /<main[^>]+aria-label="Hermes desktop"/);
   assert.match(markup, /aria-label="Navigation tools"/);
   assert.match(markup, /aria-labelledby="navigation-heading"/);
+  assert.match(markup, /<h1 id="navigation-heading">Channels<\/h1>/);
   assert.match(markup, /aria-labelledby="conversation-heading"/);
   assert.match(markup, /aria-label="Channels and threads"/);
   assert.match(markup, /aria-label="Toggle navigation"/);
@@ -120,7 +121,8 @@ test("tool records render expanded, in order, and escape command text", () => {
 });
 
 test("conversation uses compact fixed gutters without a centered width cap", () => {
-  assert.match(styles, /\.message-list\s*{[^}]*padding:\s*18px 20px;/);
+  assert.match(styles, /\.message-list\s*{[^}]*padding:\s*18px 0;/);
+  assert.match(styles, /\.message\s*{[^}]*padding-inline:\s*14px;/);
   assert.match(styles, /\.message\s*{[^}]*max-width:\s*none;[^}]*margin:\s*0 0 20px;/);
   assert.doesNotMatch(styles, /padding:[^;]*8vw/);
 });

@@ -48,3 +48,48 @@ Jamie subsequently authorized main merge and publication. Candidate `e2cc7fa` me
 Publication card `t_f8af393d`; private readbacks, service/hash snapshots, exact bundles, CI logs and downloaded-asset verification: active-profile `workspace/desktop-session-composer/release/`. Implementation remains in review for the native checks above; publication does not convert skipped browser or physical-device tests into passes.
 
 Rollback: reinstall intact Desktop `v0.1.8`; revert release metadata commit `4e16412` and feature merge using `git revert -m 1 d3aafa5` (baseline `1c4d584`), then restart only Expo for the mobile rollback. Preserve concurrent Channel Context changes and all server/chat data; do not reset or overwrite storage.
+
+## Desktop palette follow-up (isolated candidate)
+
+User confirmed: discard the desktop warm beige/brown combination. Use white and neutral light gray application chrome, with the existing mobile semantic colors. Candidate `feat/desktop-mobile-palette`, baseline `591ffc2`, card `t_24175050`.
+
+- White conversation/forms/dialogs; `#f9fafb` application/navigation background; `#f3f4f6` rail/hover; `#e5e7eb` dividers; `#d1d5db` form borders.
+- Neutral UI text `#1f2937`, secondary `#6b7280`, labels `#4b5563`.
+- Actual mobile colors: blue general actions `#2960ad`, chat send `#285ea5`, links `#215ca7`, selected navigation `#e6edf7`, user messages `#e6f0ff`, final replies `#f7f5ef`.
+- Code/tool commands use mobile pale `#e8eef6` and text `#20314a`; inline code `#dce5f0`; table headings `#e5ecf5`. Error and running colors match mobile. Final/approval pale warm colors remain semantic highlights, not application chrome.
+- Explicit `color-scheme: light`; Electron startup background `#f9fafb`. Small local CSS variables centralize neutral chrome. No new theme framework, mobile change, protocol/plugin/core/dependency/lockfile edit or behavioral change.
+
+Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome npm run desktop:check` passed TypeScript, build and all **107 tests**, with **0 skipped/failed**. Chromium computed-style checks cover production React navigation, conversation, composer, pairing, new-session form, Markdown/code/table/tool/error styles at 720/1280/1800px under forced OS dark mode. Existing Markdown/table/bubble/composer geometry tests pass. `git diff --check` passes.
+
+Private evidence is in the current profile Channel workspace `desktop-mobile-palette/`: computed colors, production-component HTML, PNG and final check log. Preview messages are synthetic, not a live conversation or macOS screenshot. Pairing and new-session forms are in hidden probe containers, so their computed styles do not prove native interactions.
+
+No main merge, push, Release, service restart or Mac installation. Local `apps/desktop/dist` is built; this candidate has no new macOS installer or native visual acceptance. Those checks remain separate; the implementation card stays in review.
+
+## Latest Session content follow-up (isolated candidate)
+
+User subsequently requested applying the latest mobile Session content display design to desktop. This overrides the old desktop content-sized blue-bubble rules above. Continue the neutral palette candidate from `283f636`; card `t_22bde83d`.
+
+- User messages are full available-width `#e6f0ff` blocks, with no outer border, rounded corners, 80% limit or content-type-specific width.
+- User and final backgrounds reach both timeline edges. Ordinary assistant, user and final bylines/prose all start at the same 14px inset. Text does not touch the window edge.
+- Final replies retain `#f7f5ef` and 32px top separation, but lose the left decoration. Existing vertical spacing is retained.
+- Continuous process grouping, safe compact captions and terminal command blocks remain unchanged. Message order/identity, timestamps, receipt actions, approvals, attachments, Markdown, table-local scrolling and composer/scroll handlers are not rewritten.
+- Only content CSS and tests changed, plus this documentation. No mobile, shared protocol, plugin, core, dependency or lockfile changes.
+
+Verification: newly added source/real Chromium assertions failed on the prior palette candidate (old gutter/bubbles) and passed after the layout change. DOM checks at 720/900/1280/1800px and resize back to 720 cover short prose, long nested lists, wide tables, attachment preview containers, continuous process and final replies. Both edges align, names/prose share the inset, content remains within row height, following rows do not overlap, and wide tables scroll locally rather than widening the timeline. Existing production composer geometry and Markdown/table checks also pass. Final desktop TypeScript/build and **110/110 tests** pass with no skipped/failed tests; `git diff --check` passes.
+
+Evidence: current profile Channel workspace `desktop-session-content/`, including baseline failure, final check log, layout metrics and updated production-component preview HTML/PNG. The preview contains synthetic example content, not a Mac screenshot or live model execution. This is a client layout change, not a new tool capture implementation.
+
+No main merge, push, installer release, native installation or service restart. Mac visual/keyboard acceptance and publication remain separate. The updated local desktop artifact is in `apps/desktop/dist`.
+
+## Navigation cleanup and running composer row (isolated candidate)
+
+User requested removing `Select channel` and correcting the missing `Agent is running` presentation. Continue from `0d69e5d`; card `t_a8372411`.
+
+- Delete the redundant tree action and its unused CSS selector. Expanding/collapsing the Channel still does not forcibly leave the current Session. The Channel plus and Session selection remain unchanged.
+- Match current mobile `runningRow`: a compact 32px row above the input contains three scaling dots and `Agent is running`, with the independent Stop button on the right (34×28px). The input row contains only plus, textarea and send.
+- Use the selected Session's authoritative directory running state. Idle, no selection and a different running Session do not create this row. Offline cached state shows `Reconnecting…` with no dots and disabled Stop; pending selected-session interaction shows `Waiting for your response` with no dots. These states do not claim active work.
+- Three CSS dots use mobile colors and staggered scaling. Reduced-motion mode disables their animation. Stop remains available during an in-flight send when connected and does not clear the draft. Running status does not replace or disable the ordinary send action.
+
+Final desktop TypeScript/build and **113/113 tests** passed, with 0 failed/skipped. Production-component tests cover removed navigation action/no forced navigation, selected running/idle/no selection/pending/offline state, completion retaining the draft, resumed running, independent Stop/Send and Stop while send awaits confirmation. Real Chromium checks 720/1280/1800px input and Stop geometry and both regular/reduced-motion dot styles. The content/layout/palette/security regressions remain passed.
+
+Evidence: current profile Channel workspace `desktop-running-row/`, with final check log, layout readback and regenerated production-component preview. Synthetic preview content is not a live model execution or native Mac screenshot. No main merge/push/release/installer/service restart/mobile/protocol/plugin/core/dependency/lockfile change; native Mac acceptance remains pending.

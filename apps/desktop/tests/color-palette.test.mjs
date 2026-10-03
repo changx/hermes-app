@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+
+const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
+const rgb = hex => `rgb(${hex.match(/\w\w/g).map(x => parseInt(x, 16)).join(', ')})`;
+const mobile = name => readFile(new URL(`../../mobile/src/${name}`, import.meta.url), 'utf8');
+
+test('application chrome is neutral light gray, not the previous warm palette', async () => {
+  for (const [name, color] of Object.entries({ text: '1f2937', muted: '6b7280', label: '4b5563', background: 'f9fafb', rail: 'f3f4f6', border: 'e5e7eb', 'field-border': 'd1d5db' })) {
+    assert.ok(css.includes(`--app-${name}: #${color};`), name);
+  }
+  assert.match(css, /color-scheme: light;/);
+  assert.doesNotMatch(css, /#(?:292724|f4f2ee|ebe8e2|f7f5f1|d9d5ce|746e66|53504a|d4c7a9|efede8|48443e|514d47|e5e0d7|f5f3ef)\b/i);
+  const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8');
+  assert.match(main, /backgroundColor: "#f9fafb"/);
+});
+
+test('semantic accents retain the actual mobile colors, including pale final replies', async () => {
+  const sources = (await Promise.all(['App.tsx', 'ChatTimeline.tsx', 'MessageContent.tsx', 'ChannelScreens.tsx'].map(mobile))).join('\n');
+  for (const color of ['2960ad', '215ca7', 'e6f0ff', 'f7f5ef', '172a40', '50647b', 'e8eef6', '20314a', 'dce5f0', 'd6e0ed', 'e5ecf5', '285ea5', 'e7eef7', '294e7b', '9d1b32', 'fff0f2', '237a35', '4DA3FF']) {
+    assert.ok(sources.includes(`#${color}`), `mobile source: ${color}`);
+    assert.ok(css.includes(`#${color}`), `desktop CSS: ${color}`);
+  }
+});
+
+test('Chromium: production screens resolve neutral chrome and mobile content colors at all widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
+    import { createElement } from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import { DesktopShellView } from './src/renderer/shell';
+    import { NewSessionDialog } from './src/renderer/new-session-dialog';
+    const snapshot = { revision: 1, phase: 'connected', connectionState: 'online', channels: [{id:'a',name:'Example'}], threads:[{id:'t',channelId:'a',title:'Palette preview',running:true,lastMessageAt:Date.now()/1000}], selectedChannelId:'a',selectedThreadId:'t',interactions:[],canLoadOlder:false,errorMessage:'Example error',messages:[
+      {id:'u',role:'user',text:'A user message',toolCalls:[],attachments:[]},
+      {id:'a',role:'assistant',text:${JSON.stringify('[A link](https://example.com) and inline `code`.\n\n| Name | Value |\n| --- | --- |\n| Example | Light theme |\n\n```text\nExample code\n```')},toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status --short'}],attachments:[]},
+      {id:'f',role:'assistant',displayKind:'final',text:'Final reply',toolCalls:[],attachments:[]}
+    ]};
+    export const shell = renderToStaticMarkup(createElement(DesktopShellView,{snapshot}));
+    export const pairing = renderToStaticMarkup(createElement(DesktopShellView,{snapshot:{...snapshot,phase:'unpaired'}}));
+    export const dialog = renderToStaticMarkup(createElement(NewSessionDialog,{snapshot,close(){},prepared(){}}));
+  ` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime', 'react-dom/server'], write: false });
+  const mod = { exports: {} };
+  new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(createRequire(import.meta.url), mod, mod.exports);
+  const folder = await mkdtemp(join(tmpdir(), 'desktop-palette-'));
+  try {
+    const file = join(folder, 'preview.html');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${mod.exports.shell}</div><div hidden>${mod.exports.pairing}${mod.exports.dialog}</div><pre id="results" hidden></pre><script>
+      const cases = [];
+      const style = (selector, property) => { const element = document.querySelector(selector); return element ? getComputedStyle(element)[property] : 'MISSING'; };
+      for (const width of [720,1280,1800]) {
+        document.documentElement.style.width = width+'px';document.body.style.width = width+'px';document.querySelector('.desktop-shell').style.width = width+'px';
+        const checks = [
+          ['body','color','1f2937'],['.activity-bar','backgroundColor','f3f4f6'],['.navigation-panel','backgroundColor','f9fafb'],['.conversation-pane','backgroundColor','ffffff'],
+          ['.tree-thread.selected','backgroundColor','e6edf7'],['.conversation-header','borderBottomColor','e5e7eb'],['.message-user','backgroundColor','e6f0ff'],['.message-final','backgroundColor','f7f5ef'],['.message-assistant','color','172a40'],
+          ['.message a','color','215ca7'],['.message code','backgroundColor','dce5f0'],['.code-block','backgroundColor','e8eef6'],['.code-block code','color','20314a'],['.tool-command','backgroundColor','e8eef6'],['.tool-command','color','20314a'],['.message-markdown th','backgroundColor','e5ecf5'],
+          ['.composer textarea','backgroundColor','ffffff'],['.composer textarea','color','172a40'],['.composer-row > button:last-child','backgroundColor','285ea5'],['.composer-row .attach-button','backgroundColor','e7eef7'],['.running-row .stop-button','color','425874'],
+          ['.error-banner','backgroundColor','fff0f2'],['.error-banner','color','9d1b32'],['.thread-status','color','237a35'],
+          ['.pairing-card','backgroundColor','ffffff'],['.connection-screen','backgroundColor','f9fafb'],['.pairing-actions button','backgroundColor','2960ad'],['.pairing-card input','borderTopColor','d1d5db'],
+          ['.editor-dialog','backgroundColor','ffffff'],['.editor-dialog input','color','1f2937'],['.dialog-actions button:last-child','backgroundColor','2960ad'],['.dialog-actions .secondary','color','4b5563']
+        ];
+        cases.push({width,colors:checks.map(([selector,property,expected])=>({selector,property,expected,actual:style(selector,property)})),scheme:style('html','colorScheme')});
+      }
+      document.getElementById('results').textContent=JSON.stringify(cases);
+    </script></body></html>`;
+    await writeFile(file, html);
+    const args = ['--headless', '--no-sandbox', '--disable-gpu', '--force-dark-mode', `--user-data-dir=${join(folder, 'profile')}`, '--dump-dom', pathToFileURL(file).href];
+    const dom = execFileSync(process.env.HERMES_TEST_CHROME, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 2_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
+    const results = JSON.parse(/<pre id="results" hidden="">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
+    assert.ok(results, 'browser completed computed-style checks');
+    for (const row of results) {
+      assert.equal(row.scheme, 'light');
+      for (const value of row.colors) assert.equal(value.actual, rgb(value.expected), `${row.width} ${value.selector} ${value.property}`);
+    }
+    if (process.env.HERMES_PALETTE_EVIDENCE) {
+      await mkdir(process.env.HERMES_PALETTE_EVIDENCE, { recursive: true });
+      await writeFile(join(process.env.HERMES_PALETTE_EVIDENCE, 'computed-colors.json'), JSON.stringify(results, null, 2)+'\n');
+      await writeFile(join(process.env.HERMES_PALETTE_EVIDENCE, 'preview.html'), html);
+      execFileSync(process.env.HERMES_TEST_CHROME, ['--headless','--no-sandbox','--disable-gpu',`--user-data-dir=${join(folder,'screenshot-profile')}`,'--window-size=1280,900',`--screenshot=${join(process.env.HERMES_PALETTE_EVIDENCE,'preview.png')}`,pathToFileURL(file).href], { timeout:30000, stdio:'pipe' });
+    }
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
