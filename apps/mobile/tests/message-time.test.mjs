@@ -14,30 +14,29 @@ const config = connection('https://example.test', 'secret', 'conn');
 
 test('relative boundaries, invalid/epoch/future values, local absolute date', () => {
   const now = new Date(2026, 8, 27, 13, 4, 5).getTime();
-  for (const [age, label] of [[0, '0s ago'], [5, '5s ago'], [59, '59s ago'], [60, '1m ago'], [719, '11m ago'], [3599, '59m ago'], [3600, '1h ago'], [86399, '23h ago']]) {
+  for (const [age, label] of [[0, '<1m'], [5, '<1m'], [59, '<1m'], [59.999, '<1m'], [60, '1m ago'], [719, '11m ago'], [3599, '59m ago'], [3600, '1h ago'], [86399, '23h ago']]) {
     assert.equal(formatMessageTime(now / 1000 - age, now), label);
   }
   assert.equal(formatMessageTime(now / 1000 - 86400, now), absoluteMessageTime(now / 1000 - 86400));
-  assert.equal(formatMessageTime(now / 1000 + 500, now), '0s ago');
-  assert.equal(formatMessageTime(0, 0), '0s ago');
+  assert.equal(formatMessageTime(now / 1000 + 500, now), '<1m');
+  assert.equal(formatMessageTime(0, 0), '<1m');
   assert.equal(validTimestampSeconds(0), true);
   for (const value of [undefined, null, NaN, Infinity, -1, 8.64e12 + 1, '123']) {
     assert.equal(formatMessageTime(value, now), '—');
     assert.equal(nextMessageTimeUpdate(value, now), null);
   }
-  assert.equal(nextMessageTimeUpdate(now / 1000 - 59, now), 1000);
-  assert.equal(nextMessageTimeUpdate(now / 1000 - 3599, now), 1000);
-  assert.equal(nextMessageTimeUpdate(now / 1000 - 86399, now), 1000);
+  for (const age of [0, 0.5, 59, 60, 3599, 3600, 86399, -500])
+    assert.equal(nextMessageTimeUpdate(now / 1000 - age, now), 60000);
   assert.equal(nextMessageTimeUpdate(now / 1000 - 86400, now), null);
-  assert.equal(nextMessageTimeUpdate(8.64e12, now), 2147483647);
+  assert.equal(nextMessageTimeUpdate(8.64e12, now), 60000);
 });
 
-test('absolute formatting follows device timezone and preserves second/zero padding', () => {
+test('absolute and accessibility formatting follow device timezone at minute precision', () => {
   const script = "import {formatMessageTime,accessibleMessageTime} from './src/messageTime.ts'; console.log(JSON.stringify([formatMessageTime(0,86400000),accessibleMessageTime(0)]))";
   for (const [tz, visible, full] of [
-    ['UTC', '01/01 00:00:00', '1970-01-01 00:00:00'],
-    ['America/Los_Angeles', '12/31 16:00:00', '1969-12-31 16:00:00'],
-    ['Asia/Kolkata', '01/01 05:30:00', '1970-01-01 05:30:00']
+    ['UTC', '01/01 00:00', '1970-01-01 00:00'],
+    ['America/Los_Angeles', '12/31 16:00', '1969-12-31 16:00'],
+    ['Asia/Kolkata', '01/01 05:30', '1970-01-01 05:30']
   ]) {
     const result = spawnSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script], { cwd: new URL('..', import.meta.url).pathname, env: { ...process.env, TZ: tz }, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
@@ -80,12 +79,16 @@ function mountClock(seconds, initialMs) {
 
 test('actual native time component ticks independently; background pauses, foreground refreshes, unmount cleans', () => {
   const mounted = mountClock(1000, 1059000);
-  assert.equal(mounted.tree.props.children[0], '59s ago');
+  assert.equal(mounted.tree.props.children[0], '<1m');
   assert.equal(mounted.tree.props.accessibilityLabel, `Sent ${accessibleMessageTime(1000)}`);
   assert.equal(mounted.timers.size, 1);
+  mounted.advance(59000);
+  assert.equal(mounted.render().props.children[0], '<1m');
+  assert.equal(mounted.renders.length, 0);
   mounted.advance(1000);
   assert.equal(mounted.render().props.children[0], '1m ago');
   assert.equal(mounted.renders.length, 1);
+  assert.equal([...mounted.timers.values()][0].at - mounted.time(), 60000);
   mounted.state('background'); assert.equal(mounted.timers.size, 0);
   mounted.advance(3600000); assert.equal(mounted.renders.length, 1);
   mounted.state('active'); assert.equal(mounted.render().props.children[0], '1h ago');
@@ -96,6 +99,20 @@ test('actual native time component ticks independently; background pauses, foreg
   assert.equal(unknown.tree.props.children[0], '—');
   assert.equal(unknown.tree.props.accessibilityLabel, 'Time unavailable');
   assert.equal(unknown.timers.size, 0); unknown.unmount();
+});
+
+test('hour-old labels also refresh once each minute; absolute labels do not schedule ticks', () => {
+  const clock = mountClock(1000, (1000 + 3600) * 1000);
+  assert.equal(clock.tree.props.children[0], '1h ago');
+  clock.advance(59999); assert.equal(clock.renders.length, 0);
+  clock.advance(1); assert.equal(clock.renders.length, 1);
+  clock.advance(60000); assert.equal(clock.renders.length, 2);
+  clock.state('inactive'); assert.equal(clock.timers.size, 0);
+  clock.advance(120000); assert.equal(clock.renders.length, 2);
+  clock.state('active'); assert.equal(clock.renders.length, 3);
+  clock.unmount();
+  const old = mountClock(1000, (1000 + 86400) * 1000);
+  assert.equal(old.timers.size, 0); old.unmount();
 });
 
 test('a newly received authoritative timestamp refreshes against the current clock immediately', () => {
