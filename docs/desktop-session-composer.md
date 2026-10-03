@@ -109,3 +109,17 @@ New production component and Chromium assertions failed against the baseline, th
 Desktop TypeScript, main/preload/renderer build and all **120 tests passed**, with **0 failures and 0 skips**, using `/usr/bin/google-chrome`. The built artifact is `apps/desktop/dist`. Private evidence: active-profile `workspace/desktop-chatgpt-message-style/`, including baseline failure, full check log, production DOM geometry and preview HTML/PNG. The preview uses synthetic fixture messages, not a live conversation or native Mac screenshot.
 
 No new installer, signing, push, Release or native installation. Installed Mac visual, scrolling and keyboard acceptance remains separate. The card stays in review.
+
+### Authorized publication: Desktop v0.1.14
+
+Jamie then authorized main submission and publication of both desktop and mobile candidates. Merge `8138302` retains candidate `4600dd4`; release source `986bbcb72c3a95ad49ed12c419bdd0c75e93be8a` was pushed to main and tag `v0.1.14`. Existing main live-session-page changes were retained. Root/desktop versions and root lockfile version metadata changed to `0.1.14`; dependency entries did not change.
+
+- [Tag workflow 37132500437](https://github.com/changx/hermes-app/actions/runs/37132500437) passed locked installation, TypeScript/build/tests, audit, unsigned arm64 packaging, archive checksum and publication. Main workflow `37132499705` also passed. The prior local real-Chromium 120/120 checks remain the browser geometry evidence; CI does not convert optional browser skips into native acceptance.
+- [Desktop v0.1.14](https://github.com/changx/hermes-app/releases/tag/v0.1.14) is published, not draft, with `Hermes-0.1.14-macOS-arm64.zip` and its checksum sidecar.
+- Downloaded archive SHA-256 matches the published sidecar: `8c274cb7f798b80f91595c28e46ef74d314bfb00f20bfcb3a6507b4e71bd0e11`. The executable is Mach-O arm64. Plist and ASAR package versions are `0.1.14`.
+- Packaged CSS confirms intrinsic width, right alignment, the gutter-adjusted 60% cap, gray rounded background and left-aligned prose. Packaged renderer confirms timestamp-only message headers and retained live session pages.
+- Mobile public iOS/Android manifests and exact launchAssets passed SDK57/current-code verification. Only Expo restarted; Gateways and installed plugin hashes remained unchanged.
+
+Private evidence: active profile `workspace/chatgpt-style-release/`, including downloaded archive/ASAR, packaged code readback, release metadata, CI logs and mobile service/resource verification. Publication card `t_1a24c734`. The package is unsigned and not notarized. No signing account, App Store, EAS/TestFlight or device installation change. Installed Mac/iPhone visual and keyboard acceptance remains pending.
+
+Desktop rollback: reinstall intact `v0.1.13`. Source style rollback uses `git revert -m 1 8138302`; mobile style rollback uses `git revert -m 1 2883bdb` followed by only an Expo restart. Preserve concurrent main changes and all chat data.
