@@ -30,6 +30,8 @@ Channel 工作空间已分别实现插件/手机候选，未因此宣称公开�
 
 用户可见的 Thread 关联底层 session lineage，但生命周期不受压缩或物理 session ID 变化影响。用户可见历史与模型请求历史分开读取；复用现有显示投影，而不是简单显示 raw transcript。
 
+会话链接通过共享严格解析器绑定 paired server base 与稳定 Thread ID；客户端只打开已有目录会话，不推测物理 Session ID 映射、不读取目标以外正文、不修改配对或认证。保留未来多实例身份检查边界。见 [Session links](session-links.md)。
+
 ## 2. 现有代码证据
 
 检查环境：`/home/hermes/.hermes/hermes-agent`；文档建立时 HEAD 为 `d124b9e685ca6f04c7130373f7861b8f5e79be04`。以下来自本次源码检查，不代表已做端到端验证；本机可能有其他任务修改，正式开发应记录独立基线和差异。

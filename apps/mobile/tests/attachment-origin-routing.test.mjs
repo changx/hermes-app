@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -34,7 +35,7 @@ test('source failure never falls back to latest; late open cannot publish into a
 });
 test('native session route validates exact positive safe reference without normalizing malformed source tokens',()=>{
   let params={threadId:'th_one'};
-  const exports={},modules={react:React,'expo-router':{useLocalSearchParams:()=>params},'react-native-safe-area-context':{SafeAreaView:'SafeArea'},'../../App':{ThreadScreen:'Thread',Notice:'Notice'},'../../routeId':{routeId}};
+  const exports={},modules={'../../../../../packages/client/src/sessionLinks':sessionLinks,react:React,'expo-router':{useLocalSearchParams:()=>params},'react-native-safe-area-context':{SafeAreaView:'SafeArea'},'../../App':{ThreadScreen:'Thread',Notice:'Notice',useApp:()=>({ready:true,config:null})},'../../routeId':{routeId}};
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/app/threads/[threadId].tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,{exports,require:name=>modules[name]});
   let tree=exports.default();assert.equal(tree.props.children.props.targetRef,undefined);assert.equal(tree.props.children.key,'th_one');
   params={threadId:'th_one',messageRef:'73'};tree=exports.default();assert.equal(tree.props.children.props.targetRef,73);assert.equal(tree.props.children.key,'th_one:73');

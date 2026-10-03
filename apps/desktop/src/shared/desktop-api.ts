@@ -83,6 +83,8 @@ export interface HermesDesktopApi {
   forgetConnection(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   selectThread(threadId: string): Promise<void>;
+  openSessionLink(url: string): Promise<void>;
+  copySessionLink(): Promise<void>;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
   createChannel(input: ChannelInput): Promise<void>;

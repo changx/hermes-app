@@ -3,7 +3,8 @@ import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Platform,
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
+import { sessionLinkRoute } from '../../../packages/client/src/sessionLinks';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
@@ -26,6 +27,12 @@ type OpenExpand = (target: ExpandTarget) => void;
 const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
 
 function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Tone; onInteraction: () => void }) {
+  const router = useRouter();
+  const openLink = (href: string) => {
+    const route = sessionLinkRoute(href);
+    if (route) router.push(route as never);
+    else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
+  };
   return <>{nodes.map((node, index) => {
     const key = index;
     switch (node.kind) {
@@ -40,7 +47,7 @@ function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Ton
       case 'link': return node.href
         ? <AnimatedText key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPressIn={onInteraction}
-            onPress={() => { onInteraction(); void Linking.openURL(node.href!).catch(() => Alert.alert('Could not open link')); }}>
+            onPress={() => { onInteraction(); openLink(node.href!); }}>
             <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} />
           </AnimatedText>
         : <AnimatedText key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
@@ -306,6 +313,7 @@ function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?
 }
 
 function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { text: string; blocks: Block[]; toolCalls?: readonly ToolCall[]; onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object> }) {
+  const router = useRouter();
   const { scale } = useFontSize();
   const page = useMemo(() => {
     if (text.length > ARTICLE_TEXT_LIMIT) return null;
@@ -330,7 +338,11 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
         if (target && target.block.kind === target.kind) onExpand(target);
       } else {
         const href = page.links[index];
-        if (href && safeLinkUrl(href) === href) void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
+        if (href && safeLinkUrl(href) === href) {
+          const route = sessionLinkRoute(href);
+          if (route) router.push(route as never);
+          else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
+        }
       }
     }}
     onError={() => setFailed(true)} onHttpError={() => setFailed(true)}

@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import { parseSessionLink, sessionLinksInText } from '../../../packages/client/src/sessionLinks.ts';
 import type Token from 'markdown-it/lib/token.mjs';
 
 type InlineKind = 'em' | 'strong' | 'strike' | 'link';
@@ -23,6 +24,12 @@ export type Block =
 // markdown-it handles CommonMark and its built-in GFM tables/strikethrough.
 // HTML remains inert; linkify covers bare URLs but the URL gate still applies.
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+markdown.linkify.add('hermesapp:', {
+  validate(text, pos) {
+    const candidate = sessionLinksInText('hermesapp:' + text.slice(pos))[0];
+    return candidate?.start === 0 ? candidate.url.length - 'hermesapp:'.length : false;
+  },
+});
 
 // Chat prose commonly closes bold after CJK punctuation with no following space.
 // Add only those delimiter flags; markdown-it still owns pairing and nesting.
@@ -90,8 +97,9 @@ markdown.block.ruler.before('fence', 'message_display_math', (state, start, end,
   return true;
 });
 
-/** Only web URLs may be opened or loaded; reject userinfo and controls. */
+/** Web URLs and strict App session links. Media uses a separate web-only gate. */
 export function safeLinkUrl(href: string): string | null {
+  if (parseSessionLink(href)) return href;
   if (!/^https?:\/\//i.test(href) || /[\s\p{Cc}\p{Cf}\\]/u.test(href)) return null;
   try {
     const url = new URL(href);
@@ -103,7 +111,7 @@ export function safeLinkUrl(href: string): string | null {
 }
 
 function safeMediaUrl(href: string): string | null {
-  return href.length <= 2048 ? safeLinkUrl(href) : null;
+  return href.length <= 2048 && /^https?:\/\//i.test(href) ? safeLinkUrl(href) : null;
 }
 
 export function isVideoUrl(href: string): boolean {

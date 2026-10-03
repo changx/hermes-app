@@ -7,6 +7,8 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import * as Clipboard from 'expo-clipboard';
+import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
 import { connectionFailure } from '../../../packages/client/src/index';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import type { Attachment, Interaction } from '../../../packages/client/src/index';
@@ -35,8 +37,9 @@ function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSy
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
-export function HeaderActions({ onConnection, onSettings }: { onConnection: () => void; onSettings: () => void }) {
+export function HeaderActions({ onConnection, onSettings, onCopyLink }: { onConnection: () => void; onSettings: () => void; onCopyLink?: () => void }) {
   return <View style={styles.headerActions}>
+    {onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
     <HeaderIcon label="Connection" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
     <HeaderIcon label="Agent settings" ios="gearshape" android="settings" onPress={onSettings} />
   </View>;
@@ -418,7 +421,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation',
-      headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
+      headerRight: () => <HeaderActions onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}

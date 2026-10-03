@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -75,6 +76,7 @@ async function harness() {
     'react-native-keyboard-controller': { useKeyboardState: selector => selector({ isVisible: false }) },
     'expo-router/react-navigation': { useHeaderHeight: () => 100 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
     'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null }, 'expo-crypto': {},
+    'expo-clipboard': { setStringAsync: async () => {} }, '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String }, './transport': { nativeTransport: () => ({}) },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }) },

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -36,7 +37,8 @@ function route(id = 't_one') {
   return load('../src/app/threads/[threadId].tsx', {
     react, 'expo-router': { useLocalSearchParams: () => ({ threadId: id }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '../../App': { Notice: 'Notice', ThreadScreen: 'ThreadScreen' },
+    '../../../../../packages/client/src/sessionLinks': sessionLinks,
+    '../../App': { Notice: 'Notice', ThreadScreen: 'ThreadScreen', useApp: () => ({ ready: true, config: null }) },
     '../../routeId': { routeId: value => value === 't_one' ? value : null },
   }).default();
 }

@@ -18,6 +18,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 支持核心聊天与频道管理。Channel 承载项目或长期工作领域；用户在 Channel 内创建多个 Thread，每个 Thread 有独立对话上下文。客户端管理这些结构，Hermes 负责权威存储。
 
+桌面与手机支持复制会话链接、点击消息中的命名或裸链接进入指定 Session。链接绑定已配对服务器与稳定 Thread ID，不使用压缩后可变化的底层物理 Session ID，不携带凭据或自动配对。候选实现、Expo Go 外部唤起限制和真机验收见 [Session links](session-links.md)。
+
 手机版 Channel 的 session list 底部直接提供多行输入框及完整附件加号菜单，发送第一条消息即创建并进入新对话，不再要求先点击新建加号打开全屏编辑器。复用现有持久发送队列、附件和原生导航；实现候选、草稿与离线边界及真机验收见 [session list 底部输入栏](m1-session-list-composer.md)。
 
 2026-10-02 已确认手机优先改版：Session 按最后消息时间降序、最新在顶部，进入从顶部显示；Context 收成一行入口，进入独立原生页面查看/编辑。Channel 改名放入更多菜单，Session 改名通过长按菜单及辅助功能动作提供，保留底部新对话输入栏。桌面本轮不动。实现与后续工作空间边界见 [Channel 资料与会话列表](mobile-channel-context.md)。

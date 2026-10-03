@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -58,6 +59,8 @@ async function harness() {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
     'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null, deleteItemAsync: async () => {} },
     'expo-crypto': { randomUUID: () => 'synthetic-send-id' },
+    'expo-clipboard': { setStringAsync: async () => {} },
+    '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     './transport': { nativeTransport: () => ({}) },

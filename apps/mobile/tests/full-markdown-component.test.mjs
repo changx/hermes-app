@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { parseMessageMarkdown } from '../src/messageMarkdown.ts';
+import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 
 // Transpile and execute the production component, with the production parser.
@@ -54,7 +55,7 @@ test('file timeline keeps filename and line context while full article retains t
 });
 
 function mount(text, { canExpand = false, toolCalls, screen = { width: 390, height: 844 }, fontScale = 1, platform = 'ios' } = {}) {
-  const copied = [], opened = [], players = [], paused = [];
+  const copied = [], opened = [], routed = [], players = [], paused = [];
   const webCalls = [], font = { scale: fontScale };
   const hooks = new Map(), playerBySrc = new Map();
   const appListeners = new Set(), viewerStack = [];
@@ -94,9 +95,9 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     Text: 'Text', View: 'View', Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal',
     Linking: { openURL: href => { opened.push(href); return Promise.resolve(); } },
   };
-  const modules = { '../../../packages/client/src/toolPresentation': toolPresentation, react: { ...react, default: react }, 'react-native': native,
+  const modules = { '../../../packages/client/src/sessionLinks': sessionLinks, '../../../packages/client/src/toolPresentation': toolPresentation, react: { ...react, default: react }, 'react-native': native,
     './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => font },
-    'expo-router': { useIsFocused: () => scope?.startsWith('viewer.') ? Number(scope.split('.')[1].split(':')[0]) === viewerStack.length - 1 : viewerStack.length === 0 },
+    'expo-router': { useRouter: () => ({ push: route => routed.push(route) }), useIsFocused: () => scope?.startsWith('viewer.') ? Number(scope.split('.')[1].split(':')[0]) === viewerStack.length - 1 : viewerStack.length === 0 },
     './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewerStack.push({ title, content, onClose }) }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 21, bottom: 13, left: 2, right: 3 }) },
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
@@ -108,7 +109,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     } },
     'react-native-webview': 'WebView',
     './markdownWeb': { renderMarkdownHtml: (kind, source, display, scale) => { webCalls.push({ kind, source, display, scale }); return `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}`; } },
-    './messageMarkdown': { parseMessageMarkdown, safeLinkUrl: href => { try { const u = new URL(href); return /^https?:$/.test(u.protocol) && !u.username && !u.password && !/[\s\\]/.test(href) ? u.href : null; } catch { return null; } } } };
+    './messageMarkdown': { parseMessageMarkdown, safeLinkUrl } };
   const articleOutput = { exports: {} };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
@@ -156,7 +157,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     if (frames.length) last = renderOnce();
     return last.tree;
   };
-  return { render, walk, copied, opened, players, paused, webCalls, font, setText: next => { text = next; }, background: () => appListeners.forEach(listener => listener('background')),
+  return { render, walk, copied, opened, routed, players, paused, webCalls, font, setText: next => { text = next; }, background: () => appListeners.forEach(listener => listener('background')),
     viewer: (measure = true) => { render(measure); return last.viewers.at(-1); }, viewerAt: i => { render(); return last.viewers[i]; }, viewers: viewerStack,
     close: () => { const route = viewerStack.pop(); route?.onClose?.(); render(); },
     unmount: () => { for (const cells of hooks.values()) cells.forEach(cell => cell.cleanup?.()); hooks.clear(); } };
@@ -509,6 +510,22 @@ test('article, table and Mermaid push native viewer routes; nested back retains 
     assert.equal(nodes().filter(n => n.type === 'WebView').length, 1, 'inline reading resumes');
     h.unmount();
   }
+});
+
+test('session links navigate in-app from native prose and full article, never through OS Linking', () => {
+  const url = sessionLinks.buildSessionLink('https://agent.tuly.space', 'th_target');
+  const h = mount(`[Open conversation](${url})`, { canExpand: true });
+  const link = h.walk(h.render(false)).find(n => n.props.accessibilityRole === 'link');
+  assert.ok(link);
+  link.props.onPress();
+  assert.deepEqual(h.routed, [sessionLinks.sessionLinkRoute(url)]);
+  assert.deepEqual(h.opened, []);
+  doubleTapArticle(h);
+  const web = h.walk(h.viewer()).find(n => n.type === 'WebView');
+  web.props.onMessage({ nativeEvent: { data: 'link:0' } });
+  assert.deepEqual(h.routed, [sessionLinks.sessionLinkRoute(url), sessionLinks.sessionLinkRoute(url)]);
+  assert.deepEqual(h.opened, []);
+  h.unmount();
 });
 
 test('article bridge accepts only bounded own-message indices and fails back to readable native blocks', () => {

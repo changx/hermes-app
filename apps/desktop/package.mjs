@@ -46,6 +46,7 @@ const paths = await packager({
   buildVersion: "1",
   extendInfo: {
     LSMinimumSystemVersion: "12.0",
+    CFBundleURLTypes: [{ CFBundleURLName: "Hermes session", CFBundleURLSchemes: ["hermesapp"] }],
   },
 });
 

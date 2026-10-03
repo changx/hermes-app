@@ -4,6 +4,7 @@ import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
 import { HttpError, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
 import { LiveSessionClient } from "@hermes-app/client/live";
+import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
@@ -249,6 +250,37 @@ export class DesktopConnectionService {
   private changed(): void {
     this.revision += 1;
     this.publish(this.snapshot());
+    if (this.pendingSessionLink && this.client?.isCatalogueReady) queueMicrotask(() => this.applySessionLink());
+  }
+
+  private pendingSessionLink: string | undefined;
+  openSessionLink(value: string): void {
+    this.pendingSessionLink = undefined;
+    if (this.closed) return;
+    if (!parseSessionLink(value)) { this.actionError("This conversation link is invalid."); return; }
+    this.pendingSessionLink = value;
+    if (!this.connection) this.actionError("Pair with this Hermes to open the conversation.");
+    this.applySessionLink();
+  }
+  private applySessionLink(): void {
+    const value = this.pendingSessionLink;
+    if (this.closed) { this.pendingSessionLink = undefined; return; }
+    if (!value || !this.connection) return;
+    const target = parseSessionLink(value)!;
+    if (sessionServer(this.connection.baseUrl) !== target.server) {
+      this.pendingSessionLink = undefined;
+      this.actionError("This conversation belongs to another Hermes. Open it on a device paired with that Hermes."); return;
+    }
+    if (!this.client?.isCatalogueReady) return;
+    this.pendingSessionLink = undefined;
+    if (!this.client.isThreadAvailable(target.threadId)) { this.actionError("This conversation is unavailable."); return; }
+    this.errorMessage = undefined;
+    if (this.selectedThreadId === target.threadId) { this.changed(); return; }
+    void this.selectThread(target.threadId).catch(() => this.actionError("Could not open this conversation."));
+  }
+  sessionLink(): string {
+    if (!this.connection || !this.selectedThreadId) throw new Error("No conversation selected");
+    return buildSessionLink(this.connection.baseUrl, this.selectedThreadId);
   }
 
   async initialize(): Promise<void> {
@@ -440,6 +472,7 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
+    this.pendingSessionLink = undefined;
     const connectionId = this.connection?.id;
     this.connection = null;
     this.outbox = [];

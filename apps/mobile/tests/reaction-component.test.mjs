@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import * as failedMessageActions from '../src/failedMessageActions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -19,10 +20,11 @@ const react = {
   useCallback: fn => fn, useEffect: () => {}, useImperativeHandle: () => {}, useMemo: fn => fn()
 };
 const modules = {
+  '../../../packages/client/src/sessionLinks': sessionLinks,
   '../../../packages/client/src/toolPresentation': toolPresentation,
   react: { ...react, default: react }, 'react-native': native,
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
-  'expo-router': { useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
+  'expo-router': { useRouter: () => ({ push() {} }), useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
   './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },

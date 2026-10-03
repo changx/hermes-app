@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, powerMonitor, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, shell } from "electron";
+import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnectionService } from "./connection-service";
@@ -37,6 +38,8 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 };
 
 const registerDesktopApi = (): void => {
+  ipcMain.handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
+  ipcMain.handle("desktop:copy-session-link", (event) => { trustedSender(event); clipboard.writeText(service.sessionLink()); });
   ipcMain.handle("desktop:get-snapshot", (event) => { trustedSender(event); return service.snapshot(); });
   ipcMain.handle("desktop:pair", async (event, value: unknown) => {
     trustedSender(event);
@@ -95,10 +98,12 @@ const createMainWindow = (): BrowserWindow => {
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+    if (parseSessionLink(url)) service.openSessionLink(url);
+    else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, url) => {
+    if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); return; }
     if (!isSameDocumentNavigation(window.webContents.getURL(), url)) event.preventDefault();
   });
   window.webContents.on("will-redirect", (event) => event.preventDefault());
@@ -108,11 +113,26 @@ const createMainWindow = (): BrowserWindow => {
   return window;
 };
 
+const focusSessionLink = (url: string): void => {
+  if (!url.startsWith("hermesapp:")) return;
+  service.openSessionLink(url);
+  if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
+  else if (app.isReady()) createMainWindow();
+};
+const ownsInstance = app.requestSingleInstanceLock();
+if (!ownsInstance) app.quit();
+app.on("open-url", (event, url) => { event.preventDefault(); if (ownsInstance) focusSessionLink(url); });
+app.on("second-instance", (_event, argv) => { const url = argv.find(value => value.startsWith("hermesapp:")); if (url) focusSessionLink(url); });
 app.whenReady().then(async () => {
+  if (!ownsInstance) return;
+  // Installed applications only; do not change OS associations in development.
+  if (app.isPackaged) app.setAsDefaultProtocolClient("hermesapp");
   registerDesktopApi();
   powerMonitor.on("resume", () => { void service.resumeConnection(); });
   createMainWindow();
   await service.initialize();
+  const url = process.argv.find(value => value.startsWith("hermesapp:"));
+  if (url) focusSessionLink(url);
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
 });
 
