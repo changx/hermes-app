@@ -1,4 +1,7 @@
 /** P1-03 owner-scoped transport. No runtime imports or platform globals. */
+import { createWorkspaceApi, type ConditionalHeaders, type WorkspaceApi } from './workspace';
+export { utf8Size, workspacePath } from './workspace';
+export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
@@ -15,7 +18,7 @@ export interface Message { id: string; ref_seq: number; role: string; text: stri
 export interface Event { type?: 'event'; event_id: number; cursor: string; kind: string; thread_id: string; ref: string; version: number }
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
-export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply> }
+export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; conditionalRequest?(method: string, path: string, token: string, headers: ConditionalHeaders, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply> }
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
@@ -194,11 +197,16 @@ export class HermesClient {
   private boundToken: string | null = null;
   supportsLatest = false;
   supportsSendIdentity = false;
+  supportsChannelWorkspace = false;
+  readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
   private tailRecoveryJobs = new Map<string, { promise: Promise<Message[]>; signal?: AbortSignal }>();
   private knownEmptyThreads = new Set<string>();
-  constructor(private readonly options: Options) {}
+  constructor(private readonly options: Options) {
+    this.workspace = createWorkspaceApi((method,path,body,signal,headers) => this.call(method,path,body,signal,headers),
+      (path,signal) => this.downloadPath(path,signal), message => new ProtocolError(message));
+  }
 
   checkpoint(): ClientCheckpoint {
     return {
@@ -344,10 +352,12 @@ export class HermesClient {
     }
     if (changed) this.changed();
   }
-  protected async call(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  protected async call(method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: ConditionalHeaders): Promise<Record<string, unknown>> {
     if (signal?.aborted) throw new Error('aborted');
     const token = this.token();
-    const response = await bounded(s => this.options.http.request(method, path, token, body, s),timeout(this.options.requestTimeoutMs,15000),signal);
+    if (headers && !this.options.http.conditionalRequest) throw new ProtocolError('Conditional writes unavailable');
+    const response = await bounded(s => headers ? this.options.http.conditionalRequest!(method,path,token,headers,body,s)
+      : this.options.http.request(method, path, token, body, s),timeout(this.options.requestTimeoutMs,15000),signal);
     if (signal?.aborted) throw new Error('aborted');
     if (response.status === 400 && (path.startsWith('/v1/sync') || path.startsWith('/v1/snapshot'))) throw new ResyncRequired('invalid sync or snapshot cursor');
     // The plugin returns the same 400 for malformed, foreign and future cursors.
@@ -356,7 +366,13 @@ export class HermesClient {
     if (response.status < 200 || response.status >= 300) throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0]);
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.capabilitiesReady=true; return x }
+  private async downloadPath(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+    if(!this.options.http.download)throw new ProtocolError('Binary download unavailable');
+    const reply=await bounded(s=>this.options.http.download!(path,this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);
+    if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,undefined,'download');
+    return reply.body;
+  }
   async getModelSettings(signal?: AbortSignal): Promise<AgentModelSettings> {
     return validModelSettings(await this.call('GET', '/v1/agent/model/options', undefined, signal));
   }

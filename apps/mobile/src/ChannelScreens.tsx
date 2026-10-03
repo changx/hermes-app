@@ -18,6 +18,8 @@ type Props = {
   onThread: (id: string) => void;
   onNewChannel: () => void;
   onContext: (id: string) => void;
+  onFiles: (id: string) => void;
+  onAgents: (id: string) => void;
   enqueueFirstMessage: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
 };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
@@ -30,7 +32,7 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, onChannel, onThread, onNewChannel, onContext, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, onChannel, onThread, onNewChannel, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -94,6 +96,18 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNewCh
       </Pressable>
       <IconAction label="Channel options" ios="ellipsis" android="more_horiz" disabled={busy || editing || !!renaming} onPress={channelMenu} />
     </View> : <View style={s.top}><Text style={s.heading}>Channels</Text></View>}
+    {!!channelId && client.supportsChannelWorkspace === true && <View style={s.workspaceLinks}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Channel files" disabled={busy || editing || !!renaming}
+        onPress={() => { if (focusedRef.current) onFiles(channelId); }} style={({ pressed }) => [s.workspaceLink, pressed && s.iconActionPressed]}>
+        <SymbolView name={{ ios: 'folder', android: 'folder' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
+        <Text style={s.contextText}>Files</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Channel AGENTS.md" disabled={busy || editing || !!renaming}
+        onPress={() => { if (focusedRef.current) onAgents(channelId); }} style={({ pressed }) => [s.workspaceLink, pressed && s.iconActionPressed]}>
+        <SymbolView name={{ ios: 'doc.text', android: 'description' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
+        <Text style={s.contextText}>AGENTS.md</Text>
+      </Pressable>
+    </View>}
     {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelForm}
@@ -118,6 +132,8 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNewCh
 const s = StyleSheet.create({
   fill: { flex: 1 }, top: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }, row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   contextLink: { flex: 1, minHeight: 44, paddingHorizontal: 10, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  workspaceLinks: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, flexWrap: 'wrap' },
+  workspaceLink: { minHeight: 44, paddingHorizontal: 10, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 8 },
   contextText: { fontSize: 14, color: '#2b4e81' }, sectionHeading: { fontSize: 13, fontWeight: '600', color: '#65758b', marginBottom: 12 },
   list: { paddingHorizontal: 12, paddingBottom: 24 }, heading: { fontSize: 17, fontWeight: '600', color: '#172a40' }, hint: { color: '#65758b', fontSize: 13, lineHeight: 19, marginTop: 4 }, summary: { color: '#42566f', lineHeight: 22, marginBottom: 12 },
   form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 140, maxHeight: 260, textAlignVertical: 'top' },

@@ -21,7 +21,7 @@ function Action({ label, title = label, onPress, disabled = false }: { label: st
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.action, disabled && styles.disabled]}><Text style={styles.actionText}>{title}</Text></Pressable>;
 }
 
-function ImageViewer({ uri }: { uri: string }) {
+export function ImageViewer({ uri }: { uri: string }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [scale, setScale] = useState(1);

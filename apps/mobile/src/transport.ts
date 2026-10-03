@@ -1,4 +1,5 @@
-import type { HttpTransport, SocketFactory } from '../../../packages/client/src/index';
+import type { HttpTransport, SocketFactory, ConditionalHeaders } from '../../../packages/client/src/index';
+
 
 // RN's WebSocket constructor accepts a third `options` argument with headers.
 // Browser WebSocket does not: this app deliberately targets native Expo Go.
@@ -22,17 +23,29 @@ const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
 };
 
 export function nativeTransport(base: string): { http: HttpTransport; socket: SocketFactory } {
-  const request: HttpTransport['request'] = async (method, path, token, body, signal) => {
+  const jsonRequest = async (method: string, path: string, token: string, body?: unknown, signal?: AbortSignal, conditional?: ConditionalHeaders) => {
+    const precondition: Record<string,string> = {};
+    if (conditional) {
+      const match=conditional['If-Match'], create=conditional['If-None-Match'];
+      if (typeof match === 'string' && create === undefined && /^"[0-9a-f]{64}"$/.test(match)) precondition['If-Match']=match;
+      else if (create === '*' && match === undefined) precondition['If-None-Match']='*';
+      else throw new Error('Invalid file version');
+    }
     const response = await fetch(base + path, {
-      method, headers: { Authorization: 'Bearer ' + token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      method, headers: { ...precondition, Authorization: 'Bearer ' + token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body), signal
     });
+    const workspaceReply = /^\/v1\/channels\/[^/]+\/(workspace|files|agents|attachments|directories)(\?|$)/.test(path);
+    const length = response.headers.get('content-length');
+    if (workspaceReply && length !== null && (!/^\d+$/.test(length) || Number(length) > 1024 * 1024)) throw new Error('The file response is too large.');
     const raw = await response.text();
+    if (workspaceReply && (raw.length > 1024 * 1024 || encodeURIComponent(raw).replace(/%[0-9A-F]{2}/g, 'x').length > 1024 * 1024)) throw new Error('The file response is too large.');
     const delay=retryAfterMs(response.headers.get('retry-after'));
     return { status: response.status, body: raw ? (response.headers.get('content-type')?.includes('json') ? JSON.parse(raw) : raw) : null, ...(delay === undefined ? {} : {retryAfterMs:delay}) };
   };
+  const request: HttpTransport['request'] = (method,path,token,body,signal) => jsonRequest(method,path,token,body,signal);
   return {
-    http: { request,
+    http: { request, conditionalRequest: (method,path,token,headers,body,signal) => jsonRequest(method,path,token,body,signal,headers),
       async upload(path, token, name, bytes, signal) {
         if (!name || name.length > 180 || name === '.' || name === '..' || /[/\\\x00\r\n]/.test(name)) throw new Error('Invalid attachment name.');
         const response = await fetch(base + path, { method: 'POST', headers: {

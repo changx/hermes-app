@@ -468,6 +468,8 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
         onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })}
         onNewChannel={() => router.push('/new-channel')}
         onContext={id => router.push({ pathname: '/channels/[channelId]/context', params: { channelId: id } })}
+        onFiles={id => router.push({ pathname: '/channels/[channelId]/files', params: { channelId: id } })}
+        onAgents={id => router.push({ pathname: '/channels/[channelId]/agents', params: { channelId: id } })}
         enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
           const box = outboxRef.current;
           if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');

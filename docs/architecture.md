@@ -24,7 +24,7 @@
 
 插件代码独立维护；不使用 monkey patch、复制修改核心模块或客户端专用 fork。具体路由、执行生命周期、历史读取、提示注入和事件扩展点仍需验证，不能假定现有 plugin API 已覆盖全部需求。缺少扩展点时先报告限制和替代方案，不以修改核心补齐。必要的插件元数据由插件管理，不擅自修改核心数据库 schema，不另建重复的权威会话历史。
 
-Channel 工作空间是已确认的后续目标，不是当前已交付能力：服务端维护稳定的 Channel→目录映射；客户端 Files 只呈现目录内相对路径；AGENTS.md 专用编辑入口与 Files 中的同名文件指向同一真实文件。Context 仍使用现有 Project Description 作为简短摘要，修改时只 PATCH description，不覆盖其他设备的 name。当前 catalogue 只驻留 Channel 名称；完整 Context 由独立页面按需 getChannelInfo 读取，离开页面释放，不为入口预加载正文。现有插件尚无 Files/AGENTS.md 接口；目录绑定、文件读写权限与路径/符号链接约束、并发编辑、附件落盘衔接、正式执行扩展点及规则生效/压缩恢复语义另行验证，不能靠客户端或临时工具调用冒充实现。见 [手机 Channel 改版](mobile-channel-context.md)。
+Channel 工作空间已分别实现插件/手机候选，未因此宣称公开入口/真机交付完成：服务端复用 ProjectDB 登记稳定的 Channel 目录；客户端 Files 只呈现相对路径、分页目录和原有附件索引，选中文件才读取正文；AGENTS.md 专用编辑入口与 Files 中的根文件指向同一真实文件。Context 仍使用 Project Description 作为简短摘要；完整 Context/规则在独立页面按需读取，不放入 catalogue 或另一份权威存储。共享 SDK 的 workspace API 与可选 conditionalRequest 传输负责身份/路径/版本验证；手机用原始 ETag 条件保存、精确目标回读及冲突/草稿保护，旧服务器不显示空入口。目录权限与链接拒绝、并发保存及新会话提示快照已在隔离插件中验证；现有文件不自动搬迁，执行 CWD 不宣称已绑定。见 [手机 Channel 改版](mobile-channel-context.md)与[手机工作空间入口](mobile-workspace-entry.md)。
 
 用户可见的 Thread 关联底层 session lineage，但生命周期不受压缩或物理 session ID 变化影响。用户可见历史与模型请求历史分开读取；复用现有显示投影，而不是简单显示 raw transcript。
 
