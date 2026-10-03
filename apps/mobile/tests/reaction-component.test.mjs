@@ -227,7 +227,7 @@ test('assistant stays unframed; user messages fill a flat blue block without bub
     const views = named(mount(rows).rowTree, 'View');
     if (role === 'user') {
       assert.equal(views[0].props.style.alignSelf, 'stretch');
-      assert.equal(views[0].props.style.marginHorizontal, 14);
+      assert.equal(views[0].props.style.marginHorizontal, 0);
     }
     const style = views[role === 'user' ? 1 : 0].props.style;
     return Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
@@ -245,11 +245,43 @@ test('assistant stays unframed; user messages fill a flat blue block without bub
   assert.equal(user.width, undefined, 'the definite-width row owns the viewport');
   assert.equal(user.maxWidth, undefined, 'no 80% bubble constraint');
   assert.equal(user.minWidth, 0);
-  assert.equal(user.marginHorizontal, undefined, 'gutters belong to the definite-width parent');
-  assert.equal(user.padding, 13);
+  assert.equal(user.marginHorizontal, undefined, 'the full-width parent has no gutters');
+  assert.equal(user.paddingVertical, 13);
+  assert.equal(user.paddingHorizontal, 14);
   assert.equal(user.backgroundColor, '#e6f0ff');
   for (const property of ['borderColor', 'borderWidth', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius']) {
     assert.equal(user[property], undefined, `no inherited bubble ${property}`);
+  }
+});
+
+test('colored blocks reach both edges and their bylines align with ordinary assistant prose', () => {
+  const flat = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  const rows = projectTimeline([
+    { ...msg, role: 'assistant', id: 'plain', ref_seq: 1 },
+    { ...msg, id: 'user', ref_seq: 2 },
+    { ...msg, role: 'assistant', id: 'final', ref_seq: 3, display_kind: 'final' },
+  ], null, 'th');
+  const ordinary = flat(named(mount([rows[0]]).rowTree, 'View')[0].props.style);
+  const inset = ordinary.marginHorizontal;
+  assert.equal(inset, 14);
+  for (const [index, color] of [[1, '#e6f0ff'], [2, '#f7f5ef']]) {
+    const views = named(mount([rows[index]]).rowTree, 'View');
+    const block = views.find(view => flat(view.props.style).backgroundColor === color);
+    const style = flat(block.props.style);
+    for (const ancestor of views.slice(0, views.indexOf(block) + 1)) {
+      const ancestorStyle = flat(ancestor.props.style);
+      assert.equal(ancestorStyle.marginHorizontal ?? 0, 0, 'no outer side gutter');
+      assert.equal(ancestorStyle.maxWidth, undefined);
+      assert.equal(ancestorStyle.alignSelf, 'stretch');
+    }
+    assert.equal(style.paddingHorizontal, inset, 'same text inset for names and prose');
+    for (const property of ['borderWidth', 'borderLeftWidth', 'borderLeftColor', 'borderRadius'])
+      assert.equal(style[property], undefined, `no outer ${property}`);
+    const children = block.props.children.filter(child => child && typeof child === 'object');
+    assert.equal(children[0].type, 'View');
+    assert.equal(children[1].type, 'MessageContent');
+    assert.equal(flat(children[0].props.style).paddingLeft, undefined, 'byline has no extra inset');
+    assert.equal(flat(children[0].props.style).marginLeft, undefined);
   }
 });
 
