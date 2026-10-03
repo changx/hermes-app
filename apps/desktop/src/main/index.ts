@@ -78,7 +78,7 @@ const createMainWindow = (): BrowserWindow => {
     minWidth: 720,
     minHeight: 520,
     show: false,
-    backgroundColor: "#f5f3ef",
+    backgroundColor: "#f9fafb",
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       nodeIntegration: false,

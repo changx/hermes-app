@@ -48,3 +48,19 @@ Jamie subsequently authorized main merge and publication. Candidate `e2cc7fa` me
 Publication card `t_f8af393d`; private readbacks, service/hash snapshots, exact bundles, CI logs and downloaded-asset verification: active-profile `workspace/desktop-session-composer/release/`. Implementation remains in review for the native checks above; publication does not convert skipped browser or physical-device tests into passes.
 
 Rollback: reinstall intact Desktop `v0.1.8`; revert release metadata commit `4e16412` and feature merge using `git revert -m 1 d3aafa5` (baseline `1c4d584`), then restart only Expo for the mobile rollback. Preserve concurrent Channel Context changes and all server/chat data; do not reset or overwrite storage.
+
+## Desktop palette follow-up (isolated candidate)
+
+User confirmed: discard the desktop warm beige/brown combination. Use white and neutral light gray application chrome, with the existing mobile semantic colors. Candidate `feat/desktop-mobile-palette`, baseline `591ffc2`, card `t_24175050`.
+
+- White conversation/forms/dialogs; `#f9fafb` application/navigation background; `#f3f4f6` rail/hover; `#e5e7eb` dividers; `#d1d5db` form borders.
+- Neutral UI text `#1f2937`, secondary `#6b7280`, labels `#4b5563`.
+- Actual mobile colors: blue general actions `#2960ad`, chat send `#285ea5`, links `#215ca7`, selected navigation `#e6edf7`, user messages `#e6f0ff`, final replies `#f7f5ef`.
+- Code/tool commands use mobile pale `#e8eef6` and text `#20314a`; inline code `#dce5f0`; table headings `#e5ecf5`. Error and running colors match mobile. Final/approval pale warm colors remain semantic highlights, not application chrome.
+- Explicit `color-scheme: light`; Electron startup background `#f9fafb`. Small local CSS variables centralize neutral chrome. No new theme framework, mobile change, protocol/plugin/core/dependency/lockfile edit or behavioral change.
+
+Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome npm run desktop:check` passed TypeScript, build and all **107 tests**, with **0 skipped/failed**. Chromium computed-style checks cover production React navigation, conversation, composer, pairing, new-session form, Markdown/code/table/tool/error styles at 720/1280/1800px under forced OS dark mode. Existing Markdown/table/bubble/composer geometry tests pass. `git diff --check` passes.
+
+Private evidence is in the current profile Channel workspace `desktop-mobile-palette/`: computed colors, production-component HTML, PNG and final check log. Preview messages are synthetic, not a live conversation or macOS screenshot. Pairing and new-session forms are in hidden probe containers, so their computed styles do not prove native interactions.
+
+No main merge, push, Release, service restart or Mac installation. Local `apps/desktop/dist` is built; this candidate has no new macOS installer or native visual acceptance. Those checks remain separate; the implementation card stays in review.
