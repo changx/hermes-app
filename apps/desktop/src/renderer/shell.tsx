@@ -241,7 +241,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
       <button type="button" title="New session (⌘N)" aria-label="Create a session" disabled={!snapshot.channels.length} onClick={() => openNewSession(snapshot.selectedChannelId)}>＋</button>
     </nav>
     <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
-      <header className="pane-header"><h1 id="navigation-heading">Conversations</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
+      <header className="pane-header"><h1 id="navigation-heading">Channels</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
       <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} />
       <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
     </nav>

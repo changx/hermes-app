@@ -70,6 +70,7 @@ test("renderer shell contains activity rail, tree panel and conversation", () =>
   assert.match(markup, /<main[^>]+aria-label="Hermes desktop"/);
   assert.match(markup, /aria-label="Navigation tools"/);
   assert.match(markup, /aria-labelledby="navigation-heading"/);
+  assert.match(markup, /<h1 id="navigation-heading">Channels<\/h1>/);
   assert.match(markup, /aria-labelledby="conversation-heading"/);
   assert.match(markup, /aria-label="Channels and threads"/);
   assert.match(markup, /aria-label="Toggle navigation"/);
