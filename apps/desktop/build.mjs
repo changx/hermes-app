@@ -48,6 +48,7 @@ await Promise.all([
 
 await Promise.all([
   copyFile(resolve(root, "src/renderer/index.html"), resolve(dist, "renderer/index.html")),
+  copyFile(resolve(root, "../../assets/work-icons.ttf"), resolve(dist, "renderer/work-icons.ttf")),
   copyFile(resolve(root, "src/renderer/styles.css"), resolve(dist, "renderer/styles.css")),
 ]);
 

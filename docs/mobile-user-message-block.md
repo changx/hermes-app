@@ -101,6 +101,14 @@ Jamie 请求手机与桌面均去掉 Agent 回复上的时间。此规则只替�
 
 证据：active profile 私有 `workspace/hide-agent-timestamps/`。未合并主分支、未发布或重启服务，未改锁文件、插件、共享协议或 Hermes 核心。导出不是独立安装包；真机视觉仍待检查。
 
+## 最新补充：Working / Worked 图标字体箭头（隔离候选）
+
+Jamie 要求 `Working` 和 `Worked for …` 右侧箭头采用 icon font。手机与桌面共用本地 `assets/work-icons.ttf`，展开显示向下 chevron，折叠显示向右 chevron。只含两个原创图形，字体 1212 字节；无需远程字体。字体生成脚本为 `scripts/build-work-icons.py`，使用 fontTools 4.66.1。手机通过 Expo Go 已有的 `expo-font` 加载，新增直接依赖声明固定为既有 57.0.4，没有新增或升级传递依赖。加载期间或失败时保留固定图标位置，不以普通文字字体显示缺字框；按钮仍可操作。图标不参与辅助功能朗读，按钮原有名称及展开状态不变。
+
+候选继续 `fix/absolute-message-time`，保留用户绝对时间提交 `a4a07ba`；本轮卡片 `t_ce82e157`。手机 TypeScript 及 **509 passed / 0 failed / 1 skipped**（510 个测试，既有可选 Chromium 检查跳过）通过；桌面 TypeScript、构建及实际 Chromium **124/124** 通过。浏览器确认图标字体实际 loaded，并检查 Working 展开、Worked 完成折叠及重新展开时的字形。双平台顺序导出通过，精确 JS bundle 接线及导出的字体字节均与源字体核对一致；桌面构建字体也一致。
+
+首次手机全测与 SDK 构建并行造成 dist 尚未就绪，构建后重跑通过。桌面增加字体文件后更新构建文件白名单；异步字体加载后清理测试脚本，避免 Chromium DOM 输出超过缓冲区。导出临时 Metro 配置已恢复。私有证据在 active Channel workspace 的 `work-icons-*.log` 和 `work-icons-assets.json`。未合并 main、推送、发布或重启服务。Expo 导出不是独立安装包；原生字体显示与按钮手感仍待真机验收。
+
 ## 最新补充：用户消息显示日期与时间（隔离候选）
 
 Jamie 要求自己的消息显示日期和时间，不使用 `8h ago` 等相对时间。手机与桌面用户消息统一显示设备本地 `YYYY-MM-DD HH:mm`，精度为分钟。Agent 时间继续隐藏；系统通知、会话目录时间及存储时间、排序、身份、发送队列不变。手机用户时间不启动定时器；权威时间到达后直接更新。

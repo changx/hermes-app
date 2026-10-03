@@ -148,7 +148,7 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
         const group = groups.get(message.id);
         const expanded = group ? workIsExpanded(group, workChoices[choiceKey(group)]) : true;
         return <div className="timeline-entry" key={message.id}>
-          {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span aria-hidden="true">{expanded ? '⌄' : '›'}</span></button></div>}
+          {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
           <MessageRow message={message} continuation={continuation} hidden={!expanded} />
         </div>;
       }) : snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-busy="true"><h3>Loading messages…</h3></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}

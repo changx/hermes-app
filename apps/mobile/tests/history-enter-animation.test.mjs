@@ -47,7 +47,7 @@ async function harness({ reduced = false } = {}) {
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' }, './FontSize': { Text: 'Text', TextInput: 'TextInput' },
-    './timeline': timeline, './MessageContent': { MessageContent }, './MessageTime': { MessageTime: 'MessageTime' },
+    './timeline': timeline, './MessageContent': { MessageContent }, './WorkChevron': { WorkChevron: 'WorkChevron' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false }
   };
   const { ChatTimeline } = load(source, modules, { requestAnimationFrame: fn => { frames.set(++frameID, fn); return frameID; }, cancelAnimationFrame: id => frames.delete(id) });

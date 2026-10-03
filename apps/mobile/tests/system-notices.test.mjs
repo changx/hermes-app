@@ -44,7 +44,7 @@ function loadTimeline() {
       KeyboardGestureArea: 'KeyboardGestureArea', useKeyboardHandler() {} },
     'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, useSharedValue: value => ({ value }), runOnJS: fn => fn },
     './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { agentOutputAdded: () => false, appendedAtEnd: () => false, scrollStateFromEvent() {}, scrollToExactEnd: () => false, shouldFollowContentChange: () => false },
-    './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
+    './MessageContent': { MessageContent: 'MessageContent' }, './WorkChevron': { WorkChevron: 'WorkChevron' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false },
   };
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'), {

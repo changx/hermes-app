@@ -11,6 +11,7 @@ import type { Interaction, Receipt } from '../../../packages/client/src/index';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 
 import { MessageContent, copyMessageText } from './MessageContent';
+import { WorkChevron } from './WorkChevron';
 import { MessageTime } from './MessageTime';
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../../../packages/client/src/workPresentation';
 import { hasRunningReceipt } from './receiptState';
@@ -60,7 +61,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
   </Animated.View>;
-  return <>{boundary}{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label} {workExpanded ? '⌄' : '›'}</Text></Pressable></View>}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
+  return <>{boundary}{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
 }, (prev, next) => prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
@@ -493,7 +494,7 @@ const styles = StyleSheet.create({
   // MessageContent list bodies retain an auto flex basis for intrinsic sizing.
   userMessageBubble: { alignSelf: 'flex-end', maxWidth: '80%', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, borderRadius: 22, backgroundColor: '#f3f3f3' },
   workHeading: { marginHorizontal: 14, marginTop: 12, marginBottom: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#dedede' },
-  workToggle: { paddingVertical: 6, alignSelf: 'flex-start' },
+  workToggle: { paddingVertical: 6, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6 },
   workLabel: { color: '#727272', fontSize: 15 },
   workHidden: { display: 'none' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },

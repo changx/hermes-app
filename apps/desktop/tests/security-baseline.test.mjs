@@ -130,7 +130,7 @@ test("build output contains only the expected runtime file classes", async () =>
   const expected = {
     main: ["index.cjs", "index.cjs.map"],
     preload: ["index.cjs", "index.cjs.map"],
-    renderer: ["index.html", "index.js", "index.js.map", "styles.css"],
+    renderer: ["index.html", "index.js", "index.js.map", "styles.css", "work-icons.ttf"],
   };
 
   for (const [directory, expectedFiles] of Object.entries(expected)) {

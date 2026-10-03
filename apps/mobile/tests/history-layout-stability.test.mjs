@@ -48,7 +48,7 @@ async function chat() {
     'react-native-reanimated': { View: 'View', FadeIn: { duration: () => ({ reduceMotion: () => undefined }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
     'react-native-keyboard-controller': { KeyboardChatScrollView: 'KeyboardChatScrollView', KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', useKeyboardHandler() {} },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) }, './timeline': timeline,
-    './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
+    './MessageContent': { MessageContent: 'MessageContent' }, './WorkChevron': { WorkChevron: 'WorkChevron' }, './MessageTime': { MessageTime: 'MessageTime' },
     './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false } };
   const { ChatTimeline } = load(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'), modules, { requestAnimationFrame: () => 1, cancelAnimationFrame() {} });
   let root;

@@ -30,7 +30,7 @@ const modules = {
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => React.useRef({ value }).current },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
-  './timeline': timeline, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' },
+  './timeline': timeline, './MessageContent': { MessageContent: 'MessageContent' }, './WorkChevron': { WorkChevron: 'WorkChevron' }, './MessageTime': { MessageTime: 'MessageTime' },
   './messageMarkdown': { messageNeedsViewport: () => false }, './receiptState': { hasRunningReceipt: () => false }
 };
 function load(text, imports, extras = {}) {

@@ -34,7 +34,7 @@ const modules = {
   'react-native-reanimated': { View: 'View', FadeIn: { duration: duration => ({ reduceMotion: reduceMotion => ({ duration, reduceMotion }) }) }, ReduceMotion: { System: 'system' }, runOnJS: fn => fn, useSharedValue: value => ({ value }) },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
   './failedMessageActions': failedMessageActions, './historyLayout': historyLayout, '@shopify/flash-list': { FlashList: 'FlatList' }, './timeline': { appendedAtEnd: () => false, scrollToExactEnd: () => false, scrollStateFromEvent: () => ({}), shouldFollowContentChange: () => false },
-  './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
+  './WorkChevron': { WorkChevron: 'WorkChevron' }, './MessageContent': { MessageContent: 'MessageContent' }, './MessageTime': { MessageTime: 'MessageTime' }, './messageMarkdown': { parseMessageMarkdown, messageNeedsViewport, safeLinkUrl }, './receiptState': { hasRunningReceipt },
   './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article></article>', expansions: [], links: [] }) },
   'expo-clipboard': { setStringAsync: async () => {} },
   'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },
@@ -80,11 +80,13 @@ test('production mobile rows: Working toggle, final auto collapse, exact retaine
   try {
     let rows = render(messages); let button = named(rows[0], 'Pressable').find(n => n.props.accessibilityLabel === 'Working');
     assert.equal(button.props.accessibilityState.expanded, true); assert.equal(hidden(rows[0]), false);
+    assert.equal(named(rows[0], 'WorkChevron')[0].props.expanded, true);
     button.props.onPress(); rows = render(messages); assert.equal(hidden(rows[0]), true); assert.equal(hidden(rows[1]), true);
     click(rows[0], 'Working'); rows = render(messages); assert.equal(hidden(rows[0]), false);
     const done = [...messages, { id: 'f', ref_seq: 3, role: 'assistant', text: 'Final result', created_at: 120, display_kind: 'final' }];
     rows = render(done); assert.equal(hidden(rows[0]), true); assert.equal(hidden(rows[1]), true); assert.equal(hidden(rows[2]), false);
     button = named(rows[0], 'Pressable').find(n => n.props.accessibilityLabel === 'Worked for 20s'); assert.equal(button.props.accessibilityState.expanded, false);
+    assert.equal(named(rows[0], 'WorkChevron')[0].props.expanded, false);
     assert.ok(named(rows[0], 'View').some(node => node.props.style?.borderBottomWidth === 1));
     button.props.onPress(); rows = render(done); assert.equal(hidden(rows[0]), false); assert.equal(hidden(rows[1]), false);
     assert.equal(named(rows[0], 'MessageContent')[0].props.text, 'Public progress'); assert.equal(named(rows[1], 'MessageContent')[0].props.toolCalls[0].detail, 'git status --short');
