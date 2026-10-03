@@ -32,3 +32,15 @@ Baseline six-test run: three failures (matching proof does not retire original; 
 No main checkout changes, service restarts, plugin installation, Hermes core edits, other-profile writes, iPhone data clearing or existing task resubmission. Deploying to the existing Expo Go test entry requires authorization; do not claim this is a device-verified fix or an independent installable release.
 
 Private verification logs and exported-bundle hashes: active profile workspace `workspace/hermes-app/failed-send-recovery/`.
+
+## Authorized publication
+
+Jamie subsequently authorized merging this fix into main and publishing it. Main merge: `201b589c40b5df9d079adf7f1c20aabb45951ef0`; the integrated main TypeScript check and 28 targeted recovery/lifecycle/notice tests passed.
+
+Main already contained Files/AGENTS (`f2a3347`) and minute-only times (`1314a60`) under an explicit merge-only/no-publication instruction from another task. Those changes were not published incidentally. The existing Expo runtime directory therefore remains detached, updated from `857a0e2d3a41b9b2fdec1effeb87b652badb34e1` to the exact tested recovery candidate `0e87ea496951bb7c4c8d2a6e9b26eb2555e21576`. Main remains checked out in the existing mobile-workspace-entry worktree; no remote push or desktop release was performed.
+
+Only `hermes-app-expo.service` restarted. Expo PID changed from 2056860 to 2330378, start time 2026-10-02 19:50:38 PDT. Development and Jamie Gateway PID/start states, installed plugin hash set, fixed core commit and mobile lockfile hash were read back unchanged; no npm ci, plugin installation, phone-data clearing or task resubmission.
+
+Both public manifests and each exact launchAsset returned HTTP 200, SDK 57. Both served bundles contain the blocked-send exact durable identity recovery and App banner reconciliation. Unpublished Files/AGENTS screen markers remain absent; existing light-blue unread-dot color remains. Private evidence: `workspace/hermes-app/failed-send-recovery/release/verification.json` plus saved manifests and exact bundle bytes.
+
+Rollback baseline is the existing detached runtime commit `857a0e2`; restore that explicitly and restart only Expo if rollback is authorized. Published-source rollback must not overwrite chat or outbox storage. iPhone repeated-entry/cold-launch verification remains pending; public resources do not prove physical-device acceptance. The unrelated Chromium table-layout timeout remains unresolved.
