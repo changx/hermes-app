@@ -24,6 +24,18 @@ test('real LiveSessionClient explicitly reads selected inventory attachment with
     for (const map of [f.client.messages, f.client.receipts, f.client.attachments, f.client.interactions]) assert.equal(map.size, 0);
   } finally { f.client.close(); }
 });
+test('source metadata is identity-checked and never populates a closed conversation',async()=>{
+  let body={channel_id:'p_one',attachment_id:attachment.id,source:{thread_id:attachment.thread_id,ref_seq:73}};
+  const paths=[],client=new LiveSessionClient({token:()=> 'synthetic',http:{async request(_method,path){paths.push(path);return {status:200,body};}},socket:{async connect(){throw Error('must not connect');}}});
+  try{
+    assert.deepEqual(await client.workspace.attachmentSource('p_one',attachment),{threadId:attachment.thread_id,refSeq:73});
+    assert.equal(paths[0],'/v1/channels/p_one/attachments/att_one/source');
+    for(const invalid of [{...body,channel_id:'p_foreign'},{...body,attachment_id:'att_foreign'},{...body,source:{thread_id:'th_foreign',ref_seq:73}},{...body,source:{thread_id:attachment.thread_id,ref_seq:0}},{...body,source:{thread_id:attachment.thread_id,ref_seq:1.5}}]){body=invalid;await assert.rejects(client.workspace.attachmentSource('p_one',attachment));}
+    body={channel_id:'p_one',attachment_id:attachment.id,source:null};assert.equal(await client.workspace.attachmentSource('p_one',attachment),null);
+    assert.equal(client.currentThreadId,null);assert.equal(client.messages.size,0);assert.equal(client.attachments.size,0);
+  }finally{client.close();}
+});
+
 test('explicit attachment read preserves abort and HTTP failures, validates selection and bounds', async () => {
   let observed;
   const f = fixture(async (_path, signal) => { observed = signal; return { status: 403, body: new Uint8Array() }; });

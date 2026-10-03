@@ -22,7 +22,7 @@ const historyPosition = { disabled: false };
 const historyEntrance = FadeIn.duration(220).reduceMotion(ReduceMotion.System);
 type HistoryPullRequest = { started: boolean; release?: (released: boolean) => void };
 
-const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary, highlighted }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean; highlighted?: boolean }) {
   const own = row.role === 'user';
   // Keep the native entering configuration stable after the parent consumes
   // eligibility; ordinary rerenders must not change the animation's nativeID.
@@ -42,7 +42,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, bus
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
   const deletable = !!onDeleteFailed && !!failedMessageId(row) && !busy;
   const menu = () => { if (deletable) showFailedMessageMenu(row, onDeleteFailed!, Alert.alert); };
-  const content = <Animated.View entering={own ? undefined : entering} style={own ? styles.userMessageBlock : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble}>
+  const messageStyle = own ? styles.userMessageBlock : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
+  const content = <Animated.View entering={own ? undefined : entering} style={highlighted ? [messageStyle, { backgroundColor: '#d9eaff' }] : messageStyle}>
     {!row.continuation && <View style={styles.byline}><Text style={styles.sender}>{own ? 'You' : row.role === 'assistant' ? 'Hermes' : 'Message'}{!row.optimistic && !row.refSeq ? ' · Draft' : ''}</Text><MessageTime seconds={row.timestamp} /></View>}
     <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
@@ -62,13 +63,17 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, bus
     ? <Pressable onLongPress={menu} accessibilityActions={[{ name: 'delete', label: 'Delete message' }]}
         onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'delete') menu(); }}>{content}</Pressable>
     : content}</Animated.View> : content}</>;
-}, (prev, next) => prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
   active: boolean;
   threadId: string;
   rows: TimelineRow[];
+  targetRef?: number;
+  hasNewer?: boolean;
+  onNewer?(): void;
+  onLatest?(): void;
   startRef: number | null;
   hasOlder: boolean;
   onOlder(): void | Promise<void>;
@@ -100,6 +105,11 @@ interface Props {
 }
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, startRef, position, onPosition } = props;
+  const [initialTargetIndex] = useState(() => { const index = rows.findIndex(row => row.refSeq === props.targetRef); return props.targetRef !== undefined && index >= 0 ? index : undefined; });
+  const [highlightedRef, setHighlightedRef] = useState(props.targetRef);
+  const [highlightVisible, setHighlightVisible] = useState(false);
+  const sourceTarget = useRef(props.targetRef);
+  useEffect(() => { if (highlightedRef === undefined || !highlightVisible) return; const timer = setTimeout(() => setHighlightedRef(undefined), 2400); return () => clearTimeout(timer); }, [highlightedRef, highlightVisible]);
   const { bottom } = useSafeAreaInsets();
 
   const dockHeight = useRef(0);
@@ -120,6 +130,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const visibleCallback = useRef(props.onVisibleRefs);
   visibleCallback.current = props.onVisibleRefs;
   const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: { item: TimelineRow; isViewable: boolean }[] }) => {
+    if (sourceTarget.current !== undefined && viewableItems.some(v => v.isViewable && v.item.refSeq === sourceTarget.current)) setHighlightVisible(true);
     visibleCallback.current?.(viewableItems.filter(v => v.isViewable && v.item.refSeq !== undefined).map(v => v.item.refSeq!));
   }, []);
 
@@ -139,7 +150,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const keyboardMoving = useRef(false);
   const nativeMoving = useSharedValue(false);
   const scrollGeometry = useRef<ScrollGeometry | null>(null);
-  const restored = useRef(false);
+  const restored = useRef(initialTargetIndex !== undefined);
   const reducedMotion = useRef(false);
   const previousKeys = useRef<string[]>([]);
   const historyBoundaryKey = useRef<string | null>(null);
@@ -328,10 +339,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} busy={props.busy} renderAttachments={props.renderAttachments}
+        highlighted={highlightedRef !== undefined && item.refSeq === highlightedRef}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
         historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} />}
         renderScrollComponent={renderScrollComponent}
         drawDistance={renderAhead} getItemType={historyItemType}
+        initialScrollIndex={initialTargetIndex}
+        ListFooterComponent={props.hasNewer ? action('Load later messages', () => props.onNewer?.(), props.busy || !!props.locatingBusy, true) : null}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         // List-owned position maintenance; no competing prepend scrolls.
         maintainVisibleContentPosition={historyPosition}
@@ -405,7 +419,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           offset.current = state.offset;
           viewport.current = state.geometry.viewport; content.current = state.geometry.height;
           scrollGeometry.current = state.geometry;
-          if (state.following !== following.current) { following.current = state.following; setShowLatest(!state.following); }
+          const follow = props.onLatest ? false : state.following;
+          if (follow !== following.current) { following.current = follow; setShowLatest(!follow); }
           savePosition();
         }} scrollEventThrottle={16} />
 
@@ -421,7 +436,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       }
     }}>
     {showLatest && <View pointerEvents="box-none" style={styles.latestRow} onLayout={e => setLatestRowHeight(e.nativeEvent.layout.height)}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => followLatest()} style={styles.latest}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest ↓" onPress={() => props.onLatest ? props.onLatest() : followLatest()} style={styles.latest}>
         <Text style={styles.latestText}>↓</Text>
       </Pressable>
     </View>}

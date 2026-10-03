@@ -35,7 +35,7 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
       method, headers: { ...precondition, Authorization: 'Bearer ' + token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body), signal
     });
-    const workspaceReply = /^\/v1\/channels\/[^/]+\/(workspace|files|agents|attachments|directories)(\?|$)/.test(path);
+    const workspaceReply = /^\/v1\/channels\/[^/]+\/(workspace|files|agents|attachments(?:\/[^/]+\/source)?|directories)(\?|$)/.test(path);
     // AGENTS uses the normal 10 MiB file guard; escaped JSON needs up to 6x
     // that wire size. Other workspace metadata retains its smaller bound.
     const replyBytes = /^\/v1\/channels\/[^/]+\/agents(\?|$)/.test(path) ? 6 * MAX_ATTACHMENT_BYTES + 4096 : 1024 * 1024;

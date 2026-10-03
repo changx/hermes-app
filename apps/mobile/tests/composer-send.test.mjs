@@ -18,7 +18,7 @@ const code = ts.transpileModule('globalThis.sendCallback = ' + initializer, { co
 function harness({ reject = false, uploading = false, switchThread = false, pop = false } = {}) {
   const events = [], attachments = [{ id: 'att_a', thread_id: 't', state: 'available' }];
   const context = {
-    config: { id: 'connection' }, threadId: 't', text: '', composerScope: 'connection:t', currentComposer: { current: 'connection:t' }, focusedRef: { current: true },
+    config: { id: 'connection' }, threadId: 't', anchor: undefined, text: '', composerScope: 'connection:t', currentComposer: { current: 'connection:t' }, focusedRef: { current: true },
     draftKey: 'connection:t', composerDrafts: { current: new Map() }, releaseComposerDraft() {}, draftAttachments: attachments, attachmentsBusy: uploading, textDrafts: { current: new Map() },
     Crypto: { randomUUID: () => 'uuid' },
     newSend: (...args) => { events.push(['record', ...args]); return { attachments: args[4], text: args[2] }; },

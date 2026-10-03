@@ -34,6 +34,6 @@ test('no generic Opening status is shown over channels or conversations', () => 
 });
 
 test('every conversation entry follows the latest message instead of restoring an old offset', () => {
-  assert.match(app, /useState<TimelinePosition>\(\(\) => \(\{ offset: 0, following: true, startRef: null \}\)\)/);
+  assert.match(app, /useState<TimelinePosition>\(\(\) => \(\{ offset: 0, following: targetRef === undefined, startRef: null \}\)\)/);
   assert.match(app, /position=\{entryPosition\}/);
 });

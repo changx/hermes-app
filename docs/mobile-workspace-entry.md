@@ -55,6 +55,20 @@ Candidate branch `fix/channel-files-preview`, task `t_b04ba284`, base `591ffc2`.
 - Not merged, deployed or restarted as part of this fix. No server/plugin/core changes. Supported formats/size limits are unchanged. Native iPhone anchor/gesture/preview acceptance remains pending; component substitutes and exported bundles do not prove UIKit behavior.
 - Private evidence: active Channel workspace `channel-files-fix/`.
 
+## Attachment source navigation candidate
+
+Task `t_41f40076`, branch `feat/attachment-origin`, based on Files fix `941a5f5`. Matching server candidate is `feat/plugin-attachment-origin`, based on plugin `64e49fe`. No merge, publication or runtime restart is implied.
+
+- An attachment reader on a server advertising `attachment_origin` and `history_around` resolves its selected attachment through `/v1/channels/{id}/attachments/{attachment_id}/source`. The SDK validates the exact Channel, attachment, Thread and positive safe `ref_seq`. File bodies and conversation messages are not prefetched by this metadata read.
+- `View in conversation` pushes the existing native `/threads/[threadId]` route with a validated `messageRef`. Ordinary Workspace files, unpublished/ambiguous sources and old servers do not offer a guessed link. Unsupported preview formats can still have a valid source link.
+- The plugin maps inbound attachments to their actual user-message reference and outbound documents to their direct-message reference. Shared receipt IDs do not redirect outbound files to the user input. Missing source references, archived Threads or foreign Channels yield no source.
+- Target entry subscribes only the selected Thread and reads a bounded 31-reference `around_ref_seq` window first, never latest-first or a full transcript scan. Server-owned older/newer cursors support explicit continued reading. Background/realtime reconciliation uses `through_ref_seq` to reread only the loaded range; unseen newer messages remain behind an explicit later-page/latest action.
+- The target window exists before FlashList mounts. Its native `initialScrollIndex` positions the target once; a short static highlight distinguishes that message. Target mode does not resume tail-follow just because the user reaches the bottom of the loaded window. Later pages and new output do not reposition the user; normal entry, sending and explicit latest navigation retain latest behavior.
+- Reader bytes, mounted selectable text/Markdown/image and owned private cache survive a covering conversation route. Native Back returns to that same reader. Actual viewer removal or target/identity replacement aborts requests and cleans the cache. No second cached conversation is retained.
+- Regression coverage: actual plugin HTTP/WS + production LiveSessionClient/native transport, user vs Agent provenance, cold reopen/session rebinding, revoked device and foreign-reference negatives, bounded windows/explicit later pages/range foreground reads, late/failed source opens, exact native route validation, retained reader and one-shot native-index/highlight callbacks. Initial-completion invalidation and older-range-vs-newer-page races also have SDK regression coverage.
+- Final local checks: plugin 328 passed / 2 optional skips; SDK 94 passed; mobile 485 passed / 1 optional Chromium skip; mobile/shared TypeScript and dual Expo exports passed. Exact generated bundles contain source/action/target/range markers. Component/native-view substitutes are not physical iPhone acceptance.
+- Physical iPhone target positioning with tall rich content, native Back/gesture, image/text reading-position retention and weak-network recovery remain pending. Deployment needs the matching plugin plus mobile client; no core or lockfile changes.
+
 ## Remaining gates
 
 The deployed backend last checked in this conversation still lacks Workspace capabilities. Local mobile implementation and isolated interoperability do not make the public test entry available; the native row will remain hidden there until the server plugin is installed/restarted externally and mobile candidate is published. No self-Gateway lifecycle workaround was attempted.

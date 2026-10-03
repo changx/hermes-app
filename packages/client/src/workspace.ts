@@ -124,6 +124,16 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
     },
     /** Explicit selection from the validated Channel inventory, not a chat subscription.
      * Reuse the authenticated attachment route; never populate conversation caches. */
+    async attachmentSource(cid: string, attachment: Attachment, signal?: AbortSignal): Promise<{ threadId: string; refSeq: number } | null> {
+      const key = id(attachment.id), thread = id(attachment.thread_id);
+      if (!key.startsWith('att_')) return fail('Invalid attachment identity');
+      const body = await call('GET', root(cid) + '/attachments/' + encodeURIComponent(key) + '/source', undefined, signal);
+      if (body.channel_id !== cid || body.attachment_id !== key) return fail('Attachment source identity mismatch');
+      if (body.source === null) return null;
+      const source = object(body.source), refSeq = size(source.ref_seq);
+      if (source.thread_id !== thread || refSeq <= 0) return fail('Attachment source mismatch');
+      return { threadId: thread, refSeq };
+    },
     async readAttachment(attachment: Attachment, signal?: AbortSignal): Promise<Uint8Array> {
       const thread = id(attachment.thread_id), key = id(attachment.id);
       if (!key.startsWith('att_') || attachment.state !== 'available' || size(attachment.size) > MAX_FILE) return fail('Attachment preview unavailable');
