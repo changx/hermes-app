@@ -16,7 +16,7 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
 }).outputText;
 
 async function harness() {
-  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, sendFinish, outboxChanged;
+  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
@@ -36,7 +36,7 @@ async function harness() {
     suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
-    async openConversation(id) { this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null; }
+    async openConversation(id) { opened++; this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null; }
     closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
     resumeTail() {}
     async markRead(...args) { reads.push(args); }
@@ -91,7 +91,7 @@ async function harness() {
     if (!api.config || !api.client) return null;
     return React.createElement(React.Fragment, {},
       thread && React.createElement(Focus.Provider, { value: !settings }, React.createElement(exports.ThreadScreen, { key: thread, threadId: thread })),
-      settings && React.createElement(exports.SettingsRoute));
+      settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)));
   }
   let root;
   async function render(thread = 't_one', settings = false) {
@@ -99,7 +99,7 @@ async function harness() {
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { render, timelines, scenes, reads, events, retries, get api() { return api; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
@@ -141,18 +141,19 @@ test('App clears resolved failed-send banner across navigation but preserves act
   } finally { await h.close(); }
 });
 
-test('hidden chat unmounts its timeline and releases content; SDK and user draft survive navigation without read reporting', async () => {
+test('covered chat retains its scene; actual route removal releases content and user draft survives', async () => {
   const h = await harness();
   assert.deepEqual(h.reads, []);
   await act(async () => h.timelines.get('t_one').onText('keep this draft'));
   await h.render('t_one', true);
-  assert.equal(h.api.client.currentThreadId, null);
-  assert.equal(h.api.client.messages.size, 0);
+  assert.equal(h.api.client.currentThreadId, 't_one');
   assert.equal(h.timelines.get('t_one').text, 'keep this draft');
   await h.render('t_one', false);
   assert.equal(h.timelines.get('t_one').onVisibleRef, undefined);
   assert.equal(h.reads.length, 0);
   await h.render(null);
+  assert.equal(h.api.client.currentThreadId, null);
+  assert.equal(h.api.client.messages.size, 0);
   await h.render('t_two');
   assert.equal(h.timelines.get('t_two').text, '');
   await h.render('t_one');
@@ -187,7 +188,37 @@ test('background and foreground retain timeline instance, older reading boundary
     await h.appState('inactive');await h.appState('background');
     assert.equal(h.scenes.get('t_one'),scene);assert.notEqual(scene.disposed,true);assert.equal(h.api.client.messages.get('t_one'),messages);assert.equal(h.api.client.currentConversationKey,owner);assert.equal(h.counts.closed,0);
     await h.appState('active');assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,234);assert.equal(scene.following,false);assert.equal(scene.media,media);assert.deepEqual(scene.selection,{start:3,end:6});assert.equal(h.timelines.get('t_one').startRef,1);assert.equal(h.timelines.get('t_one').text,'keep selected draft');
-    await h.render('t_one',true);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
+    await h.render('t_one',true);assert.notEqual(scene.disposed,true);await h.render(null);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
+  } finally { await h.close(); }
+});
+
+test('tool detail and nested readers preserve the current session scene without reopening on return', async () => {
+  const h = await harness();
+  try {
+    h.api.client.messages.set('t_one', Array.from({length:20},(_,index)=>({id:'m'+index,ref_seq:index+1,role:index%2===0?'user':'assistant',text:'synthetic '+index})));
+    await h.revision(); await act(async()=>h.timelines.get('t_one').onOlder());
+    await act(async()=>h.timelines.get('t_one').onText('reader draft'));
+    const scene=h.scenes.get('t_one'),messages=h.api.client.messages.get('t_one'),opens=h.opens;
+    scene.offset=456;scene.following=false;const media=scene.media;
+    await h.render('t_one','tool-detail');
+    assert.equal(scene.disposed,undefined);assert.equal(h.api.client.currentThreadId,'t_one');assert.equal(h.api.client.messages.get('t_one'),messages);
+    await h.render('t_one','nested-detail');await h.appState('background');await h.appState('active');
+    await h.render('t_one','tool-detail');await h.render('t_one',false);
+    assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,456);assert.equal(scene.following,false);assert.equal(scene.media,media);
+    assert.equal(h.timelines.get('t_one').startRef,1);assert.equal(h.timelines.get('t_one').text,'reader draft');assert.equal(h.opens,opens);
+    await h.render(null);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
+    await h.render('t_one','standalone');assert.equal(h.api.client.currentThreadId,null);assert.equal(h.opens,opens);
+  } finally { await h.close(); }
+});
+
+test('viewer cannot keep old conversation content after another session takes ownership or identity is forgotten', async () => {
+  const h = await harness();
+  try {
+    const scene=h.scenes.get('t_one');await h.render('t_one','tool-detail');
+    h.api.client.currentThreadId='t_two';h.api.client.currentConversationKey={};h.api.client.messages.clear();await h.revision();assert.notEqual(scene.disposed,true);assert.equal(h.api.client.currentThreadId,'t_two');
+    const opens=h.opens;await h.render('t_one');assert.equal(h.opens,opens+1);assert.equal(h.api.client.currentThreadId,'t_one');
+    await h.render('t_two');const second=h.scenes.get('t_two');await h.render('t_two','second');
+    await act(async()=>h.api.forget());assert.equal(second.disposed,true);assert.equal(h.api.client,null);
   } finally { await h.close(); }
 });
 

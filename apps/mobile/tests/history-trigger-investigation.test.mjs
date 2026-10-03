@@ -185,13 +185,16 @@ test('failed repair keeps current reading and old pagination usable, and a later
   await h.close();
 });
 
-test('blur aborts repair and releases the hidden window; unmount cannot restore it', async () => {
+test('covering route aborts active repair without releasing the scene; actual unmount releases it', async () => {
   const h = await harness(); await h.flagRecovery();
+  const messages=h.sdk.messages.get('t');
   await h.focus(false);
   assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 1);
-  assert.equal(h.sdk.tailIncomplete.has('t'), false);
+  assert.equal(h.sdk.tailIncomplete.has('t'), true);
+  assert.equal(h.sdk.messages.get('t'), messages);
+  assert.equal(h.sdk.currentThreadId, 't');
+  await h.close();
   assert.equal(h.sdk.messages.size, 0);
   assert.equal(h.sdk.currentThreadId, null);
-  await h.close();
   assert.equal(h.trace.filter(item => item.event === 'repair-aborted').length, 1);
 });

@@ -229,11 +229,10 @@ export function useApp() {
 }
 
 export function ThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
-  const focused = useIsFocused();
   const { config } = useApp();
-  // App backgrounding is not navigation. Keep this one current scene mounted;
-  // only a genuinely covered/popped route releases its timeline and media.
-  return focused ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}:${targetRef ?? 'latest'}`} threadId={threadId} targetRef={targetRef} /> : null;
+  // Native Stack owns mount/unmount. Blur is only a visibility signal, not
+  // permission to destroy a page that a detail reader/settings has covered.
+  return <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}:${targetRef ?? 'latest'}`} threadId={threadId} targetRef={targetRef} />;
 }
 
 function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
@@ -403,7 +402,8 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
     if (focused && client && located && client.tailIncomplete.has(threadId)) void recoverLatest();
   }, [focused, revision, client, threadId, located, connectionEpoch, status]);
   useEffect(() => {
-    if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor && (anchor === undefined || !error)) void openThread(threadId, anchor);
+    const lostOwnership = client && (client.currentThreadId !== threadId || client.currentConversationKey !== ownedWatch.current);
+    if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (lostOwnership || !pageCursor) && (anchor === undefined || !error)) void openThread(threadId, anchor);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
     return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client?.currentThreadId === threadId && client.currentConversationKey === ownedWatch.current) client.closeConversation(); };

@@ -22,6 +22,10 @@ This branch includes the prior unshipped `dc718d2` startup-receipt warning fix. 
 
 ## Publication outcome
 
+### Follow-up: native route lifetime
+
+The background fix did not fix detail-reader coverage: `ThreadScreen` still returned null on blur, destroying its child and triggering a new open on return. Jamie requested natural native lifecycle management rather than forced page refreshing. The isolated follow-up removes the focus-based mount gate entirely: Native Stack owns page lifetime for detail, nested reader and settings coverage. Focus only gates visible work. Actual route unmount releases the watch only if still owned by that route; a changed conversation owner releases old server content in the SDK and a focused older route reopens only if its ownership was replaced. No route-path exceptions, duplicate parent pages or multi-session body caches are introduced. Candidate evidence and device acceptance are separate from the publication below.
+
 Jamie subsequently authorized main merge and publication. `1d35d15` (including `dc718d2`) was fast-forwarded and pushed to main. Only the existing Expo service restarted; development/Jamie Gateway PIDs and start times were unchanged. Public SDK57 iOS/Android manifests and their exact launchAssets returned 200; served modules verified transport suspension, stable message/resource ownership, exact live receipt-proof recovery and removal of the old generic startup warning. Main macOS CI run `37020918487` succeeded; the existing v0.1.8 desktop tag/assets were not moved or replaced.
 
 Mobile entry: `exps://agent.tuly.space`. Private before/after and bundle hashes: active-profile `workspace/hermes-app/mobile-background-scene/release/verification.json`. Rollback source: `b141682`. Publication does not close the physical iPhone acceptance gates above.
