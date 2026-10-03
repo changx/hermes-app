@@ -101,7 +101,19 @@ Jamie 请求手机与桌面均去掉 Agent 回复上的时间。此规则只替�
 
 证据：active profile 私有 `workspace/hide-agent-timestamps/`。未合并主分支、未发布或重启服务，未改锁文件、插件、共享协议或 Hermes 核心。导出不是独立安装包；真机视觉仍待检查。
 
-## 最新补充：Working / Worked 图标字体箭头（隔离候选）
+## 已发布：用户消息日期时间与图标字体箭头
+
+Jamie 授权主分支合并与发布。用户日期时间提交 `a4a07ba` 和图标字体提交 `dc8753b` 已快进合入并推送 main；发布代码与 `v0.1.16` tag 均为 `60b0bc247940edf82ba0a2ad43bd8ad65bd533c7`。只增加桌面 0.1.16 版本元数据，候选生产代码不变；沿用已通过的测试和双平台导出，不重复安装依赖或本地全测。
+
+- 手机入口保持 `exps://agent.tuly.space`。iOS/Android 公网 manifest 及各自精确 launchAsset 均 HTTP 200，SDK 57；确认用户消息绝对日期时间、图标字体接线、隐藏 Agent 时间及原过程行为。按 SDK 的实际资源地址组装规则回读字体，两端均 HTTP 200、1212 字节，与源字体完全一致。字体 SHA-256 `2cfda9b7ea14b289d5b97a2f547423b0c28bc9a799a8ef6f4a0e12a377c57f92`。
+- [Desktop v0.1.16](https://github.com/changx/hermes-app/releases/tag/v0.1.16) 已发布，非 draft。main CI `37162953258` 与 tag CI `37162953357` 均成功。实际下载包的 SHA-256 `10c6af2f9c816cd61a00268c404d950022e0826ac096a41c2c7a151fc9d855d0` 与发布校验文件相符；plist/ASAR 版本 0.1.16，二进制为 arm64。包内日期格式、图标接线、字体声明及字体字节核对通过。包未签名、未 notarize。
+- 只重启 Expo，PID `3631682` → `3675815`，启动时间 `2026-10-03 16:48:51 PDT`。两个 Gateway 的 PID/启动时间及开发插件文件哈希前后不变。手机 lock 只新增既有 `expo-font` 57.0.4 的直接依赖声明，传递依赖图不变；根/桌面锁文件只变版本元数据。未改 Hermes 核心、插件、其他 profile 或签名/商店配置。
+
+发布卡 `t_1ca22a79`；证据 active Channel workspace `message-time-icons-release/`，包含前后状态、精确公网资源及字体、CI、下载包和包内容核对。桌面核验首次使用未考虑编译器变量重命名的标记，读取实际 `timestamp2` 后修正检查，不改产品代码。原生视觉、字体、键盘及辅助功能仍待真机验收；手机为 Expo Go 测试部署，不是独立安装包。
+
+回滚：依次 `git revert dc8753b` 与 `git revert a4a07ba`，推送 main 并只重启 Expo；保留其他 main 变更和聊天数据。桌面可重装 v0.1.15。此回滚不回退版本元数据或覆盖存储。
+
+## 最新补充：Working / Worked 图标字体箭头（候选阶段记录，已按上节发布）
 
 Jamie 要求 `Working` 和 `Worked for …` 右侧箭头采用 icon font。手机与桌面共用本地 `assets/work-icons.ttf`，展开显示向下 chevron，折叠显示向右 chevron。只含两个原创图形，字体 1212 字节；无需远程字体。字体生成脚本为 `scripts/build-work-icons.py`，使用 fontTools 4.66.1。手机通过 Expo Go 已有的 `expo-font` 加载，新增直接依赖声明固定为既有 57.0.4，没有新增或升级传递依赖。加载期间或失败时保留固定图标位置，不以普通文字字体显示缺字框；按钮仍可操作。图标不参与辅助功能朗读，按钮原有名称及展开状态不变。
 
