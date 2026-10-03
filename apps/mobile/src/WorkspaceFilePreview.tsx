@@ -1,6 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import type { Attachment } from '../../../packages/client/src/index';
@@ -24,14 +24,25 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
   const [text, setText] = useState<string | null>(null), [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const cache = useRef<File | null>(null);
+  const router = useRouter();
+  const [source, setSource] = useState<{ threadId: string; refSeq: number } | null>(null), [sourceError, setSourceError] = useState(false), [sourceRetry, setSourceRetry] = useState(0);
+  useEffect(() => {
+    let active = true; const controller = new AbortController();
+    setSource(null); setSourceError(false);
+    if (attachment && client.supportsAttachmentOrigin) void client.workspace.attachmentSource(channelId, attachment, controller.signal)
+      .then(value => { if (active) setSource(value); }).catch(() => { if (active) setSourceError(true); });
+    return () => { active = false; controller.abort(); };
+  }, [client, channelId, attachment?.id, attachment?.thread_id, sourceRetry]);
+  const origin = source ? <View style={s.toolbar}><Action label="View in conversation" onPress={() => router.push({ pathname: '/threads/[threadId]', params: { threadId: source.threadId, messageRef: String(source.refSeq) } })} /></View>
+    : sourceError ? <View style={s.toolbar}><Text style={s.hint}>Could not find the source message.</Text><Action label="Try again" onPress={() => setSourceRetry(value => value + 1)} /></View> : null;
   const image = imageName(name), readable = textName(name), allowed = image ? size <= 10 * 1024 * 1024 : readable && size <= 64 * 1024;
-  useFocusEffect(useCallback(() => {
+  useEffect(() => {
     let active = true;
     const controller = new AbortController();
     if (allowed) {
       setLoading(true); setError(''); setText(null); setUri(null);
       void (async () => {
-        const bytes = attachment ? await client.download(attachment.thread_id, attachment.id, controller.signal)
+        const bytes = attachment ? await client.workspace.readAttachment(attachment, controller.signal)
           : await client.workspace.readFile(channelId, path!, controller.signal);
         if (!active) return;
         if (bytes.byteLength > (image ? 10 * 1024 * 1024 : 64 * 1024) || image && !raster(bytes)) throw new Error('Preview unavailable');
@@ -47,10 +58,10 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
       const file = cache.current; cache.current = null;
       try { if (file?.exists) file.delete(); } catch { /* only this preview's private cache */ }
     };
-  }, [client, channelId, path, attachment?.id, name, size, allowed, image, retry]));
-  if (!allowed) return <View style={s.page}><Text style={s.hint}>This file is listed, but its format or size cannot be previewed in the app yet.</Text></View>;
-  if (uri && image) return <ImageViewer uri={uri} />;
-  return <View style={s.page}>
+  }, [client, channelId, path, attachment?.id, attachment?.thread_id, name, size, allowed, image, retry]);
+  if (!allowed) return <View style={s.page}>{origin}<Text style={s.hint}>This file is listed, but its format or size cannot be previewed in the app yet.</Text></View>;
+  if (uri && image) return <View style={{ flex: 1 }}>{origin}<ImageViewer uri={uri} /></View>;
+  return <View style={s.page}>{origin}
     {loading && <ActivityIndicator />}
     {!!error && <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Action label="Try again" onPress={() => setRetry(value => value + 1)} /></>}
     {text !== null && <ScrollView contentContainerStyle={s.content}>

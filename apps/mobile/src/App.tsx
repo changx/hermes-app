@@ -225,15 +225,15 @@ export function useApp() {
   return context;
 }
 
-export function ThreadScreen({ threadId }: { threadId: string }) {
+export function ThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
   const focused = useIsFocused();
   const { config } = useApp();
   // App backgrounding is not navigation. Keep this one current scene mounted;
   // only a genuinely covered/popped route releases its timeline and media.
-  return focused ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} /> : null;
+  return focused ? <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}:${targetRef ?? 'latest'}`} threadId={threadId} targetRef={targetRef} /> : null;
 }
 
-function OpenedThreadScreen({ threadId }: { threadId: string }) {
+function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
   const router = useRouter();
   const { config, client, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
@@ -263,9 +263,10 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
   const renderAttachments = useCallback((row: TimelineRow) => client && row.attachments?.length
     ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
+  const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
   // Every entry opens at the latest message; keep only the loaded history window.
-  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: true, startRef: null }));
+  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: targetRef === undefined, startRef: null }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -295,21 +296,25 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
     try { await fn(); } catch { setError(fallback); }
     finally { busyRef.current = false; setBusy(false); }
   };
-  const openThread = async (id: string) => {
+  const openThread = async (id: string, requestedRef: number | undefined) => {
     if (!client || !focusedRef.current || !appActive.current) return;
     const opening = ++openingRef.current;
     setPageCursor(null); setHistoryBusy(true); setLocated(false); setStartRef(null);
     try {
-      const openingTask = client.openConversation(id); ownedWatch.current = client.currentConversationKey;
+      const openingTask = client.openConversation(id, requestedRef); ownedWatch.current = client.currentConversationKey;
       await openingTask;
       const current = () => focusedRef.current && appActive.current && opening === openingRef.current && client.currentThreadId === id;
       if (!current()) return;
+      if (requestedRef !== undefined) {
+        setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true); return;
+      }
       const blocks = await loadHistoryBlocks(client, id, null, client.currentOlderCursor, { current, onCursor: setPageCursor });
       if (!blocks || !current()) return;
       setPageCursor(blocks.olderCursor); setStartRef(blocks.startRef); setLocated(true);
-    } catch { if (focusedRef.current && opening === openingRef.current) setError('Could not open this conversation. It will resume when the connection returns.'); }
+    } catch { if (focusedRef.current && opening === openingRef.current) setError(requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
+  const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
   const loadOlder = async () => {
     if (!client || !focusedRef.current || !appActive.current || historyBusy) return;
     timelineRef.current?.holdPosition();
@@ -339,6 +344,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
       if (currentComposer.current !== scope) releaseComposerDraft(retainedDraft);
     }
     if (currentComposer.current === scope) {
+      if (anchor !== undefined) { setAnchor(undefined); await openThread(threadId, undefined); }
       timelineRef.current?.followLatest();
       setText((old: string) => old === original ? '' : old);
       setAttachmentDraft({ scope, items: [], busy: false });
@@ -394,7 +400,7 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
     if (focused && client && located && client.tailIncomplete.has(threadId)) void recoverLatest();
   }, [focused, revision, client, threadId, located, connectionEpoch, status]);
   useEffect(() => {
-    if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor) void openThread(threadId);
+    if (focused && client && client.threads.has(threadId) && !located && !historyBusy && !pageCursor && (anchor === undefined || !error)) void openThread(threadId, anchor);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
     return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client?.currentThreadId === threadId && client.currentConversationKey === ownedWatch.current) client.closeConversation(); };
@@ -404,14 +410,22 @@ function OpenedThreadScreen({ threadId }: { threadId: string }) {
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
+  // The target window must exist before FlashList mounts with its native initial index.
+  if (anchor !== undefined && !located) return <View style={styles.flex}>
+    <Stack.Screen options={{ title: selected.title || 'Conversation' }} />
+    {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
+    {!historyBusy && <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
+  </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation',
       headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
+      targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
+      hasNewer={anchor !== undefined && !!client.currentNewerCursor} onNewer={() => run(async () => { await client.loadNewer(threadId); })}
       startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
-      onLocateNext={!located ? () => { void openThread(threadId); } : undefined} locatingBusy={historyBusy}
+      onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}
       position={entryPosition} onPosition={() => {}}
       onVisibleRefs={onVisibleRefs}

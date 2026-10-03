@@ -33,6 +33,9 @@ export class LiveSessionClient extends HermesClient {
   private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>}|null=null;
   private directoryReady=false;
   private older:string|null=null;
+  private anchor:number|undefined;
+  private newer:string|null=null;
+  get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
   private connectionSuspended=false;
   private publishedMessages:readonly Message[]=[];
@@ -72,9 +75,10 @@ export class LiveSessionClient extends HermesClient {
     if(!this.hello||!this.liveSocket?.send)return;
     this.watchReady=false;this.liveSocket.send(watchCommand(this.wanted,this.watchId));
   }
-  openConversation(id:string):Promise<void>{
-    if(this.wanted===id&&this.opened)return this.opened.promise;
-    this.closeConversation();this.wanted=id;this.watchId=String(++this.watchNumber);
+  openConversation(id:string, targetRef?:number):Promise<void>{
+    if(targetRef!==undefined&&(!Number.isSafeInteger(targetRef)||targetRef<=0))return Promise.reject(new ProtocolError('Invalid target reference'));
+    if(this.wanted===id&&this.opened&&this.anchor===targetRef)return this.opened.promise;
+    this.closeConversation();this.wanted=id;this.anchor=targetRef;this.watchId=String(++this.watchNumber);
     let resolve!:()=>void,reject!:(error:Error)=>void;
     const promise=new Promise<void>((yes,no)=>{resolve=yes;reject=no});
     // A cancelled view may have no remaining observer; keep cancellation from
@@ -88,7 +92,7 @@ export class LiveSessionClient extends HermesClient {
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
     this.connectionSuspended=false;
@@ -188,13 +192,14 @@ export class LiveSessionClient extends HermesClient {
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
         const start=this.messages.get(id)?.[0]?.ref_seq;
-        if(start===undefined){const page=await super.historyWindow(id,undefined,30,linked.signal);if(this.wanted===id&&this.watchId===watchId)this.older=page.older_cursor}
+        if(start===undefined){const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null}}
         else{
           // References are sparse and owned. Refresh the first exact row,
           // then read forward from that real anchor; never invent start-1.
           await super.history(id,undefined,1,linked.signal,undefined,start);
+          const end=this.anchor===undefined?undefined:this.messages.get(id)?.at(-1)?.ref_seq;
           let after:string|undefined;const pages=new Set<string>();
-          do{const page=await super.history(id,after,100,linked.signal,after?undefined:start);after=page.next_cursor??undefined;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
+          do{const page=await super.history(id,after,100,linked.signal,after?undefined:start,undefined,end);after=page.next_cursor??undefined;if(this.wanted===id&&this.watchId===watchId&&end!==undefined&&this.messages.get(id)?.at(-1)?.ref_seq===end)this.newer=page.newer_cursor??null;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
         }
         const state=this.decodeScopedState(await this.call('GET','/v1/threads/'+encodeURIComponent(id)+'/live-state',undefined,linked.signal),id);
         if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
@@ -206,9 +211,14 @@ export class LiveSessionClient extends HermesClient {
         this.opened?.resolve();
       }
     })();this.contentJob=job;
-    try{await job}finally{linked.done();if(this.contentJob===job)this.contentJob=null}
+    try{await job}finally{linked.done();if(this.contentJob===job){this.contentJob=null;if(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId)await this.refreshContent()}}
   }
   private scoped(signal:AbortSignal|undefined,id:string){return combine(id===this.wanted?this.scope.signal:undefined,signal)}
+  async loadNewer(id:string):Promise<void>{
+    if(id!==this.wanted||!this.watchReady||this.anchor===undefined||!this.newer)throw new ProtocolError('Target conversation is not open');
+    const cursor=this.newer,watch=this.watchId,s=this.scoped(undefined,id);
+    try{const page=await super.history(id,cursor,30,s.signal);if(id===this.wanted&&watch===this.watchId)this.newer=page.next_cursor;this.changed()}finally{s.done()}
+  }
   override async history(id:string,after?:string,limit=50,signal?:AbortSignal,afterRef?:number,ref?:number){if((id!==this.wanted&&(ref===undefined||limit!==1))||(id===this.wanted&&!this.watchReady&&ref===undefined))throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{const page=await super.history(id,after,limit,s.signal,afterRef,ref);if(id!==this.wanted&&page.messages.some(m=>m.role!=='user'||!m.client_message_id||!m.receipt_id))throw new ProtocolError('Expected accepted input proof');return page}finally{s.done();this.prune()}}
   override async historyWindow(id:string,before?:string,limit=30,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.historyWindow(id,before,limit,s.signal)}finally{s.done();this.prune()}}
   override async historyTail(id:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.historyTail(id,signal)}
@@ -240,7 +250,7 @@ export class LiveSessionClient extends HermesClient {
         }catch(error){
           if(controller.signal.aborted)break;
           const value=error instanceof LiveProtocolError?new ProtocolError(error.message):error instanceof Error?error:new Error('Live connection failed');this.liveOptions.onError?.(value);
-          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.opened?.reject(value);break}
+          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');const opening=this.opened;if(this.anchor!==undefined&&!(value instanceof HttpError&&(value.status===401||value.status===403)))this.opened=null;opening?.reject(value);break}
         }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
         this.state('retrying');const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];

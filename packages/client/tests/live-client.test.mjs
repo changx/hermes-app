@@ -33,6 +33,55 @@ function fixture({request,ack=true}={}){
 }
 const watch=(socket,id)=>socket.sent.map(s=>s==='ping'?null:JSON.parse(s)).filter(s=>s?.thread_id===id).at(-1);
 
+test('target opening reads a bounded window, reconciles only its loaded range and leaves later pages explicit',async()=>{
+  let remote=Array.from({length:100},(_,i)=>message('m'+(i*2+1)));
+  let rangeGate=null;
+  const f=fixture({request:async(_method,path,_body,_signal)=>{
+    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,open_session_live:true,attachment_origin:true,history_around:true}};
+    if(!path.includes('/A/messages'))return;
+    const query=new URL('https://fixture.test'+path).searchParams;
+    const around=Number(query.get('around_ref_seq')),exact=Number(query.get('ref_seq')),end=Number(query.get('through_ref_seq')),after=query.get('after'),start=Number(query.get('after_ref_seq'))||Number(after?.split(':')[1])||0;
+    if(end&&rangeGate){const pending=rangeGate;await pending.promise;if(rangeGate===pending)rangeGate=null;}
+    let rows;
+    if(around){const index=remote.findIndex(m=>m.ref_seq===around);rows=remote.slice(Math.max(0,index-15),index+16);}
+    else if(exact)rows=remote.filter(m=>m.ref_seq===exact);
+    else rows=remote.filter(m=>m.ref_seq>start&&(!end||m.ref_seq<=end)).slice(0,Number(query.get('limit')));
+    const tail=rows.at(-1)?.ref_seq;
+    return {status:200,body:{messages:rows,receipts:[],older_cursor:around?'before:'+rows[0].ref_seq:null,next_cursor:!exact&&tail&&remote.some(m=>m.ref_seq>tail&&(!end||m.ref_seq<=end))?'after:'+tail:null,...(end?{newer_cursor:remote.some(m=>m.ref_seq>end)?'after:'+end:null}:{}),incomplete_turns:[],turn_outcomes:[]}};
+  }});
+  try{
+    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,31);assert.equal(f.sdk.messages.get('A')[15].ref_seq,101);
+    assert.ok(f.sdk.currentOlderCursor);assert.ok(f.sdk.currentNewerCursor);
+    remote.push(message('m201'));const original=f.sdk.messages.get('A')[15];
+    const count=f.paths.length;f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.paths.length>=count+3);await tick();
+    assert.equal(f.sdk.messages.get('A').length,31);assert.equal(f.sdk.messages.get('A')[15],original);
+    const messagePaths=f.paths.filter(([,p])=>p.includes('/A/messages')).map(([,p])=>p);
+    assert.ok(messagePaths[0].includes('around_ref_seq=101'));
+    assert.ok(messagePaths.every(p=>!p.includes('latest=true')));
+    assert.ok(messagePaths.slice(1).every(p=>p.includes('ref_seq=71')||p.includes('through_ref_seq=131')));
+    rangeGate=deferred();const pendingRange=rangeGate,rangeCount=f.paths.length;
+    f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.paths.slice(rangeCount).some(([,p])=>p.includes('through_ref_seq=')));
+    await f.sdk.loadNewer('A');assert.equal(f.sdk.messages.get('A').length,61);assert.equal(f.sdk.currentNewerCursor,'after:191');
+    pendingRange.resolve();await until(()=>f.paths.slice(rangeCount).some(([,p])=>p.endsWith('/live-state')));await tick();
+    assert.equal(f.sdk.currentNewerCursor,'after:191','old range refresh cannot roll back the newly loaded page cursor');
+    f.sdk.suspendConnection();await f.sdk.connect();await until(()=>f.sdk.connectionState==='online');await tick();
+    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>!p.includes('latest=true')));
+    f.sdk.closeConversation();assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.currentNewerCursor,null);
+  }finally{f.sdk.close()}
+});
+
+test('target window fails explicitly without server capability and does not fall back to latest',async()=>{
+  let supported=false;
+  const f=fixture({request:async(_method,path,_body,_signal,reply)=>path==='/v1/capabilities'&&supported?{status:200,body:{...reply(path).body,attachment_origin:true,history_around:true}}:undefined});
+  try{
+    await assert.rejects(f.sdk.openConversation('A',1),/unavailable/);assert.ok(f.paths.every(([,p])=>!p.includes('/messages')));
+    supported=true;await f.sdk.openConversation('A',1);assert.equal(f.sdk.messages.get('A')[0].ref_seq,1);
+    assert.ok(f.paths.filter(([,p])=>p.includes('/messages')).every(([,p])=>!p.includes('latest=true')));
+  }finally{f.sdk.close()}
+});
+
 test('completed-unread remains directory-only and only an opened loaded exact result can be acknowledged',async()=>{
   const items=[{kind:'channel',value:{id:'p',name:'P'}},{...entry('A'),value:{...entry('A').value,completed_unread:true,result_version:7,result_ref:1}},entry('B')];
   const f=fixture({request:async(method,path,body)=>{

@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import Ws from 'ws';
+import { nativeTransport } from '../../apps/mobile/src/transport.ts';
+const bundle=await build({entryPoints:[new URL('../../packages/client/src/liveClient.ts',import.meta.url).pathname],bundle:true,platform:'node',format:'cjs',write:false});
+const module={exports:{}};new Function('module','exports',bundle.outputFiles[0].text)(module,module.exports);
+const {LiveSessionClient}=module.exports;
+globalThis.WebSocket=Ws;
+const [base,cid]=process.argv.slice(2),token='synthetic-origin-interop-token-at-least-32-characters';
+const transport=nativeTransport(base),paths=[],completed=[],original=transport.http.request;
+transport.http.request=async(...args)=>{paths.push(args[1]);const reply=await original(...args);if(reply.status>=200&&reply.status<300)completed.push(args[1]);return reply;};
+const errors=[],client=new LiveSessionClient({...transport,token:()=>token,onError:error=>errors.push(error),livenessMs:500});
+const until=async check=>{const end=Date.now()+5000;while(!check()){assert.ok(Date.now()<end,'interop timed out');await new Promise(resolve=>setTimeout(resolve,10));}};
+try{
+  await client.capabilities();assert.equal(client.supportsAttachmentOrigin,true);
+  const inventory=await client.workspace.attachments(cid),input=inventory.items.find(a=>a.id==='att_'+'1'.repeat(32)),output=inventory.items.find(a=>a.id==='att_'+'2'.repeat(32));
+  const source=await client.workspace.attachmentSource(cid,input),agent=await client.workspace.attachmentSource(cid,output);
+  assert.equal(source.threadId,input.thread_id);assert.notEqual(agent.refSeq,source.refSeq);assert.equal(client.currentThreadId,null);assert.equal(client.messages.size,0);
+  assert.equal(new TextDecoder().decode(await client.workspace.readAttachment(input)),'note');
+  await client.openConversation(source.threadId,source.refSeq);
+  const rows=client.messages.get(source.threadId);assert.equal(rows.length,31);assert.equal(rows[15].ref_seq,source.refSeq);assert.equal(rows[15].attachments[0].id,input.id);
+  assert.ok(client.currentOlderCursor);assert.ok(client.currentNewerCursor);
+  const firstPaths=paths.filter(p=>p.includes('/messages'));assert.equal(firstPaths.length,1);assert.ok(firstPaths[0].includes('around_ref_seq='+source.refSeq));
+  await client.loadNewer(source.threadId);assert.equal(client.messages.get(source.threadId).length,61);
+  const count=completed.length,anchor=client.messages.get(source.threadId).find(m=>m.ref_seq===source.refSeq);
+  client.suspendConnection();await client.connect();await until(()=>completed.slice(count).some(p=>p.includes('through_ref_seq='))&&completed.slice(count).some(p=>p.endsWith('/live-state'))&&client.connectionState==='online');
+  await until(()=>client.messages.get(source.threadId)?.find(m=>m.ref_seq===source.refSeq)===anchor);
+  assert.ok(paths.filter(p=>p.includes('/messages')).every(p=>!p.includes('latest=true')));
+  assert.equal(errors.length,0);
+  client.closeConversation();assert.equal(client.messages.size,0);
+  await client.openConversation(agent.threadId,agent.refSeq);
+  assert.equal(client.messages.get(agent.threadId).find(m=>m.ref_seq===agent.refSeq).attachments[0].id,output.id);
+  client.closeConversation();await client.openConversation(source.threadId);
+  assert.ok(paths.some(p=>p.includes('latest=true')),'ordinary entry still reads latest');
+  console.log(JSON.stringify({actual_plugin_http_ws:true,production_live_client:true,native_fetch_and_ws:true,exact_user_and_agent_sources:true,bounded_initial_window:true,bidirectional_cursors:true,explicit_later_page:true,foreground_range_reconciliation:true,ordinary_latest_unchanged:true,no_latest_first_target:true}));
+}finally{client.close();}

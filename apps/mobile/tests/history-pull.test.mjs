@@ -13,6 +13,8 @@ import { HermesClient } from '../../../packages/client/dist/index.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const source = readFileSync(process.env.HISTORY_TIMELINE_SOURCE ?? new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8');
+// The source-message highlight expires; history triggers must remain timer-free.
+const historySource = source.replace('const timer = setTimeout(() => setHighlightedRef(undefined), 2400); return () => clearTimeout(timer);', '');
 const appHandlers = new Set();
 const native = { Platform: { OS: 'ios' }, StyleSheet: { create: value => value, hairlineWidth: 0.5 },
   AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
@@ -36,9 +38,11 @@ function load(text, imports, extras = {}) {
   return output.exports;
 }
 const frames = new Map(); let nextFrame = 0;
+const highlights = new Map(); let nextHighlight = 0;
 const { ChatTimeline } = load(source, modules, {
   // No Date or timers provided: obsolete delay/measurement code must not execute.
-  requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; }, cancelAnimationFrame: id => frames.delete(id)
+  requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; }, cancelAnimationFrame: id => frames.delete(id),
+  setTimeout: (fn, ms) => { assert.equal(ms, 2400, 'only highlight expiry uses a timer'); highlights.set(++nextHighlight, fn); return nextHighlight; }, clearTimeout: id => highlights.delete(id)
 });
 const row = ref => ({ key: `ref:${ref}`, refSeq: ref, role: 'assistant', text: `Message ${ref}` });
 const event = (y, height = 1400) => ({ nativeEvent: { contentOffset: { y }, contentSize: { height }, layoutMeasurement: { height: 600 }, contentInset: { bottom: 0 } } });
@@ -78,8 +82,24 @@ test('FlashList owns position maintenance with stable keys, no top auto-jump and
   await h.update({ rows: [row(1), row(31)] });
   assert.equal(h.list().maintainVisibleContentPosition, config, 'configuration stays stable during prepend');
   assert.equal(existsSync(new URL('../src/historyAnchor.ts', import.meta.url)), false);
-  assert.doesNotMatch(source, /historyAnchorOffset|measureInWindow|releaseSnapshot|historyDelay|setTimeout/);
+  assert.doesNotMatch(historySource, /historyAnchorOffset|measureInWindow|releaseSnapshot|historyDelay|setTimeout/);
   await h.close();
+});
+
+test('native target index is one-shot, highlighted briefly, and loaded-window bottom cannot resume following',async()=>{
+  let latest=0,newer=0;
+  const h=await mount({rows:[row(69),row(71),row(73)],startRef:69,targetRef:71,position:{following:false,offset:0,startRef:null},onLatest:()=>latest++,hasNewer:true,onNewer:()=>newer++},{released:false});
+  assert.equal(h.list().initialScrollIndex,1);
+  assert.equal(h.list().renderItem({item:row(71),target:'Cell'}).props.highlighted,true);
+  assert.equal(highlights.size,0,'expiry waits until the target actually becomes visible');
+  await act(async()=>h.list().onViewableItemsChanged({viewableItems:[{item:row(71),isViewable:true}]}));
+  await act(async()=>{h.list().onLayout({nativeEvent:{layout:{height:600}}});h.list().onContentSizeChange(0,1400);h.list().onScroll(event(800));});
+  await h.flush();assert.equal(h.scrolls.length,0);assert.equal(h.positions.at(-1).following,false);
+  await act(async()=>h.list().ListFooterComponent.props.onPress());assert.equal(newer,1);
+  await act(async()=>h.renderer.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel==='Jump to latest ↓').props.onPress());assert.equal(latest,1);
+  await h.update({rows:[row(67),row(69),row(71),row(73),row(75)]});assert.equal(h.list().initialScrollIndex,1);await h.flush();assert.equal(h.scrolls.length,0);
+  await act(async()=>{for(const fn of highlights.values())fn();});assert.equal(h.list().renderItem({item:row(71),target:'Cell'}).props.highlighted,false);
+  await h.close();assert.equal(highlights.size,0);
 });
 
 test('early refresh waits for release, then starts without a timer; progress covers network', async () => {
@@ -131,7 +151,7 @@ test('refresh delivered before observed begin-drag still cannot start until obse
 test('refresh delivered after drag-end starts immediately, not after a timeout', async () => {
   let calls = 0; const h = await mount({ onOlder: () => { calls++; } });
   await act(async () => { await h.list().refreshControl.props.onRefresh(); });
-  assert.equal(calls, 1); assert.doesNotMatch(source, /setTimeout|historyDelay|Date\.now/);
+  assert.equal(calls, 1); assert.doesNotMatch(historySource, /setTimeout|historyDelay|Date\.now/);
   await h.close();
 });
 
