@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import ts from 'typescript';
 import vm from 'node:vm';
+import { reconciledSendNotice } from '../src/sendNotice.ts';
 
 const mobile = fileURLToPath(new URL('..', import.meta.url));
 const cjk = /[\u3400-\u9fff]/u;
@@ -31,25 +32,24 @@ test('all built-in mobile strings and HTML templates use English', () => {
 
 test('classified send notices retain their actual meaning and pairing state remains scoped', () => {
   const source = ts.createSourceFile('App.tsx', readFileSync(path.join(mobile, 'src/App.tsx'), 'utf8'), ts.ScriptTarget.Latest, true);
-  let notice, pairing;
+  let pairing;
   const visit = node => {
-    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'sendNotice') notice = node.initializer;
     if (ts.isPropertyAssignment(node) && node.name.getText(source) === 'onStatus') pairing = node.initializer;
     ts.forEachChild(node, visit);
   };
   visit(source);
-  assert.ok(notice && pairing);
+  assert.ok(pairing);
   const states = [];
   const context = vm.createContext({ active: true, setPairingStatus: value => states.push(value) });
-  vm.runInContext(ts.transpileModule(`globalThis.notice = ${notice.getText(source)}; globalThis.status = ${pairing.getText(source)};`, {}).outputText, context);
+  vm.runInContext(ts.transpileModule(`globalThis.status = ${pairing.getText(source)};`, {}).outputText, context);
   const outbox = readFileSync(path.join(mobile, 'src/outbox.ts'), 'utf8');
   const actualNotice = outbox.match(/this\.emit\('([^']*connection permissions[^']*)'\)/)?.[1];
   assert.ok(actualNotice);
-  assert.equal(context.notice(actualNotice), actualNotice);
+  assert.equal(reconciledSendNotice('', [], actualNotice), actualNotice);
   const storageNotice = 'Your message was received, but its status could not be saved on this device. Keep your app data.';
-  assert.equal(context.notice(storageNotice), storageNotice);
+  assert.equal(reconciledSendNotice('', [], storageNotice), storageNotice);
   const cleanupNotice = 'A received message could not be cleared from this device. Keep your app data.';
-  assert.equal(context.notice(cleanupNotice), cleanupNotice);
+  assert.equal(reconciledSendNotice('', [], cleanupNotice), cleanupNotice);
   const pairingSource = readFileSync(path.join(mobile, 'src/pairing.ts'), 'utf8');
   const actualStates = [...new Set(pairingSource.match(/(?:Waiting for a connection\.[^']*|Connecting securely…)/g))];
   assert.equal(actualStates.length, 2);

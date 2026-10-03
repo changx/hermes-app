@@ -7,6 +7,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
 import * as blocks from '../src/historyBlocks.ts';
+import * as sendNotice from '../src/sendNotice.ts';
 import { HermesClient } from '../../../packages/client/dist/index.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -85,6 +86,7 @@ async function harness() {
       return React.createElement('Chat');
     }) },
     './ChannelScreens': {}, './historyBlocks': blocks, './timeline': timeline,
+    './sendNotice': sendNotice,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments' },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
