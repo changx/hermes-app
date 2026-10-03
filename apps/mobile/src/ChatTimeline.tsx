@@ -466,14 +466,14 @@ const styles = StyleSheet.create({
   historyBoundaryLine: { height: StyleSheet.hairlineWidth, backgroundColor: '#bdccdf' },
   agentMessage: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14, marginVertical: 5 },
   toolMessage: { marginVertical: 2 },
-  finalReply: { marginTop: 32, marginBottom: 8, paddingVertical: 12, paddingHorizontal: 12, borderLeftWidth: 2, borderLeftColor: '#d4c7a9', backgroundColor: '#f7f5ef' },
+  finalReply: { marginHorizontal: 0, marginTop: 32, marginBottom: 8, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#f7f5ef' },
   systemNotice: { alignSelf: 'center', maxWidth: '92%', marginHorizontal: 14, marginVertical: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#edf2f8', flexDirection: 'row', alignItems: 'center', gap: 8 },
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
-  userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
+  userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 0 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   // A definite-width block keeps wrapped lists and their parent on one viewport.
   // Do not inherit the content-sized bubble's maxWidth, border or corners.
-  userMessageBlock: { alignSelf: 'stretch', minWidth: 0, padding: 13, marginVertical: 5, backgroundColor: '#e6f0ff' },
+  userMessageBlock: { alignSelf: 'stretch', minWidth: 0, paddingVertical: 13, paddingHorizontal: 14, marginVertical: 5, backgroundColor: '#e6f0ff' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, sender: { color: '#50647b', fontSize: 12, fontWeight: '600' }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
   reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },
