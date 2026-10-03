@@ -15,7 +15,7 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 
-async function harness() {
+async function harness({ multiple = false } = {}) {
   let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
@@ -26,8 +26,21 @@ async function harness() {
   const config = { id: 'connection-a', baseUrl: 'https://example.test', token: 'synthetic-only' };
   const name = { name: 'Tuly', ready: true, error: '', saving: false };
   class SDK {
+    acquirePage(id) {
+      if (!multiple) return this;
+      if (!this.pages.has(id)) {
+        const page = Object.create(this);
+        for (const field of ['messages','receipts','interactions','drafts']) page[field] = new Map();
+        page.tailIncomplete = new Set();
+        this.pages.set(id,page);
+      }
+      return this.pages.get(id);
+    }
+    page(id) { return multiple ? this.pages.get(id) : this.currentThreadId ? this : undefined; }
+    releasePage(id) { if (!multiple) this.closeConversation(); else { this.pages.get(id)?.closeConversation(); this.pages.delete(id); } }
     constructor(options) {
       sdkCount++; this.options = options; this.connectionState = 'online'; this.supportsLatest = true;
+      this.pages = new Map();
       this.channels = new Map([['p_one', { id: 'p_one' }]]);
       this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
       this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
@@ -63,6 +76,8 @@ async function harness() {
     '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
+    '../../../packages/client/src/livePages': { LivePageClient: SDK },
+    './sessionNavigation': { SessionNavigationProvider: ({ children }) => children, useSessionNavigation: () => ({ thread() {}, link() {} }) },
     './transport': { nativeTransport: () => ({}) },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), newSend: (...args) => args },
     './ConnectionScreen': { ConnectionScreen: 'ConnectionScreen' },
@@ -90,7 +105,7 @@ async function harness() {
     api = exports.useApp();
     if (!api.config || !api.client) return null;
     return React.createElement(React.Fragment, {},
-      thread && React.createElement(Focus.Provider, { value: !settings }, React.createElement(exports.ThreadScreen, { key: thread, threadId: thread })),
+      thread && (Array.isArray(thread) ? thread : [thread]).map((id,index,ids) => React.createElement(Focus.Provider, { key: id, value: !settings && index === ids.length - 1 }, React.createElement(exports.ThreadScreen, { threadId: id }))),
       settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)));
   }
   let root;
@@ -105,6 +120,22 @@ async function harness() {
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('two mounted session routes retain independent scenes; returning A releases only B', async () => {
+  const h = await harness({ multiple: true });
+  try {
+    const a = h.api.client.page('t_one'), scene = h.scenes.get('t_one');
+    scene.offset = 240; scene.following = false; scene.selection = 'retained';
+    await h.render(['t_one','t_two']);
+    assert.equal(h.api.client.page('t_one'),a);
+    assert.equal(h.scenes.get('t_one'),scene); assert.equal(scene.disposed,undefined);
+    const b = h.api.client.page('t_two'); assert.ok(b); assert.notEqual(a,b);
+    const opens = h.opens; await h.render('t_one');
+    assert.equal(h.opens,opens); assert.equal(h.api.client.page('t_two'),undefined);
+    assert.equal(h.scenes.get('t_one'),scene); assert.equal(scene.offset,240);
+    assert.equal(scene.following,false); assert.equal(scene.selection,'retained');
+  } finally { await h.close(); }
+});
 
 test('App retry handler addresses exact thread/connection and refuses stale hidden or forgotten scene', async () => {
   const h = await harness();

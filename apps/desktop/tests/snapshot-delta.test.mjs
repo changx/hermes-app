@@ -10,6 +10,15 @@ const row=(id,text=id)=>({id,role:'assistant',text,toolCalls:[],attachments:[]})
 const base=()=>({revision:1,phase:'connected',connectionState:'online',connectionLabel:'Online',channels:[{id:'p',name:'Project'}],threads:[{id:'a',channelId:'p',title:'A',unreadCount:0,running:false},{id:'b',channelId:'p',title:'B',unreadCount:0,running:false}],messages:[row('m1'),row('m2')],interactions:[],selectedThreadId:'a',selectedChannelId:'p',canLoadOlder:false});
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
+test('covered session pages retain unchanged row identities through IPC updates',()=>{
+  const before={...base(),sessionPages:[{id:'a',messages:[row('a1'),row('a2')],interactions:[],canLoadOlder:true},{id:'b',messages:[row('b1')],interactions:[],canLoadOlder:false}]};
+  const after=structuredClone(before);after.revision=2;after.sessionPages[0].messages.push(row('a3'));
+  const result=applySnapshotDelta(before,structuredClone(snapshotDelta(before,after)));
+  assert.equal(result.sessionPages[0].messages[0],before.sessionPages[0].messages[0]);
+  assert.equal(result.sessionPages[1],before.sessionPages[1]);
+  assert.equal(result.sessionPages[0].messages.length,3);
+});
+
 test('sidebar update sends only changed session row and retains all message identities',()=>{
   const before=base(),after=structuredClone(before);after.revision=2;after.threads[1].running=true;after.threads[1].unreadCount=4;
   const patch=snapshotDelta(before,after);assert.equal(patch.messages,undefined);assert.equal(patch.channels,undefined);

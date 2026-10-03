@@ -99,6 +99,7 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => font },
     'expo-router': { useRouter: () => ({ push: route => routed.push(route) }), useIsFocused: () => scope?.startsWith('viewer.') ? Number(scope.split('.')[1].split(':')[0]) === viewerStack.length - 1 : viewerStack.length === 0 },
     './Viewers': { useViewer: () => ({ openViewer: (title, content, onClose) => viewerStack.push({ title, content, onClose }) }) },
+    './sessionNavigation': { useSessionNavigation: () => ({ link: href => routed.push(sessionLinks.sessionLinkRoute(href)) }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 21, bottom: 13, left: 2, right: 3 }) },
     'expo-clipboard': { setStringAsync: value => { copied.push(value); return Promise.resolve(); } },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: (src, setup) => {

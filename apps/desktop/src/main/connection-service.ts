@@ -4,6 +4,7 @@ import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
 import { HttpError, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
 import { LiveSessionClient } from "@hermes-app/client/live";
+import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
@@ -75,7 +76,7 @@ const pairingRequest = async (baseUrl: string, path: string, init: RequestInit, 
 export class DesktopConnectionService {
   private readonly store = new CredentialStore();
   private readonly outboxStore = new OutboxStore();
-  private client: LiveSessionClient | null = null;
+  private client: LivePageClient | null = null;
   private connection: StoredConnection | null = null;
   private pairingController: AbortController | null = null;
   private pairingStarting = false;
@@ -90,9 +91,15 @@ export class DesktopConnectionService {
   private selectingInitialChannel = false;
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
-  private olderCursor: string | undefined;
-  private visibleStartRef: number | undefined;
-  private loadingMessages = false;
+  private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean }>();
+  private readonly pageStack: string[] = [];
+  private get currentPageState() { return this.selectedThreadId ? this.pageStates.get(this.selectedThreadId) : undefined; }
+  private get olderCursor(): string | undefined { return this.currentPageState?.older; }
+  private set olderCursor(value: string | undefined) { if (this.currentPageState) this.currentPageState.older = value; }
+  private get visibleStartRef(): number | undefined { return this.currentPageState?.start; }
+  private set visibleStartRef(value: number | undefined) { if (this.currentPageState) this.currentPageState.start = value; }
+  private get loadingMessages(): boolean { return this.currentPageState?.loading ?? false; }
+  private set loadingMessages(value: boolean) { if (this.currentPageState) this.currentPageState.loading = value; }
   private readJobs = new Map<string, AbortController>();
   private outboxTimer: ReturnType<typeof setTimeout> | undefined;
   private delivering = new Set<string>();
@@ -153,7 +160,8 @@ export class DesktopConnectionService {
 
   constructor(private readonly publish: (snapshot: DesktopSnapshot) => void) {}
 
-  snapshot(): DesktopSnapshot {
+  snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
+    const pageState = pageId ? this.pageStates.get(pageId) : undefined;
     const channels = [...(this.client?.channels.values() ?? [])]
       .map(({ id, name, description }) => ({ id, name, ...(description ? { description } : {}) }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -176,10 +184,10 @@ export class DesktopConnectionService {
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title));
-    const selected = this.selectedThreadId ? combined.get(this.selectedThreadId) : undefined;
+    const selected = pageId ? combined.get(pageId) : undefined;
     const receiptByClient = new Map(receipts.map((receipt) => [receipt.client_message_id, receipt]));
-    const durable = this.selectedThreadId
-      ? [...(this.client?.messages.get(this.selectedThreadId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (this.visibleStartRef === undefined || ref_seq >= this.visibleStartRef))
+    const durable = pageId
+      ? [...(this.client?.messages.get(pageId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (pageState?.start === undefined || ref_seq >= pageState.start))
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
     const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
@@ -198,9 +206,9 @@ export class DesktopConnectionService {
         attachments: attachments.map((attachment) => this.projectAttachment(attachment)),
       };
     });
-    if (this.selectedThreadId) {
+    if (pageId) {
       for (const pending of this.outbox) {
-        if (pending.threadId !== this.selectedThreadId || durableClientIds.has(pending.id)) continue;
+        if (pending.threadId !== pageId || durableClientIds.has(pending.id)) continue;
         const receipt = pending.receiptId ? this.client?.receipts.get(pending.receiptId) : receiptByClient.get(pending.id);
         messages.push({
           id: `client:${pending.id}`,
@@ -219,7 +227,7 @@ export class DesktopConnectionService {
       }
     }
     const interactions = [...(this.client?.interactions.values() ?? [])]
-      .filter((item) => item.thread_id === this.selectedThreadId && item.state === "pending")
+      .filter((item) => item.thread_id === pageId && item.state === "pending")
       .map(({ id, kind, prompt, choices }) => ({ id, kind, prompt, choices: [...choices] }));
     return Object.freeze({
       revision: this.revision,
@@ -229,17 +237,23 @@ export class DesktopConnectionService {
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
-      loadingMessages: this.loadingMessages,
+      loadingMessages: pageState?.loading ?? false,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
       ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
       channels,
       threads,
       messages,
       interactions,
-      canLoadOlder: Boolean(this.olderCursor),
+      canLoadOlder: Boolean(pageState?.older),
       ...(this.selectedChannelId ? { selectedChannelId: this.selectedChannelId } : {}),
-      ...(this.selectedThreadId ? { selectedThreadId: this.selectedThreadId } : {}),
+      ...(pageId ? { selectedThreadId: pageId } : {}),
       ...(selected ? { selectedThreadTitle: selected.title } : {}),
+      ...(includePages ? { sessionPages: this.pageStack.map(id => {
+        const page = this.snapshot(id, false);
+        return { id, messages: page.messages, interactions: page.interactions,
+          loadingMessages: page.loadingMessages, canLoadOlder: page.canLoadOlder,
+          selectedThreadTitle: page.selectedThreadTitle };
+      }) } : {}),
     });
   }
 
@@ -312,6 +326,7 @@ export class DesktopConnectionService {
     this.connectionIssue = undefined;
     this.cancelRecovery();
     this.client?.close();
+    this.pageStates.clear(); this.pageStack.length = 0;
 
     this.connection = connection;
     this.listedThreads.clear();
@@ -324,13 +339,16 @@ export class DesktopConnectionService {
     this.outbox = (await this.outboxStore.list(connection.id)).map((item) => item.state === "sending" ? { ...item, state: "pending" as const } : item);
     const transport = mainTransport(connection.baseUrl);
     this.outboxStorageFault = false; this.checkedReceipts.clear();
-    let client: LiveSessionClient;
-    client = new LiveSessionClient({
+    let client: LivePageClient;
+    client = new LivePageClient({
       ...transport,
       token: () => connection.token,
       onChange: () => {
         if (this.closed || this.client !== client) return;
         this.listedThreads = new Map([...client.threads].map(([id,thread]) => [id,{...thread}]));
+        if (client.isCatalogueReady) for (const id of [...this.pageStack]) {
+          if (!client.isThreadAvailable(id)) this.releaseSessionPage(id);
+        }
         if (client.isCatalogueReady && this.selectedThreadId && !client.isThreadAvailable(this.selectedThreadId)) {
           this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
           this.selectedThreadId = undefined; this.olderCursor = undefined; this.loadingMessages = false;
@@ -472,6 +490,7 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
+    this.pageStates.clear(); this.pageStack.length = 0;
     this.pendingSessionLink = undefined;
     const connectionId = this.connection?.id;
     this.connection = null;
@@ -494,7 +513,8 @@ export class DesktopConnectionService {
     this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
     this.selectedChannelId = channelId; this.selectedThreadId = undefined;
     this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
-    this.client.closeConversation(); this.changed();
+    for (const id of [...this.pageStack]) this.releaseSessionPage(id);
+    this.changed();
   }
 
   async markResultRead(threadId: string, version: number, ref: number): Promise<void> {
@@ -506,24 +526,41 @@ export class DesktopConnectionService {
     const client = this.client;
     const thread = client?.threads.get(threadId) ?? this.listedThreads.get(threadId);
     if (!client || !thread || thread.archived || !client.channels.has(thread.project_id)) return;
+    const existing = this.pageStack.indexOf(threadId);
+    if (existing >= 0) {
+      for (const id of this.pageStack.slice(existing + 1)) this.releaseSessionPage(id);
+      this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId;
+      this.changed(); return;
+    }
     this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
+    this.pageStates.set(threadId, { loading: true }); this.pageStack.push(threadId);
     this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId;
     this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = true;
     this.changed();
-    const valid = () => !this.closed && this.client === client && this.selectedThreadId === threadId;
-    await this.recoverRead("history", async signal => {
-      await client.openConversation(threadId);
+    const page = client.acquirePage(threadId);
+    const valid = () => !this.closed && this.client === client && client.page(threadId) === page && this.pageStates.has(threadId);
+    await this.recoverRead("history:" + threadId, async signal => {
+      await page.openConversation(threadId);
       if (!signal.aborted && valid()) {
-        this.olderCursor = client.currentOlderCursor ?? undefined;
-        this.visibleStartRef = client.messages.get(threadId)?.[0]?.ref_seq;
-        this.loadingMessages = false; this.changed();
+        const state = this.pageStates.get(threadId)!;
+        state.older = page.currentOlderCursor ?? undefined;
+        state.start = page.messages.get(threadId)?.[0]?.ref_seq;
+        state.loading = false; this.changed();
       }
     }, valid);
   }
 
-  private requireClient(): LiveSessionClient {
+  private requireClient(): LivePageClient {
     if (!this.client || !this.connection) throw new Error("Hermes is not connected.");
     return this.client;
+  }
+
+  private releaseSessionPage(id: string): void {
+    this.readJobs.get('history:' + id)?.abort();
+    this.readJobs.get('older:' + id)?.abort();
+    this.pageStates.delete(id);
+    const index = this.pageStack.indexOf(id); if (index >= 0) this.pageStack.splice(index, 1);
+    this.client?.releasePage(id);
   }
 
   private actionError(message: string): void {
@@ -592,6 +629,7 @@ export class DesktopConnectionService {
     try {
       await this.requireClient().archiveThread(threadId);
       this.listedThreads.delete(threadId);
+      this.releaseSessionPage(threadId);
       if (this.selectedThreadId === threadId) {
         this.selectedThreadId = undefined;
         this.olderCursor = undefined;
@@ -605,13 +643,14 @@ export class DesktopConnectionService {
   async loadOlder(): Promise<void> {
     const client = this.requireClient(), threadId = this.selectedThreadId, before = this.olderCursor;
     if (!threadId || !before || !client.supportsLatest) return;
-    if (this.readJobs.has("older")) return;
-    const valid = () => this.client === client && this.selectedThreadId === threadId && this.olderCursor === before;
-    await this.recoverRead("older", async (signal) => {
+    const state = this.pageStates.get(threadId), owner = client.page(threadId);
+    if (!state || this.readJobs.has("older:" + threadId)) return;
+    const valid = () => this.client === client && this.pageStates.get(threadId) === state && client.page(threadId) === owner && state.older === before;
+    await this.recoverRead("older:" + threadId, async (signal) => {
       const page = await client.historyWindow(threadId, before, 50, signal);
       if (!signal.aborted && valid()) {
-        if (page.messages?.length) this.visibleStartRef = Math.min(this.visibleStartRef ?? Infinity,page.messages[0].ref_seq);
-        this.olderCursor = page.older_cursor ?? undefined; this.changed();
+        if (page.messages?.length) state.start = Math.min(state.start ?? Infinity,page.messages[0].ref_seq);
+        state.older = page.older_cursor ?? undefined; this.changed();
       }
     }, valid);
   }

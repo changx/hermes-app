@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPages } from './page-fixture.mjs';
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -31,6 +32,8 @@ const fixture = () => {
     async historyWindow() { return { older_cursor: null }; },
     close() {}, async retryNow() {},
   };
+  withPages(service.client);
+  service.pageStates.set('thread-a', { loading: false });
   return { service, snapshots, sends, writes };
 };
 

@@ -3,7 +3,8 @@ import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Platform,
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useIsFocused, useRouter } from 'expo-router';
+import { useIsFocused } from 'expo-router';
+import { useSessionNavigation } from './sessionNavigation';
 import { sessionLinkRoute } from '../../../packages/client/src/sessionLinks';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
@@ -27,10 +28,10 @@ type OpenExpand = (target: ExpandTarget) => void;
 const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
 
 function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Tone; onInteraction: () => void }) {
-  const router = useRouter();
+  const router = useSessionNavigation();
   const openLink = (href: string) => {
     const route = sessionLinkRoute(href);
-    if (route) router.push(route as never);
+    if (route) router.link(href);
     else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
   };
   return <>{nodes.map((node, index) => {
@@ -313,7 +314,7 @@ function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?
 }
 
 function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { text: string; blocks: Block[]; toolCalls?: readonly ToolCall[]; onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object> }) {
-  const router = useRouter();
+  const router = useSessionNavigation();
   const { scale } = useFontSize();
   const page = useMemo(() => {
     if (text.length > ARTICLE_TEXT_LIMIT) return null;
@@ -340,7 +341,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
         const href = page.links[index];
         if (href && safeLinkUrl(href) === href) {
           const route = sessionLinkRoute(href);
-          if (route) router.push(route as never);
+          if (route) router.link(href);
           else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
         }
       }

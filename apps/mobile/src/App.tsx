@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
@@ -11,6 +11,8 @@ import * as Clipboard from 'expo-clipboard';
 import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
 import { connectionFailure } from '../../../packages/client/src/index';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
+import { LivePageClient } from '../../../packages/client/src/livePages';
+import { SessionNavigationProvider, useSessionNavigation } from './sessionNavigation';
 import type { Attachment, Interaction } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
@@ -45,7 +47,7 @@ export function HeaderActions({ onConnection, onSettings, onCopyLink }: { onConn
   </View>;
 }
 type AppContextValue = {
-  ready: boolean; config: Connection | null; client: LiveSessionClient | null;
+  ready: boolean; config: Connection | null; client: LivePageClient | null;
   agentName: ReturnType<typeof useAgentName>; identity: number; revision: number;
   records: SendRecord[]; connectionEpoch: number; loading: boolean; status: NetworkState; error: string;
   base: string; pairingCode: string; pendingPairing: PendingPairing | null; pairingBusy: boolean;
@@ -68,7 +70,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pairingBusy, setPairingBusy] = useState(false), [pairingStatus, setPairingStatus] = useState('');
   const [pairingEpoch, setPairingEpoch] = useState(0);
   const pairingTask = useRef<{ controller: AbortController; promise: Promise<unknown> } | null>(null);
-  const [session, setSession] = useState<{ config: Connection; client: LiveSessionClient } | null>(null);
+  const [session, setSession] = useState<{ config: Connection; client: LivePageClient } | null>(null);
   const client = session?.config === config ? session.client : null;
   const [identity, setIdentity] = useState(0);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
@@ -144,7 +146,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const transport = nativeTransport(config.baseUrl);
     let box: MobileOutbox | null = null;
-    const sdk = new LiveSessionClient({ ...transport, token: () => config.token,
+    const sdk = new LivePageClient({ ...transport, token: () => config.token,
       onChange: () => { if (active) { setRevision((n: number) => n + 1); box?.reconcile(); } },
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
@@ -153,7 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (state === 'blocked') { setLoading(false); setError('Could not connect. Contact your admin. Unsent messages are still here.'); }
       },
       onError: (failure: Error) => { if (active) console.info('[connection]', connectionFailure(failure)); },
-    } as ConstructorParameters<typeof LiveSessionClient>[0]);
+    } as ConstructorParameters<typeof LivePageClient>[0]);
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;
       setRecords(items);
@@ -219,7 +221,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: AppContextValue = { ready, config, client, agentName, identity, revision, records, connectionEpoch,
     loading, status, error, base, pairingCode, pendingPairing, pairingBusy, pairingStatus, busy, editing,
     setPairingCode, setEditing, saveConnection, forget, cancelPairing, textDrafts, composerDrafts, forgottenConnections, outboxRef };
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={value}><SessionNavigationProvider value={{ hasPage: id => !!client?.page(id), server: config?.baseUrl }}>{children}</SessionNavigationProvider></AppContext.Provider>;
 }
 
 export function useApp() {
@@ -232,13 +234,14 @@ export function ThreadScreen({ threadId, targetRef }: { threadId: string; target
   const { config } = useApp();
   // Native Stack owns mount/unmount. Blur is only a visibility signal, not
   // permission to destroy a page that a detail reader/settings has covered.
-  return <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}:${targetRef ?? 'latest'}`} threadId={threadId} targetRef={targetRef} />;
+  return <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} targetRef={targetRef} />;
 }
 
 function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
   const router = useRouter();
-  const { config, client, agentName, revision, records, connectionEpoch, status, error: connectionError,
+  const { config, client: accountClient, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
+  const client = useMemo(() => accountClient?.acquirePage(threadId) ?? null, [accountClient, threadId]);
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -406,8 +409,8 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
     if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (lostOwnership || !pageCursor) && (anchor === undefined || !error)) void openThread(threadId, anchor);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
-    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client?.currentThreadId === threadId && client.currentConversationKey === ownedWatch.current) client.closeConversation(); };
-  }, [client, threadId]);
+    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client) accountClient?.releasePage(threadId, client); };
+  }, [accountClient, client, threadId]);
 
   const selected = client?.threads.get(threadId);
   if (!config || !client) return <Notice text="Opening conversation…" />;
@@ -472,6 +475,7 @@ export function FormKeyboardAvoidingView({ children }: { children: React.ReactNo
 }
 
 export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
+  const navigation = useSessionNavigation();
   const { ready, config, client, error, outboxRef } = useApp();
   const router = useRouter();
   if (!ready) return <Notice text="Opening…" />;
@@ -485,7 +489,7 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>
       <ChannelScreens key={config.id} client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
-        onThread={id => router.push({ pathname: '/threads/[threadId]', params: { threadId: id } })}
+        onThread={id => navigation.thread(id)}
         onNewChannel={() => router.push('/new-channel')}
         onContext={id => router.push({ pathname: '/channels/[channelId]/context', params: { channelId: id } })}
         onFiles={id => router.push({ pathname: '/channels/[channelId]/files', params: { channelId: id } })}

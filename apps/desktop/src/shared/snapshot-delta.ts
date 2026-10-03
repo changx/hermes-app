@@ -21,6 +21,21 @@ export type DesktopSnapshotDelta = Readonly<{
 }>;
 export type DesktopUpdate = DesktopSnapshot | DesktopSnapshotDelta;
 
+function reconcilePages(before: DesktopSnapshot['sessionPages'], after: DesktopSnapshot['sessionPages']): DesktopSnapshot['sessionPages'] {
+  if (!after) return after;
+  const old = new Map(before?.map(page => [page.id, page]));
+  const pages = after.map(page => {
+    const previous = old.get(page.id);
+    if (!previous) return page;
+    if (equal(previous, page)) return previous;
+    return { ...page,
+      messages: apply<'messages'>(previous.messages, diff<'messages'>(previous.messages, page.messages)),
+      interactions: apply<'interactions'>(previous.interactions, diff<'interactions'>(previous.interactions, page.interactions)),
+    };
+  });
+  return before?.length === pages.length && pages.every((page, index) => page === before[index]) ? before : Object.freeze(pages);
+}
+
 const equal = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
 const state = ({revision: _revision, channels: _channels, threads: _threads, messages: _messages, interactions: _interactions, ...rest}: DesktopSnapshot) => rest;
 
@@ -63,6 +78,7 @@ export function applySnapshotDelta(before: DesktopSnapshot, change: DesktopSnaps
   if (change.baseRevision !== before.revision || change.revision <= change.baseRevision) throw new Error('Desktop update gap');
   return Object.freeze({
     ...change.state,revision:change.revision,
+    ...(change.state.sessionPages ? { sessionPages:reconcilePages(before.sessionPages,change.state.sessionPages) } : {}),
     channels:apply<'channels'>(before.channels,change.channels),threads:apply<'threads'>(before.threads,change.threads),
     messages:apply<'messages'>(before.messages,change.messages),interactions:apply<'interactions'>(before.interactions,change.interactions),
   });
@@ -73,6 +89,7 @@ export function reconcileSnapshot(before: DesktopSnapshot, after: DesktopSnapsho
   const change = snapshotDelta(before,after);
   return Object.freeze({
     ...after,channels:apply<'channels'>(before.channels,change.channels),threads:apply<'threads'>(before.threads,change.threads),
+    ...(after.sessionPages ? { sessionPages:reconcilePages(before.sessionPages,after.sessionPages) } : {}),
     messages:apply<'messages'>(before.messages,change.messages),interactions:apply<'interactions'>(before.interactions,change.interactions),
   });
 }

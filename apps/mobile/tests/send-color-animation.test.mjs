@@ -44,6 +44,7 @@ function mount(initialPending, reduced = false) {
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
     '../../../packages/client/src/sessionLinks': sessionLinks,
     'expo-router': { useRouter: () => ({ push() {} }), useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
+    './sessionNavigation': { useSessionNavigation: () => ({ link() {} }) },
     './FontSize': { Text: native.Text, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
     'expo-video': { VideoView: 'VideoView', useVideoPlayer: () => ({}) },

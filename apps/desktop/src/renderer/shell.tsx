@@ -92,7 +92,7 @@ const MessageRow = memo(({ message, continuation }: { message: DesktopMessage; c
   </article>;
 });
 
-const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
+const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot; active?: boolean }) => {
   const list = useRef<HTMLDivElement>(null);
   const previous = useRef({ threadId: "", first: "", height: 0, count: 0 });
   const [following, setFollowing] = useState(true);
@@ -101,7 +101,7 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const result = snapshot.threads.find(t => t.id === snapshot.selectedThreadId);
   useEffect(() => {
     const root = list.current, id = snapshot.selectedThreadId;
-    if (!root || !id || !result?.completedUnread || !result.resultVersion || !result.resultRef || snapshot.loadingMessages) return;
+    if (!active || !root || !id || !result?.completedUnread || !result.resultVersion || !result.resultRef || snapshot.loadingMessages) return;
     const target = root.querySelector(`[data-result-ref="${result.resultRef}"]`);
     if (!target) return;
     const acknowledge = () => {
@@ -112,17 +112,17 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
     const observer = new IntersectionObserver(acknowledge, { root });
     observer.observe(target); window.addEventListener("focus", acknowledge); document.addEventListener("visibilitychange", acknowledge);
     return () => { observer.disconnect(); window.removeEventListener("focus", acknowledge); document.removeEventListener("visibilitychange", acknowledge); };
-  }, [result?.completedUnread, result?.resultVersion, result?.resultRef, snapshot.messages, snapshot.selectedThreadId, snapshot.loadingMessages, snapshot.connectionState]);
+  }, [active, result?.completedUnread, result?.resultVersion, result?.resultRef, snapshot.messages, snapshot.selectedThreadId, snapshot.loadingMessages, snapshot.connectionState]);
   useLayoutEffect(() => {
     const node = list.current;
-    if (!node) return;
+    if (!active || !node) return;
     const old = previous.current;
     if (old.threadId !== snapshot.selectedThreadId) node.scrollTop = node.scrollHeight;
     else if (old.first && first !== old.first && old.count > 0) node.scrollTop += node.scrollHeight - old.height;
     else if (following) node.scrollTop = node.scrollHeight;
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
-  }, [first, following, snapshot.messages, snapshot.selectedThreadId]);
+  }, [active, first, following, snapshot.messages, snapshot.selectedThreadId]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;
@@ -142,7 +142,7 @@ const Timeline = memo(({ snapshot }: { snapshot: DesktopSnapshot }) => {
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-}, (before,after) => before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
+}, (before,after) => before.active === after.active && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
 const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const threadId = snapshot.selectedThreadId;
@@ -214,7 +214,7 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
 export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const [editor, setEditor] = useState<Editor>(null);
   const [newSessionChannel, setNewSessionChannel] = useState<string>();
-  const [preparedDraft, setPreparedDraft] = useState(0);
+  const [preparedDrafts, setPreparedDrafts] = useState<Record<string, number>>({});
   const openNewSession = useCallback((channelId?: string) => { setNewSessionChannel(channelId); setEditor("new-thread"); }, []);
   const [panelOpen, setPanelOpen] = useState(true);
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
@@ -247,11 +247,19 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
-      {snapshot.selectedThreadId ? <Timeline key={snapshot.selectedThreadId} snapshot={snapshot} /> : snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>}
-      {snapshot.interactions.map((item) => <section className="interaction-card" key={item.id}><strong>{item.kind === "approval" ? "Approval requested" : "Hermes needs clarification"}</strong><p>{item.prompt}</p><div>{item.choices.map((choice) => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-      <Composer key={`${snapshot.selectedThreadId}:${preparedDraft}`} snapshot={snapshot} />
+      {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
+        const active = page.id === snapshot.selectedThreadId;
+        const pageSnapshot = { ...snapshot, ...page, selectedThreadId: page.id };
+        return <div key={page.id} className="session-page" data-session-page={page.id} hidden={!active} style={{ display: active ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
+          <Timeline snapshot={pageSnapshot} active={active} />
+          {page.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
+          <Composer key={preparedDrafts[page.id] ?? 0} snapshot={pageSnapshot} />
+        </div>;
+      })}
+      {!snapshot.selectedThreadId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>)}
+      {!snapshot.selectedThreadId && <Composer snapshot={snapshot} />}
     </section>
-    {editor === "new-thread" ? <NewSessionDialog snapshot={snapshot} initialChannelId={newSessionChannel} close={() => setEditor(null)} prepared={(threadId, attachments) => { draftAttachments.set(threadId, attachments); setPreparedDraft(value => value + 1); }} /> : editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
+    {editor === "new-thread" ? <NewSessionDialog snapshot={snapshot} initialChannelId={newSessionChannel} close={() => setEditor(null)} prepared={(threadId, attachments) => { draftAttachments.set(threadId, attachments); setPreparedDrafts(value => ({ ...value, [threadId]: (value[threadId] ?? 0) + 1 })); }} /> : editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
   </main>;
 };
 

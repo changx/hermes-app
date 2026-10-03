@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useSessionNavigation } from './sessionNavigation';
 import { File, Paths } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import type { Attachment } from '../../../packages/client/src/index';
@@ -24,7 +24,7 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
   const [text, setText] = useState<string | null>(null), [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const cache = useRef<File | null>(null);
-  const router = useRouter();
+  const navigation = useSessionNavigation();
   const [source, setSource] = useState<{ threadId: string; refSeq: number } | null>(null), [sourceError, setSourceError] = useState(false), [sourceRetry, setSourceRetry] = useState(0);
   useEffect(() => {
     let active = true; const controller = new AbortController();
@@ -33,7 +33,7 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
       .then(value => { if (active) setSource(value); }).catch(() => { if (active) setSourceError(true); });
     return () => { active = false; controller.abort(); };
   }, [client, channelId, attachment?.id, attachment?.thread_id, sourceRetry]);
-  const origin = source ? <View style={s.toolbar}><Action label="View in conversation" onPress={() => router.push({ pathname: '/threads/[threadId]', params: { threadId: source.threadId, messageRef: String(source.refSeq) } })} /></View>
+  const origin = source ? <View style={s.toolbar}><Action label="View in conversation" onPress={() => navigation.thread(source.threadId, source.refSeq)} /></View>
     : sourceError ? <View style={s.toolbar}><Text style={s.hint}>Could not find the source message.</Text><Action label="Try again" onPress={() => setSourceRetry(value => value + 1)} /></View> : null;
   const image = imageName(name), readable = textName(name), allowed = image ? size <= 10 * 1024 * 1024 : readable && size <= 64 * 1024;
   useEffect(() => {

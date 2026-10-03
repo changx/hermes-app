@@ -50,6 +50,7 @@ async function preview({name='note.md',size=4,bytes=new TextEncoder().encode('te
   class File{constructor(){this.uri='cache://private-'+files.length;this.exists=false;files.push(this);}create(){this.exists=true;}write(value){this.bytes=value;}async text(){return new TextDecoder().decode(this.bytes);}delete(){this.exists=false;this.deleted=true;}}
   const exports={},mocks={react:React,'react-native':{ActivityIndicator:'Spinner',Platform:{OS:'ios'},ScrollView:'ScrollView',View:'View'},
     'expo-router':{useRouter:()=>({push:route=>navigation.push(route)})},
+    './sessionNavigation':{useSessionNavigation:()=>({thread:(threadId,ref)=>navigation.push({pathname:'/threads/[threadId]',params:{threadId,messageRef:String(ref)}})})},
     'expo-file-system':{File,Paths:{cache:'private-cache'}},'expo-crypto':{randomUUID:()=> 'synthetic-preview-id'},
     './FontSize':{Text:'Text'},'./Attachments':{ImageViewer:'Image'},'./MessageContent':{MessageContent:'Markdown'},
     './WorkspaceUI':{workspaceStyles:{page:{},hint:{},error:{},content:{}},WorkspaceAction:props=>React.createElement('Action',props)},};

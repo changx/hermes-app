@@ -18,6 +18,7 @@ const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
 const { DesktopConnectionService } = module.exports;
 
+import { withPages } from './page-fixture.mjs';
 const fixture = () => {
   const published = [];
   const storage = [];
@@ -59,6 +60,8 @@ const fixture = () => {
     },
     async markRead(threadId, refSeq) { calls.push(["read", threadId, refSeq]); },
   };
+  withPages(service.client);
+  service.pageStates.set('thread-a', { loading: false });
   return { service, storage, removed, calls, published };
 };
 

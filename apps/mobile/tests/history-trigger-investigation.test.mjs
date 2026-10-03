@@ -23,6 +23,9 @@ async function harness() {
   const trace = [], boundaryHistory = [];
   const config = { id: 'synthetic', baseUrl: 'https://synthetic.invalid', token: 'synthetic-only' };
   class SDK {
+    acquirePage() { return this; }
+    page() { return this.currentThreadId ? this : undefined; }
+    releasePage() { this.closeConversation(); }
     constructor(options) {
       sdk = this; this.options = options; this.supportsLatest = true; this.connectionState = 'online';
       this.channels = new Map([['p', { id: 'p' }]]); this.threads = new Map([['t', { id: 't', project_id: 'p', title: 'Synthetic', last_ref: 141 }]]);
@@ -79,6 +82,8 @@ async function harness() {
     'expo-clipboard': { setStringAsync: async () => {} }, '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String }, './transport': { nativeTransport: () => ({}) },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
+    '../../../packages/client/src/livePages': { LivePageClient: SDK },
+    './sessionNavigation': { SessionNavigationProvider: ({ children }) => children, useSessionNavigation: () => ({ thread() {}, link() {} }) },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }) },
     './ConnectionScreen': { ConnectionScreen: 'ConnectionScreen' }, './pairing': { CONFIG_KEY: 'config', PAIRING_KEY: 'pairing', restorePairing: () => null },
     './outbox': { MobileOutbox: Box, OutboxStore: class { constructor(_, value) { this.connectionId = value.id; } } },

@@ -2,7 +2,7 @@
 
 ## Confirmed correction
 
-Jamie rejected treating App background/inactive as conversation departure. Short switches to another app, permission/photo selection and phone calls must keep the current scene. Only actual navigation away, conversation switch/close, forgotten identity or authoritative unavailability releases it. Still retain only one opened conversation; no SQLite/server-history persistence or multi-session body caches.
+App background/inactive is not conversation departure. All living session pages retain their scene and subscriptions while foregrounded; background suspends transport only. Opening another session does not release the old page. Actual page destruction, forgotten identity or authoritative unavailability releases the affected page. See [live session pages](live-session-pages.md). No SQLite or persisted server-history cache is added. Implementation and publication evidence below describes earlier releases and does not verify this extension.
 
 ## Implementation
 

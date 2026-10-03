@@ -30,7 +30,7 @@ function NativeRoutes() {
         <Stack.Screen name="channels/[channelId]/files" options={{ title: 'Files' }} />
         <Stack.Screen name="channels/[channelId]/agents" options={{ title: 'AGENTS.md' }} />
         <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
-        <Stack.Screen name="threads/[threadId]" options={{ title: 'Conversation' }} />
+        <Stack.Screen name="threads/[threadId]" getId={({ params }) => String(params?.threadId)} options={{ title: 'Conversation' }} />
         <Stack.Screen name="settings" options={{ title: 'Agent settings' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />
       </Stack.Protected>

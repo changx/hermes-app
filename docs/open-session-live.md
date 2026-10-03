@@ -8,9 +8,9 @@ Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal
 
 - No unread counts or cross-device read-position reporting for unread accounting.
 - Only lightweight Channel/session directory and running state remain resident outside a conversation.
-- Only the currently opened conversation is fetched, subscribed and cached. Running-but-closed conversations do not preload content.
-- Native Stack owns page mount/unmount; focus/blur only governs visible work, not page destruction. Tool/message/file detail, nested reader or settings coverage retains the current timeline and scene; returning is not an instruction to reopen/refresh history. Actual route removal releases its owned content; opening a different conversation or identity/target loss releases old server content through the one-owner client. Returning to an older route whose watch was replaced opens fresh state, not a second cached transcript. Late replies cannot repopulate released content.
-- Backgrounding is NOT leaving the conversation. Keep the one current timeline, loaded reading boundary/scroll-follow state, drafts, selected files and mounted reader/media scene in memory. Pause transport and abort content reads; foreground recovery re-subscribes and reconciles that retained window without reopening/remounting or jumping to latest. Actual navigation away, close, identity removal or authoritative unavailability releases it. Process death/cold restore still has no persisted server history.
+- All living conversation pages own content and concurrent subscriptions. Running-but-unopened conversations do not preload content. See [live session pages](live-session-pages.md), which supersedes the original single-owner implementation below.
+- Native Stack owns mount/unmount. Focus and coverage govern visible work only. Opening B does not release A. Returning to an existing page preserves its scene and removes pages above it. Page uniqueness is connection identity plus stable Thread ID within one client. Actual destruction, identity loss or authoritative unavailability releases only the affected page. Late replies cannot repopulate released content.
+- Backgrounding retains every living page, including its loaded window, scroll/follow state, drafts, files and reader/media scene. Suspend transport and reads; recovery reconciles each retained window without remounting or jumping to latest. Process death still has no persisted server history.
 - No client SQLite history database, event replay, timestamp alignment, per-entity sync version chain or periodic business reads. A normal heartbeat detects a broken connection; it does not read catalogue or messages.
 - Initial open, reconnect and foreground recovery retrieve fresh current state. Subscribe acknowledgement must precede the initial content read; events during that read request another reconciliation so there is no handoff gap.
 - Server owns all original history and accepted tasks; leaving/closing the App never cancels an accepted model task. Preserve stable message IDs/order, public tool records, latest/older pagination, approvals and attachment security.
@@ -19,6 +19,8 @@ Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal
 - Offline restart has no stored server history; this is an accepted tradeoff, not a defect to hide with a new database.
 
 ## Simplest wire boundary
+
+The page-owner extension uses one directory connection plus one scoped WebSocket per living page. The existing one-watch-per-socket plugin contract remains unchanged; no core or plugin change is required. Historical work breakdown and verification below describe the earlier single-owner release, not current page-lifetime acceptance.
 
 Reuse existing authenticated capabilities/history/receipt/interaction/attachment APIs. Add one lightweight catalogue endpoint and one live WebSocket route in the plugin. Catalogue contains only directory fields and running state (no unread, receipt bodies, prompts or messages). Live connection observes directory/running changes for the account; watch command selects at most one Thread for content notifications. Frames are state/change hints, not replay instructions. No client event cursor, data version or local sync journal.
 

@@ -25,6 +25,7 @@ const modules = {
   react: { ...react, default: react }, 'react-native': native,
   'expo-blur': { BlurTargetView: 'BlurTargetView', BlurView: 'BlurView' },
   'expo-router': { useRouter: () => ({ push() {} }), useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
+  './sessionNavigation': { useSessionNavigation: () => ({ link() {} }) },
   './FontSize': { Text: native.Text, TextInput: native.TextInput, AnimatedText: native.Animated.Text, useFontSize: () => ({ scale: 1 }) },
 
   'react-native-keyboard-controller': { KeyboardGestureArea: 'KeyboardGestureArea', KeyboardStickyView: 'KeyboardStickyView', KeyboardChatScrollView: 'KeyboardChatScrollView', useKeyboardHandler: () => {} },

@@ -132,6 +132,7 @@ test("read-only projection loads threads for the selected channel and the select
     },
     async markRead(threadId, ref) { calls.push(["read", threadId, ref]); },
   };
+  const { withPages } = await import('./page-fixture.mjs'); withPages(service.client);
   await service.selectChannel("channel-a");
   assert.deepEqual(calls, []);
   assert.equal(service.snapshot().threads[0].running, true);

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { withPages } from './page-fixture.mjs';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -16,6 +17,7 @@ const fixture = () => {
   service.connection = { id: 'local', token: 'never-in-link', baseUrl: base };
   service.client = { isCatalogueReady: true, channels: new Map([['p_one',{id:'p_one',name:'One'}]]), threads: new Map([['th_target',{id:'th_target',project_id:'p_one',title:'Target',archived:false}]]), messages:new Map(), receipts:new Map(), interactions:new Map(), attachments:new Map(),
     isThreadAvailable(id) { return this.threads.has(id) && !this.threads.get(id).archived; }, async openConversation(id) { opened.push(id); }, close() {} };
+  withPages(service.client);
   return {service,opened};
 };
 test('desktop exact link navigates through existing selection; no duplicate reopening of current session', async () => {

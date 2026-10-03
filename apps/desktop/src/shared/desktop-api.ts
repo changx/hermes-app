@@ -63,6 +63,9 @@ export type DesktopSnapshot = Readonly<{
   selectedThreadId?: string;
   selectedThreadTitle?: string;
   canLoadOlder: boolean;
+  sessionPages?: readonly Readonly<{ id: string; messages: readonly DesktopMessage[];
+    interactions: readonly DesktopInteraction[]; loadingMessages?: boolean;
+    canLoadOlder: boolean; selectedThreadTitle?: string }>[];
 }>;
 
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
