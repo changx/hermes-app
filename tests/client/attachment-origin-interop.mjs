@@ -7,8 +7,8 @@ const module={exports:{}};new Function('module','exports',bundle.outputFiles[0].
 const {LiveSessionClient}=module.exports;
 globalThis.WebSocket=Ws;
 const [base,cid]=process.argv.slice(2),token='synthetic-origin-interop-token-at-least-32-characters';
-const transport=nativeTransport(base),paths=[],original=transport.http.request;
-transport.http.request=(...args)=>{paths.push(args[1]);return original(...args);};
+const transport=nativeTransport(base),paths=[],completed=[],original=transport.http.request;
+transport.http.request=async(...args)=>{paths.push(args[1]);const reply=await original(...args);if(reply.status>=200&&reply.status<300)completed.push(args[1]);return reply;};
 const errors=[],client=new LiveSessionClient({...transport,token:()=>token,onError:error=>errors.push(error),livenessMs:500});
 const until=async check=>{const end=Date.now()+5000;while(!check()){assert.ok(Date.now()<end,'interop timed out');await new Promise(resolve=>setTimeout(resolve,10));}};
 try{
@@ -22,8 +22,8 @@ try{
   assert.ok(client.currentOlderCursor);assert.ok(client.currentNewerCursor);
   const firstPaths=paths.filter(p=>p.includes('/messages'));assert.equal(firstPaths.length,1);assert.ok(firstPaths[0].includes('around_ref_seq='+source.refSeq));
   await client.loadNewer(source.threadId);assert.equal(client.messages.get(source.threadId).length,61);
-  const count=paths.length,anchor=client.messages.get(source.threadId).find(m=>m.ref_seq===source.refSeq);
-  client.suspendConnection();await client.connect();await until(()=>paths.slice(count).some(p=>p.includes('through_ref_seq='))&&client.connectionState==='online');
+  const count=completed.length,anchor=client.messages.get(source.threadId).find(m=>m.ref_seq===source.refSeq);
+  client.suspendConnection();await client.connect();await until(()=>completed.slice(count).some(p=>p.includes('through_ref_seq='))&&completed.slice(count).some(p=>p.endsWith('/live-state'))&&client.connectionState==='online');
   await until(()=>client.messages.get(source.threadId)?.find(m=>m.ref_seq===source.refSeq)===anchor);
   assert.ok(paths.filter(p=>p.includes('/messages')).every(p=>!p.includes('latest=true')));
   assert.equal(errors.length,0);
