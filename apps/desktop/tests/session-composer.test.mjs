@@ -93,8 +93,63 @@ test('desktop composer separates stop and send; preserves IME/Shift+Enter and se
   assert.deepEqual(calls,[]);
   await act(async()=>{tree.root.findByProps({'aria-label':'Send message'}).props.onClick();tree.root.findByProps({'aria-label':'Send message'}).props.onClick();});
   assert.equal(calls.length,1);assert.deepEqual(calls[0],{text:'hello',attachmentIds:[]});
-  assert.equal(tree.root.findByProps({'aria-label':'Stop agent'}).props.disabled,undefined);
+  assert.equal(tree.root.findByProps({'aria-label':'Stop agent'}).props.disabled,false);
+  await act(async()=>tree.root.findByProps({'aria-label':'Stop agent'}).props.onClick());
+  assert.equal(calls[1],'stop');
+  assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'hello','Stop does not clear an in-flight draft');
   await act(async()=>send.resolve());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'');await act(async()=>tree.unmount());
+});
+
+test('channel tree has no Select channel action and expanding a branch does not navigate',async()=>{
+  const calls=[];environment({selectChannel:id=>{calls.push(id);return Promise.resolve();}});
+  const tree=await mount(NavigationPanel,{snapshot,onNewSession(){}});
+  assert.equal(tree.root.findAllByType('button').some(x=>x.children.includes('Select channel')),false);
+  const channel=tree.root.findAllByType('button').find(x=>x.props.className?.startsWith('channel-toggle'));
+  await act(async()=>channel.props.onClick());assert.deepEqual(calls,[]);
+  await act(async()=>channel.props.onClick());assert.deepEqual(calls,[]);
+  assert.equal(tree.root.findAllByType('button').some(x=>x.children.includes('Select channel')),false);
+  await act(async()=>tree.unmount());
+});
+
+test('running indicator and Stop use the row above input; completion preserves a draft and sending stays independent',async()=>{
+  const calls=[];environment({stopThread:async()=>calls.push('stop'),sendMessage:async x=>calls.push(x)});
+  const current={...snapshot,selectedThreadId:'t',threads:[{id:'t',channelId:'a',title:'Example',running:true}]};
+  const tree=await mount(DesktopShellView,{snapshot:current});
+  const row=tree.root.findByProps({className:'running-row'}),inputRow=tree.root.findByProps({className:'composer-row'});
+  assert.ok(row.findByProps({role:'status'}).findAllByType('span').some(x=>x.children.includes('Agent is running')));
+  assert.equal(row.findByProps({className:'running-dots'}).findAllByType('span').length,4);
+  assert.equal(row.findAllByProps({'aria-label':'Stop agent'}).length,1);
+  assert.equal(inputRow.findAllByProps({'aria-label':'Stop agent'}).length,0);
+  assert.equal(inputRow.findAllByType('button').length,2);
+  await act(async()=>tree.root.findByProps({'aria-label':'Message'}).props.onChange({target:{value:'Keep this draft'}}));
+  await act(async()=>row.findByProps({'aria-label':'Stop agent'}).props.onClick());assert.deepEqual(calls,['stop']);
+  assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'Keep this draft');
+  assert.equal(tree.root.findByProps({'aria-label':'Send message'}).props.disabled,false);
+  await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...current,threads:[{...current.threads[0],running:false}]}})));
+  assert.equal(tree.root.findAllByProps({className:'running-row'}).length,0);
+  assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'Keep this draft');
+  await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:current})));
+  assert.equal(tree.root.findAllByProps({className:'running-row'}).length,1);
+  await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
+  assert.deepEqual(calls[1],{text:'Keep this draft',attachmentIds:[]});
+  await act(async()=>tree.unmount());
+});
+
+test('no false running animation for a different selection, offline state or a pending user response',async()=>{
+  environment({});
+  const running={...snapshot,selectedThreadId:'t',threads:[{id:'t',channelId:'a',title:'Example',running:true}]};
+  const tree=await mount(DesktopShellView,{snapshot:{...running,selectedThreadId:undefined}});
+  assert.equal(tree.root.findAllByProps({className:'running-row'}).length,0);
+  await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...running,selectedThreadId:'idle'}})));
+  assert.equal(tree.root.findAllByProps({className:'running-row'}).length,0);
+  await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...running,connectionState:'suspended'}})));
+  assert.equal(tree.root.findAllByProps({className:'running-dots'}).length,0);
+  assert.equal(tree.root.findByProps({'aria-label':'Stop agent'}).props.disabled,true);
+  assert.ok(tree.root.findByProps({role:'status'}).findAllByType('span').some(x=>x.children.includes('Reconnecting…')));
+  await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...running,interactions:[{id:'i',kind:'clarify',prompt:'Choose',choices:['Yes','No']}]}})));
+  assert.equal(tree.root.findAllByProps({className:'running-dots'}).length,0);
+  assert.ok(tree.root.findByProps({role:'status'}).findAllByType('span').some(x=>x.children.includes('Waiting for your response')));
+  await act(async()=>tree.unmount());
 });
 
 test('full-width blue user blocks and mobile-like bounded composer have explicit CSS rules',async()=>{
@@ -118,18 +173,24 @@ test('Chromium: production shell keeps blue blocks full-width and composer contr
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
         const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.conversation-pane'),row=document.querySelector('.composer-row');
         const bubble=user.getBoundingClientRect(),other=agent.getBoundingClientRect(),bounds=pane.getBoundingClientRect(),controls=[...row.children].map(x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,width:b.width,height:b.height}});
-        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls});
+        const stop=document.querySelector('.running-row .stop-button').getBoundingClientRect();
+        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
       } document.getElementById('results').textContent=JSON.stringify(results);
     </script></body></html>`);
-    const dom=execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',`--user-data-dir=${join(folder,'profile')}`,'--dump-dom',pathToFileURL(file).href],{encoding:'utf8',timeout:30000,maxBuffer:2_000_000,stdio:['ignore','pipe','pipe']});
+    for(const reduced of [false,true]) {
+    const dom=execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',...(reduced?['--force-prefers-reduced-motion']:[]),`--user-data-dir=${join(folder,reduced?'reduced-profile':'profile')}`,'--dump-dom',pathToFileURL(file).href],{encoding:'utf8',timeout:30000,maxBuffer:2_000_000,stdio:['ignore','pipe','pipe']});
     const results=JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)[1]);
     for(const result of results){
       assert.equal(result.background,'rgb(230, 240, 255)');
       assert.equal(result.bubbleLeft,result.agentLeft,'same left edge, not right-aligned');
       assert.equal(result.bubbleWidth,result.agentWidth,'short user message uses the same full width as assistant');
-      assert.equal(result.controls.length,4,'plus, input, stop, send');
+      assert.equal(result.controls.length,3,'plus, input, send only');
+      assert.ok(result.stop.bottom<=result.inputTop,'stop shares running row above input, not send row');
+      assert.ok(result.stop.left>=result.paneLeft && result.stop.right<=result.paneRight);
+      assert.deepEqual(result.animations,Array(3).fill(reduced?'none':'agent-running-dot'));
       for(const control of result.controls){assert.ok(control.width>0);assert.ok(control.left>=result.paneLeft);assert.ok(control.right<=result.paneRight);}
       assert.equal(result.controls[1].height,42);
+    }
     }
   } finally {await rm(folder,{recursive:true,force:true});}
 });

@@ -80,3 +80,16 @@ Verification: newly added source/real Chromium assertions failed on the prior pa
 Evidence: current profile Channel workspace `desktop-session-content/`, including baseline failure, final check log, layout metrics and updated production-component preview HTML/PNG. The preview contains synthetic example content, not a Mac screenshot or live model execution. This is a client layout change, not a new tool capture implementation.
 
 No main merge, push, installer release, native installation or service restart. Mac visual/keyboard acceptance and publication remain separate. The updated local desktop artifact is in `apps/desktop/dist`.
+
+## Navigation cleanup and running composer row (isolated candidate)
+
+User requested removing `Select channel` and correcting the missing `Agent is running` presentation. Continue from `0d69e5d`; card `t_a8372411`.
+
+- Delete the redundant tree action and its unused CSS selector. Expanding/collapsing the Channel still does not forcibly leave the current Session. The Channel plus and Session selection remain unchanged.
+- Match current mobile `runningRow`: a compact 32px row above the input contains three scaling dots and `Agent is running`, with the independent Stop button on the right (34×28px). The input row contains only plus, textarea and send.
+- Use the selected Session's authoritative directory running state. Idle, no selection and a different running Session do not create this row. Offline cached state shows `Reconnecting…` with no dots and disabled Stop; pending selected-session interaction shows `Waiting for your response` with no dots. These states do not claim active work.
+- Three CSS dots use mobile colors and staggered scaling. Reduced-motion mode disables their animation. Stop remains available during an in-flight send when connected and does not clear the draft. Running status does not replace or disable the ordinary send action.
+
+Final desktop TypeScript/build and **113/113 tests** passed, with 0 failed/skipped. Production-component tests cover removed navigation action/no forced navigation, selected running/idle/no selection/pending/offline state, completion retaining the draft, resumed running, independent Stop/Send and Stop while send awaits confirmation. Real Chromium checks 720/1280/1800px input and Stop geometry and both regular/reduced-motion dot styles. The content/layout/palette/security regressions remain passed.
+
+Evidence: current profile Channel workspace `desktop-running-row/`, with final check log, layout readback and regenerated production-component preview. Synthetic preview content is not a live model execution or native Mac screenshot. No main merge/push/release/installer/service restart/mobile/protocol/plugin/core/dependency/lockfile change; native Mac acceptance remains pending.

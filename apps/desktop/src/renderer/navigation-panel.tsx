@@ -30,7 +30,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession }: { snapshot: Des
           {page.rows.map((thread) => <ThreadRow key={thread.id} thread={thread} selected={thread.id === snapshot.selectedThreadId} />)}
           {!page.rows.length ? <p className="tree-empty">No recent activity</p> : null}
           {page.hasMore ? <button className="tree-more" type="button" onClick={() => setBatches((old) => ({ ...old, [channel.id]: (old[channel.id] ?? 0) + 1 }))}>Load more threads</button> : null}
-          <button className="tree-new" type="button" onClick={() => void window.hermesDesktop.selectChannel(channel.id).catch(() => {})}>Select channel</button>
+
         </div> : null}
       </section>;
     })}
