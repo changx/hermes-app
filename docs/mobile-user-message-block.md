@@ -49,3 +49,11 @@ Jamie 在长列表穿出蓝气泡并与下一条回复重叠的反馈中确认�
 证据：active profile 私有 `workspace/mobile-user-message-block/`（测试、类型检查、双平台导出及 bundle 标记、baseline/candidate 原生布局结果）。
 
 iPhone 上同一长列表的背景包含关系、纵向滚动、键盘开关与重新进入会话仍需真实设备验收；不因上述检查通过而提前关闭真机验收。
+
+## 后续样式反馈：背景铺至两侧、统一名字起点（隔离候选）
+
+卡片 `t_759855ad`；分支 `fix/mobile-message-edge-to-edge`，基线 `11a9336`。Jamie 的截图反馈替代上文保留外侧 14pt 边距的决定：黄色最终回复和蓝色用户消息背景铺至消息区左右两端；取消最终回复的左侧装饰边框；名字及正文与普通 Agent 消息统一在左侧 14pt 起点。文字不贴屏幕边缘。纵向间距、颜色、消息身份、reaction、附件、失败消息操作及滚屏逻辑不变。
+
+候选只修改 `ChatTimeline` 三个样式及组件回归。新增断言在修改前失败、修改后通过；定向组件/Markdown/删除失败消息/历史布局测试 **62 passed / 0 failed**，移动端 TypeScript 通过，iOS/Android Expo 导出成功，两个实际 JS bundle 均回读确认零外侧边距、14pt 内边距及无左侧边框。Metro 的临时依赖可见路径已恢复，不改锁文件。
+
+证据：active profile 私有 `workspace/mobile-message-edge-to-edge/`。未合并运行目录、未发布、未重启服务；iPhone 视觉和键盘仍待真机检查。上述导出不是独立安装包。
