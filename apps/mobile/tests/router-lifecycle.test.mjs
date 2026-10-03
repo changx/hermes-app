@@ -7,6 +7,7 @@ import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
 import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
+import * as sendNotice from '../src/sendNotice.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
@@ -14,7 +15,7 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
 }).outputText;
 
 async function harness() {
-  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, sendFinish;
+  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
@@ -40,7 +41,7 @@ async function harness() {
     async markRead(...args) { reads.push(args); }
   }
   class Box {
-    constructor(storage) { boxCount++; this.storage = storage; }
+    constructor(storage, _sdk, changed) { boxCount++; this.storage = storage; outboxChanged = changed; }
     async start() {} async stop() {} reconcile() {} setConnection() {}
     enqueue() { return new Promise(resolve => { sendFinish = resolve; }); }
   }
@@ -72,6 +73,7 @@ async function harness() {
     './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
     './historyBlocks': historyBlocks,
     './timeline': timeline,
+    './sendNotice': sendNotice,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
@@ -96,8 +98,25 @@ async function harness() {
   return { render, timelines, scenes, reads, events, get api() { return api; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
+    async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('App clears resolved failed-send banner across navigation but preserves actual storage failure', async () => {
+  const h = await harness();
+  try {
+    const notice = 'Sending could not be confirmed. Check your connection permissions or message.';
+    await h.outbox([{ status: 'blocked' }], notice);
+    assert.equal(h.api.error, notice);
+    await h.outbox([]);
+    assert.equal(h.api.error, '');
+    await h.render(null); await h.render('t_one');
+    assert.equal(h.api.error, '');
+    const failure = 'Your received message could not be updated here. Keep your app data.';
+    await h.outbox([], failure); await h.outbox([]);
+    assert.equal(h.api.error, failure);
+  } finally { await h.close(); }
+});
 
 test('hidden chat unmounts its timeline and releases content; SDK and user draft survive navigation without read reporting', async () => {
   const h = await harness();

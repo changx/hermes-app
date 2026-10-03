@@ -28,9 +28,7 @@ import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
 
-// Outbox emits user-facing, classified notices; do not collapse a received
-// message or recoverable local cleanup into a generic unsaved-message warning.
-const sendNotice = (notice: string) => notice;
+import { reconciledSendNotice } from './sendNotice';
 
 function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSymbol; android: AndroidSymbol; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.headerIconPressed]}>
@@ -156,7 +154,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;
       setRecords(items);
-      if (notice) setError(sendNotice(notice));
+      setError(previous => reconciledSendNotice(previous, items, notice));
     }, undefined, undefined, undefined, true);
     outboxRef.current = box;
     setSession({ config, client: sdk }); setStatus('connecting'); setLoading(true); setError('');

@@ -290,6 +290,19 @@ export class MobileOutbox {
     if (!this.alive || !this.online || this.storageFault) return;
     if (this.durableAckOnly) {
       for (const record of this.records) {
+        if (record.status === 'blocked' && !this.busy.has(record.clientMessageId)) {
+          // A transport/protocol failure is not proof of rejection. The opened
+          // session may later publish the exact durable reception identity.
+          // Recover that proof before retiring the saved original; never resend
+          // or match by text, and never fetch unopened conversation contents.
+          const proof = [...this.sdk.receipts.values()].find(receipt =>
+            receipt.thread_id === record.threadId && receipt.client_message_id === record.clientMessageId &&
+            (!record.receiptId || receipt.id === record.receiptId) &&
+            receipt.durable === true && Number.isSafeInteger(receipt.ref_seq) && receipt.ref_seq! > 0 &&
+            (record.receiptRefSeq === undefined || record.receiptRefSeq === receipt.ref_seq));
+          if (proof) this.launch(record.clientMessageId, () => this.recordAcknowledgement(record, proof));
+          continue;
+        }
         if (record.status !== 'accepted' || !record.receiptId || this.busy.has(record.clientMessageId) || (this.cleanupRetryAt.get(record.clientMessageId) ?? 0) > this.clock()) continue;
         const cached = this.sdk.receipts.get(record.receiptId);
         if (record.receiptRefSeq !== undefined) this.launch(record.clientMessageId, () => this.retireAcknowledged(record));
@@ -414,7 +427,7 @@ export class MobileOutbox {
   }
 
   private async recordAcknowledgement(record: SendRecord, receipt: Receipt): Promise<void> {
-    if (receipt.id !== record.receiptId || receipt.durable !== true) throw new OutboxIdentityError('Message acknowledgement identity mismatch');
+    if ((record.receiptId && receipt.id !== record.receiptId) || receipt.durable !== true) throw new OutboxIdentityError('Message acknowledgement identity mismatch');
     const next = accepted(record, receipt);
     const gen = this.generation;
     try { await this.storage.update(next); }
