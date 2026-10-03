@@ -71,13 +71,29 @@ test('stale version produces conflict rather than fetching a new version and ove
   assert.equal(f.calls.length, 1);
 });
 
-test('readback mismatch, UTF-8 overflow and foreign identity reject success', async () => {
+test('readback mismatch, generic file overflow and foreign identity reject success', async () => {
   const f = fixture();
-  await assert.rejects(f.client.workspace.saveAgents(cid, '汉'.repeat(4001), null), ProtocolError);
+  await assert.rejects(f.client.workspace.saveAgents(cid, 'x'.repeat(10485761), null), ProtocolError);
   assert.equal(f.calls.length, 0);
   f.response = () => ({ status: 200, body: { channel_id: cid, path: 'AGENTS.md', content: 'changed after PUT', etag: version('changed after PUT'), rules_effect: 'new_sessions' } });
   await assert.rejects(f.client.workspace.saveAgents(cid, 'mine', null), ProtocolError);
   f.response = () => ({ status: 200, body: { ...state(true), workspace: { ...state(true).workspace, channel_id: 'p_other' } } });
+  await assert.rejects(f.client.workspace.getState(cid), ProtocolError);
+});
+
+test('AGENTS over 12 KB roundtrips exact Unicode bytes and negotiates ordinary file limits', async () => {
+  const f = fixture(), content = '\n汉🌍 rules\n'.repeat(5000);
+  const saved = await f.client.workspace.saveAgents(cid, content, null);
+  assert.equal(saved.content, content);
+  assert.equal((await f.client.workspace.getAgents(cid)).content, content);
+  f.http.download = async () => ({ status: 200, body: new TextEncoder().encode(content) });
+  assert.equal(new TextDecoder().decode(await f.client.workspace.readFile(cid, 'AGENTS.md')), content);
+  f.response = () => ({ status: 200, body: { workspace: { ...state(false).workspace,
+    agents_available: true, limits: { agents_bytes: 10485760, file_bytes: 10485760 } } } });
+  const summary = await f.client.workspace.getState(cid);
+  assert.equal(summary.initialized, false); assert.equal(summary.agentsAvailable, true);
+  assert.equal(summary.agentsBytes, 10485760);
+  f.response = () => ({ status: 200, body: { workspace: { ...state(false).workspace, agents_available: 'true' } } });
   await assert.rejects(f.client.workspace.getState(cid), ProtocolError);
 });
 

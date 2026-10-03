@@ -1,7 +1,7 @@
 import type { Attachment } from './index';
 
 export type ConditionalHeaders = { 'If-Match': string; 'If-None-Match'?: never } | { 'If-None-Match': '*'; 'If-Match'?: never };
-export type WorkspaceState = { channelId: string; initialized: boolean; agentsBytes: number; fileBytes: number };
+export type WorkspaceState = { channelId: string; initialized: boolean; agentsAvailable?: boolean; agentsBytes: number; fileBytes: number };
 export type WorkspaceEntry = { name: string; path: string; kind: 'file' | 'directory' | 'unavailable'; size: number | null };
 export type WorkspacePage = { channelId: string; path: string; items: WorkspaceEntry[]; nextAfter: string | null };
 export type AgentsDocument = { channelId: string; path: 'AGENTS.md'; content: string; etag: string };
@@ -36,7 +36,6 @@ export function workspacePath(value: string, directory = false): string {
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const ETAG = /^"[0-9a-f]{64}"$/;
 const MAX_FILE = 10 * 1024 * 1024;
-const MAX_AGENTS = 12000;
 // Server filename sorting uses Unicode code points, not JS UTF-16 code units.
 const nameOrder = (a: string, b: string): number => {
   const left = Array.from(a), right = Array.from(b);
@@ -64,13 +63,16 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
     if (value.channel_id !== cid || value.root !== '' || value.agents_path !== 'AGENTS.md' ||
         value.rules_effect !== 'new_sessions' || typeof value.initialized !== 'boolean') return fail();
     const agentsBytes = size(limits.agents_bytes), fileBytes = size(limits.file_bytes);
-    if (agentsBytes < 1 || agentsBytes > MAX_AGENTS || fileBytes < 1 || fileBytes > MAX_FILE) return fail();
-    return { channelId: cid, initialized: value.initialized, agentsBytes, fileBytes };
+    if (agentsBytes < 1 || agentsBytes > MAX_FILE || fileBytes < 1 || fileBytes > MAX_FILE ||
+        value.agents_available !== undefined && typeof value.agents_available !== 'boolean') return fail();
+    return { channelId: cid, initialized: value.initialized,
+      agentsAvailable: value.agents_available === undefined ? value.initialized : value.agents_available as boolean,
+      agentsBytes, fileBytes };
   };
   const document = (body: Record<string, unknown>, cid: string): AgentsDocument => {
     if (body.channel_id !== cid || body.path !== 'AGENTS.md' || body.rules_effect !== 'new_sessions') return fail();
     const content = text(body.content);
-    if (utf8Size(content) > MAX_AGENTS) return fail();
+    if (utf8Size(content) > MAX_FILE) return fail();
     return { channelId: cid, path: 'AGENTS.md', content, etag: etag(body.etag) };
   };
   return {
@@ -84,7 +86,7 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
     },
     async getAgents(cid: string, signal?: AbortSignal) { return document(await call('GET', root(cid) + '/agents', undefined, signal), cid); },
     async saveAgents(cid: string, content: string, previous: string | null): Promise<AgentsDocument> {
-      if (utf8Size(text(content)) > MAX_AGENTS) return fail('Guidelines are too long');
+      if (utf8Size(text(content)) > MAX_FILE) return fail('Guidelines exceed the file transfer limit');
       const headers: ConditionalHeaders = previous === null ? { 'If-None-Match': '*' } : { 'If-Match': etag(previous) };
       const saved = await call('PUT', root(cid) + '/agents', { content }, undefined, headers);
       if (saved.channel_id !== cid || saved.path !== 'AGENTS.md') return fail('Guidelines save identity mismatch');
@@ -117,7 +119,7 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
     },
     async readFile(cid: string, file: string, signal?: AbortSignal): Promise<Uint8Array> {
       const value = await download(root(cid) + '/file?path=' + encodeURIComponent(path(file)), signal);
-      if (!(value instanceof Uint8Array) || value.byteLength > MAX_FILE || file === 'AGENTS.md' && value.byteLength > MAX_AGENTS) return fail('Workspace file exceeds limit');
+      if (!(value instanceof Uint8Array) || value.byteLength > MAX_FILE) return fail('Workspace file exceeds limit');
       return value;
     },
     async attachments(cid: string, after: string | null = null, signal?: AbortSignal): Promise<ChannelAttachmentPage> {

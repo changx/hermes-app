@@ -1,5 +1,166 @@
 # Hermes App 执行约定
 
+## 文档索引
+
+以下为本仓库全部应用 Markdown 文档（不含本执行约定），按目录与主题分组。开工前先读总览及相关专题；历史验证和发布记录仅代表当时结果，不替代当前验收。新增、移动或删除文档时同步维护本索引。
+
+### 总览、需求与开发
+
+- [README.md](README.md)
+- [docs/requirements.md](docs/requirements.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/core-dataflow.md](docs/core-dataflow.md)
+- [docs/development-plan.md](docs/development-plan.md)
+- [docs/dev-environment.md](docs/dev-environment.md)
+- [docs/dev-lcm-fix.md](docs/dev-lcm-fix.md)
+- [docs/p1-plan.md](docs/p1-plan.md)
+- [docs/p2-mobile-dev.md](docs/p2-mobile-dev.md)
+- [docs/p2-p3-kanban.md](docs/p2-p3-kanban.md)
+- [apps/mobile/README.md](apps/mobile/README.md)
+- [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
+
+### M1 手机聊天、交互与验收
+
+- [docs/m1-agent-reactions.md](docs/m1-agent-reactions.md)
+- [docs/m1-agent-settings.md](docs/m1-agent-settings.md)
+- [docs/m1-arrival-id-fix.md](docs/m1-arrival-id-fix.md)
+- [docs/m1-article-selection.md](docs/m1-article-selection.md)
+- [docs/m1-attachment-menu.md](docs/m1-attachment-menu.md)
+- [docs/m1-combined-release.md](docs/m1-combined-release.md)
+- [docs/m1-composer-attachments.md](docs/m1-composer-attachments.md)
+- [docs/m1-composer-blur-background.md](docs/m1-composer-blur-background.md)
+- [docs/m1-composer-latest.md](docs/m1-composer-latest.md)
+- [docs/m1-composer-reset.md](docs/m1-composer-reset.md)
+- [docs/m1-composer-shadow.md](docs/m1-composer-shadow.md)
+- [docs/m1-composer-status.md](docs/m1-composer-status.md)
+- [docs/m1-discord-followup-fix.md](docs/m1-discord-followup-fix.md)
+- [docs/m1-dismiss-keyboard-on-inactive.md](docs/m1-dismiss-keyboard-on-inactive.md)
+- [docs/m1-english-ui.md](docs/m1-english-ui.md)
+- [docs/m1-expo-router.md](docs/m1-expo-router.md)
+- [docs/m1-file-tool-captions.md](docs/m1-file-tool-captions.md)
+- [docs/m1-followup-status.md](docs/m1-followup-status.md)
+- [docs/m1-full-markdown.md](docs/m1-full-markdown.md)
+- [docs/m1-handoff-reaction.md](docs/m1-handoff-reaction.md)
+- [docs/m1-history-enter-animation.md](docs/m1-history-enter-animation.md)
+- [docs/m1-history-five-blocks.md](docs/m1-history-five-blocks.md)
+- [docs/m1-history-flashlist.md](docs/m1-history-flashlist.md)
+- [docs/m1-history-layout-baseline.md](docs/m1-history-layout-baseline.md)
+- [docs/m1-history-layout-stability.md](docs/m1-history-layout-stability.md)
+- [docs/m1-history-pull-hint.md](docs/m1-history-pull-hint.md)
+- [docs/m1-history-pull.md](docs/m1-history-pull.md)
+- [docs/m1-history-recovery-fix.md](docs/m1-history-recovery-fix.md)
+- [docs/m1-history-release-anchor.md](docs/m1-history-release-anchor.md)
+- [docs/m1-history-release-delay.md](docs/m1-history-release-delay.md)
+- [docs/m1-history-release-gate.md](docs/m1-history-release-gate.md)
+- [docs/m1-history-three-blocks.md](docs/m1-history-three-blocks.md)
+- [docs/m1-history-trigger-investigation.md](docs/m1-history-trigger-investigation.md)
+- [docs/m1-ios-composer-no-native-blur.md](docs/m1-ios-composer-no-native-blur.md)
+- [docs/m1-keyboard-layout.md](docs/m1-keyboard-layout.md)
+- [docs/m1-message-animation.md](docs/m1-message-animation.md)
+- [docs/m1-midrun-release.md](docs/m1-midrun-release.md)
+- [docs/m1-midrun-steer.md](docs/m1-midrun-steer.md)
+- [docs/m1-model-font-settings.md](docs/m1-model-font-settings.md)
+- [docs/m1-native-command-output.md](docs/m1-native-command-output.md)
+- [docs/m1-native-keyboard-release.md](docs/m1-native-keyboard-release.md)
+- [docs/m1-native-reactions.md](docs/m1-native-reactions.md)
+- [docs/m1-navigation-motion.md](docs/m1-navigation-motion.md)
+- [docs/m1-network-loop.md](docs/m1-network-loop.md)
+- [docs/m1-network-reliability.md](docs/m1-network-reliability.md)
+- [docs/m1-network-time.md](docs/m1-network-time.md)
+- [docs/m1-new-topic-resume-layout.md](docs/m1-new-topic-resume-layout.md)
+- [docs/m1-origin-display-fix.md](docs/m1-origin-display-fix.md)
+- [docs/m1-reliability-verification.md](docs/m1-reliability-verification.md)
+- [docs/m1-router-keyboard.md](docs/m1-router-keyboard.md)
+- [docs/m1-running-indicator-blur.md](docs/m1-running-indicator-blur.md)
+- [docs/m1-send-recovery.md](docs/m1-send-recovery.md)
+- [docs/m1-session-list-composer.md](docs/m1-session-list-composer.md)
+- [docs/m1-short-list-keyboard.md](docs/m1-short-list-keyboard.md)
+- [docs/m1-stable-turn-owner.md](docs/m1-stable-turn-owner.md)
+- [docs/m1-tool-timeline.md](docs/m1-tool-timeline.md)
+- [docs/m1-usable-chat.md](docs/m1-usable-chat.md)
+- [docs/m1-verification.md](docs/m1-verification.md)
+
+### 手机工作区与恢复
+
+- [docs/mobile-background-scene.md](docs/mobile-background-scene.md)
+- [docs/mobile-channel-context.md](docs/mobile-channel-context.md)
+- [docs/mobile-delete-failed-message.md](docs/mobile-delete-failed-message.md)
+- [docs/mobile-failed-send-recovery.md](docs/mobile-failed-send-recovery.md)
+- [docs/mobile-startup-receipt-warning.md](docs/mobile-startup-receipt-warning.md)
+- [docs/mobile-user-message-block.md](docs/mobile-user-message-block.md)
+- [docs/mobile-workspace-entry.md](docs/mobile-workspace-entry.md)
+
+### 桌面应用
+
+- [docs/desktop-kanban.md](docs/desktop-kanban.md)
+- [docs/desktop-macos-v1.md](docs/desktop-macos-v1.md)
+- [docs/desktop-release-0.1.6.md](docs/desktop-release-0.1.6.md)
+- [docs/desktop-session-composer.md](docs/desktop-session-composer.md)
+- [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
+- [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
+
+### 共享行为、内容呈现与发布
+
+- [docs/client-layout-tools-blur-release.md](docs/client-layout-tools-blur-release.md)
+- [docs/command-state-order.md](docs/command-state-order.md)
+- [docs/completed-unread-directory.md](docs/completed-unread-directory.md)
+- [docs/completed-unread-release.md](docs/completed-unread-release.md)
+- [docs/history-execution-state-release.md](docs/history-execution-state-release.md)
+- [docs/history-execution-state.md](docs/history-execution-state.md)
+- [docs/lighter-unread-dot.md](docs/lighter-unread-dot.md)
+- [docs/markdown-table-release-0.1.7.md](docs/markdown-table-release-0.1.7.md)
+- [docs/markdown-table-width.md](docs/markdown-table-width.md)
+- [docs/message-hierarchy.md](docs/message-hierarchy.md)
+- [docs/open-session-live-release-0.1.8.md](docs/open-session-live-release-0.1.8.md)
+- [docs/open-session-live.md](docs/open-session-live.md)
+- [docs/outbound-media-deployment.md](docs/outbound-media-deployment.md)
+- [docs/outbound-media.md](docs/outbound-media.md)
+- [docs/system-notices-release.md](docs/system-notices-release.md)
+
+### P0 可行性与插件验证
+
+- [docs/p0/README.md](docs/p0/README.md)
+- [docs/p0/clients.md](docs/p0/clients.md)
+- [docs/p0/close-compaction.md](docs/p0/close-compaction.md)
+- [docs/p0/close-mobile.md](docs/p0/close-mobile.md)
+- [docs/p0/close-recovery.md](docs/p0/close-recovery.md)
+- [docs/p0/final.md](docs/p0/final.md)
+- [docs/p0/history.md](docs/p0/history.md)
+- [docs/p0/plugin-e2e.md](docs/p0/plugin-e2e.md)
+- [docs/p0/plugin-execution.md](docs/p0/plugin-execution.md)
+- [docs/p0/plugin-history.md](docs/p0/plugin-history.md)
+- [docs/p0/plugin-summary.md](docs/p0/plugin-summary.md)
+- [docs/p0/plugin-transport.md](docs/p0/plugin-transport.md)
+- [docs/p0/plugin-validation-plan.md](docs/p0/plugin-validation-plan.md)
+- [docs/p0/resources.md](docs/p0/resources.md)
+- [docs/p0/rooms.md](docs/p0/rooms.md)
+- [docs/p0/transport.md](docs/p0/transport.md)
+- [probes/p0/close-mobile/README.md](probes/p0/close-mobile/README.md)
+- [probes/p0/verification/README.md](probes/p0/verification/README.md)
+
+### P1 协议、客户端契约与验收
+
+- [docs/p1/client-contract.md](docs/p1/client-contract.md)
+- [docs/p1/final.md](docs/p1/final.md)
+- [docs/p1/first-gate.md](docs/p1/first-gate.md)
+- [docs/p1/fourth-gate.md](docs/p1/fourth-gate.md)
+- [docs/p1/packaging.md](docs/p1/packaging.md)
+- [docs/p1/protocol.md](docs/p1/protocol.md)
+- [docs/p1/second-gate.md](docs/p1/second-gate.md)
+- [docs/p1/third-gate.md](docs/p1/third-gate.md)
+
+### 桌面验收证据
+
+- [docs/desktop/evidence/DESK-D0-01/verification.md](docs/desktop/evidence/DESK-D0-01/verification.md)
+- [docs/desktop/evidence/DESK-D0-02/verification.md](docs/desktop/evidence/DESK-D0-02/verification.md)
+- [docs/desktop/evidence/DESK-D0-03/verification.md](docs/desktop/evidence/DESK-D0-03/verification.md)
+- [docs/desktop/evidence/DESK-D0-04/verification.md](docs/desktop/evidence/DESK-D0-04/verification.md)
+- [docs/desktop/evidence/DESK-D0-05/verification.md](docs/desktop/evidence/DESK-D0-05/verification.md)
+- [docs/desktop/evidence/DESK-D0-06/verification.md](docs/desktop/evidence/DESK-D0-06/verification.md)
+- [docs/desktop/evidence/DESK-FIX-MARKDOWN-SPACING/verification.md](docs/desktop/evidence/DESK-FIX-MARKDOWN-SPACING/verification.md)
+- [docs/desktop/evidence/DESK-FIX-READ-LOOP/verification.md](docs/desktop/evidence/DESK-FIX-READ-LOOP/verification.md)
+- [docs/desktop/evidence/DESK-LOAD-FEEDBACK/verification.md](docs/desktop/evidence/DESK-LOAD-FEEDBACK/verification.md)
+
 ## 产品边界
 
 - 阅读 README.md 和 docs/ 下的需求、架构、开发阶段文档后再工作。
@@ -51,6 +212,8 @@
 - 已确认需求与建议/待决项分开记录。架构、接口、平台范围变更同时更新相关文档。
 - 开始实质开发前创建有 scope 和 acceptance 的 Kanban 卡；有并行工作时单独跟踪，不重复启动 worker。
 - 项目仓库在 /opt/projects/jamie/hermes-app；隔离 worktree 在 /opt/projects/jamie/_worktrees/hermes-app/<task>。
+- 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。当前入口仍读取 workspace 根文件，仓库 AGENTS.md 的独立绑定及大小限制调整尚待插件实现与部署验证，不能宣称已生效。该绑定不意味着客户端可访问整个仓库。
+- 仓库内的项目临时文件使用 tmp/，由根 .gitignore 的 /tmp/ 排除；权威文档留在 docs/，不放入临时目录。运行时工具 scratch 仍遵守 Hermes 提供的 TMPDIR，不擅自修改全局临时目录或其他 profile。
 - 不为客户端修改 Hermes 核心源码；新增服务端能力必须通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch、复制修改核心模块或维护客户端专用 fork 绕过此约束。
 - Hermes 源码 worktree 仅用于只读检查和隔离验证；插件代码独立维护。扩展点不足时先报告限制和替代方案，不擅自修改核心。
 - 检查其他会话/任务正在进行的修改；不得覆盖、回退或干扰它们。

@@ -11,7 +11,7 @@ import { threadPatch } from '../src/channel-edits.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };
-const state = initialized => ({channelId:'p_one',initialized,agentsBytes:12000,fileBytes:10485760});
+const state = initialized => ({channelId:'p_one',initialized,agentsBytes:10485760,fileBytes:10485760});
 const document = (content='Original',etag='original-version') => ({channelId:'p_one',path:'AGENTS.md',content,etag});
 function clientFixture() {
   let saved = document(), initialized=true;
@@ -90,11 +90,25 @@ test('editing preserves whitespace, sends original version, and allows clearing 
   assert.equal(h.prevention.prevent,false);assert.ok(h.button('Edit'));await h.close();
 });
 
-test('UTF-8 byte limit disables oversized multibyte input without truncating it',async()=>{
-  const f=clientFixture(),h=await editor(f);
+test('older servers retain their advertised UTF-8 byte guard without native input truncation',async()=>{
+  const f=clientFixture();f.client.workspace.getState=async()=>({...state(true),agentsBytes:12000});
+  const h=await editor(f);
   await h.press('Edit');const value='汉'.repeat(4001);await h.type(value);
   assert.equal(h.input().props.value,value);assert.equal(h.button('Save').props.disabled,true);
   await h.press('Save');assert.equal(f.calls.some(Array.isArray),false);await h.close();
+});
+
+test('large repository guidelines load and save before Files initialization without a 12K character cap',async()=>{
+  const f=clientFixture(),content='汉🌍 guidelines\n'.repeat(3000);
+  f.saved=document(content);f.initialized=false;
+  f.client.workspace.getState=async()=>({...state(false),agentsAvailable:true});
+  const h=await editor(f);
+  assert.equal(h.root.root.findByType('Markdown').props.text,content);
+  assert.equal(h.button('Set up channel files'),undefined);
+  await h.press('Edit');assert.equal(h.input().props.maxLength,undefined);
+  await h.type(content+'\nNew rule');assert.equal(h.button('Save').props.disabled,false);
+  await h.press('Save');assert.deepEqual(f.calls.find(Array.isArray),['save','p_one',content+'\nNew rule','original-version']);
+  assert.equal(f.calls.includes('initialize'),false);await h.close();
 });
 
 test('conflict keeps local draft/version, and explicit saved-copy replacement is confirmed',async()=>{

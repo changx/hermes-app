@@ -14,6 +14,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 ### R02 Channel / Thread 内容组织
 
+已确认目录补充：Channel workspace 与代码仓库保持分开；本项目 Channel 的 AGENTS.md 入口读取、编辑仓库根目录同一真实文件，不复制规则或开放整个仓库。移除插件、共享 SDK 和手机编辑框的 12 KB 专用限制，保留通用文件资源保护与原版本条件保存。候选实现、真实互操作验证及部署边界见 [仓库 AGENTS 独立绑定](channel-repository-agents.md)。
+
 支持核心聊天与频道管理。Channel 承载项目或长期工作领域；用户在 Channel 内创建多个 Thread，每个 Thread 有独立对话上下文。客户端管理这些结构，Hermes 负责权威存储。
 
 手机版 Channel 的 session list 底部直接提供多行输入框及完整附件加号菜单，发送第一条消息即创建并进入新对话，不再要求先点击新建加号打开全屏编辑器。复用现有持久发送队列、附件和原生导航；实现候选、草稿与离线边界及真机验收见 [session list 底部输入栏](m1-session-list-composer.md)。

@@ -21,7 +21,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
   const supported = client.supportsChannelWorkspace === true, online = client.connectionState === 'online';
   const dirty = editing && draft !== (document?.content || '');
   let tooLong = false;
-  try { tooLong = utf8Size(draft) > (workspace?.agentsBytes ?? 12000); } catch { tooLong = true; }
+  try { tooLong = utf8Size(draft) > (workspace?.agentsBytes ?? 10 * 1024 * 1024); } catch { tooLong = true; }
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const readDocument = async (signal?: AbortSignal): Promise<AgentsDocument | null> => {
@@ -36,7 +36,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
       if (supported) void (async () => {
         const state = await client.workspace.getState(channelId, controller.signal);
         if (!focused.current || generation.current !== version) return;
-        const saved = state.initialized ? await readDocument(controller.signal) : null;
+        const saved = (state.agentsAvailable ?? state.initialized) ? await readDocument(controller.signal) : null;
         if (!focused.current || generation.current !== version) return;
         setWorkspace(state); setDocument(saved); setDraft(saved?.content || '');
       })().catch(() => {
@@ -62,7 +62,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
     finally { working.current = false; if (mounted.current) setBusy(false); }
   };
   const save = async () => {
-    if (working.current || !focused.current || !supported || !online || !workspace?.initialized || tooLong || !dirty || conflict) return;
+    if (working.current || !focused.current || !supported || !online || !(workspace?.agentsAvailable ?? workspace?.initialized) || tooLong || !dirty || conflict) return;
     const version = generation.current, content = draft, previous = document?.etag ?? null;
     working.current = true; setBusy(true); setError('');
     try {
@@ -138,7 +138,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
     {loading ? <ActivityIndicator /> : editing ? <>
       <Text style={s.hint}>Working guidelines for this channel.</Text>
       <TextInput accessibilityLabel="AGENTS.md guidelines" placeholder="How should work in this channel be done?" value={draft} onChangeText={setDraft}
-        multiline maxLength={12000} editable={!busy} style={s.editor} />
+        multiline editable={!busy} style={s.editor} />
       <Text style={s.hint}>Saved guidelines are available to new sessions. Existing conversations do not change.</Text>
       {tooLong && <Text accessibilityRole="alert" style={s.error}>These guidelines are too long or contain an unsupported character. Shorten them before saving.</Text>}
       {!online && <Text style={s.hint}>Your draft is kept while the connection recovers.</Text>}
@@ -146,7 +146,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
         <Action label="Use saved version" disabled={busy || !online || !supported} onPress={useSaved} /></View>}
       <View style={s.actions}><Action label="Cancel" disabled={busy} onPress={cancel} />
         <Action label={busy ? 'Saving…' : 'Save'} disabled={busy || !online || !supported || tooLong || !dirty || conflict} onPress={() => void save()} /></View>
-    </> : supported && workspace ? !workspace.initialized ? <WorkspaceSetup busy={busy} disabled={!online} onSetup={() => void setup()} /> : <>
+    </> : supported && workspace ? !(workspace.agentsAvailable ?? workspace.initialized) ? <WorkspaceSetup busy={busy} disabled={!online} onSetup={() => void setup()} /> : <>
       <View style={s.toolbar}><Text style={[s.hint, s.fill]}>Long-term working guidelines, separate from channel context.</Text>
         <Action label={document ? 'Edit' : 'Add guidelines'} disabled={busy || !online} onPress={() => { editingRef.current = true; setEditing(true); setError(''); }} /></View>
       <ScrollView style={s.fill} contentContainerStyle={s.content}>

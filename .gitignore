@@ -7,6 +7,9 @@
 *.p12
 *.mobileprovision
 
+# Project-local temporary files (shared repository/workspace root)
+/tmp/
+
 # Dependencies/build outputs
 node_modules/
 # Also ignore task-local symlink to retained dependencies

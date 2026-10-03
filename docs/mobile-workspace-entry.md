@@ -1,5 +1,7 @@
 # Mobile Channel Files and AGENTS.md entry
 
+Current candidate update: [Repository AGENTS binding](channel-repository-agents.md) removes the historical 12,000-byte/native-character ceiling below. An explicitly bound repository root document is editable independently of Files initialization; workspace and repository stay separate. Original-version conflict protection remains. No deployment or physical-device acceptance is implied.
+
 ## Scope and candidate
 
 Task `t_5ebd1858`, branch `feat/mobile-workspace-entry`, base `857a0e2`. Mobile-first implementation uses the standalone plugin's workspace contract from `docs/channel-workspace.md` in the plugin repository. No server/core changes, runtime plugin installation, Gateway/Expo restarts, desktop UI changes, dependency/lockfile changes or publication in this implementation step.

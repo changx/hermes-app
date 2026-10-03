@@ -27,9 +27,21 @@ test('workspace JSON response bounds are checked before/after text allocation',a
   try{
     const http=nativeTransport('https://example.test').http;
     globalThis.fetch=async()=>({status:200,headers:new Headers({'content-length':'1048577'}),text:async()=>{reads++;return '{}';}});
-    await assert.rejects(http.request('GET','/v1/channels/p_one/agents','synthetic'));assert.equal(reads,0);
+    await assert.rejects(http.request('GET','/v1/channels/p_one/files','synthetic'));assert.equal(reads,0);
     globalThis.fetch=async()=>({status:200,headers:new Headers(),text:async()=> '汉'.repeat(350000)});
-    await assert.rejects(http.request('GET','/v1/channels/p_one/agents','synthetic'));
+    await assert.rejects(http.request('GET','/v1/channels/p_one/files','synthetic'));
+  }finally{globalThis.fetch=original;}
+});
+
+test('AGENTS JSON transport accepts escaped large documents but still bounds wire allocation',async()=>{
+  const original=globalThis.fetch;let reads=0;
+  try{
+    const http=nativeTransport('https://example.test').http;
+    const content='汉🌍\n'.repeat(120000),raw=JSON.stringify({content});
+    globalThis.fetch=async()=>({status:200,headers:new Headers({'content-type':'application/json','content-length':String(Buffer.byteLength(raw))}),text:async()=>{reads++;return raw;}});
+    assert.equal((await http.request('GET','/v1/channels/p_one/agents','synthetic')).body.content,content);
+    globalThis.fetch=async()=>({status:200,headers:new Headers({'content-length':String(6*10485760+4097)}),text:async()=>{reads++;return '{}';}});
+    await assert.rejects(http.request('GET','/v1/channels/p_one/agents','synthetic'));assert.equal(reads,1);
   }finally{globalThis.fetch=original;}
 });
 

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { HermesClient, HttpError } from '../../packages/client/dist/index.js';
+import { nativeTransport } from '../../apps/mobile/src/transport.ts';
+const [base, cid, token] = process.argv.slice(2);
+const transport = nativeTransport(base);
+const client = new HermesClient({ ...transport, token: () => token });
+await client.capabilities();
+assert.equal(client.supportsChannelWorkspace, true);
+const state = await client.workspace.getState(cid);
+assert.equal(state.initialized, false);
+assert.equal(state.agentsAvailable, true);
+assert.equal(state.agentsBytes, 10 * 1024 * 1024);
+const original = await client.workspace.getAgents(cid);
+assert.ok(Buffer.byteLength(original.content) > 12000);
+assert.equal(new TextDecoder().decode(await client.workspace.readFile(cid, 'AGENTS.md')), original.content);
+const content = original.content + '\n' + '汉🌍\n'.repeat(200000);
+const saved = await client.workspace.saveAgents(cid, content, original.etag);
+assert.equal(saved.content, content);
+const second = new HermesClient({ ...transport, token: () => token });
+assert.equal((await second.workspace.getAgents(cid)).content, content);
+await assert.rejects(second.workspace.saveAgents(cid, 'stale overwrite', original.etag), e => e instanceof HttpError && e.status === 412);
+assert.equal((await second.workspace.getAgents(cid)).content, content);
+const fresh = original.content + '\nSaved via repository binding\n';
+await second.workspace.saveAgents(cid, fresh, saved.etag);
+assert.equal((await client.workspace.getAgents(cid)).content, fresh);
+assert.equal(new TextDecoder().decode(await client.workspace.readFile(cid, 'AGENTS.md')), fresh);
+assert.equal((await client.workspace.getState(cid)).initialized, false);
+assert.equal(client.messages.size, 0);
+console.log(JSON.stringify({ real_plugin_http: true, native_transport: true, repository_binding: true,
+  workspace_not_initialized: true, large_unicode_roundtrip: true, original_version_conflict: true,
+  content_bytes: Buffer.byteLength(fresh), sha256: createHash('sha256').update(fresh).digest('hex') }));

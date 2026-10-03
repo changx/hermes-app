@@ -36,10 +36,13 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
       body: body === undefined ? undefined : JSON.stringify(body), signal
     });
     const workspaceReply = /^\/v1\/channels\/[^/]+\/(workspace|files|agents|attachments|directories)(\?|$)/.test(path);
+    // AGENTS uses the normal 10 MiB file guard; escaped JSON needs up to 6x
+    // that wire size. Other workspace metadata retains its smaller bound.
+    const replyBytes = /^\/v1\/channels\/[^/]+\/agents(\?|$)/.test(path) ? 6 * MAX_ATTACHMENT_BYTES + 4096 : 1024 * 1024;
     const length = response.headers.get('content-length');
-    if (workspaceReply && length !== null && (!/^\d+$/.test(length) || Number(length) > 1024 * 1024)) throw new Error('The file response is too large.');
+    if (workspaceReply && length !== null && (!/^\d+$/.test(length) || Number(length) > replyBytes)) throw new Error('The file response is too large.');
     const raw = await response.text();
-    if (workspaceReply && (raw.length > 1024 * 1024 || encodeURIComponent(raw).replace(/%[0-9A-F]{2}/g, 'x').length > 1024 * 1024)) throw new Error('The file response is too large.');
+    if (workspaceReply && (raw.length > replyBytes || encodeURIComponent(raw).replace(/%[0-9A-F]{2}/g, 'x').length > replyBytes)) throw new Error('The file response is too large.');
     const delay=retryAfterMs(response.headers.get('retry-after'));
     return { status: response.status, body: raw ? (response.headers.get('content-type')?.includes('json') ? JSON.parse(raw) : raw) : null, ...(delay === undefined ? {} : {retryAfterMs:delay}) };
   };
