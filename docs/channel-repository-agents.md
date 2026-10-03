@@ -1,6 +1,6 @@
 # Channel repository AGENTS.md binding
 
-Task: `t_b28f2c2d`. Client branch: `feat/channel-repository-agents`; plugin branch: `feat/plugin-repository-agents` (standalone plugin repository history). This is a verified local candidate, not a deployed App update.
+Task: `t_b28f2c2d`. Client branch: `feat/channel-repository-agents`; plugin branch: `feat/plugin-repository-agents` (standalone plugin repository history). Both were merged/pushed to main after explicit authorization. Client resources are deployed; backend source/binding are staged, but Gateway activation is still blocked from this active Gateway process. This is not a complete backend release.
 
 ## Confirmed behavior
 
@@ -32,14 +32,26 @@ Task: `t_b28f2c2d`. Client branch: `feat/channel-repository-agents`; plugin bran
 
 ## Deployment boundary
 
-No main merge, push, live binding, runtime plugin replacement, Gateway/Expo restart or public manifest verification was performed. The running Channel still uses the old workspace target until deployment.
+Authorized publication: App main `dfba2f9` retains the independently added edge-to-edge message colors; plugin main `64e49fe` is version 0.2.1. Both GitHub main refs were read back exactly. The running App source was switched to the merged main commit, keeping the earlier local documentation changes in that commit and a named stash backup. Lockfiles were unchanged; no npm ci or full-suite rerun at publication.
 
-When this candidate is authorized for deployment, install the tested plugin into `hermes-app-dev` only, then register this project's repository using the existing local command:
+The exact plugin archive SHA-256 is `007763f56b1031a2953b837f84dc0a8f216c136238e9c538b09ccb3f5d04c67c`. Only `workspace.py` and `plugin.yaml` changed in the active-profile installation; exact source and code-only rollback/service snapshots were verified. The existing ProjectDB folder registration now labels `/opt/projects/jamie/hermes-app` as `Channel AGENTS source`; the primary managed workspace path was read back unchanged. No files/chat data were moved or erased.
+
+Only Expo was restarted. Public iOS/Android manifests and their exact launchAsset responses returned HTTP 200, SDK 57.0.0, the new repository-guidelines markers and no native 12K character cap. Actual public bundle SHA-256: iOS `182f86f55930b0e3325aa6cf72859cb696ca8894c2322a4d9c295043e0f92a16`; Android `a662b238e0c7a43b740407aa18a6aed05fdc84d4434afdb1c4cbebeb5a772b88`. The initial public readiness/header attempts failed; final exact-resource readback passed. This is Expo Go development publication, not a signed standalone package.
+
+Dev Gateway self-restart was refused by lifecycle protection. It retains PID 2458282 and the old in-memory workspace-only implementation; authenticated public state still reports `agents_bytes=12000` and no repository source. Backend target identity, real model and cold-history post-activation gates cannot be claimed yet. Jamie's Gateway stayed unchanged. Do not restart via detached jobs/signals or another self-managed lane to evade protection.
+
+An independent user terminal can finish activation, after active App tasks end:
 
 ```bash
-hermes -p hermes-app-dev project add-folder p_6cf55361 /opt/projects/jamie/hermes-app --label 'Channel AGENTS source'
+bash /home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/channel-repository-agents/release/activate.sh
 ```
 
-Do not change the primary workspace path or move/delete existing workspace files. Read back the exact ProjectDB registration and authenticated `/agents` bytes against the repository before claiming success. Merge the tested client candidate and restart only the affected development Gateway/Expo services through the approved external operator lane. Verify capabilities, HTTP/WS, history cold read, same-ID idempotence, a real model message, and both public manifests/exact launch assets.
+The script refuses a Gateway-descendant process, checks no active App tasks, restarts only the dev Gateway, then verifies actual repository bytes/versions, authentication, HTTP/WS, same-ID idempotence, a real model message and cold history. It is prepared but has not run; even the attempted combined syntax-check call was intercepted by lifecycle protection. Private evidence and exact rollback code are under the same `release/` directory. Rollback baseline: App runtime `11a9336`, plugin `7eebd30`; restore only affected code/services or use explicit Git reverts, never chat databases.
+
+The authorized extra AGENTS.md link/status synchronization was still refused by protected-file approval timeout. It was not retried via another tool or API; documentation here records the pending index update.
+
+## Origin of the former 12 KB ceiling
+
+Git history identifies plugin `08fca72` as introducing `AGENTS_BYTES = 12000` with the managed file API. Mobile `f2a3347` added shared-client `MAX_AGENTS = 12000` and native `maxLength={12000}`. The historical API documentation calls it a special rules-file resource limit. It was an implementation choice, not a Hermes core or user requirement; initial prompt budget is a separate supported-extension limit.
 
 Physical iPhone long-document scrolling, editing/selection, keyboard, background return, two-device conflict behavior and the unchanged chat network fault matrix remain device acceptance items. No Hermes core or other-profile modification.
