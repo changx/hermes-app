@@ -24,7 +24,7 @@ Baseline six-test run: three failures (matching proof does not retire original; 
 - Mobile suite: 448 total, 447 pass, zero failures, one optional Chromium table-layout case skipped with no browser configured.
 - With Chromium enabled: 447 pass, one table-layout test times out after 30 seconds. Standalone retry and alternate launch flags also time out. This unrelated browser gate is **not passed**.
 - Mobile TypeScript and `git diff --check`: pass.
-- Offline iOS and Android exports: success. Candidate dependencies reuse installed packages; an ignored generated Markdown renderer and SDK dist were built locally. Metro temporarily included the real dependency folder to follow the worktree dependency symlink; this local build-only config change was restored, not committed.
+- Offline iOS and Android exports: success; both exact generated bundles contain recovery and notice-reconciliation code, with SHA-256 evidence. An initial Android export returned success but omitted app routes in the reused Metro cache; explicit `EXPO_ROUTER_APP_ROOT=./src/app` and `--clear` produced a verified complete Android bundle. Candidate dependencies reuse installed packages; an ignored generated Markdown renderer and SDK dist were built locally. Metro temporarily included the real dependency folder to follow the worktree dependency symlink; this local build-only config change was restored, not committed.
 - Public manifest/launchAsset verification and physical-iPhone acceptance: not performed because this candidate has not been deployed.
 
 ## Boundaries
