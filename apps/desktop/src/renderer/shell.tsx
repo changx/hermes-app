@@ -76,10 +76,14 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
 const MessageRow = memo(({ message, continuation, hidden = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean }) => {
   const finalReply = message.role === "assistant" && message.displayKind === "final";
   const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
-  const timestamp = message.createdAt ? new Date(message.createdAt * 1000) : undefined;
+  const timestamp = message.createdAt !== undefined ? new Date(message.createdAt * 1000) : undefined;
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
+  const two = (value: number) => String(value).padStart(2, "0");
+  const timeLabel = hasTime && (message.role === "user"
+    ? `${timestamp.getFullYear()}-${two(timestamp.getMonth() + 1)}-${two(timestamp.getDate())} ${two(timestamp.getHours())}:${two(timestamp.getMinutes())}`
+    : timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
-    {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>}
+    {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
       const presentation = toolPresentation(tool.name);

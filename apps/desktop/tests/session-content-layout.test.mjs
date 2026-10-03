@@ -57,6 +57,12 @@ test('content layout preserves real message order, process grouping and command 
     const assistant=article[1].includes('message-assistant');
     assert.equal(article[2].includes('class="message-time"'),!assistant,'user/system keep time, assistant omits it');
     assert.equal(article[2].includes('class="message-role"'),!assistant,'no empty assistant header');
+    if (article[1].includes('message-user')) {
+      const two = value => String(value).padStart(2, '0');
+      const date = new Date(1700000000 * 1000);
+      const expected = `${date.getFullYear()}-${two(date.getMonth()+1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
+      assert.ok(article[2].includes(`>${expected}</time>`), 'user time includes local date and minute time');
+    }
   }
   assert.ok(html.indexOf('Hi')<html.indexOf('I will align'));
   assert.ok(html.indexOf('Reading styles.css')<html.indexOf('Updated display'));

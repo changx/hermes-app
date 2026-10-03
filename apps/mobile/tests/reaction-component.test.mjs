@@ -182,6 +182,7 @@ test('sender names and assistant timestamps are hidden while user timestamps rem
     assert.equal(children.length, 1);
     assert.equal(children[0].type, 'MessageTime');
     assert.equal(children[0].props.seconds, messages[index].created_at);
+    assert.equal(children[0].props.absolute, true, 'user messages always show the date and time');
     assert.equal(named(rowTree, 'MessageContent')[0].props.text, messages[index].text);
   }
   for (const index of [1, 2, 3]) {

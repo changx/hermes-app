@@ -44,7 +44,7 @@ test('absolute and accessibility formatting follow device timezone at minute pre
   }
 });
 
-function mountClock(seconds, initialMs) {
+function mountClock(seconds, initialMs, absolute = false) {
   let now = initialMs, state, cleanup, effectDeps;
   const timers = new Map(), listeners = new Set(), renders = [];
   let nextId = 0;
@@ -63,7 +63,10 @@ function mountClock(seconds, initialMs) {
     setTimeout: (fn, delay) => { const key = ++nextId; timers.set(key, { fn, at: now + delay }); return key; },
     clearTimeout: key => timers.delete(key) });
   const Component = output.exports.MessageTime;
-  const render = () => Component({ seconds });
+  const render = () => {
+    const tree = Component({ seconds, absolute });
+    return typeof tree.type === 'function' ? tree.type(tree.props) : tree;
+  };
   const tree = render();
   const advance = ms => {
     const target = now + ms;
@@ -123,6 +126,29 @@ test('a newly received authoritative timestamp refreshes against the current clo
   mounted.unmount();
   assert.equal(mounted.timers.size, 0);
   assert.equal(mounted.listeners.size, 0);
+});
+
+test('user dates stay absolute from new sends through eight hours and old history without timers', () => {
+  const now = new Date(2026, 9, 3, 18, 4, 5).getTime();
+  for (const age of [0, 59, 60, 3600, 8 * 3600, 86400, 366 * 86400, -500]) {
+    const seconds = now / 1000 - age;
+    const mounted = mountClock(seconds, now, true);
+    assert.equal(mounted.tree.props.children[0], accessibleMessageTime(seconds));
+    assert.match(mounted.tree.props.children[0], /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.equal(mounted.timers.size, 0);
+    assert.equal(mounted.listeners.size, 0);
+    mounted.advance(2 * 86400000);
+    assert.equal(mounted.render().props.children[0], accessibleMessageTime(seconds));
+    assert.equal(mounted.renders.length, 0);
+    assert.equal(mounted.updateSeconds(seconds + 60).props.children[0], accessibleMessageTime(seconds + 60));
+  }
+  assert.equal(mountClock(0, now, true).tree.props.children[0], accessibleMessageTime(0));
+  for (const value of [undefined, null, NaN, Infinity, -1, '123']) {
+    const mounted = mountClock(value, now, true);
+    assert.equal(mounted.tree.props.children[0], '—');
+    assert.equal(mounted.tree.props.accessibilityLabel, 'Time unavailable');
+    assert.equal(mounted.timers.size, 0);
+  }
 });
 
 test('outbox metadata retains one send time across status changes and cold boots; legacy has no fake time', async () => {

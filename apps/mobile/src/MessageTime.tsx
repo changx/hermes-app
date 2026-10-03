@@ -3,8 +3,16 @@ import { AppState } from 'react-native';
 import { Text } from './FontSize';
 import { accessibleMessageTime, formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds } from './messageTime';
 
+/** User message dates stay fixed; directory and notice times keep their existing behavior. */
+export const MessageTime = memo(function MessageTime({ seconds, absolute = false }: { seconds?: number; absolute?: boolean }) {
+  if (absolute) return <Text style={{ color: '#697b90', fontSize: 12 }} accessibilityLabel={validTimestampSeconds(seconds) ? `Sent ${accessibleMessageTime(seconds)}` : 'Time unavailable'}>
+    {validTimestampSeconds(seconds) ? accessibleMessageTime(seconds) : '—'}
+  </Text>;
+  return <RelativeMessageTime seconds={seconds} />;
+});
+
 /** Isolated from the markdown row/list so relative-time ticks don't re-render either. */
-export const MessageTime = memo(function MessageTime({ seconds }: { seconds?: number }) {
+const RelativeMessageTime = memo(function RelativeMessageTime({ seconds }: { seconds?: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     let active = AppState.currentState !== 'background' && AppState.currentState !== 'inactive';
