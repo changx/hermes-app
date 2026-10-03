@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+
+const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
+const message = (id, role, text, extra = {}) => ({ id, role, text, toolCalls: [], attachments: [], ...extra });
+const longList = 'A longer user message\n\n'+Array.from({length:14}, (_,i)=>`- Item ${i+1}: ${'Long wrapped prose stays inside its own message. '.repeat(3)}\n  - A nested list item.`).join('\n');
+const table = '| First | Second | Third | Fourth |\n| --- | --- | --- | --- |\n| '+Array(4).fill('a-long-readable-table-column'.repeat(8)).join(' | ')+' |';
+const messages = [
+  message('u1','user','Apply the latest Session content design.'),
+  message('a1','assistant','I will align the message content and keep the desktop navigation unchanged.'),
+  message('tool','assistant','',{toolCalls:[{id:'read',name:'read_file',label:'Read file',caption:'Reading styles.css L1-40',icon:'📖'},{id:'cmd',name:'terminal',label:'Run command',detail:'npm run desktop:check'}]}),
+  message('final','assistant','Updated display:\n\n- Full-width user messages\n- Aligned names and prose\n- A distinct final reply',{displayKind:'final'}),
+  message('u2','user',longList),
+  message('u3','user',table),
+  message('u4','user','Attached reference.',{attachments:[{id:'image',name:'reference.png',mime:'image/png',state:'available',size:1024}]}),
+  message('a2','assistant','The next response starts after the complete user message.',{displayKind:'direct'}),
+];
+const snapshot = {revision:1,phase:'connected',connectionState:'online',channels:[{id:'c',name:'Project'}],threads:[{id:'t',channelId:'c',title:'Session display',lastMessageAt:Date.now()/1000,running:true}],selectedChannelId:'c',selectedThreadId:'t',messages,interactions:[],canLoadOlder:false};
+const bundle = await build({stdin:{resolveDir:new URL('..',import.meta.url).pathname,loader:'tsx',contents:`
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { DesktopShellView } from './src/renderer/shell';
+export const html=renderToStaticMarkup(createElement(DesktopShellView,{snapshot:${JSON.stringify(snapshot)}}));
+export const preview=renderToStaticMarkup(createElement(DesktopShellView,{snapshot:${JSON.stringify({...snapshot,messages:messages.slice(0,4)})}}));
+`},bundle:true,platform:'node',format:'cjs',external:['react','react/jsx-runtime','react-dom/server'],write:false});
+const mod={exports:{}};
+new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
+
+test('full-width user and final blocks share the ordinary assistant content gutter',()=>{
+  assert.match(css,/\.message-user \{[^}]*width: 100%;[^}]*max-width: none;[^}]*border: 0;[^}]*border-radius: 0;[^}]*background: #e6f0ff;/);
+  assert.doesNotMatch(css,/\.message-user:has\(/);
+  assert.match(css,/\.message-final \{[^}]*margin-top: 32px;[^}]*padding: 12px 14px;[^}]*background: #f7f5ef;/);
+  assert.doesNotMatch(css,/\.message-final \{[^}]*border-left:/);
+  assert.match(css,/\.message \{[^}]*padding-inline: 14px;/);
+  assert.match(css,/\.message-list \{[^}]*padding: 18px 0;/);
+});
+
+test('content layout preserves real message order, process grouping and command escaping',()=>{
+  const html=mod.exports.html;
+  assert.equal((html.match(/<article /g)||[]).length,messages.length);
+  assert.equal((html.match(/class="message-role"/g)||[]).length,messages.length-1);
+  assert.equal((html.match(/message-continuation/g)||[]).length,1);
+  assert.equal((html.match(/message-final/g)||[]).length,1);
+  assert.ok(html.indexOf('Apply the latest')<html.indexOf('I will align'));
+  assert.ok(html.indexOf('Reading styles.css')<html.indexOf('Updated display'));
+  assert.ok(html.indexOf('Updated display')<html.indexOf('A longer user'));
+  assert.match(html,/<pre class="tool-command">npm run desktop:check<\/pre>/);
+  assert.doesNotMatch(html,/<details|<summary/);
+});
+
+test('Chromium: blocks reach both edges, text aligns, long content cannot overlap following rows', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
+  const folder=await mkdtemp(join(tmpdir(),'desktop-session-content-'));
+  try {
+    const file=join(folder,'layout.html');
+    await writeFile(file,`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${mod.exports.html}</div><pre id="results" hidden></pre><script>
+      const results=[];
+      for(const width of [720,900,1280,1800,720]) {
+        document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
+        const list=document.querySelector('.message-list'),bounds=list.getBoundingClientRect(),rows=[...document.querySelectorAll('.message')];
+        const rect=x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width}};
+        results.push({width,left:bounds.left,right:bounds.left+list.clientWidth,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
+      }
+      document.getElementById('results').textContent=JSON.stringify(results);
+    </script></body></html>`);
+    const dom=execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',`--user-data-dir=${join(folder,'profile')}`,'--dump-dom',pathToFileURL(file).href],{encoding:'utf8',timeout:30000,maxBuffer:2_000_000,stdio:['ignore','pipe','pipe']});
+    const results=JSON.parse(/<pre id="results" hidden="">(.*?)<\/pre>/.exec(dom)[1]);
+    const near=(actual,expected,label)=>assert.ok(Math.abs(actual-expected)<1,`${label}: ${actual} != ${expected}`);
+    for(const result of results){
+      assert.ok(result.scrollWidth<=result.clientWidth,'wide contents scroll locally, not across timeline');
+      for(const row of result.rows){
+        near(row.box.left,result.left,'left edge');near(row.box.right,result.right,'right edge');
+        near(row.prose.left,result.left+14,'prose gutter');
+        if(row.byline)near(row.byline.left,row.prose.left,'byline and prose');
+        assert.ok(row.last.bottom<=row.box.bottom+1,'last child stays inside message height');
+        if(row.next)assert.ok(row.next.top>=row.box.bottom,'next row cannot overlap');
+        if(row.user){assert.equal(row.style.background,'rgb(230, 240, 255)');assert.equal(row.style.radius,'0px');assert.equal(row.style.border,'0px');}
+        if(row.final){assert.equal(row.style.background,'rgb(247, 245, 239)');assert.equal(row.style.border,'0px');assert.equal(row.style.marginTop,'32px');}
+      }
+      assert.ok(result.tables.some(x=>x.scrollWidth>x.clientWidth),'wide table keeps horizontal scrolling');
+    }
+    if(process.env.HERMES_SESSION_EVIDENCE){
+      const path=process.env.HERMES_SESSION_EVIDENCE;await mkdir(path,{recursive:true});
+      await writeFile(join(path,'layout-results.json'),JSON.stringify(results,null,2)+'\n');
+      const preview=join(path,'preview.html');await writeFile(preview,`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${mod.exports.preview}</div></body></html>`);
+      execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',`--user-data-dir=${join(folder,'screenshot')}`,'--window-size=1280,900',`--screenshot=${join(path,'preview.png')}`,pathToFileURL(preview).href],{timeout:30000,stdio:'pipe'});
+    }
+  }finally{await rm(folder,{recursive:true,force:true});}
+});

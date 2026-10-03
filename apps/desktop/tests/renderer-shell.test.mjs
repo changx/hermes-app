@@ -120,7 +120,8 @@ test("tool records render expanded, in order, and escape command text", () => {
 });
 
 test("conversation uses compact fixed gutters without a centered width cap", () => {
-  assert.match(styles, /\.message-list\s*{[^}]*padding:\s*18px 20px;/);
+  assert.match(styles, /\.message-list\s*{[^}]*padding:\s*18px 0;/);
+  assert.match(styles, /\.message\s*{[^}]*padding-inline:\s*14px;/);
   assert.match(styles, /\.message\s*{[^}]*max-width:\s*none;[^}]*margin:\s*0 0 20px;/);
   assert.doesNotMatch(styles, /padding:[^;]*8vw/);
 });

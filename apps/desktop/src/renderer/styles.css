@@ -168,8 +168,8 @@ textarea:disabled {
 .state-online { color: #237a35; background: #e8f5eb; }
 .state-blocked { color: #9d1b32; background: #fff0f2; }
 .error-banner { padding: 9px 18px; color: #9d1b32; background: #fff0f2; font-size: 13px; }
-.message-list { overflow: auto; padding: 18px 20px; }
-.message { max-width: none; margin: 0 0 20px; color: #172a40; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-list { overflow: auto; padding: 18px 0; }
+.message { max-width: none; margin: 0 0 20px; padding-inline: 14px; color: #172a40; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-role { margin-bottom: 5px; color: #50647b; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 
 .conversation-empty {
@@ -292,8 +292,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .timeline-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .message-list { height: 100%; overflow: auto; }
 .message.optimistic { opacity: .78; }
-.message-user { width: fit-content; min-width: 0; max-width: 80%; margin-right: auto; padding: 13px; border: 1px solid #d0e2fb; border-radius: 16px; border-top-left-radius: 4px; background: #e6f0ff; color: #172a40; }
-.message-user:has(.markdown-table), .message-user:has(.attachment-card), .message-user:has(.mermaid-diagram) { width: 80%; }
+.message-user { width: 100%; min-width: 0; max-width: none; padding: 13px 14px; border: 0; border-radius: 0; background: #e6f0ff; color: #172a40; }
 .message.message-user .message-role { color: #50647b; }
 /* Markdown emits separator newlines between blocks; do not render them as spacer lines.
    Fenced code and tool commands keep their own explicit whitespace rules. */
@@ -314,7 +313,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .blocked-image { color: var(--app-muted); font-style: italic; }
 .message:has(+ .message-continuation) { margin-bottom: 6px; }
 .message-continuation { margin-top: 0; }
-.message-final { margin-top: 32px; padding: 12px 16px; border-left: 2px solid #e5e7eb; background: #f7f5ef; }
+.message-final { margin-top: 32px; padding: 12px 14px; background: #f7f5ef; }
 .message-tools-only { margin-bottom: 6px; }
 .message .message-role { display: flex; align-items: baseline; gap: 9px; margin-top: 0; font-size: 13px; letter-spacing: 0; text-transform: none; color: #50647b; }
 .message-time { color: var(--app-muted); font-size: 11px; font-weight: 400; }

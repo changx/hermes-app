@@ -64,3 +64,19 @@ Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome npm run desktop:check` 
 Private evidence is in the current profile Channel workspace `desktop-mobile-palette/`: computed colors, production-component HTML, PNG and final check log. Preview messages are synthetic, not a live conversation or macOS screenshot. Pairing and new-session forms are in hidden probe containers, so their computed styles do not prove native interactions.
 
 No main merge, push, Release, service restart or Mac installation. Local `apps/desktop/dist` is built; this candidate has no new macOS installer or native visual acceptance. Those checks remain separate; the implementation card stays in review.
+
+## Latest Session content follow-up (isolated candidate)
+
+User subsequently requested applying the latest mobile Session content display design to desktop. This overrides the old desktop content-sized blue-bubble rules above. Continue the neutral palette candidate from `283f636`; card `t_22bde83d`.
+
+- User messages are full available-width `#e6f0ff` blocks, with no outer border, rounded corners, 80% limit or content-type-specific width.
+- User and final backgrounds reach both timeline edges. Ordinary assistant, user and final bylines/prose all start at the same 14px inset. Text does not touch the window edge.
+- Final replies retain `#f7f5ef` and 32px top separation, but lose the left decoration. Existing vertical spacing is retained.
+- Continuous process grouping, safe compact captions and terminal command blocks remain unchanged. Message order/identity, timestamps, receipt actions, approvals, attachments, Markdown, table-local scrolling and composer/scroll handlers are not rewritten.
+- Only content CSS and tests changed, plus this documentation. No mobile, shared protocol, plugin, core, dependency or lockfile changes.
+
+Verification: newly added source/real Chromium assertions failed on the prior palette candidate (old gutter/bubbles) and passed after the layout change. DOM checks at 720/900/1280/1800px and resize back to 720 cover short prose, long nested lists, wide tables, attachment preview containers, continuous process and final replies. Both edges align, names/prose share the inset, content remains within row height, following rows do not overlap, and wide tables scroll locally rather than widening the timeline. Existing production composer geometry and Markdown/table checks also pass. Final desktop TypeScript/build and **110/110 tests** pass with no skipped/failed tests; `git diff --check` passes.
+
+Evidence: current profile Channel workspace `desktop-session-content/`, including baseline failure, final check log, layout metrics and updated production-component preview HTML/PNG. The preview contains synthetic example content, not a Mac screenshot or live model execution. This is a client layout change, not a new tool capture implementation.
+
+No main merge, push, installer release, native installation or service restart. Mac visual/keyboard acceptance and publication remain separate. The updated local desktop artifact is in `apps/desktop/dist`.
