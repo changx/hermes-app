@@ -100,6 +100,60 @@ test('desktop composer separates stop and send; preserves IME/Shift+Enter and se
   await act(async()=>send.resolve());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'');await act(async()=>tree.unmount());
 });
 
+test('desktop draft label follows local input and clears only after successful save', async()=>{
+  const saved=deferred(),calls=[];
+  environment({sendMessage:payload=>{calls.push(payload);return saved.promise;},selectThread:async()=>{}});
+  const current={...snapshot,selectedThreadId:'draft-test',threads:[{id:'draft-test',channelId:'a',title:'Draft test',running:false,completedUnread:true,lastMessageAt:Date.now()/1000}]};
+  const tree=await mount(DesktopShellView,{snapshot:current});
+  const input=()=>tree.root.findByProps({'aria-label':'Message'});
+  const badges=()=>tree.root.findAllByProps({className:'thread-draft'});
+  try {
+    assert.equal(badges().length,0);
+    await act(async()=>input().props.onChange({target:{value:'  \n '}}));
+    assert.equal(badges().length,0);
+    await act(async()=>input().props.onChange({target:{value:'remember me'}}));
+    assert.equal(badges().length,1); assert.deepEqual(badges()[0].children,['draft']);
+    assert.equal(tree.root.findAllByProps({'aria-label':'Completed, unread'}).length,1);
+    await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
+    assert.equal(badges().length,1);
+    await act(async()=>saved.reject(Error('synthetic local storage failure')));
+    assert.equal(badges().length,1);
+    assert.equal(input().props.value,'remember me');
+    window.hermesDesktop.sendMessage=async payload=>calls.push(payload);
+    await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
+    assert.equal(badges().length,0);
+    assert.deepEqual(calls.at(-1),{text:'remember me',attachmentIds:[]});
+    await act(async()=>input().props.onChange({target:{value:'clear me'}}));
+    assert.equal(badges().length,1);
+    await act(async()=>input().props.onChange({target:{value:''}}));
+    assert.equal(badges().length,0);
+  } finally { await act(async()=>tree.unmount()); }
+});
+
+test('attachment-only desktop draft updates memoized navigation and survives session switching', async()=>{
+  const file={id:'draft-file',name:'note.txt'},calls=[];
+  environment({pickAndUploadAttachments:async()=>[file],deleteUnattachedAttachment:async id=>calls.push(['delete',id]),sendMessage:async payload=>calls.push(['send',payload])});
+  const threads=[{id:'attachment-draft',channelId:'a',title:'Attachment draft',running:false,lastMessageAt:Date.now()/1000},{id:'other-draft',channelId:'a',title:'Other',running:false,lastMessageAt:Date.now()/1000}];
+  const current={...snapshot,selectedThreadId:'attachment-draft',threads};
+  const tree=await mount(DesktopShellView,{snapshot:current});
+  const badge=()=>tree.root.findAllByProps({className:'thread-draft'});
+  try {
+    await act(async()=>tree.root.findByProps({'aria-label':'Attach files'}).props.onClick());
+    assert.equal(badge().length,1);
+    await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...current,selectedThreadId:'other-draft'}})));
+    assert.equal(badge().length,1);
+    assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'');
+    await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:current})));
+    await act(async()=>tree.root.findByProps({'aria-label':'Remove note.txt'}).props.onClick());
+    assert.equal(badge().length,0);
+    await act(async()=>tree.root.findByProps({'aria-label':'Attach files'}).props.onClick());
+    assert.equal(badge().length,1);
+    await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
+    assert.equal(badge().length,0);
+    assert.deepEqual(calls.at(-1),['send',{text:'',attachmentIds:['draft-file']}]);
+  } finally { await act(async()=>tree.unmount()); }
+});
+
 test('channel tree has no Select channel action and expanding a branch does not navigate',async()=>{
   const calls=[];environment({selectChannel:id=>{calls.push(id);return Promise.resolve();}});
   const tree=await mount(NavigationPanel,{snapshot,onNewSession(){}});

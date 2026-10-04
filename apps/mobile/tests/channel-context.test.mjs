@@ -42,6 +42,7 @@ async function harness(file, component, client, extra = {}) {
   await render();
   const buttons = () => root.root.findAllByType('Pressable');
   return { get root() { return root; }, alerts, actions, navigation, render,
+    async drafts(ids) { props.draftThreads = new Set(ids); await render(); },
     get prevention() { return prevention; },
     button: label => buttons().find(node => node.props.accessibilityLabel === label),
     input: () => root.root.findByType('TextInput'),
@@ -82,6 +83,25 @@ test('production list is latest-first, excludes archived/other channels, and rea
   assert.deepEqual(h.actions, [['context', 'p_one'], ['thread', 'new']]);
   assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Running' }).length, 1);
   await h.close();
+});
+
+test('local draft labels update without changing catalogue rows, running or unread state', async () => {
+  const thread = { id: 't_one', project_id: 'p_one', title: 'One', last_ref: 0, running: true, completed_unread: true };
+  const client = { channels: new Map([['p_one', { id: 'p_one', name: 'Project' }]]), threads: new Map([[thread.id, thread]]) };
+  const h = await harness('ChannelScreens.tsx', 'ChannelScreens', client);
+  try {
+    assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Draft' }).length, 0);
+    await h.drafts(['t_one', 'not-in-this-list']);
+    assert.equal(h.root.root.findByProps({ accessibilityLabel: 'Draft' }).props.children, 'draft');
+    assert.ok(h.button('One, draft'));
+    assert.equal(h.root.root.findByType('FlatList').props.extraData.has('t_one'), true);
+    assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Running' }).length, 1);
+    assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Completed, unread' }).length, 1);
+    assert.equal(h.root.root.findByType('FlatList').props.data[0], thread);
+    await h.drafts([]);
+    assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Draft' }).length, 0);
+    assert.equal(client.threads.get('t_one'), thread);
+  } finally { await h.close(); }
 });
 
 test('rename stays available via long press and accessibility, without per-session edit icons', async () => {

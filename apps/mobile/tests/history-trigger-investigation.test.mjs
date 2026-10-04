@@ -9,6 +9,7 @@ import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
 import * as blocks from '../src/historyBlocks.ts';
 import * as sendNotice from '../src/sendNotice.ts';
+import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
 import { HermesClient } from '../../../packages/client/dist/index.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -77,6 +78,7 @@ async function harness() {
   class Box { constructor(storage) { this.storage = storage; } async start() {} async stop() {} reconcile() {} setConnection() {} }
   const mocks = {
     react: React,
+    '../../../packages/client/src/localDraftMap': localDraftMap,
     'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => ({ push() {}, replace() {} }), useIsFocused: () => React.useContext(Focus),
       useFocusEffect: callback => { const focused = React.useContext(Focus); React.useEffect(() => focused ? callback() : undefined, [focused, callback]); } },

@@ -14,6 +14,7 @@ import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 type Props = {
   client: LiveSessionClient;
   channelId: string | null;
+  draftThreads?: ReadonlySet<string>;
   onChannel: (id: string | null) => void;
   onThread: (id: string) => void;
   onNewChannel: () => void;
@@ -32,7 +33,7 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, onChannel, onThread, onNewChannel, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, draftThreads, onChannel, onThread, onNewChannel, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -112,14 +113,14 @@ export function ChannelScreens({ client, channelId, onChannel, onThread, onNewCh
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelForm}
     {channelId ? <FlatList key={'sessions:' + channelId} keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id}
-      style={s.fill}
+      style={s.fill} extraData={draftThreads}
       keyboardDismissMode="on-drag" contentContainerStyle={[s.list, { paddingTop: 16 }]}
       ListHeaderComponent={<Text style={s.sectionHeading}>Sessions</Text>}
       renderItem={({ item }) => <View style={s.card}>
-        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={item.title} accessibilityHint="Open session. Long press for options."
+        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={draftThreads?.has(item.id) ? `${item.title}, draft` : item.title} accessibilityHint="Open session. Long press for options."
           accessibilityActions={[{ name: 'rename', label: 'Rename session' }]} onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'rename' && !busy) rename(item); }}
           disabled={busy || editing || !!renaming} onPress={() => onThread(item.id)} onLongPress={() => sessionMenu(item)} style={s.fill}>
-          <Text style={s.heading}>{item.title}</Text><View style={s.meta}><MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
+          <Text style={s.heading}>{item.title}</Text><View style={s.meta}>{draftThreads?.has(item.id) && <Text accessibilityLabel="Draft" style={s.draft}>draft</Text>}<MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
         </Pressable>}
       </View>}
       ListEmptyComponent={<Text style={s.empty}>No sessions yet. Write a message below to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
@@ -140,5 +141,6 @@ const s = StyleSheet.create({
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8, gap: 8 }, action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, actionText: { color: '#fff', fontWeight: '600' }, secondary: { backgroundColor: '#e7eef8' }, secondaryText: { color: '#2b4e81' }, iconAction: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#e7eef8' }, iconActionPressed: { backgroundColor: '#d8e4f3' }, iconFallback: { color: '#2b4e81', fontSize: 21, lineHeight: 24 }, disabled: { opacity: 0.5 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }, running: { flexDirection: 'row', alignItems: 'center', gap: 4 }, runningDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#238636' }, runningText: { color: '#237a35', fontSize: 12, fontWeight: '600' }, unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4DA3FF' },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 },
+  draft: { color: '#65758b', fontSize: 12, fontWeight: '600' },
   fab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2960ad', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 }, fabText: { color: '#fff', fontSize: 32, lineHeight: 36 }
 });
