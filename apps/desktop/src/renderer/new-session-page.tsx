@@ -19,7 +19,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
     working.current = true; setBusy(true); setError(''); setAttempted(true);
     try {
       if (!thread.current) {
-        const title = message.trim().split(/\r?\n/)[0]?.slice(0, 80) || files[0]?.name.slice(0, 80) || 'New conversation';
+        const title = 'New topic';
         thread.current = await window.hermesDesktop.createThread({ channelId: project, title, clientThreadId: threadId.current });
       }
       if (files.length && !uploads.current.length) uploads.current = await window.hermesDesktop.uploadDroppedFiles(files, thread.current);

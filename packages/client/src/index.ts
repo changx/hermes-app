@@ -5,8 +5,8 @@ export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, 
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
-export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number }
+export interface Thread { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; [key: string]: unknown }
+export interface ThreadSummary { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
 export interface AgentModelSettings { scope: 'connected-default'; provider: string; model: string; providers: {id: string; name: string; models: string[]}[] }
 export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }

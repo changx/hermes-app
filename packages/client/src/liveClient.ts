@@ -111,7 +111,7 @@ export class LiveSessionClient extends HermesClient {
       const minimal={id,name:c.name};this.minimalChannels.add(minimal);this.channels.set(id,minimal);
     }
     for(const [id,t]of this.threads)if(!this.minimalThreads.has(t)){
-      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),markers:t.markers??[],markers_updated_at:t.markers_updated_at??0,...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
+      const minimal={id,project_id:t.project_id,title:t.title,...(t.title_alphabet===undefined?{}:{title_alphabet:t.title_alphabet}),archived:t.archived,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),markers:t.markers??[],markers_updated_at:t.markers_updated_at??0,...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
       this.minimalThreads.add(minimal);this.threads.set(id,minimal);
     }
   }

@@ -9,6 +9,7 @@ export type DesktopThread = Readonly<{
   id: string;
   channelId: string;
   title: string;
+  title_alphabet?: string;
   markers?: readonly string[];
   markersUpdatedAt?: number;
 

@@ -6,7 +6,7 @@ import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
-import { orderedThreads } from "./thread-navigation";
+import { SessionPicker } from './session-picker';
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
 import { LabelPills, LabelsEditor } from './session-labels';
@@ -40,7 +40,7 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
   const [description, setDescription] = useState(kind === "edit-channel" ? channel?.description ?? "" : "");
-  const [query, setQuery] = useState("");
+
   const [detailsReady, setDetailsReady] = useState(kind !== "edit-channel");
   const [detailError, setDetailError] = useState("");
   useEffect(() => {
@@ -60,13 +60,7 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
     else return;
     safely(task.then(close));
   };
-  if (kind === "palette") {
-    const rows = orderedThreads(snapshot.threads).filter(({ title, channelId }) => `${title} ${snapshot.channels.find(({ id }) => id === channelId)?.name ?? ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0, 24);
-    return <div className="modal-backdrop" role="presentation" onMouseDown={close}><section className="editor-dialog palette" role="dialog" aria-modal="true" aria-label="Switch thread" onMouseDown={(event) => event.stopPropagation()}>
-      <input autoFocus aria-label="Find a thread" placeholder="Switch to a thread…" value={query} onChange={(event) => setQuery(event.target.value)} />
-      <div className="palette-results">{rows.map((thread) => <button key={thread.id} type="button" onClick={() => { safely(window.hermesDesktop.selectThread(thread.id)); close(); }}>{thread.title}<small>{snapshot.channels.find(({ id }) => id === thread.channelId)?.name}</small></button>)}</div>
-    </section></div>;
-  }
+  if (kind === "palette") return <SessionPicker snapshot={snapshot} close={close} />;
   const channelEditor = kind === "new-channel" || kind === "edit-channel";
   const title = kind === "new-channel" ? "New channel" : kind === "edit-channel" ? "Edit channel" : "Rename topic";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
@@ -271,6 +265,7 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (document.querySelector?.('dialog.font-settings[open]')) return;
 
       if (event.key === "Escape") { setEditor(null); return; }

@@ -183,6 +183,7 @@ export class DesktopConnectionService {
         id: thread.id,
         channelId: thread.project_id,
         title: thread.title,
+        title_alphabet: thread.title_alphabet,
         markers: thread.markers ?? [],
         markersUpdatedAt: thread.markers_updated_at ?? 0,
         running: "running" in thread ? Boolean(thread.running) : runningThreads.has(thread.id),

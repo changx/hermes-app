@@ -6,6 +6,7 @@ export interface SessionDirectoryItem {
   id: string;
   project_id: string;
   title: string;
+  title_alphabet?: string;
   archived: boolean;
   running: boolean;
   completed_unread?: boolean;
@@ -46,6 +47,10 @@ export function parseCatalogue(value:unknown):CataloguePage {
     if(row.kind==='channel')return {kind:'channel',value:{id,name:text(entry.name)}};
     if(row.kind!=='session')throw new LiveProtocolError();
     const result:SessionDirectoryItem={id,project_id:text(entry.project_id),title:text(entry.title),archived:bool(entry.archived),running:bool(entry.running)};
+    if(entry.title_alphabet!==undefined){
+      if(typeof entry.title_alphabet!=='string'||entry.title_alphabet.length>800||/[\u0000-\u001f\u007f]/.test(entry.title_alphabet))throw new LiveProtocolError();
+      result.title_alphabet=entry.title_alphabet;
+    }
     try { Object.assign(result, parseLabelMetadata(entry, true)); } catch { throw new LiveProtocolError(); }
     if(entry.completed_unread!==undefined){
       result.completed_unread=bool(entry.completed_unread);
