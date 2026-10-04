@@ -28,6 +28,8 @@
 
 ## 3. 信息架构与桌面布局
 
+当前桌面候选使用自建 tab 栏与独立 `WebContentsView`，详见 [桌面标签工作区](desktop-tabs.md)。它取代下方早期三栏/channel-tree 布局和 Title 弹窗。当前 sidebar 直接显示分组 Session，Running 优先；New chat 提供完整正文、附件和 Project 页面，成功后在原 tab 转为 Session 页。下方布局仅保留为早期 V1 设计记录，不作为当前布局验收标准。
+
 主窗口使用三栏结构：
 
 ```text

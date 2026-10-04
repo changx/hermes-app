@@ -3,11 +3,17 @@ import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
+  viewRole: process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
   platform: process.platform,
   versions: Object.freeze({ chrome: process.versions.chrome, electron: process.versions.electron }),
 });
 
 const api: HermesDesktopApi = Object.freeze({
+  newTab: (channelId?: string): Promise<void> => ipcRenderer.invoke('desktop:new-tab', channelId),
+  activateTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:activate-tab', id),
+  closeTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:close-tab', id),
+  completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
+  setContentBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:content-bounds', bounds),
   getRuntimeInfo: (): DesktopRuntimeInfo => runtimeInfo,
   getSnapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("desktop:get-snapshot"),
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void {

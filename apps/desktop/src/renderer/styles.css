@@ -316,6 +316,58 @@ dialog.labels-editor::backdrop { background: #0005; }
 .labels-reuse button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--app-font-size); padding: 5px 8px; background: #edf2f7; }
 .thread-title { flex: 1; }
 .tree-thread:hover { background: var(--app-hover); }
+.native-workspace.desktop-shell { position: relative; grid-template-columns: 280px minmax(0, 1fr); }
+.native-workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+.native-sidebar { display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
+.native-sidebar .channel-tree { flex: 1; overflow-y: auto; padding: 0 6px; }
+.native-sidebar .thread-children { margin: 0 4px 12px; border: 0; }
+.native-sidebar .tree-thread { border-radius: 8px; }
+.native-sidebar .channel-toggle { color: var(--app-muted); font-size: var(--app-font-size); }
+.native-sidebar .channel-new-session, .native-sidebar .channel-options { width: 26px; height: 28px; border: 0; padding: 0; border-radius: 6px; background: transparent; color: var(--app-muted); opacity: 0; }
+.native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session, .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
+.native-sidebar-footer { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--app-border); }
+.native-sidebar-footer > div { display: flex; align-items: center; gap: 6px; color: var(--app-muted); }
+.native-sidebar-footer > div > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.native-sidebar-footer button, .sidebar-new-chat, .sidebar-filter-icon { border: 0; background: transparent; color: var(--app-text); padding: 8px; border-radius: 8px; text-align: left; }
+.sidebar-new-chat-row { display: flex; align-items: center; gap: 8px; }
+.sidebar-new-chat { flex: 1; font-weight: 500; }
+.sidebar-filter-icon { display: flex; }
+.sidebar-filter-icon[aria-pressed="true"] { background: var(--app-selected); }
+.sidebar-filter-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.sidebar-filter-chip { display: flex; align-items: center; min-width: 0; max-width: 170px; border-radius: 6px; background: var(--app-selected); }
+.sidebar-filter-chip button { border: 0; background: transparent; padding: 4px 6px; color: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-filter-chip button:first-child { flex: 1; }
+.labels-filter-popover { box-shadow: 0 8px 24px #0002; }
+.sidebar-edge-toggle { position: absolute; z-index: 20; left: 248px; top: 10px; width: 26px; height: 28px; border: 0; border-radius: 6px; background: var(--app-rail); color: var(--app-muted); }
+.sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
+.native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+.sidebar-collapsed .desktop-tabs { padding-left: 42px; }
+.desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: 100px; max-width: 240px; border-radius: 8px; color: var(--app-muted); }
+.desktop-tab.active { background: var(--app-background); color: var(--app-text); }
+.desktop-tab button { border: 0; background: transparent; color: inherit; padding: 8px; }
+.desktop-tab [role="tab"] { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.desktop-tab-close { opacity: 0; }
+.desktop-tab:hover .desktop-tab-close, .desktop-tab:focus-within .desktop-tab-close, .desktop-tab.active .desktop-tab-close { opacity: 1; }
+.desktop-tab-add { flex-shrink: 0; border: 0; background: transparent; color: var(--app-muted); padding: 6px; }
+.native-view-slot { flex: 1; min-height: 0; min-width: 0; }
+.empty-session { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--app-muted); }
+.native-tab-error { position: absolute; bottom: 8px; left: 290px; right: 12px; z-index: 25; padding: 12px; background: #fff2ef; border: 1px solid #efb8ac; border-radius: 8px; }
+.session-tab-page { height: 100dvh; display: flex; flex-direction: column; min-height: 0; background: var(--app-background); }
+.session-tab-page .message-list { flex: 1; min-height: 0; }
+.new-chat-page { height: 100dvh; overflow-y: auto; padding: clamp(24px, 5vw, 64px); background: var(--app-background); }
+.new-chat-form { display: flex; flex-direction: column; gap: 20px; max-width: 850px; min-height: min(560px, calc(100dvh - 96px)); margin: 0 auto; }
+.new-chat-form h1 { font-size: 28px; font-weight: 500; margin: 0; }
+.new-chat-project { display: flex; align-items: center; gap: 12px; color: var(--app-muted); }
+.new-chat-project select { min-width: 160px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-background); color: var(--app-text); }
+.new-chat-form > textarea { flex: 1; width: 100%; min-height: 260px; padding: 20px; resize: vertical; border: 1px solid var(--app-field-border); border-radius: 16px; color: var(--app-text); background: var(--app-background); font: inherit; line-height: 1.6; }
+.new-chat-actions { display: flex; align-items: center; gap: 12px; }
+.new-chat-actions > span { flex: 1; color: var(--app-muted); font-size: var(--app-font-size); }
+.new-chat-actions button { padding: 10px 16px; border-radius: 9px; border: 1px solid var(--app-border); color: var(--app-text); background: transparent; }
+.new-chat-actions .new-chat-send { color: #fff; background: #294e7b; border-color: #294e7b; }
+@media (hover: none) { .desktop-tab-close, .native-sidebar .channel-new-session, .native-sidebar .channel-options { opacity: 1; } }
+@media (max-width: 760px) { .native-workspace.desktop-shell { grid-template-columns: 230px minmax(0, 1fr); } .native-workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); } .sidebar-edge-toggle { left: 198px; } .new-chat-actions > span { display: none; } }
+
 .tree-thread.selected { color: #2b4e81; background: var(--app-selected); }
 .thread-status { color: #237a35; font-size: var(--app-font-size); }
 .thread-draft { color: #dc2626; font-size: var(--app-font-size); font-weight: 600; flex-shrink: 0; }

@@ -11,7 +11,7 @@ const result = await build({
       import { createElement } from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import { DesktopShellView } from "./src/renderer/shell.tsx";
-      export const markup = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
+      export const markup = renderToStaticMarkup(createElement(DesktopShellView, { viewRole: 'workspace', snapshot: {
         revision: 1,
         phase: "connected",
         connectionState: "suspended",
@@ -66,24 +66,20 @@ const errorBoundary = await readFile(
   "utf8",
 );
 
-test("renderer shell contains activity rail, tree panel and conversation", () => {
-  assert.match(markup, /<main[^>]+aria-label="Hermes desktop"/);
-  assert.match(markup, /aria-label="Navigation tools"/);
-  assert.match(markup, /aria-labelledby="navigation-heading"/);
-  assert.match(markup, /<h1 id="navigation-heading">Channels<\/h1>/);
-  assert.match(markup, /aria-labelledby="conversation-heading"/);
+test("renderer workspace contains project sidebar and native tab slot without a navigation rail", () => {
+  assert.match(markup, /native-workspace/);
+  assert.doesNotMatch(markup, /Navigation tools|navigation-heading|>Channels<|activity-bar/);
+  assert.match(markup, /aria-label="Session tabs"/);
+  assert.match(markup, /native-view-slot/);
   assert.match(markup, /aria-label="Channels and threads"/);
-  assert.match(markup, /aria-label="Toggle navigation"/);
-  assert.match(markup, /aria-label="Switch thread"/);
-  assert.match(markup, /Choose a thread/);
+  assert.match(markup, /aria-label="Collapse sidebar"/);
+  assert.match(markup, /New chat/);
 });
 
 test("write actions reflect the current selection", () => {
-  assert.match(markup, /aria-label="Create a channel"/);
-  assert.doesNotMatch(markup, /aria-label="Create a channel"[^>]+disabled/);
-  assert.match(markup, /aria-label="Create a session"[^>]+disabled/);
-  assert.match(markup, /aria-label="Message"[^>]+disabled/);
-  assert.match(markup, /aria-label="Send message"[^>]+disabled/);
+  assert.match(markup, /New project/);
+  assert.match(markup, /aria-label="New chat tab"/);
+  assert.doesNotMatch(markup, /aria-label="Message"|aria-label="Send message"/);
 });
 
 test("narrow layout keeps rail and exposes panel as an overlay", () => {

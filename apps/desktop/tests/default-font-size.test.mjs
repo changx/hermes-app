@@ -19,21 +19,21 @@ test('Chromium: production UI and content use 16px at narrow and wide widths', {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';
     import { DesktopShellView } from './src/renderer/shell';
-    import { NewSessionDialog } from './src/renderer/new-session-dialog';
+    import { NewSessionPage } from './src/renderer/new-session-page';
     const snapshot = {revision:1,phase:'connected',connectionState:'online',channels:[{id:'p',name:'Example'}],threads:[{id:'t',channelId:'p',title:'Font preview',running:true,lastMessageAt:Date.now()/1000}],selectedChannelId:'p',selectedThreadId:'t',interactions:[],canLoadOlder:false,errorMessage:'Example error',messages:[
       {id:'u',role:'user',text:'User text',toolCalls:[],attachments:[]},
       {id:'a',role:'assistant',displayKind:'direct',text:${JSON.stringify('Paragraph and `inline code`.\n\n- List text\n\n| Name | Value |\n| --- | --- |\n| Example | Text |\n\n```text\nFenced code\n```')},toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status --short'}],attachments:[]},
       {id:'f',role:'assistant',displayKind:'final',text:'Final text',toolCalls:[],attachments:[]},
       {id:'w',role:'assistant',text:'Working text',toolCalls:[],attachments:[]}]};
     export const html = renderToStaticMarkup(<DesktopShellView snapshot={snapshot}/>);
-    export const extra = renderToStaticMarkup(<><DesktopShellView snapshot={{...snapshot,phase:'unpaired'}}/><NewSessionDialog snapshot={snapshot} close={()=>{}} prepared={()=>{}}/></>);
+    export const extra = renderToStaticMarkup(<><DesktopShellView snapshot={{...snapshot,phase:'unpaired'}}/><DesktopShellView viewRole="workspace" snapshot={snapshot}/><NewSessionPage snapshot={snapshot}/></>);
   ` }, bundle:true, platform:'node', format:'cjs', external:['react','react/jsx-runtime','react-dom/server'], write:false });
   const mod = {exports:{}};
   new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
   const folder = await mkdtemp(join(tmpdir(),'desktop-font-'));
   try {
     const file = join(folder,'check.html');
-    const selectors = ['html','body','.channel-toggle strong','.thread-title','.thread-status','.tree-caption','.conversation-header h2','.conversation-actions button','.message-user p','.message-assistant p','.message-final p','.message li','.message th','.message td','.message code','.code-block code','.tool-record','.tool-command','.work-toggle','.composer textarea','.agent-running','.error-banner','.pairing-card label','.pairing-card input','.pairing-actions button','.editor-dialog label','.editor-dialog input','.editor-dialog select','.session-hint','.dialog-actions button'];
+    const selectors = ['html','body','.channel-toggle strong','.thread-title','.thread-status','.sidebar-new-chat','.conversation-header h2','.conversation-actions button','.message-user p','.message-assistant p','.message-final p','.message li','.message th','.message td','.message code','.code-block code','.tool-record','.tool-command','.work-toggle','.composer textarea','.agent-running','.error-banner','.pairing-card label','.pairing-card input','.pairing-actions button','.new-chat-project','.new-chat-form textarea','.new-chat-project select','.new-chat-actions span','.new-chat-send'];
     await writeFile(file, `<!doctype html><style>${css}</style><div id="root">${mod.exports.html}</div><div hidden>${mod.exports.extra}</div><pre id="results"></pre><script>
       const results=[];for(const width of [720,1280,1800]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';

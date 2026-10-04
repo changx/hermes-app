@@ -36,9 +36,9 @@ test('preview rejects missing, foreign, oversized, SVG and non-image attachments
   await assert.rejects(service.previewAttachmentImage(metadata.id));assert.equal(calls(),0);
  }
 });
-test('preview discards corrupt bytes and completion after thread navigation',async()=>{
+test('preview discards corrupt bytes but survives switching to another tab',async()=>{
  const a=fixture();a.service.client.download=async()=>new Uint8Array([1]);
  await assert.rejects(a.service.previewAttachmentImage(metadata.id));
  const b=fixture();b.service.client.download=async()=>{b.service.selectedThreadId='another';return new Uint8Array(8);};
- await assert.rejects(b.service.previewAttachmentImage(metadata.id));
+ assert.equal(await b.service.previewAttachmentImage(metadata.id), 'data:image/png;base64,AAAAAAAAAAA=');
 });

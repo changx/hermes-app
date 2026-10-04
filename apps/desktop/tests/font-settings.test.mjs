@@ -31,6 +31,13 @@ test('storage failures retain a live usable font and report load/save failure wi
   const p=await preference();p.initializeFontSize();assert.equal(p.getFontSize(),16);assert.equal(p.fontLoadFailed(),true);
   assert.equal(p.setFontSize(24),false);assert.equal(p.getFontSize(),24);
 });
+test('storage changes from another WebContentsView update text size once without feedback writes',async()=>{
+  let listen,writes=0;const applied=environment({getItem:()=>null,setItem:()=>writes++});
+  window.addEventListener=(name,listener)=>{assert.equal(name,'storage');listen=listener;};
+  const p=await preference();p.initializeFontSize();listen({key:p.FONT_SIZE_KEY,newValue:'18'});
+  assert.equal(p.getFontSize(),18);assert.deepEqual(applied.at(-1),['--app-font-size','18px']);assert.equal(writes,0);
+  listen({key:p.FONT_SIZE_KEY,newValue:'999'});assert.equal(p.getFontSize(),18);
+});
 
 test('Chromium: real settings change text only, reset, retain pages, persist to cold browser and show storage errors', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
@@ -46,8 +53,8 @@ test('Chromium: real settings change text only, reset, retain pages, persist to 
     const render=(value=snapshot)=>flushSync(()=>root.render(<DesktopShellView snapshot={value}/>));
     const open=()=>{document.querySelector('[aria-label="Settings"]').focus();flushSync(()=>document.querySelector('[aria-label="Settings"]').click());};
     const change=value=>{const select=document.querySelector('[aria-label="Text size"]');select.value=String(value);flushSync(()=>select.dispatchEvent(new Event('change',{bubbles:true})));};
-    const geometry=()=>{const nav=getComputedStyle(document.querySelector('.navigation-panel')),text=getComputedStyle(document.querySelector('.composer textarea')),icon=getComputedStyle(document.querySelector('.attach-button'));return [nav.width,text.padding,icon.width,icon.height].join('|');};
-    const textSize=size=>['.thread-title','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.font-settings select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
+    const geometry=()=>{const page=getComputedStyle(document.querySelector('.session-tab-page')),text=getComputedStyle(document.querySelector('.composer textarea')),icon=getComputedStyle(document.querySelector('.attach-button'));return [page.width,text.padding,icon.width,icon.height].join('|');};
+    const textSize=size=>['.conversation-header h2','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.font-settings select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
     void(async()=>{try{
       if(stage==='first')localStorage.removeItem(FONT_SIZE_KEY);
       initializeFontSize();check('font initialized before mount',getComputedStyle(document.documentElement).fontSize===(stage==='first'?'16px':'20px'));

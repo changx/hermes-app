@@ -23,11 +23,11 @@ function fixture(){
 test('covered pages retain distinct timelines until actual removal',async()=>{
  const {service}=fixture();await service.selectThread('a');assert.equal(service.snapshot().messages.length,50);await service.selectThread('b');assert.deepEqual([...service.client.messages.keys()],['a','b']);assert.equal(service.snapshot().sessionPages.length,2);assert.equal(service.snapshot().messages.length,5);service.close();assert.equal(service.client.messages.size,0);
 });
-test('return to existing page preserves older window and removes pages above it',async()=>{
- const {service,calls}=fixture();await service.selectThread('a');await service.loadOlder();assert.equal(service.snapshot().messages[0].refSeq,1);await service.selectThread('b');await service.selectThread('a');assert.equal(service.snapshot().messages[0].refSeq,1);assert.deepEqual(calls.filter(x=>x[0]==='open').map(x=>x[1]),['a','b']);assert.deepEqual([...service.client.messages.keys()],['a']);service.close();
+test('return to existing tab preserves both older windows without reopening',async()=>{
+ const {service,calls}=fixture();await service.selectThread('a');await service.loadOlder();assert.equal(service.snapshot().messages[0].refSeq,1);await service.selectThread('b');await service.selectThread('a');assert.equal(service.snapshot().messages[0].refSeq,1);assert.deepEqual(calls.filter(x=>x[0]==='open').map(x=>x[1]),['a','b']);assert.deepEqual([...service.client.messages.keys()],['a','b']);service.close();
 });
-test('channel selection releases all server-content references without body reads',async()=>{
- const {service,calls}=fixture();await service.selectThread('a');const count=calls.length;await service.selectChannel('p');assert.equal(calls.length,count);assert.equal(service.client.messages.size,0);assert.equal(service.snapshot().selectedThreadId,undefined);service.close();
+test('channel selection preserves open tabs without body reads',async()=>{
+ const {service,calls}=fixture();await service.selectThread('a');const count=calls.length;await service.selectChannel('p');assert.equal(calls.length,count);assert.equal(service.client.messages.size,1);assert.equal(service.snapshot().selectedThreadId,'a');service.close();
 });
 test('explicit close removes only that page, preserves other history and leaves local drafts alone',async()=>{
  const {service}=fixture();await service.selectThread('a');await service.loadOlder();await service.selectThread('b');
