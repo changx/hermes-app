@@ -55,8 +55,8 @@ test('forget stops outbox, clears saved connection and resets routed identity', 
   let identity = 4;
   const context = {
     run: fn => fn(), pairingTask: { current: null }, SecureStore: { deleteItemAsync: async key => { events.push(['delete', key]); } },
-    PAIRING_KEY: 'pairing', CONFIG_KEY: 'connection',
-    outboxRef: { current: { stop: async () => events.push('stop'), storage: { clear: async () => events.push('clear') } } },
+    PAIRING_KEY: 'pairing', CONFIG_KEY: 'connection', config: { id: 'conn' },
+    outboxRef: { current: { stop: async () => events.push('stop'), storage: { connectionId: 'conn', clear: async () => events.push('clear') } } },
     setPendingPairing: value => events.push(['pending', value]), setRecords: value => events.push(['records', value]),
     setSession: value => events.push(['session', value]), setConfig: value => events.push(['config', value]),
     setIdentity: update => { identity = update(identity); }, setPairingCode: value => events.push(['code', value]),

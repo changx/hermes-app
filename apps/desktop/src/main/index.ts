@@ -49,6 +49,8 @@ const registerDesktopApi = (): void => {
   });
   ipcMain.handle("desktop:cancel-pairing", async (event) => { trustedSender(event); await service.cancelPairing(); });
   ipcMain.handle("desktop:forget-connection", async (event) => { trustedSender(event); await service.forgetConnection(); });
+  ipcMain.handle("desktop:load-local-drafts", (event, id: unknown) => { trustedSender(event); return service.loadLocalDrafts(text(id, 24)); });
+  ipcMain.handle("desktop:save-local-draft", (event, id: unknown, threadId: unknown, draft: unknown) => { trustedSender(event); return service.saveLocalDraft(text(id, 24), text(threadId, 200), draft); });
   ipcMain.handle("desktop:select-channel", async (event, id: unknown) => { trustedSender(event); await service.selectChannel(text(id, 200)); });
   ipcMain.handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
   ipcMain.handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { trustedSender(event); if (typeof version === "number" && typeof ref === "number") await service.markResultRead(text(id, 200), version, ref); });
@@ -136,5 +138,13 @@ app.whenReady().then(async () => {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
 });
 
-app.on("before-quit", () => service.close());
+let readyToQuit = false;
+let flushingDrafts = false;
+app.on("before-quit", event => {
+  if (readyToQuit) { service.close(); return; }
+  event.preventDefault();
+  if (flushingDrafts) return;
+  flushingDrafts = true;
+  void service.flushLocalDrafts().finally(() => { readyToQuit = true; app.quit(); });
+});
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

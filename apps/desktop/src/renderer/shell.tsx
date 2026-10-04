@@ -228,6 +228,31 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
 };
 
 export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+  const [draftReady, setDraftReady] = useState<string | undefined>();
+  const [draftError, setDraftError] = useState('');
+  const [draftRetry, setDraftRetry] = useState(0);
+  useEffect(() => {
+    const identity = snapshot.draftIdentity;
+    if (!identity) return;
+    let active = true;
+    let stopText: (() => void) | undefined, stopAttachments: (() => void) | undefined;
+    setDraftReady(undefined);
+    setDraftError('');
+    void window.hermesDesktop.loadLocalDrafts(identity).then(saved => {
+      if (!active) return;
+      drafts.clear(); draftAttachments.clear();
+      for (const [id, draft] of Object.entries(saved)) { drafts.set(id, draft.text); draftAttachments.set(id, draft.attachments); }
+      const persist = (id?: string) => {
+        if (!id) return; // Forget is cleared durably by the main process.
+        void window.hermesDesktop.saveLocalDraft(identity, id, { text: drafts.get(id) ?? '', attachments: draftAttachments.get(id) ?? [] }).catch(() => {
+          if (active) setDraftError('Your draft could not be saved on this device. Keep the app open and copy your text before closing it.');
+        });
+      };
+      stopText = drafts.observeMutations(persist); stopAttachments = draftAttachments.observeMutations(persist);
+      setDraftReady(identity);
+    }, () => { if (active) setDraftError("Your local drafts could not be loaded. Don't clear this app's data. Try again."); });
+    return () => { active = false; stopText?.(); stopAttachments?.(); };
+  }, [snapshot.draftIdentity, draftRetry]);
   const textVersion = useSyncExternalStore(drafts.subscribe, drafts.getSnapshot, drafts.getSnapshot);
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
@@ -250,6 +275,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
   if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
   if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside></main>;
+  if (snapshot.draftIdentity && draftReady !== snapshot.draftIdentity) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}</main>;
   const forget = () => { if (window.confirm("Forget this connection and remove its local drafts and queued messages?")) { drafts.clear(); draftAttachments.clear(); safely(window.hermesDesktop.forgetConnection()); } };
   const deleteChannel = () => { if (channel && window.confirm(`Delete “${channel.name}”? This cannot be undone.`)) safely(window.hermesDesktop.deleteChannel(channel.id)); };
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
@@ -266,6 +292,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
+      {draftError ? <div className="error-banner" role="alert">{draftError}</div> : null}
       {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, loadingHistory: snapshot.loadingHistory, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
         const active = page.id === snapshot.selectedThreadId;
         const pageSnapshot = { ...snapshot, ...page, selectedThreadId: page.id };

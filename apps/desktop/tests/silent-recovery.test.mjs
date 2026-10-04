@@ -21,6 +21,7 @@ const fixture = () => {
   service.selectedThreadId = "thread-a";
   service.listedThreads.set("thread-a", { id: "thread-a", project_id: "channel-a", title: "First" });
   service.outboxStore = { async put(_id, item) { writes.push(structuredClone(item)); }, async remove() {}, async clear() {} };
+  service.localDraftStore = { async put() {}, async clear() {}, async list() { return {}; } };
   service.client = {
     channels: new Map([["channel-a", { id: "channel-a", name: "Alpha" }], ["channel-b", { id: "channel-b", name: "Beta" }]]),
     threads: new Map(), messages: new Map(), receipts: new Map(), interactions: new Map(), attachments: new Map(), supportsLatest: true,
