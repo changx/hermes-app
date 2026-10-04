@@ -244,7 +244,10 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
       assert.ok(result.stop.left>=result.paneLeft && result.stop.right<=result.paneRight);
       assert.deepEqual(result.animations,Array(3).fill(reduced?'none':'agent-running-dot'));
       for(const control of result.controls){assert.ok(control.width>0);assert.ok(control.left>=result.paneLeft);assert.ok(control.right<=result.paneRight);}
-      assert.equal(result.controls[1].height,42);
+      // One text line (18.4px * 1.5) plus unchanged 9px vertical padding and 1px borders.
+      assert.ok(Math.abs(result.controls[1].height-47.6)<0.1);
+      assert.equal(result.controls[0].height,42);
+      assert.equal(result.controls[2].height,42);
     }
     }
   } finally {await rm(folder,{recursive:true,force:true});}

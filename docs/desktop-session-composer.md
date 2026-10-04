@@ -2,6 +2,17 @@
 
 ## Desktop default font size candidate
 
+### Font-only follow-up: 18.4px (not published)
+
+Jamie reported that three `alt+=` presses make the text readable but enlarge spacing, then restricted the fix to font size and existing fixed line heights. Candidate `fix/desktop-font-18-4` starts from `b4cf2d8`; card `t_5b1d1261` continues tracking the same feedback.
+
+The pinned [Electron 44.4.5 Zoom In role](https://github.com/electron/electron/blob/v44.4.5/lib/browser/api/menu-item-roles.ts) adds 0.5 to zoomLevel per action. [Chromium's conversion](https://github.com/chromium/chromium/blob/main/third_party/blink/common/page/page_zoom.cc) is `1.2 ** zoomLevel`. Assuming a 100% start and that the user's key triggers this role, three actions give `14 * 1.2 ** 1.5 = 18.40347793217358px`, approximately 18.4px. This is not a readback of the user's shortcut binding or zoom state.
+
+- Set the shared UI/content default to 18.4px and remove the two remaining 14px text overrides. No zoom controls, settings, persistence, spacing redesign or platform/server changes.
+- Replace fixed composer/tool text line heights with 1.5. Replace fixed label line height with 1.15; its clipping containers follow the line plus unchanged 4px vertical padding. Do not change margins, padding, gaps, sidebar widths, icon sizes, button dimensions or input height limits.
+- TypeScript/build and all 149 desktop tests pass, with zero failures/skips. Chromium checks production text at 720/1280/1800 widths, line heights, original composer padding, unchanged 42px icon buttons, draft non-overlap and existing label/layout regressions. The one-line textarea naturally grows to about 47.6px to fit the text; this is not page zoom.
+- Evidence: Channel workspace `desktop-font-18-4/check.log`. No main merge, release, service restart or Mac installation; real-device visual acceptance remains pending. The v0.1.22 record below describes the prior 14px publication.
+
 ### Authorized publication: v0.1.22
 
 Jamie authorized main merge and desktop packaging/publication. Candidate `f0f99bc` was fast-forwarded into main; release source and tag `v0.1.22` are `222436c918588a5537af761d975b98c9b089145f`. Only desktop/root version metadata changed after candidate verification; dependency graph, mobile and shared client source are unchanged.

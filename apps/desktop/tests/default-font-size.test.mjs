@@ -9,13 +9,13 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-test('desktop defines an explicit shared 14px text default', () => {
-  assert.match(css, /--app-font-size: 14px;/);
+test('desktop defines an explicit shared 18.4px text default', () => {
+  assert.match(css, /--app-font-size: 18\.4px;/);
   assert.match(css, /font-size: var\(--app-font-size\);/);
   assert.match(css, /button, input, textarea, select \{ color: inherit; font-family: inherit; font-size: inherit; \}/);
 });
 
-test('Chromium: production UI and content use 14px at narrow and wide widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: production UI and content use 18.4px at narrow and wide widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';
     import { DesktopShellView } from './src/renderer/shell';
@@ -38,7 +38,8 @@ test('Chromium: production UI and content use 14px at narrow and wide widths', {
       const results=[];for(const width of [720,1280,1800]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';
         for(const selector of ${JSON.stringify(selectors)}) {
-          const node=document.querySelector(selector);results.push({width,selector,size:node?getComputedStyle(node).fontSize:'MISSING'});
+          const node=document.querySelector(selector),style=node?getComputedStyle(node):null;
+          results.push({width,selector,size:style?.fontSize??'MISSING',lineHeight:style?.lineHeight,paddingLeft:style?.paddingLeft});
         }
       }
       document.getElementById('results').textContent=JSON.stringify(results);document.currentScript.remove();
@@ -46,6 +47,10 @@ test('Chromium: production UI and content use 14px at narrow and wide widths', {
     const dom = execFileSync(process.env.HERMES_TEST_CHROME,['--headless','--no-sandbox','--disable-gpu',`--user-data-dir=${join(folder,'profile')}`,'--dump-dom',pathToFileURL(file).href],{encoding:'utf8',timeout:30000,maxBuffer:2_000_000,stdio:['ignore','pipe','pipe']});
     const rows = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1]??'null');
     assert.equal(rows?.length,selectors.length*3);
-    for(const row of rows) assert.equal(row.size,'14px',`${row.width} ${row.selector}`);
+    for(const row of rows) {
+      assert.equal(row.size,'18.4px',`${row.width} ${row.selector}`);
+      if (['.composer textarea','.tool-record'].includes(row.selector)) assert.ok(Math.abs(parseFloat(row.lineHeight)-27.6)<0.01, row.selector);
+      if (row.selector === '.composer textarea') assert.equal(row.paddingLeft,'12px');
+    }
   } finally { await rm(folder,{recursive:true,force:true}); }
 });
