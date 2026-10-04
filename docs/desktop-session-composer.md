@@ -1,5 +1,14 @@
 # Desktop session composer and left user bubbles
 
+## Desktop default font size candidate
+
+Jamie requested a desktop default of **14px for UI and content**. Candidate `fix/desktop-default-font-14` starts from main `d675836`; tracking card `t_5b1d1261`.
+
+- Root text, native form controls, navigation, dialogs, status text, timestamps, labels, draft text, message paragraphs/lists/tables, inline/fenced code and tool commands use the shared 14px default. Preserve icon sizes, colors, layout rules and behavior. Mobile is unchanged. This supersedes the earlier desktop 11px draft-text size only.
+- Chromium computes the production components' text size at widths 720, 1280 and 1800. The regression fails on the baseline's 16px root and passes after the change. Existing browser geometry and draft non-overlap tests also pass.
+- Desktop TypeScript, build and all 149 tests pass, with no failures or skips. Private evidence: Channel workspace `desktop-font-14/baseline.log` and `desktop-font-14/check.log`.
+- Candidate only: no main merge, publication, service restart or Mac installation. Installed macOS visual acceptance remains pending. The build produces desktop main/preload/renderer assets, not a newly published macOS installer.
+
 ## Confirmed behavior
 
 - Desktop new-session dialog provides a Channel selector, title and file selection/removal (including drag/drop). Command-N defaults to the selected Channel, or the first available Channel when none is selected.
