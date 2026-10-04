@@ -1,5 +1,9 @@
 # OPEN-SESSION-LIVE — cross-end refactor
 
+## Legacy transport removal candidate
+
+There are no legacy clients. The paired App/plugin cleanup removes `/v1/events`, `/v1/sync`, `/v1/snapshot`, generic message read-position reporting and client checkpoint/replay code. Current clients use only the account `/v1/live` connection, catalogue and scoped page reads. Internal committed-event publication, ordinary history pagination and completed-unread directory metadata remain. This supersedes all old-client compatibility statements below. The release narrative remains historical evidence, not an instruction to preserve retired code. Cleanup is isolated and not deployed.
+
 ## Release v0.1.24 / plugin v0.2.3
 
 This release retains main's desktop local font settings and 16px default from v0.1.23. SDK, mobile and desktop checks/build, Chromium tests, iOS/Android exports and the related plugin HTTP/WS gates passed after integration. The unchanged pinned Hermes baseline is not upgraded.

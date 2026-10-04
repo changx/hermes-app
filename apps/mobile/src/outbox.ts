@@ -236,7 +236,7 @@ export function retryable(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const status = (error as Error & { status?: number }).status;
   if (typeof status === 'number') return status === 408 || status === 425 || status === 429 || status >= 500;
-  if (error.name === 'ProtocolError' || error.name === 'ResyncRequired' || error.name === 'AbortError') return false;
+  if (error.name === 'ProtocolError' || error.name === 'AbortError') return false;
   return error instanceof TypeError || /network request failed|failed to fetch|timeout|timed out|socket|offline/i.test(error.message);
 }
 export function delayFor(attempt: number, error: unknown, random = Math.random): number {

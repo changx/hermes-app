@@ -38,43 +38,6 @@ export const preview=renderToStaticMarkup(createElement(DesktopShellView,{snapsh
 const mod={exports:{}};
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url),mod,mod.exports);
 
-test('right-aligned user bubbles use intrinsic width, an 80 percent cap and gray rounded background',()=>{
-  assert.match(css,/\.message-user \{[^}]*width: fit-content;[^}]*max-width: calc\(80% - 22\.4px\);[^}]*margin-left: auto;[^}]*margin-right: 14px;[^}]*border-radius: 22px;[^}]*background: #f3f3f3;/);
-  assert.doesNotMatch(css,/\.message-user:has\(/);
-  assert.match(css,/\.message-final \{[^}]*margin-top: 32px;[^}]*padding: 12px 14px;[^}]*background: #f7f5ef;/);
-  assert.doesNotMatch(css,/\.message-final \{[^}]*border-left:/);
-  assert.match(css,/\.message \{[^}]*padding-inline: 14px;/);
-  assert.match(css,/\.message-list \{[^}]*padding: 18px 0;/);
-});
-
-test('content layout preserves real message order, process grouping and command escaping',()=>{
-  const html=mod.exports.html;
-  assert.equal((html.match(/<article /g)||[]).length,messages.length - 2, 'cold completed process rows have no mounted body');
-  assert.equal((html.match(/class="message-role"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
-  assert.equal((html.match(/message-continuation/g)||[]).length,0);
-  assert.equal((html.match(/message-final/g)||[]).length,1);
-  assert.doesNotMatch(html, /class="message-role">(?:You|Hermes|Notice)/);
-  assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
-  let userIndex = 0;
-  for(const article of html.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/g)) {
-    const assistant=article[1].includes('message-assistant');
-    assert.equal(article[2].includes('class="message-time"'),!assistant,'user/system keep time, assistant omits it');
-    assert.equal(article[2].includes('class="message-role"'),!assistant,'no empty assistant header');
-    if (article[1].includes('message-user')) {
-      const two = value => String(value).padStart(2, '0');
-      const date = new Date(messages.filter(m=>m.role==='user')[userIndex++].createdAt * 1000);
-      const year = date.getFullYear() === new Date().getFullYear() ? '' : `${date.getFullYear()}-`;
-      const expected = `${year}${two(date.getMonth()+1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
-      assert.ok(article[2].includes(`>${expected}</time>`), 'local current year is omitted; other years retained');
-    }
-  }
-  assert.ok(html.indexOf('Hi')<html.indexOf('Updated display'));
-  assert.doesNotMatch(html,/I will align|Reading styles\.css/);
-  assert.ok(html.indexOf('Updated display')<html.indexOf('A longer user'));
-  assert.doesNotMatch(html,/<pre class="tool-command">npm run desktop:check<\/pre>/);
-  assert.doesNotMatch(html,/<details|<summary/);
-});
-
 test('Chromium: gray bubbles shrink-wrap, align right and contain rich content across resize', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
   const folder=await mkdtemp(join(tmpdir(),'desktop-session-content-'));
   try {

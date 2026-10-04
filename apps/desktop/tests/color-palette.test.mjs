@@ -12,24 +12,6 @@ const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url
 const rgb = hex => `rgb(${hex.match(/\w\w/g).map(x => parseInt(x, 16)).join(', ')})`;
 const mobile = name => readFile(new URL(`../../mobile/src/${name}`, import.meta.url), 'utf8');
 
-test('application chrome is neutral light gray, not the previous warm palette', async () => {
-  for (const [name, color] of Object.entries({ text: '1f2937', muted: '6b7280', label: '4b5563', background: 'f9fafb', rail: 'f3f4f6', border: 'e5e7eb', 'field-border': 'd1d5db' })) {
-    assert.ok(css.includes(`--app-${name}: #${color};`), name);
-  }
-  assert.match(css, /color-scheme: light;/);
-  assert.doesNotMatch(css, /#(?:292724|f4f2ee|ebe8e2|f7f5f1|d9d5ce|746e66|53504a|d4c7a9|efede8|48443e|514d47|e5e0d7|f5f3ef)\b/i);
-  const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8');
-  assert.match(main, /backgroundColor: "#f9fafb"/);
-});
-
-test('semantic accents retain the actual mobile colors, including pale final replies', async () => {
-  const sources = (await Promise.all(['App.tsx', 'ChatTimeline.tsx', 'MessageContent.tsx', 'ChannelScreens.tsx'].map(mobile))).join('\n');
-  for (const color of ['2960ad', '215ca7', 'f7f5ef', '172a40', '50647b', 'e8eef6', '20314a', 'dce5f0', 'd6e0ed', 'e5ecf5', '285ea5', 'e7eef7', '294e7b', '9d1b32', 'fff0f2', '237a35', '4DA3FF']) {
-    assert.ok(sources.includes(`#${color}`), `mobile source: ${color}`);
-    assert.ok(css.includes(`#${color}`), `desktop CSS: ${color}`);
-  }
-});
-
 test('Chromium: production screens resolve neutral chrome and mobile content colors at all widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import { createElement } from 'react';

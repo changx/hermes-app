@@ -436,7 +436,7 @@ export class DesktopConnectionService {
           }, controller.signal);
           if (check.status === 200) {
             const body = check.body;
-            if (body?.protocol !== 1 || body.durable_sync !== true) throw new Error("unsupported");
+            if (body?.protocol !== 1) throw new Error("unsupported");
             await this.store.saveConnection(pairing.connection);
             await this.startClient(pairing.connection);
             return;

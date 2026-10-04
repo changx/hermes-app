@@ -1,72 +1,72 @@
-# CORE-DATAFLOW — equal-session synchronization and selective presentation
+# 核心数据流
 
-Status: Review — implementation, local regressions, network fixture soak and native Mac packaged-worker smoke complete; real model multi-session/device experience acceptance remains separate. Authorized by Jamie in the current Hermes App thread. Baseline: local main `68f0706` (existing media and Markdown changes integrated). Worktree: `refactor/core-dataflow`.
+## 当前唯一通信路径
 
-## Agreed constraints
+桌面和手机都使用 `LivePageClient`。每个连接身份持有一个账号 WebSocket、轻量目录和运行状态。每个存活页面按连接身份与稳定 Thread ID 持有独立正文、收据、审批、历史窗口及媒体资源。
 
-- No foreground/background priority system. Every session participates in the same persistent synchronization lifecycle.
-- UI selection, drafts, scroll and panels are presentation state; selection does not restart the connection or stop background synchronization.
-- Coalesce duplicate entity reads in a received event page; publish a batch of summaries once, not once per summary.
-- Independent session/entity reads may proceed concurrently. A slow background read must not prevent another session's data from becoming visible. Durable cursor advancement must never skip incomplete work.
-- SQLite is a local cache/outbox, not an authoritative chat database. Keep credentials in existing secure storage; do not reduce current outbox encryption.
-- Renderer receives only changed data and preserves identities for unchanged rows/Markdown. Keep existing authentication, exact edit references, version fences, same-ID sending and history semantics.
+```text
+桌面 / 手机
+  → LivePageClient：账号目录、单一 /v1/live 连接
+  → 存活页面：按 Thread 订阅、读取历史与 live-state
+  → Hermes App plugin：认证、持久接收、投影、变更通知
+  → Hermes：历史与执行权威
+```
 
-## Scope and acceptance
+旧的 `/v1/events`、`/v1/sync`、`/v1/snapshot` 已从清理候选删除。没有旧客户端，不保留第二套事件回放传输。共享客户端不再提供 checkpoint、catchUp、resync 或通用消息已读位置 API。
 
-1. SDK batch replay: a burst for one session reads its tail once and summaries once per page; independent sessions do not block one another; gaps, failures, abort and reconnect cannot advance past unfinished work; exact edits and receipts remain correct.
-2. Desktop selective presentation: unchanged message rows retain identities across IPC updates; list-only changes do not reparse chat Markdown; selection remains an immediate UI action.
-3. SQLite persistence: atomic entity updates plus synchronization checkpoint; connection isolation; indexed latest/older history; cold reopen and rollback tests; no credentials stored; preserve encrypted outbox during migration.
-4. Full existing SDK/desktop regressions; new burst/multi-session/failure tests. Mac native install, long-running real traffic and device switching are separate acceptance, not simulated by Linux tests.
+插件内部持久事件仍供 `/v1/live` publisher 消费。不能把内部提交通知和事件记录当作废弃对外接口删除。历史分页游标、消息 `ref_seq`、本地请求代次也不是事件回放 checkpoint。
 
-Not included: priorities, replacement Hermes core, server data migration, production deployment, signing or publishing. Shared protocol/server changes require a separate plugin card and activation gate.
+清理在独立 App/plugin worktree 中完成；本文不代表已提交、合并、部署或重启。
 
-## Integration audit
+## 目录与页面恢复
 
-Worktree inventory also found uncommitted historical changes in `m1-discord-followup`: old mobile reaction variants, the old in-app plugin layout, and test-run evidence. Their product behavior is superseded by current main (`docs/m1-discord-followup-fix.md`, callback-aware `timeline.ts`) and the separate plugin repository (`continuation_anchors` is already present). That worktree is preserved untouched; its old plugin copy and run evidence are not copied back into the client repository.
+1. 建立认证连接并读取 capabilities。
+2. 分页读取 `/v1/catalogue`，只保留轻量目录和运行状态。
+3. 打开页面时发送该 Thread 的 watch 请求。
+4. 等待匹配的 watching 确认。
+5. 读取该页面的历史与 `/v1/threads/{id}/live-state`。
+6. 收到变更提示后核对当前页面窗口或状态。
 
-Local main includes `feat/app-media-static` and `fix/desktop-markdown-spacing`, integrated via `integrate/pre-dataflow`. Desktop: 77 passed / 1 optional Chromium layout test skipped. SDK: 24 + 20 + 38 passed. The first client-check invocation lacked HERMES_BASELINE; rerun with the pinned P0 baseline succeeded. Existing mobile fixes are already in main; older read-loop variants were superseded by b903cb7. Old rolled-back experiments and separate plugin-repository history are not resurrected. No push, release or service restart.
+watch 确认先于初次正文读取。读取期间的提示触发再次核对，避免订阅交接丢失变更。提示不携带正文，也不要求客户端保存全局事件游标。
 
-## First implementation increment
+多页面使用同一个账号连接，并发保留各自订阅。打开 B 不释放 A。页面真正销毁、身份移除或服务端确认目标失效时，只释放对应页面。迟到响应不能恢复已释放内容。
 
-- SDK plans a received event page by entity and session, retaining every distinct exact edited ref, coalescing repeated versions and message tails, and sharing one summary traversal. Independent reads publish their results as they finish; acknowledgement waits for every read owner and the persistence hook. Partial/gapped/failed pages cannot skip an unfinished checkpoint. Synchronous summary commits emit one notification per page. Automatic tail continuation uses the saved forward cursor rather than reopening a view.
-- Main/preload send revisioned collection deltas. Renderer retains unchanged collection/row references; IPC gaps restore a full baseline and startup/unsubscribe races are fenced. Memoized timeline, sidebar rows and Markdown separate presentation from unrelated data changes. Running and unread count are displayed independently.
-- Entering a session initially presents its latest 50 cached rows, not all previously downloaded history. Older paging expands only the presentation window. Cached entry negotiates capabilities before deciding latest versus legacy history; old request completion cannot change the new session's cursor or loading state.
-- The desktop cache uses built-in `node:sqlite` in a dedicated worker. Entity changes and the SDK checkpoint commit in one FULL-synchronous transaction; SQL failure rolls both back. A separate file per connection plus owner validation isolates identities. Indexed latest/older queries, stable upserts, cold restore of SDK version/sequence fences, and cache clearing are implemented. Main and renderer never execute synchronous SQLite work.
-- Credentials and the encrypted outbox remain in their existing safe-storage implementation. No plaintext outbox migration was attempted. The new server-projection cache is ordinary SQLite with a private directory and 0600 database permissions; it is not database-encrypted. It contains no transport credentials. Attachment files remain separate.
+切后台只暂停传输和请求，保留页面现场。回前台或重连时核对原窗口，不重建页面、不跳到最新。心跳只检查连接，不轮询目录或正文。系统杀进程后没有本地服务端历史副本。
 
-## Verification and limits
+完整生命周期见 [存活 session 页面](live-session-pages.md)与 [OPEN-SESSION-LIVE](open-session-live.md)。
 
-- Desktop TypeScript/build and full suite, with actual Chromium layout test enabled: 96/96 passed, no skips.
-- SDK pinned-baseline check: 24/24 + 20/20 + 50/50 passed.
-- SQLite tests also executed under the actual pinned Linux Electron runtime (`ELECTRON_RUN_AS_NODE=1`): 7/7 passed, including worker transaction failure and SDK → worker → cold reopen → resumed replay.
-- A React test-renderer probe ran the actual DesktopShellView and actual Markdown component, instrumenting only a render counter: initial two bodies = 2 renders; unrelated session running/unread update = still 2; one body edit = 3; receipt-only change = still 3. This is component execution, not a Mac visual/performance acceptance.
-- Mobile TypeScript and 389/389 tests passed; Android and iOS Expo exports succeeded. Dependency installation reported inherited mobile audit findings (11 moderate, 4 high); no unrelated dependency upgrade was made.
-- Burst regression uses real SDK with synthetic transport: 20 message events / 100 summaries now take 3 HTTP requests and 2 state notifications instead of the diagnostic baseline's 41 requests / 2020 notifications. This is request-count verification, not a production latency claim.
-- Private logs and render probe: `/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/core-dataflow/`.
-- Corrected integration failures during development: the build-output allowlist needed the new worker artifacts; the new older-window test fixture initially omitted a saved connection. Final full rerun passed.
+## 发送与接收证明
 
-## Completion increment
+设备本地持久保存未确认原文及 `client_message_id`。同一次发送重试必须使用相同 ID、Thread、原文和附件；相同正文的两次独立发送使用不同 ID。
 
-- Replaced destructive resync with a staged projection. Previously cached intervals are re-read to repair expired old edits; the replacement is persisted before one atomic UI publication. Failed/aborted/superseded staging leaves the old projection and checkpoint intact. Late approval, attachment and read responses are epoch-fenced. Desktop preserves selection, older reading boundary and pagination; authoritative removal cancels the obsolete selection.
-- IPC baseline failures now retry without new events or false unpaired state. Unsubscribe cancels timers and late callbacks.
-- SQLite worker requests have deadlines, crash rejection and single-flight draining close. The service recreates a dead worker without resubmitting model execution. Idle identical checkpoints perform no SQL writes. A cache-removal failure is actionable and cannot falsely confirm Forget connection.
-- Sidebar running state uses authoritative processing outcomes before lifecycle bookkeeping. Running membership is computed once per projection rather than scanning all receipts for each session; unread remains independent.
+插件在事务提交收据、待派发输入及相关内部通知后返回持久 ACK。匹配的认证 ACK 证明输入已接收，不证明执行完成。ACK 响应丢失时只用相同 ID 重试，不生成另一次执行。客户端不自动重试模型或工具的 `unknown` 执行。
 
-### Final verification
+持久 ACK 后可移除设备 outbox 原文，并按稳定接收引用显示输入。后续执行状态由页面 live-state、历史与正式处理回调提供。客户端关闭不取消服务器已接收任务。
 
-- Linux desktop TypeScript/build + real Chromium layout: **104/104 passed**, no skips. SDK groups: **24/24 + 20/20 + 55/55 passed**. Actual pinned Linux Electron SQLite-worker tests: **10/10 passed**.
-- Mobile TypeScript, **389/389 tests**, Android and iOS exports passed on the completion source. At final readback, another task advanced main to `4ed1438` (mobile session-list composer). It was merged into this isolated branch as `994a8ac`, without touching that task or runtime; integrated mobile TypeScript, **401/401 tests**, and both platform exports passed. Desktop/shared-client source is unchanged by this merge, so the verified native artifact remains identical.
-- `scripts/dataflow-soak.mjs`: real loopback HTTP/WS, two SDK clients, actual desktop service/delta store and SQLite worker; messages and receipts are explicitly synthetic fixtures. Final run: 100 sessions, 300 rounds, 6,100 message rows, 12,060 events, 60 view switches, forced disconnect and authoritative cursor expiry/resync, 62,587 ms. Both clients' messages, read positions and unread counts matched the fixture authority; cold SQLite reopen and renderer projection matched. This is bounded network/resource stress, not genuine model traffic or a production latency claim.
-- Native Apple Silicon Mac mini: pinned Node/npm install, desktop build and tests (**103 passed, one optional Chromium layout test skipped**), unsigned native `.app` packaging. Production packaged entry launched in a dedicated empty user-data directory; root mounted, phase unpaired, sandbox retained. SQLite worker loaded from **inside app.asar**, wrote a checkpoint and cold-reopened it. Electron 44.4.5 / embedded Node 24.21.0. Mach-O arm64 and ElectronAsarIntegrity read back.
-- Native probe first attempted NODE_OPTIONS preloading, which packaged Electron rejected; used a loopback-only main-process inspector on the isolated candidate instead. No production source/permission/security-setting change, original App replacement or real credential copy. Candidate process and debug listener were closed and read back absent.
-- Initial native source archive omitted `.gitignore` required by a packaging regression; supplied that repository file and reran full native checks successfully. No gate was bypassed.
+## 历史与消息身份
 
-### Retained artifact
+服务器拥有原始历史。客户端只保存存活页面的展示窗口，不建立 SQLite 历史库。最新、较早、精确引用和增量读取继续使用现有历史 HTTP API。
 
-`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/core-dataflow/Hermes-0.1.5-core-dataflow-macOS-arm64.zip`
+消息按稳定 `id`、`ref_seq` 及精确 receipt/client ID 关联。正文和时间戳不参与身份判定。压缩后的复制行不重复发布原始输入或结果；摘要不能替代缺失原文。
 
-- Native archive size: 128,776,794 bytes.
-- SHA-256: `58b04515775ebba4eb0071e3972a800f767764facad2a928fda9e2269ea57104`; Mac source archive and downloaded copy agree.
-- Unsigned development candidate; not notarized or a replacement for the published v0.1.5 Release. Probe/user-data/logs remain private, not packaged.
+页面保留当前窗口、滚动锚点和媒体现场。普通分页游标只定位历史页，不承诺账号事件回放。
 
-Implementation is in Review, not a claim that every end-user gate is Done. Genuine multi-session model traffic and MacBook/iPhone visual/keyboard/network experience still need their own acceptance. Encrypted outbox/draft migration and mobile persistent-cache adoption are separate future scope, not silently included. No refactor merge into running main, remote push, service restart, public release, signing, Hermes core/plugin change or real model run was performed.
+## 执行、审批和附件
+
+processing 仅由正式处理开始/结束回调驱动。接收、入队或交付不等于完成。重启后缺少可靠完成证据的执行保持 unknown。
+
+审批和澄清绑定精确 Thread、receipt、请求 ID 与代际。竞争答复只有一个获胜；过期或已答请求从 scoped 状态收起。停止使用现有服务器执行控制，不把网络取消当作工具停止。
+
+附件继续由插件保存受控元数据与文件，精确验证 Thread、路径、大小和引用。上传、下载、删除未附上传与冷恢复不依赖旧事件回放。
+
+目录的完成未读标志是现行窄范围能力，见 [已完成未读目录状态](completed-unread-directory.md)。它不是已删除的通用消息已读位置或未读计数链。
+
+## 验证边界
+
+按用户要求，单元测试从 1,066 个精简为 107 个（10.04%）：共享客户端 10、桌面 14、手机 55、插件 28。删除测试定义或文件，不通过 skip 隐藏数量。保留的单元测试全部通过；103 个原有集成测试保留，本次不重跑插件全量集成测试。此数量取代旧阶段验收记录中的测试规模，不代表合并或部署。
+
+`npm run client:check` 验证共享 SDK 和故障测试。桌面与手机分别运行现行测试、类型检查和构建。插件运行隔离的 `tests/p1` HTTP/WS 与真实 Gateway 测试。
+
+重复的 `tests/client/unit.test.mjs`、`reliability.test.mjs` 和大型 `real-gateway.mjs` 已删除。共享 SDK 保留 `packages/client/tests` 中的功能检查；现有插件 HTTP/WS 联调入口不变。不再为纯客户端检查要求 Hermes 基线目录。
+
+自动检查不是远端模型、Mac、iPhone 或独立安装包验收。不得以测试通过宣称服务已部署。

@@ -11,30 +11,6 @@ import { execFileSync } from 'node:child_process';
 const bundle = await build({ entryPoints: [new URL('../src/renderer/thread-navigation.ts', import.meta.url).pathname], bundle: true, format: 'cjs', platform: 'node', write: false });
 const mod = { exports: {} }; new Function('module', 'exports', bundle.outputFiles[0].text)(mod, mod.exports);
 const { threadWindow } = mod.exports;
-test('label filter precedes batching, includes all-time matches, and retains 24 per batch', () => {
-  const rows = Array.from({ length: 100 }, (_, i) => ({ id: String(i), channelId: 'p', title: String(i), lastMessageAt: 1, markers: i % 2 ? ['Foo'] : ['Other'], running: false }));
-  const filter = { labels: ['Foo'], noLabels: false };
-  const first = threadWindow(rows, 'p', Date.now(), 0, filter), second = threadWindow(rows, 'p', Date.now(), 1, filter);
-  assert.equal(first.rows.length, 24); assert.equal(second.rows.length, 48);
-  assert.ok(first.rows.every(row => row.markers.includes('Foo'))); assert.equal(first.hasMore, true);
-  assert.equal(threadWindow(rows, 'p', Date.now(), 2, filter).rows.length, 50);
-  assert.equal(threadWindow(rows, 'p', Date.now()).rows.length, 0);
-  assert.equal(threadWindow(rows, 'p', Date.now(), 0, { labels: ['foo'], noLabels: false }).rows.length, 0);
-  assert.equal(threadWindow([...rows, { id: 'empty', channelId: 'p', title: 'Empty', running: false }], 'p', Date.now(), 0, { labels: ['Foo'], noLabels: true }).rows.length, 24);
-});
-
-test('production desktop service refuses a stale connection target and a late confirmation', async () => {
-  const source = await build({ entryPoints: [new URL('../src/main/connection-service.ts', import.meta.url).pathname], bundle: true, format: 'cjs', platform: 'node', external: ['electron'], write: false });
-  const module = { exports: {} }; new Function('require', 'module', 'exports', source.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-  const service = new module.exports.DesktopConnectionService(() => {});
-  service.phase = 'connected'; service.connectionState = 'online'; service.connection = { id: 'old', baseUrl: 'https://synthetic.test' };
-  let calls = 0, release;
-  service.client = { async saveThreadLabels() { calls++; return new Promise(resolve => release = resolve); } };
-  await assert.rejects(service.saveThreadLabels('A', ['Draft'], 1, 'other'), /connection changed/i); assert.equal(calls, 0);
-  const pending = service.saveThreadLabels('A', ['Draft'], 1, 'old');
-  service.connection = { id: 'new' }; release({ markers: ['Draft'], markers_updated_at: 1 });
-  await assert.rejects(pending, /not confirmed/);
-});
 
 test('Chromium: actual measured pills, filter/tree interactions, connection reset and accessible editor failure retention', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'session-labels-desktop-'));

@@ -6,7 +6,7 @@ import { newPairing, restorePairing, completePairing, normalizePairingCode, CONF
 const make = () => newPairing('https://example.test', 'ABCD-EFGH-IJKL-MNOP', 'iPhone', 'connection-test', randomBytes(44));
 const response = (status, body, headers) => new Response(JSON.stringify(body), { status, headers });
 const storage = () => ({ data: new Map(), async getItemAsync(k) { return this.data.get(k) ?? null; }, async setItemAsync(k,v) { assert.match(k,/^[\w.-]+$/); this.data.set(k,v); }, async deleteItemAsync(k) { this.data.delete(k); } });
-const caps = { protocol:1,durable_sync:true };
+const caps = { protocol:1 };
 
 test('pairing creates exact secure credential format and validates code/base', () => {
   const bytes = randomBytes(44), pending = newPairing('https://example.test/','abcd efgh ijkl mnop','phone','identity',bytes);

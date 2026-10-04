@@ -70,7 +70,7 @@ test("successful pairing verifies capabilities before promoting the credential",
       const payload = JSON.parse(init.body);
       return response(201, { device_id: payload.device_token.slice(7, 31) });
     }
-    return response(200, { protocol: 1, durable_sync: true });
+    return response(200, { protocol: 1 });
   });
   await service.pair(request);
   assert.equal(call, 3);
@@ -100,54 +100,4 @@ test("duplicate pairing requests do not create concurrent exchanges and cancella
   await first;
   assert.equal(service.snapshot().phase, "unpaired");
   assert.equal(writes.deletes, 1);
-});
-
-test("read-only projection loads threads for the selected channel and the selected conversation", async () => {
-  const { service } = fixture();
-  const calls = [];
-  service.phase = "connected";
-  service.client = {
-    channels: new Map([
-      ["channel-a", { id: "channel-a", name: "Alpha" }],
-      ["channel-b", { id: "channel-b", name: "Beta" }],
-    ]),
-    threads: new Map([["thread-a", { id: "thread-a", project_id: "channel-a", title: "First", running: true, last_message_at: 10 }]]),
-    messages: new Map(),
-    receipts: new Map(),
-    interactions: new Map(),
-    attachments: new Map(),
-    supportsLatest: true,
-    isThreadAvailable(id) { return this.threads.has(id); },
-    closeConversation() { this.messages.clear(); },
-    async openConversation(threadId) { const page = await this.historyWindow(threadId); this.currentOlderCursor = page.older_cursor; },
-    async listThreads(channelId) {
-      calls.push(["threads", channelId]);
-      return { threads: [{ id: "thread-a", project_id: channelId, title: "First", unread_count: 2, last_message_at: 10 }], next_cursor: null };
-    },
-    async historyWindow(threadId) {
-      calls.push(["history", threadId]);
-      this.messages.set(threadId, [{ id: "message-a", ref_seq: 7, role: "assistant", text: "Visible reply" }]);
-      service.changed();
-      return { messages: this.messages.get(threadId) };
-    },
-    async markRead(threadId, ref) { calls.push(["read", threadId, ref]); },
-  };
-  const { withPages } = await import('./page-fixture.mjs'); withPages(service.client);
-  await service.selectChannel("channel-a");
-  assert.deepEqual(calls, []);
-  assert.equal(service.snapshot().threads[0].running, true);
-  assert.equal(service.snapshot().threads[0].unreadCount, undefined);
-  await service.selectThread("thread-a");
-  assert.deepEqual(calls, [["history", "thread-a"]]);
-  assert.deepEqual(service.snapshot().messages, [{
-    id: "message:message-a",
-    refSeq: 7,
-    role: "assistant",
-    text: "Visible reply",
-    toolCalls: [],
-    attachments: [],
-  }]);
-  await service.selectChannel("channel-b");
-  assert.equal(service.snapshot().selectedThreadId, undefined);
-  assert.equal(service.snapshot().messages.length, 0);
 });

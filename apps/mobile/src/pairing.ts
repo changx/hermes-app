@@ -101,7 +101,7 @@ export async function completePairing(pending: PendingPairing, options: Options)
       // Covers exchange response loss, app termination and retry after grant expiry.
       const check = await request('/v1/capabilities', { headers: { Authorization: 'Bearer ' + pending.config.token } });
       if (check.status === 200) {
-        if (check.body?.protocol !== 1 || check.body?.durable_sync !== true) throw new PairingError('This server version does not support the app yet.');
+        if (check.body?.protocol !== 1) throw new PairingError('This server version does not support the app yet.');
       } else if (check.status === 401) {
         if (exchanged) throw new PairingError('This device has not been authorized yet. Contact your administrator.');
         const reply = await request('/v1/pairing/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' },

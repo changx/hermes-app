@@ -73,7 +73,7 @@ export class LiveSessionClient extends HermesClient {
 
   constructor(options:Options, owner?:LiveSessionClient){
     let self:LiveSessionClient|undefined;
-    super({...options,onCheckpoint:undefined,onChange:()=>{self?.prune();options.onChange?.()}},owner);
+    super({...options,onChange:()=>{self?.prune();options.onChange?.()}},owner);
     this.liveOptions=options;this.owner=owner;self=this;
   }
   private prune():void{
@@ -104,7 +104,7 @@ export class LiveSessionClient extends HermesClient {
       const minimal={id,name:c.name};this.minimalChannels.add(minimal);this.channels.set(id,minimal);
     }
     for(const [id,t]of this.threads)if(!this.minimalThreads.has(t)){
-      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),markers:t.markers??[],markers_updated_at:t.markers_updated_at??0,...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
+      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),markers:t.markers??[],markers_updated_at:t.markers_updated_at??0,...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
       this.minimalThreads.add(minimal);this.threads.set(id,minimal);
     }
   }
@@ -144,7 +144,7 @@ export class LiveSessionClient extends HermesClient {
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
     this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.releaseContent();this.sendWatch();this.changed();
   }
-  override async connect():Promise<void>{
+  async connect():Promise<void>{
     this.connectionSuspended=false;
     if(this.owner){await this.owner.connect();if(this.owner.hello&&this.attempt!==this.owner.attempt)this.sharedConnected();return;}
     if(this.liveController)return;
@@ -168,11 +168,8 @@ export class LiveSessionClient extends HermesClient {
     this.observe({stage:'cancelled'});this.openTiming=undefined;
     this.suspendConnection();this.opened?.reject(new Error('aborted'));this.opened=null;this.publishedMessages=[];this.releaseContent();super.close();this.changed();
   }
-  override async retryNow():Promise<void>{this.suspendConnection();await this.connect()}
-  override async snapshot(signal?:AbortSignal):Promise<void>{await (this.owner??this).refreshDirectory(signal)}
-  override async catchUp(signal?:AbortSignal):Promise<void>{await this.snapshot(signal);await this.refreshContent()}
-  override async resync(signal?:AbortSignal):Promise<void>{await this.catchUp(signal)}
-  override async markRead(_id:string,_ref:number):Promise<number>{return 0} // no network/read accounting
+  async retryNow():Promise<void>{this.suspendConnection();await this.connect()}
+  async snapshot(signal?:AbortSignal):Promise<void>{await (this.owner??this).refreshDirectory(signal)}
   /** UI calls only after this exact result has been displayed in the foreground. */
   async markResultRead(id:string,version:number,ref:number):Promise<void>{
     if(id!==this.wanted||!this.watchReady||this.connectionState!=='online')return;
@@ -186,8 +183,7 @@ export class LiveSessionClient extends HermesClient {
       await this.snapshot(linked.signal);
     }finally{linked.done()}
   }
-  override checkpoint():never{throw new ProtocolError('Live conversations are not persisted')}
-  override restoreCheckpoint(_value:unknown):never{throw new ProtocolError('Live conversations are read from the server')}
+
 
   /** A matching durable ACK is sufficient to retire the local sending queue.
    * Keep an accepted echo only while this exact conversation is open. */
@@ -259,7 +255,7 @@ export class LiveSessionClient extends HermesClient {
         this.batchChanges(()=>{
           this.channels.clear();for(const c of channels)this.channels.set(c.id,c);
           this.threads.clear();for(const item of threads)if(item.kind==='session'&&this.channels.has(item.value.project_id)){
-            const t=item.value;this.threads.set(t.id,{...t,last_ref:0,read_ref:0,unread_count:0});
+            const t=item.value;this.threads.set(t.id,t);
           }
           this.directoryReady=true;
           if(this.wanted&&!this.isThreadAvailable(this.wanted))this.closeConversation();

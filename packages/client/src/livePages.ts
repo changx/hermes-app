@@ -39,7 +39,7 @@ export class LivePageClient extends LiveSessionClient {
     if (this.disposed) throw new ProtocolError('Connection is closed');
     const existing = this.pages.get(id);
     if (existing) return existing;
-    const page = new LiveSessionClient({ ...this.pageOptions, onCheckpoint: undefined,
+    const page = new LiveSessionClient({ ...this.pageOptions,
       onChange: () => { if (this.pages.get(id) === page) { this.mirror(); this.pageOptions.onChange?.(); } },
       onConnectionState: undefined,
     },this);

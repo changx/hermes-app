@@ -70,7 +70,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     }
     closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
     resumeTail() {}
-    async markRead(...args) { reads.push(args); }
+
   }
   class Box {
     constructor(storage, _sdk, changed) { boxCount++; this.storage = storage; outboxChanged = changed; }

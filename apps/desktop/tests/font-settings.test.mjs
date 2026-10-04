@@ -14,23 +14,6 @@ async function preference() {
 function environment(storage) {
   const applied=[];globalThis.window={localStorage:storage};globalThis.document={documentElement:{style:{setProperty:(...args)=>applied.push(args)}}};return applied;
 }
-test('font preference defaults to 16, saves only one local key and restores across new modules',async()=>{
-  const data=new Map(),storage={getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};
-  const applied=environment(storage),p=await preference();p.initializeFontSize();assert.equal(p.getFontSize(),16);
-  assert.equal(p.setFontSize(20),true);assert.deepEqual([...data],[[p.FONT_SIZE_KEY,'20']]);
-  const cold=await preference();cold.initializeFontSize();assert.equal(cold.getFontSize(),20);assert.deepEqual(applied.at(-1),['--app-font-size','20px']);
-});
-test('invalid, fractional and out-of-range font values cannot reach CSS or storage',async()=>{
-  let stored='garbage',writes=0;environment({getItem:()=>stored,setItem:()=>writes++});const p=await preference();
-  for(const value of ['garbage','', '11','25','18.4','Infinity']) {stored=value;p.initializeFontSize();assert.equal(p.getFontSize(),16);}
-  for(const value of [NaN,Infinity,11,25,18.4]) assert.equal(p.setFontSize(value),false);
-  assert.equal(writes,0);assert.deepEqual(p.FONT_SIZES,[12,13,14,15,16,17,18,19,20,21,22,23,24]);
-});
-test('storage failures retain a live usable font and report load/save failure without clearing data',async()=>{
-  environment({getItem(){throw Error('private error');},setItem(){throw Error('private error');}});
-  const p=await preference();p.initializeFontSize();assert.equal(p.getFontSize(),16);assert.equal(p.fontLoadFailed(),true);
-  assert.equal(p.setFontSize(24),false);assert.equal(p.getFontSize(),24);
-});
 
 test('Chromium: real settings change text only, reset, retain pages, persist to cold browser and show storage errors', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');

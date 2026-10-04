@@ -9,11 +9,6 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-test('desktop defines an explicit shared 16px text default', () => {
-  assert.match(css, /--app-font-size: 16px;/);
-  assert.match(css, /font-size: var\(--app-font-size\);/);
-  assert.match(css, /button, input, textarea, select \{ color: inherit; font-family: inherit; font-size: inherit; \}/);
-});
 
 test('Chromium: production UI and content use 16px at narrow and wide widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `

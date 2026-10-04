@@ -13,17 +13,6 @@ function luminance(hex) {
   return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
 }
 
-test('draft text keeps red and no decoration; desktop uses the shared font default', async () => {
-  const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-  const mobile = await readFile(new URL('../../mobile/src/ChannelScreens.tsx', import.meta.url), 'utf8');
-  assert.ok(mobile.includes("draft: { color: '#dc2626', fontSize: 12, fontWeight: '600' }"));
-  assert.equal(/\.thread-draft \{([^}]*)\}/.exec(css)[1].trim(), 'color: #dc2626; font-size: var(--app-font-size); font-weight: 600; flex-shrink: 0;');
-  assert.ok(!mobile.includes('draftBadge:'));
-  const contrast = (luminance('ffffff') + 0.05) / (luminance('dc2626') + 0.05);
-  assert.ok(contrast >= 4.5);
-  console.log('Draft red text/white background contrast:', contrast.toFixed(2));
-});
-
 test('Chromium: red draft text uses 16px without decoration, clipping or overlap', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';

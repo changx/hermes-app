@@ -66,7 +66,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
   // Running sessions first; latest activity first within each group.
   const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
-    .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title) || a.id.localeCompare(b.id));
+    .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.title.localeCompare(a.title) || a.id.localeCompare(b.id));
   const filtering = client.supportsSessionLabels && labelFilterActive(labelFilter);
   const threads = filtering ? channelThreads.filter(t => matchesLabels(t.markers, labelFilter)) : channelThreads;
   const startEdit = () => { if (!channel || busy) return; setName(channel.name); setEditing(true); setError(''); };

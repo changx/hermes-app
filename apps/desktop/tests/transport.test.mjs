@@ -47,17 +47,17 @@ test("main transport authenticates HTTP and WebSocket with headers, never URL cr
   assert.equal(typeof address, "object");
   const transport = mainTransport(`http://127.0.0.1:${address.port}`, true);
   const token = "test-secret-never-in-url";
-  const reply = await transport.http.request("GET", "/v1/snapshot", token);
+  const reply = await transport.http.request("GET", "/v1/catalogue", token);
   assert.deepEqual(reply.body, { ok: true });
 
   const controller = new AbortController();
-  const socket = await transport.socket.connect("/v1/events", token, controller.signal);
+  const socket = await transport.socket.connect("/v1/live", token, controller.signal);
   const message = await new Promise((resolve) => socket.onMessage(resolve));
   assert.equal(message, "ready");
   socket.close();
   assert.deepEqual(observed, [
-    { kind: "http", url: "/v1/snapshot", authorization: `Bearer ${token}` },
-    { kind: "websocket", url: "/v1/events", authorization: `Bearer ${token}` },
+    { kind: "http", url: "/v1/catalogue", authorization: `Bearer ${token}` },
+    { kind: "websocket", url: "/v1/live", authorization: `Bearer ${token}` },
   ]);
   assert.equal(observed.some((item) => item.url.includes(token)), false);
 });

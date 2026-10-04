@@ -13,7 +13,7 @@ function fixture(multi=true){
   const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>{},
     http:{async request(method,path,_token,body,signal){
       paths.push([method,path]);
-      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
+      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,history_latest:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
       if(path.startsWith('/v1/catalogue'))return {status:200,body:{items:[{kind:'channel',value:{id:'p',name:'P'}},...available.map(id=>({kind:'session',value:{id,project_id:'p',title:id,archived:false,running:false}}))],next_after:null}};
       const id=path.split('/')[3];
       if(path.includes('/messages')){
