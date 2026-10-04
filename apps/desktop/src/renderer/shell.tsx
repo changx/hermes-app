@@ -7,8 +7,8 @@ import { MessageContent } from "./message-content";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { orderedThreads } from "./thread-navigation";
-import { NavigationPanel } from "./navigation-panel";
-import { NewSessionDialog } from "./new-session-dialog";
+import { NativeWorkspace } from './native-workspace';
+import { NewSessionPage } from './new-session-page';
 import { LabelPills, LabelsEditor } from './session-labels';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
@@ -35,7 +35,7 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
   </form></div>;
 };
 
-type Editor = "new-channel" | "edit-channel" | "new-thread" | "rename-thread" | "palette" | null;
+type Editor = "new-channel" | "edit-channel" | "rename-thread" | "palette" | null;
 const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | "new-thread">; snapshot: DesktopSnapshot; close: () => void }) => {
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
@@ -234,7 +234,7 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   </footer>;
 };
 
-export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' }) => {
   const [draftReady, setDraftReady] = useState<string | undefined>();
   const [draftError, setDraftError] = useState('');
   const [draftRetry, setDraftRetry] = useState(0);
@@ -267,20 +267,17 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
   const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined } | null>(null);
   const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.connectionKey }), [snapshot.connectionKey]);
   useEffect(() => { setLabelTarget(null); }, [snapshot.connectionKey]);
-  const [newSessionChannel, setNewSessionChannel] = useState<string>();
-  const [preparedDrafts, setPreparedDrafts] = useState<Record<string, number>>({});
-  const openNewSession = useCallback((channelId?: string) => { setNewSessionChannel(channelId); setEditor("new-thread"); }, []);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
       if (document.querySelector?.('dialog.font-settings[open]')) return;
-      if (editor === "new-thread") return;
+
       if (event.key === "Escape") { setEditor(null); return; }
       if (!event.metaKey) return;
-      if (event.key.toLocaleLowerCase() === "b") { event.preventDefault(); setPanelOpen((open) => !open); }
+
       if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
-      if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); openNewSession(snapshot.selectedChannelId); }
+      if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); safely(window.hermesDesktop.newTab(snapshot.selectedChannelId)); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
@@ -290,41 +287,18 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
   const forget = () => { if (window.confirm("Forget this connection and remove its local drafts and queued messages?")) { drafts.clear(); draftAttachments.clear(); safely(window.hermesDesktop.forgetConnection()); } };
   const deleteChannel = () => { if (channel && window.confirm(`Delete “${channel.name}”? This cannot be undone.`)) safely(window.hermesDesktop.deleteChannel(channel.id)); };
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  return <main className={`desktop-shell${panelOpen ? "" : " panel-collapsed"}`} aria-label="Hermes desktop">
-    <nav className="activity-bar" aria-label="Navigation tools">
-      <button type="button" title="Toggle navigation (⌘B)" aria-label="Toggle navigation" aria-expanded={panelOpen} aria-controls="navigation-panel" onClick={() => setPanelOpen((open) => !open)}>☰</button>
-      <button type="button" title="Switch thread (⌘K)" aria-label="Switch thread" onClick={() => setEditor("palette")}>⌕</button>
-      <button type="button" title="New session (⌘N)" aria-label="Create a session" disabled={!snapshot.channels.length} onClick={() => openNewSession(snapshot.selectedChannelId)}>＋</button>
-      <FontSettingsButton className="font-settings-button" />
-    </nav>
-    <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
-      <header className="pane-header"><h1 id="navigation-heading">Channels</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
-      <NavigationPanel key={snapshot.connectionKey} snapshot={snapshot} onNewSession={openNewSession} draftThreads={draftThreads} onEditLabels={openLabels} />
-      <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
-    </nav>
-    <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2>{snapshot.supportsSessionLabels === true && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}</div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button>{snapshot.supportsSessionLabels === true && <button type="button" disabled={snapshot.connectionState !== "online"} onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}>Edit labels</button>}<button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
-      {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
-      {draftError ? <div className="error-banner" role="alert">{draftError}</div> : null}
-      {!!snapshot.sessionPages?.length && <nav className="session-page-controls" aria-label="Open conversations">
-        {snapshot.sessionPages.map(page => <span key={page.id}>
-          <button type="button" aria-current={page.id === snapshot.selectedThreadId ? 'page' : undefined} onClick={() => safely(window.hermesDesktop.selectThread(page.id))}>{page.selectedThreadTitle || 'Conversation'}</button>
-          <button type="button" aria-label={`Close ${page.selectedThreadTitle || 'conversation'}`} title="Close conversation" onClick={() => safely(window.hermesDesktop.closeSessionPage(page.id))}>×</button>
-        </span>)}
-      </nav>}
-      {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, loadingHistory: snapshot.loadingHistory, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
-        const active = page.id === snapshot.selectedThreadId;
-        const pageSnapshot = { ...snapshot, ...page, selectedThreadId: page.id };
-        return <div key={page.id} className="session-page" data-session-page={page.id} hidden={!active} style={{ display: active ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
-          <Timeline snapshot={pageSnapshot} active={active} />
-          {page.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-          <Composer key={preparedDrafts[page.id] ?? 0} snapshot={pageSnapshot} />
-        </div>;
-      })}
-      {!snapshot.selectedThreadId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>)}
-      {!snapshot.selectedThreadId && <Composer snapshot={snapshot} />}
-    </section>
-    {labelTarget && labelTarget.connectionKey === snapshot.connectionKey && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={snapshot} close={() => setLabelTarget(null)} />}
-    {editor === "new-thread" ? <NewSessionDialog snapshot={snapshot} initialChannelId={newSessionChannel} close={() => setEditor(null)} prepared={(threadId, attachments) => { draftAttachments.set(threadId, attachments); setPreparedDrafts(value => ({ ...value, [threadId]: (value[threadId] ?? 0) + 1 })); }} /> : editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
+  const overlays = <>{labelTarget && labelTarget.connectionKey === snapshot.connectionKey && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={snapshot} close={() => setLabelTarget(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
+  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setEditor('new-channel')} onProjectOptions={id => { safely(window.hermesDesktop.selectChannel(id).then(() => setEditor('edit-channel'))); }} onSettings={() => setSettingsOpen(true)} overlayOpen={!!editor || !!labelTarget || settingsOpen}>
+    {overlays}
+    {settingsOpen && <div className="modal-backdrop" onMouseDown={() => setSettingsOpen(false)}><section className="editor-dialog" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={event => event.stopPropagation()}><h2>Settings</h2><FontSettingsButton className="text-button" /><button type="button" onClick={() => setEditor('palette')}>Find a session</button><button type="button" onClick={forget}>Forget connection</button>{channel && <button type="button" onClick={deleteChannel}>Delete current project</button>}<button type="button" onClick={() => setSettingsOpen(false)}>Close</button></section></div>}
+  </NativeWorkspace>;
+  if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;
+  return <main className="session-tab-page" aria-label="Hermes session">
+    <header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? 'Conversation'}</p><h2>{snapshot.selectedThreadTitle ?? 'Conversation'}</h2>{snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}</div><div className="conversation-actions"><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy link</button>{snapshot.supportsSessionLabels && <button type="button" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}>Edit labels</button>}<button type="button" onClick={() => setEditor('rename-thread')}>Rename</button><button type="button" onClick={archive}>Archive</button><FontSettingsButton className="text-button" /></div></header>
+    {snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{draftError && <div className="error-banner" role="alert">{draftError}</div>}
+    <Timeline snapshot={snapshot} active={snapshot.tabActive === true} />
+    {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
+    <Composer snapshot={snapshot} />{overlays}
   </main>;
 };
 

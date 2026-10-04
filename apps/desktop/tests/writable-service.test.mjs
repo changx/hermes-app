@@ -189,3 +189,22 @@ test("new-session file upload is scoped explicitly and cleans a partial upload o
     assert.equal(uploaded.length, 2);
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
+test('stable first-message retry does not resend or revalidate consumed attachments; changed payload is rejected', async()=>{
+  const {service,calls,storage}=fixture();
+  service.client.close=()=>{};
+  service.client.attachments.set('att_file',{id:'att_file',thread_id:'thread-a',state:'available'});
+  const input={text:'First body',attachmentIds:['att_file'],clientMessageId:'desktop:fixed-retry-identity'};
+  await service.sendMessage(input,'thread-a');
+  service.client.attachments.set('att_file',{id:'att_file',thread_id:'thread-a',state:'available',receipt_id:'receipt-a'});
+  const before=storage.length;await service.sendMessage(input,'thread-a');
+  assert.equal(calls.filter(item=>item[0]==='send').length,1);assert.equal(storage.length,before);
+  await assert.rejects(service.sendMessage({...input,text:'Changed body'},'thread-a'),/identity changed/);
+  service.close();
+});
+test('late durable save cannot publish an old message into a replacement connection', async()=>{
+  const {service}=fixture();service.client.close=()=>{};let release;const gate=new Promise(resolve=>release=resolve);
+  service.outboxStore.put=async()=>gate;
+  const pending=service.sendMessage({text:'Keep isolated',attachmentIds:[]},'thread-a');
+  service.connection={...service.connection,id:'b'.repeat(24)};release();
+  await assert.rejects(pending,/previous connection/);assert.equal(service.outbox.length,0);service.close();
+});

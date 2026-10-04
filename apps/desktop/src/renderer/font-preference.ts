@@ -3,6 +3,7 @@ export const FONT_SIZES = Array.from({ length: 13 }, (_, index) => index + 12);
 export const FONT_SIZE_KEY = 'hermes.desktop.font-size';
 let currentSize = DEFAULT_FONT_SIZE;
 let loadFailed = false;
+let observesStorage = false;
 
 export const validFontSize = (value: number): boolean => Number.isInteger(value) && value >= 12 && value <= 24;
 export const getFontSize = (): number => currentSize;
@@ -25,6 +26,14 @@ export const initializeFontSize = (): void => {
     loadFailed = true;
   }
   applyFontSize(size);
+  if (!observesStorage && window.addEventListener) {
+    observesStorage = true;
+    window.addEventListener('storage', event => {
+      if (event.key !== FONT_SIZE_KEY) return;
+      const next = event.newValue === null ? DEFAULT_FONT_SIZE : Number(event.newValue);
+      if (validFontSize(next)) { applyFontSize(next); loadFailed = false; }
+    });
+  }
 };
 
 export const setFontSize = (size: number): boolean => {

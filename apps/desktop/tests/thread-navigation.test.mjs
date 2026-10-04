@@ -31,3 +31,11 @@ test("live activity reorders stably without mutating snapshot", () => {
   assert.deepEqual(rows.map((x) => x.id), ["z", "a"]);
   assert.deepEqual(threadWindow([row("z", now + 1), row("a", now)], "a", now).rows.map((x) => x.id), ["z", "a"]);
 });
+test('all Running sessions remain ahead of recent idle sessions, including more than 24 old tasks', () => {
+  const running = Array.from({length:30},(_,i)=>({...row(`running-${i}`,now-100_000_000-i),running:true,markers:['work']}));
+  const idle = Array.from({length:40},(_,i)=>({...row(`idle-${i}`,now-i),markers:['work']}));
+  const first=threadWindow([...idle,...running],'a',now);
+  assert.equal(first.rows.length,54);assert.ok(first.rows.slice(0,30).every(item=>item.running));
+  assert.deepEqual(first.rows.slice(0,30).map(item=>item.id),running.map(item=>item.id));
+  assert.equal(threadWindow([...idle,...running],'a',now,0,{labels:['work'],noLabels:false}).rows.length,54);
+});

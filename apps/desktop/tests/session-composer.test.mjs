@@ -12,52 +12,52 @@ const mobileRequire = require; // Desktop tests also run on CI without installin
 const React = mobileRequire('react');
 const { act, create } = mobileRequire('react-test-renderer');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const output = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `export { NewSessionDialog } from './src/renderer/new-session-dialog'; export { NavigationPanel } from './src/renderer/navigation-panel'; export { DesktopShellView } from './src/renderer/shell';` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime'], write: false });
+const output = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `export { NewSessionPage } from './src/renderer/new-session-page'; export { NavigationPanel } from './src/renderer/navigation-panel'; export { DesktopShellView } from './src/renderer/shell';` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime'], write: false });
 const mod = { exports: {} };
 new Function('require','module','exports',output.outputFiles[0].text)(name => name.startsWith('react') ? mobileRequire(name) : require(name), mod, mod.exports);
-const { NewSessionDialog, NavigationPanel, DesktopShellView } = mod.exports;
+const { NewSessionPage, NavigationPanel, DesktopShellView } = mod.exports;
 const snapshot = { revision: 1, phase: 'connected', connectionState: 'online', channels: [{ id:'a', name:'Alpha' }, { id:'b', name:'Beta' }], threads: [], selectedChannelId:'a', messages: [], interactions: [], canLoadOlder:false };
 const prevent = () => ({ preventDefault() {} });
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject}; };
 function environment(api = {}) {
   const listeners = new Map();
-  globalThis.window = { hermesDesktop:api, setInterval:()=>1, clearInterval(){}, addEventListener:(name,fn)=>listeners.set(name,fn), removeEventListener:(name)=>listeners.delete(name) };
+  globalThis.window = { hermesDesktop:{sendMessage:async()=>{},completeNewTab:async()=>{},...api}, setInterval:()=>1, clearInterval(){}, addEventListener:(name,fn)=>listeners.set(name,fn), removeEventListener:(name)=>listeners.delete(name) };
   globalThis.document = { activeElement: null };
   return listeners;
 }
 async function mount(Component, props) { let tree; await act(async()=>{tree=create(React.createElement(Component,props));}); return tree; }
-const title = tree => tree.root.findByProps({name:'title'});
+const title = tree => tree.root.findByProps({'aria-label':'First message'});
 const form = tree => tree.root.findByType('form');
 async function fill(tree) { await act(async()=>title(tree).props.onChange({target:{value:'First session'}})); }
 
-test('new-session dialog uses hovered parent, can select another channel, cancels without any writes', async()=>{
+test('new-session tab uses parent project and a large textarea; closing before Send performs no writes', async()=>{
   const calls=[]; environment({createThread:async x=>calls.push(x)});
-  let closed=0; const tree=await mount(NewSessionDialog,{snapshot, initialChannelId:'b',close:()=>closed++,prepared(){}});
+  const tree=await mount(NewSessionPage,{snapshot:{...snapshot,initialChannelId:'b'}});
   assert.equal(tree.root.findByType('select').props.value,'b');
   await act(async()=>tree.root.findByType('select').props.onChange({target:{value:'a'}}));
   assert.equal(tree.root.findByType('select').props.value,'a');
-  await act(async()=>tree.root.findAllByType('button').find(x=>x.children.includes('Cancel')).props.onClick());
-  assert.equal(closed,1); assert.deepEqual(calls,[]); await act(async()=>tree.unmount());
+  assert.equal(title(tree).props.rows,12);assert.equal(tree.root.findAllByProps({name:'title'}).length,0);
+  await act(async()=>tree.unmount()); assert.deepEqual(calls,[]);
 });
 
 test('selected files upload only to returned new session; immediate double submit and dismissal cannot interrupt', async()=>{
   const creation=deferred(), calls=[], prepared=[]; let closed=0;
-  environment({createThread:x=>{calls.push(['create',x]);return creation.promise;},uploadDroppedFiles:async(files,id)=>{calls.push(['upload',files,id]);return [{id:'file-a',name:'note.txt'}];}});
-  const tree=await mount(NewSessionDialog,{snapshot,initialChannelId:'b',close:()=>closed++,prepared:(...args)=>prepared.push(args)}); await fill(tree);
+  environment({createThread:x=>{calls.push(['create',x]);return creation.promise;},uploadDroppedFiles:async(files,id)=>{calls.push(['upload',files,id]);return [{id:'file-a',name:'note.txt'}];},sendMessage:async payload=>prepared.push(payload),completeNewTab:async()=>closed++});
+  const tree=await mount(NewSessionPage,{snapshot:{...snapshot,initialChannelId:'b'}}); await fill(tree);
   const file={name:'note.txt',size:10};
   await act(async()=>tree.root.findByProps({type:'file'}).props.onChange({target:{files:[file],value:'x'}}));
   let pending;
-  await act(async()=>{pending=form(tree).props.onSubmit(prevent()); form(tree).props.onSubmit(prevent()); tree.root.findByProps({className:'modal-backdrop'}).props.onMouseDown();});
+  await act(async()=>{pending=form(tree).props.onSubmit(prevent()); form(tree).props.onSubmit(prevent());});
   assert.equal(calls.length,1); assert.equal(closed,0); assert.equal(calls[0][1].channelId,'b');
   await act(async()=>{creation.resolve('authoritative-new-id');await pending;});
-  assert.deepEqual(calls[1],['upload',[file],'authoritative-new-id']); assert.equal(prepared[0][0],'authoritative-new-id'); assert.equal(closed,1);
+  assert.deepEqual(calls[1],['upload',[file],'authoritative-new-id']); assert.equal(prepared[0].text,'First session');assert.deepEqual(prepared[0].attachmentIds,['file-a']);assert.match(prepared[0].clientMessageId,/^desktop:/); assert.equal(closed,1);
   await act(async()=>tree.unmount());
 });
 
 test('upload failure retains selected files and retries same created session without a duplicate', async()=>{
   let creates=0, uploads=0; const payloads=[];
   environment({createThread:async x=>{creates++;payloads.push(x);return 'new-id';},uploadDroppedFiles:async(files,id)=>{uploads++;assert.equal(id,'new-id');if(uploads===1)throw Error('private error');return []}});
-  const tree=await mount(NewSessionDialog,{snapshot,close(){},prepared(){}});await fill(tree);
+  const tree=await mount(NewSessionPage,{snapshot,close(){},prepared(){}});await fill(tree);
   await act(async()=>tree.root.findByProps({type:'file'}).props.onChange({target:{files:[{name:'a.txt',size:1}],value:''}}));
   await act(async()=>form(tree).props.onSubmit(prevent()));
   assert.match(tree.root.findByProps({role:'alert'}).children.join(''),/session was created/);
@@ -68,20 +68,33 @@ test('upload failure retains selected files and retries same created session wit
 
 test('creation failure retries stable identity, invalid files never reach upload',async()=>{
   const payloads=[];environment({createThread:async x=>{payloads.push(x);if(payloads.length===1)throw Error('offline');return 'new';}});
-  const tree=await mount(NewSessionDialog,{snapshot,close(){},prepared(){}});await fill(tree);
+  const tree=await mount(NewSessionPage,{snapshot,close(){},prepared(){}});await fill(tree);
   await act(async()=>tree.root.findByProps({type:'file'}).props.onChange({target:{files:[{name:'empty',size:0}],value:''}}));
   assert.equal(tree.root.findAllByType('li').length,0);
   await act(async()=>form(tree).props.onSubmit(prevent()));await act(async()=>form(tree).props.onSubmit(prevent()));
   assert.equal(payloads[0].clientThreadId,payloads[1].clientThreadId);await act(async()=>tree.unmount());
 });
+test('first-message send failure retains text/files and retries the same payload without reupload or recreate',async()=>{
+  let creates=0,uploads=0,completed=0;const sends=[];
+  environment({createThread:async()=>{creates++;return 'th_retry1234';},uploadDroppedFiles:async()=>{uploads++;return [{id:'att_retry',name:'notes.txt'}];},sendMessage:async payload=>{sends.push(payload);if(sends.length===1)throw Error('controlled send failure');},completeNewTab:async()=>completed++});
+  const tree=await mount(NewSessionPage,{snapshot});await fill(tree);
+  await act(async()=>tree.root.findByProps({type:'file'}).props.onChange({target:{files:[{name:'notes.txt',size:10}],value:''}}));
+  await act(async()=>form(tree).props.onSubmit(prevent()));assert.equal(title(tree).props.value,'First session');assert.equal(completed,0);assert.equal(tree.root.findAllByType('li').length,1);
+  await act(async()=>form(tree).props.onSubmit(prevent()));assert.equal(creates,1);assert.equal(uploads,1);assert.deepEqual(sends[0],sends[1]);assert.equal(completed,1);await act(async()=>tree.unmount());
+});
+test('lost promotion confirmation retries opening the original tab without sending the first message twice',async()=>{
+  let creates=0,sends=0,promotions=0;environment({createThread:async()=>{creates++;return 'th_promote12';},sendMessage:async()=>sends++,completeNewTab:async()=>{if(++promotions===1)throw Error('controlled lost confirmation');}});
+  const tree=await mount(NewSessionPage,{snapshot});await fill(tree);await act(async()=>form(tree).props.onSubmit(prevent()));
+  assert.match(tree.root.findByProps({role:'alert'}).children.join(''),/message was saved/);await act(async()=>form(tree).props.onSubmit(prevent()));
+  assert.equal(creates,1);assert.equal(sends,1);assert.equal(promotions,2);await act(async()=>tree.unmount());
+});
 
-test('Channel toolbar and Command-N open production dialog with correct default and preserve selected conversation',async()=>{
-  const listeners=environment({});const tree=await mount(DesktopShellView,{snapshot});
+test('Channel toolbar and Command-N request new native tabs with correct project',async()=>{
+  const calls=[], listeners=environment({newTab:async id=>calls.push(id)});const tree=await mount(DesktopShellView,{snapshot,viewRole:'workspace'});
   await act(async()=>tree.root.findByProps({'aria-label':'New session in Beta'}).props.onClick());
-  assert.equal(tree.root.findByType('select').props.value,'b');
-  await act(async()=>tree.root.findAllByType('button').find(x=>x.children.includes('Cancel')).props.onClick());
+  assert.deepEqual(calls,['b']);
   await act(async()=>listeners.get('keydown')({key:'n',metaKey:true,preventDefault(){}}));
-  assert.equal(tree.root.findByType('select').props.value,'a');await act(async()=>tree.unmount());
+  assert.deepEqual(calls,['b','a']);await act(async()=>tree.unmount());
 });
 
 test('desktop composer separates stop and send; preserves IME/Shift+Enter and sends exactly once',async()=>{
@@ -100,58 +113,39 @@ test('desktop composer separates stop and send; preserves IME/Shift+Enter and se
   await act(async()=>send.resolve());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'');await act(async()=>tree.unmount());
 });
 
-test('desktop draft label follows local input and clears only after successful save', async()=>{
-  const saved=deferred(),calls=[];
-  environment({sendMessage:payload=>{calls.push(payload);return saved.promise;},selectThread:async()=>{}});
-  const current={...snapshot,selectedThreadId:'draft-test',threads:[{id:'draft-test',channelId:'a',title:'Draft test',running:false,completedUnread:true,lastMessageAt:Date.now()/1000}]};
-  const tree=await mount(DesktopShellView,{snapshot:current});
-  const input=()=>tree.root.findByProps({'aria-label':'Message'});
-  const badges=()=>tree.root.findAllByProps({className:'thread-draft'});
+test('desktop tab preserves its draft until durable save succeeds', async()=>{
+  const saved=deferred(),calls=[];environment({sendMessage:payload=>{calls.push(payload);return saved.promise;}});
+  const current={...snapshot,selectedThreadId:'draft-test',threads:[{id:'draft-test',channelId:'a',title:'Draft test',running:false,lastMessageAt:Date.now()/1000}]};
+  const tree=await mount(DesktopShellView,{snapshot:current}); const input=()=>tree.root.findByProps({'aria-label':'Message'});
   try {
-    assert.equal(badges().length,0);
-    await act(async()=>input().props.onChange({target:{value:'  \n '}}));
-    assert.equal(badges().length,0);
     await act(async()=>input().props.onChange({target:{value:'remember me'}}));
-    assert.equal(badges().length,1); assert.deepEqual(badges()[0].children,['draft']);
-    assert.equal(tree.root.findAllByProps({'aria-label':'Completed, unread'}).length,1);
     await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
-    assert.equal(badges().length,1);
-    await act(async()=>saved.reject(Error('synthetic local storage failure')));
-    assert.equal(badges().length,1);
     assert.equal(input().props.value,'remember me');
+    await act(async()=>saved.reject(Error('synthetic local storage failure')));
+    assert.equal(input().props.value,'remember me');assert.equal(tree.root.findAllByProps({role:'alert'}).length,1);
     window.hermesDesktop.sendMessage=async payload=>calls.push(payload);
     await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
-    assert.equal(badges().length,0);
-    assert.deepEqual(calls.at(-1),{text:'remember me',attachmentIds:[]});
-    await act(async()=>input().props.onChange({target:{value:'clear me'}}));
-    assert.equal(badges().length,1);
-    await act(async()=>input().props.onChange({target:{value:''}}));
-    assert.equal(badges().length,0);
-  } finally { await act(async()=>tree.unmount()); }
+    assert.equal(input().props.value,'');assert.deepEqual(calls.at(-1),{text:'remember me',attachmentIds:[]});
+  } finally {await act(async()=>tree.unmount());}
 });
 
-test('attachment-only desktop draft updates memoized navigation and survives session switching', async()=>{
+test('independent session renderers keep attachment-only drafts separate', async()=>{
   const file={id:'draft-file',name:'note.txt'},calls=[];
   environment({pickAndUploadAttachments:async()=>[file],deleteUnattachedAttachment:async id=>calls.push(['delete',id]),sendMessage:async payload=>calls.push(['send',payload])});
   const threads=[{id:'attachment-draft',channelId:'a',title:'Attachment draft',running:false,lastMessageAt:Date.now()/1000},{id:'other-draft',channelId:'a',title:'Other',running:false,lastMessageAt:Date.now()/1000}];
-  const current={...snapshot,selectedThreadId:'attachment-draft',threads};
-  const tree=await mount(DesktopShellView,{snapshot:current});
-  const badge=()=>tree.root.findAllByProps({className:'thread-draft'});
+  const tree=await mount(DesktopShellView,{snapshot:{...snapshot,selectedThreadId:'attachment-draft',threads}});
+  const other=await mount(DesktopShellView,{snapshot:{...snapshot,selectedThreadId:'other-draft',threads}});
   try {
     await act(async()=>tree.root.findByProps({'aria-label':'Attach files'}).props.onClick());
-    assert.equal(badge().length,1);
-    await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:{...current,selectedThreadId:'other-draft'}})));
-    assert.equal(badge().length,1);
-    assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'');
-    await act(async()=>tree.update(React.createElement(DesktopShellView,{snapshot:current})));
+    assert.equal(tree.root.findAllByProps({'aria-label':'Remove note.txt'}).length,1);
+    assert.equal(other.root.findAllByProps({'aria-label':'Remove note.txt'}).length,0);
     await act(async()=>tree.root.findByProps({'aria-label':'Remove note.txt'}).props.onClick());
-    assert.equal(badge().length,0);
+    assert.equal(tree.root.findAllByProps({'aria-label':'Remove note.txt'}).length,0);
     await act(async()=>tree.root.findByProps({'aria-label':'Attach files'}).props.onClick());
-    assert.equal(badge().length,1);
     await act(async()=>tree.root.findByProps({'aria-label':'Send message'}).props.onClick());
-    assert.equal(badge().length,0);
+    assert.equal(tree.root.findAllByProps({'aria-label':'Remove note.txt'}).length,0);
     assert.deepEqual(calls.at(-1),['send',{text:'',attachmentIds:['draft-file']}]);
-  } finally { await act(async()=>tree.unmount()); }
+  } finally { await act(async()=>{tree.unmount();other.unmount();}); }
 });
 
 test('channel tree has no Select channel action and expanding a branch does not navigate',async()=>{
@@ -224,8 +218,8 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
     await writeFile(file,`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${html}</div><pre id="results"></pre><script>
       const results=[];
       for(const width of [720,1280,1800]) {
-        document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
-        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.conversation-pane'),row=document.querySelector('.composer-row');
+        document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.session-tab-page').style.width=width+'px';
+        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.session-tab-page'),row=document.querySelector('.composer-row');
         const bubble=user.getBoundingClientRect(),other=agent.getBoundingClientRect(),bounds=pane.getBoundingClientRect(),controls=[...row.children].map(x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,width:b.width,height:b.height}});
         const stop=document.querySelector('.running-row .stop-button').getBoundingClientRect();
         results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});

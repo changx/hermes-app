@@ -13,7 +13,7 @@ async function mount(Component,snapshot=base){let tree;await act(async()=>{tree=
 
 test('renderer cold mount restores contents, attachment selections and list labels before opening, and every later edit is saved locally',async()=>{
   const calls=[];environment({loadLocalDrafts:async identity=>{assert.equal(identity,base.draftIdentity);return structuredClone(saved);},saveLocalDraft:async(...args)=>calls.push(args)});
-  let tree=await mount(view());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,saved.t.text);assert.equal(tree.root.findAllByProps({className:'thread-draft'}).length,1);assert.equal(tree.root.findAllByProps({'aria-label':'Remove note.txt'}).length,1);assert.equal(calls.length,0);
+  let tree=await mount(view());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,saved.t.text);assert.equal(tree.root.findAllByProps({'aria-label':'Remove note.txt'}).length,1);assert.equal(calls.length,0);
   await act(async()=>tree.root.findByProps({'aria-label':'Message'}).props.onChange({target:{value:'latest'}}));await act(async()=>tree.root.findByProps({'aria-label':'Message'}).props.onChange({target:{value:'latest edited'}}));
   assert.equal(calls.at(-1)[2].text,'latest edited');assert.equal(calls.at(-1)[2].attachments[0].id,'att_one');await act(async()=>tree.unmount());
   environment({loadLocalDrafts:async()=>({t:calls.at(-1)[2]}),saveLocalDraft:async()=>{}});tree=await mount(view());assert.equal(tree.root.findByProps({'aria-label':'Message'}).props.value,'latest edited');await act(async()=>tree.unmount());

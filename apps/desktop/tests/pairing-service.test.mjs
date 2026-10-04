@@ -148,6 +148,6 @@ test("read-only projection loads threads for the selected channel and the select
     attachments: [],
   }]);
   await service.selectChannel("channel-b");
-  assert.equal(service.snapshot().selectedThreadId, undefined);
-  assert.equal(service.snapshot().messages.length, 0);
+  assert.equal(service.snapshot().selectedThreadId, 'thread-a');
+  assert.equal(service.snapshot().messages.length, 1);
 });

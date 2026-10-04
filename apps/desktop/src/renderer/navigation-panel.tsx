@@ -12,8 +12,8 @@ const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels}: {thread:Deskt
   </span>{showLabels && <LabelPills markers={thread.markers} />}
 </button>);
 
-export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void }) => {
-  const [expanded, setExpanded] = useState(() => new Set(snapshot.selectedChannelId ? [snapshot.selectedChannelId] : []));
+export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onChannelOptions }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void }) => {
+  const [expanded, setExpanded] = useState(() => new Set(snapshot.channels.map(channel => channel.id)));
   const [batches, setBatches] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
   const [filter, setFilter] = useState(emptyLabelFilter);
@@ -35,8 +35,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     if (snapshot.selectedChannelId) setExpanded((old) => new Set([...old, snapshot.selectedChannelId!]));
   }, [snapshot.selectedChannelId]);
   return <div className="item-list channel-tree" aria-label="Channels and threads">
-    {snapshot.supportsSessionLabels === true && <LabelsFilter rows={available} value={filter} onChange={value => { setFilter(value); setBatches({}); }} />}
-    <p className="tree-caption">{filtering ? 'Matching sessions · All time' : 'Active in the last 24 hours'}</p>
+    {snapshot.supportsSessionLabels === true ? <LabelsFilter rows={available} value={filter} onNewChat={() => onNewSession(snapshot.selectedChannelId ?? snapshot.channels[0]?.id ?? '')} onChange={value => { setFilter(value); setBatches({}); }} /> : <button type="button" className="sidebar-new-chat" onClick={() => onNewSession(snapshot.selectedChannelId ?? snapshot.channels[0]?.id ?? '')}>✎ New chat</button>}
     {snapshot.channels.map((channel) => {
       const open = filtering || expanded.has(channel.id);
       const page = threadWindow(available, channel.id, now, batches[channel.id] ?? 0, filtering ? filter : emptyLabelFilter());
@@ -44,11 +43,11 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
       return <section className="channel-branch" key={channel.id}>
         <div className="channel-toolbar"><button type="button" className={`channel-toggle${channel.id === snapshot.selectedChannelId ? " current-channel" : ""}`} aria-expanded={open} aria-controls={`branch-${channel.id}`} onClick={() => setExpanded((old) => { const next = new Set(old); if (open) next.delete(channel.id); else next.add(channel.id); return next; })}>
           <span aria-hidden="true">{open ? "▾" : "▸"}</span><strong>{channel.name}</strong>
-        </button><button type="button" className="channel-new-session" aria-label={`New session in ${channel.name}`} title="New session" onClick={() => onNewSession(channel.id)}>＋</button></div>
+        </button>{onChannelOptions && <button type="button" className="channel-options" aria-label={`Options for ${channel.name}`} onClick={() => onChannelOptions(channel.id)}>⋯</button>}<button type="button" className="channel-new-session" aria-label={`New session in ${channel.name}`} title="New session" onClick={() => onNewSession(channel.id)}>✎</button></div>
         {open ? <div id={`branch-${channel.id}`} className="thread-children">
           {page.rows.map((thread) => <ThreadRow key={thread.id} thread={thread} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={snapshot.supportsSessionLabels === true} onMenu={snapshot.supportsSessionLabels === true && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />)}
           {!page.rows.length ? <p className="tree-empty">No recent activity</p> : null}
-          {page.hasMore ? <button className="tree-more" type="button" onClick={() => setBatches((old) => ({ ...old, [channel.id]: (old[channel.id] ?? 0) + 1 }))}>Load more threads</button> : null}
+          {page.hasMore ? <button className="tree-more" type="button" onClick={() => setBatches((old) => ({ ...old, [channel.id]: (old[channel.id] ?? 0) + 1 }))}>Show more</button> : null}
 
         </div> : null}
       </section>;

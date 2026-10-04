@@ -30,19 +30,31 @@ export function LabelPills({ markers = [] }: { markers?: readonly string[] }) {
   </span>;
 }
 
-export function LabelsFilter({ rows, value, onChange }: { rows: readonly DesktopThread[]; value: LabelFilter; onChange: (filter: LabelFilter) => void }) {
+export function LabelsFilter({ rows, value, onChange, onNewChat }: { rows: readonly DesktopThread[]; value: LabelFilter; onChange: (filter: LabelFilter) => void; onNewChat?: () => void }) {
   const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false), [allChips, setAllChips] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); root.current?.querySelector<HTMLButtonElement>('[aria-label="Filter sessions"]')?.focus(); } };
+    document.addEventListener('mousedown', dismiss); document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('mousedown', dismiss); document.removeEventListener('keydown', key); };
+  }, [open]);
   const candidates = labelCandidates(rows).filter(label => label.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  return <details className="labels-filter">
-    <summary>Labels{labelFilterActive(value) ? ` (${value.labels.length + Number(value.noLabels)})` : ''}</summary>
-    <div className="labels-filter-popover" role="group" aria-label="Filter sessions by labels">
-      <input aria-label="Search labels" placeholder="Search labels" value={search} onChange={event => setSearch(event.target.value)} />
+  const clear = () => { onChange(emptyLabelFilter()); setSearch(''); setAllChips(false); };
+  const shown = allChips ? value.labels : value.labels.slice(0, 2);
+  return <div className="labels-filter" ref={root}>
+    <div className="sidebar-new-chat-row">{onNewChat && <button type="button" className="sidebar-new-chat" onClick={onNewChat}>✎ New chat</button>}<button type="button" className="sidebar-filter-icon" aria-label="Filter sessions" title="Filter sessions" aria-expanded={open} aria-pressed={labelFilterActive(value)} onClick={() => setOpen(old => !old)}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg></button></div>
+    {labelFilterActive(value) && <div className="sidebar-filter-chips">{shown.map(label => <span className="sidebar-filter-chip" key={label}><button type="button" title={label} onClick={() => setOpen(true)}>{label}</button><button type="button" aria-label={`Remove filter label ${label}`} onClick={() => onChange({ ...value, labels: value.labels.filter(item => item !== label) })}>×</button></span>)}{!allChips && value.labels.length > shown.length && <button type="button" onClick={() => setAllChips(true)}>+{value.labels.length - shown.length}</button>}{value.noLabels && <span className="sidebar-filter-chip">No labels<button type="button" aria-label="Remove no-label filter" onClick={() => onChange({ ...value, noLabels: false })}>×</button></span>}<button type="button" aria-label="Add label filter" onClick={() => setOpen(true)}>＋</button><button type="button" className="text-button" onClick={clear}>Clear</button></div>}
+    {open && <div className="labels-filter-popover" role="group" aria-label="Filter sessions by labels">
+      <input autoFocus aria-label="Search labels" placeholder="Search labels" value={search} onChange={event => setSearch(event.target.value)} />
       <label><input type="checkbox" checked={value.noLabels} onChange={event => onChange({ ...value, noLabels: event.target.checked })} />No labels</label>
       <div className="labels-filter-candidates">{candidates.map(label => <label key={label} title={label}><input type="checkbox" aria-label={`Label: ${label}`} checked={value.labels.includes(label)} onChange={event => onChange({ ...value, labels: event.target.checked ? [...value.labels, label] : value.labels.filter(s => s !== label) })} /><span>{label}</span></label>)}</div>
       {!candidates.length && <p>No matching labels</p>}
-      <button type="button" className="text-button" disabled={!labelFilterActive(value)} onClick={() => { onChange(emptyLabelFilter()); setSearch(''); }}>Clear filters</button>
-    </div>
-  </details>;
+      <button type="button" className="text-button" disabled={!labelFilterActive(value)} onClick={clear}>Clear filters</button>
+    </div>}
+  </div>;
 }
 
 export function LabelsEditor({ thread, snapshot, close }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void }) {

@@ -35,7 +35,7 @@ test('Chromium: production screens resolve neutral chrome and mobile content col
     import { createElement } from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
     import { DesktopShellView } from './src/renderer/shell';
-    import { NewSessionDialog } from './src/renderer/new-session-dialog';
+    import { NewSessionPage } from './src/renderer/new-session-page';
     const snapshot = { revision: 1, phase: 'connected', connectionState: 'online', channels: [{id:'a',name:'Example'}], threads:[{id:'t',channelId:'a',title:'Palette preview',running:true,lastMessageAt:Date.now()/1000}], selectedChannelId:'a',selectedThreadId:'t',interactions:[],canLoadOlder:false,errorMessage:'Example error',messages:[
       {id:'u',role:'user',text:'A user message',toolCalls:[],attachments:[]},
       {id:'a',role:'assistant',displayKind:'direct',text:${JSON.stringify('[A link](https://example.com) and inline `code`.\n\n| Name | Value |\n| --- | --- |\n| Example | Light theme |\n\n```text\nExample code\n```')},toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status --short'}],attachments:[]},
@@ -43,26 +43,27 @@ test('Chromium: production screens resolve neutral chrome and mobile content col
     ]};
     export const shell = renderToStaticMarkup(createElement(DesktopShellView,{snapshot}));
     export const pairing = renderToStaticMarkup(createElement(DesktopShellView,{snapshot:{...snapshot,phase:'unpaired'}}));
-    export const dialog = renderToStaticMarkup(createElement(NewSessionDialog,{snapshot,close(){},prepared(){}}));
+    export const dialog = renderToStaticMarkup(createElement(NewSessionPage,{snapshot}));
+    export const workspace = renderToStaticMarkup(createElement(DesktopShellView,{snapshot,viewRole:'workspace'}));
   ` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime', 'react-dom/server'], write: false });
   const mod = { exports: {} };
   new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(createRequire(import.meta.url), mod, mod.exports);
   const folder = await mkdtemp(join(tmpdir(), 'desktop-palette-'));
   try {
     const file = join(folder, 'preview.html');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${mod.exports.shell}</div><div hidden>${mod.exports.pairing}${mod.exports.dialog}</div><pre id="results" hidden></pre><script>
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${mod.exports.shell}</div><div hidden>${mod.exports.pairing}${mod.exports.dialog}${mod.exports.workspace}</div><pre id="results" hidden></pre><script>
       const cases = [];
       const style = (selector, property) => { const element = document.querySelector(selector); return element ? getComputedStyle(element)[property] : 'MISSING'; };
       for (const width of [720,1280,1800]) {
-        document.documentElement.style.width = width+'px';document.body.style.width = width+'px';document.querySelector('.desktop-shell').style.width = width+'px';
+        document.documentElement.style.width = width+'px';document.body.style.width = width+'px';document.querySelector('.session-tab-page').style.width = width+'px';
         const checks = [
-          ['body','color','1f2937'],['.activity-bar','backgroundColor','f3f4f6'],['.navigation-panel','backgroundColor','f9fafb'],['.conversation-pane','backgroundColor','ffffff'],
+          ['body','color','1f2937'],['.desktop-tabs','backgroundColor','f3f4f6'],['.native-sidebar','backgroundColor','f3f4f6'],['.session-tab-page','backgroundColor','f9fafb'],
           ['.tree-thread.selected','backgroundColor','e6edf7'],['.conversation-header','borderBottomColor','e5e7eb'],['.message-user','backgroundColor','f3f3f3'],['.message-final','backgroundColor','f7f5ef'],['.message-assistant','color','172a40'],
           ['.message a','color','215ca7'],['.message code','backgroundColor','dce5f0'],['.code-block','backgroundColor','e8eef6'],['.code-block code','color','20314a'],['.tool-command','backgroundColor','e8eef6'],['.tool-command','color','20314a'],['.message-markdown th','backgroundColor','e5ecf5'],
           ['.composer textarea','backgroundColor','ffffff'],['.composer textarea','color','172a40'],['.composer-row > button:last-child','backgroundColor','285ea5'],['.composer-row .attach-button','backgroundColor','e7eef7'],['.running-row .stop-button','color','425874'],
           ['.error-banner','backgroundColor','fff0f2'],['.error-banner','color','9d1b32'],['.thread-status','color','237a35'],
           ['.pairing-card','backgroundColor','ffffff'],['.connection-screen','backgroundColor','f9fafb'],['.pairing-actions button','backgroundColor','2960ad'],['.pairing-card input','borderTopColor','d1d5db'],
-          ['.editor-dialog','backgroundColor','ffffff'],['.editor-dialog input','color','1f2937'],['.dialog-actions button:last-child','backgroundColor','2960ad'],['.dialog-actions .secondary','color','4b5563']
+          ['.new-chat-page','backgroundColor','f9fafb'],['.new-chat-form textarea','color','1f2937'],['.new-chat-send','backgroundColor','294e7b']
         ];
         cases.push({width,colors:checks.map(([selector,property,expected])=>({selector,property,expected,actual:style(selector,property)})),scheme:style('html','colorScheme')});
       }

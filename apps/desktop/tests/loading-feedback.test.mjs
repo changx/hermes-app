@@ -10,7 +10,7 @@ async function load(contents, external){
   return mod.exports;
 }
 const {DesktopConnectionService,LiveSessionClient}=await load(`export { DesktopConnectionService } from './src/main/connection-service'; export { LiveSessionClient } from '@hermes-app/client/live';`,['electron']);
-const {render}=await load(`import {createElement} from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import {DesktopShellView} from './src/renderer/shell'; export const render=(snapshot)=>renderToStaticMarkup(createElement(DesktopShellView,{snapshot}));`,['react','react-dom/server','react/jsx-runtime']);
+const {render}=await load(`import {createElement} from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import {DesktopShellView} from './src/renderer/shell'; export const render=(snapshot)=>renderToStaticMarkup(createElement(DesktopShellView,{snapshot,viewRole:snapshot.selectedThreadId ? 'tab' : 'workspace'}));`,['react','react-dom/server','react/jsx-runtime']);
 const base={revision:1,phase:'connected',connectionState:'retrying',connectionLabel:'Reconnecting',channels:[],threads:[],messages:[],interactions:[],canLoadOlder:false};
 
 test('cold startup shows accessible natural loading feedback, not empty-account copy',()=>{

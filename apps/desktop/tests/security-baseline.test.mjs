@@ -66,6 +66,7 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
 
   assert.deepEqual(worldNames, ["hermesDesktop"]);
   assert.deepEqual(exposedMethods, [
+    'newTab', 'activateTab', 'closeTab', 'completeNewTab', 'setContentBounds',
     "getRuntimeInfo",
     "getSnapshot",
     "pair",
