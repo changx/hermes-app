@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, shell } from "electron";
 import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
+import { validateLabels, labelTimestamp } from '../../../../packages/client/src/sessionLabels';
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnectionService } from "./connection-service";
@@ -58,6 +59,7 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
   ipcMain.handle("desktop:create-thread", async (event, value: unknown) => { trustedSender(event); const input = object(value); return service.createThread({ title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput); });
   ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); await service.renameThread(text(id, 200), text(title, 200)); });
+  ipcMain.handle('desktop:save-thread-labels', async (event, id: unknown, markers: unknown, timestamp: unknown, connectionKey: unknown) => { trustedSender(event); return service.saveThreadLabels(text(id, 200), validateLabels(markers), labelTimestamp(timestamp), text(connectionKey, 200)); });
   ipcMain.handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); await service.archiveThread(text(id, 200)); });
   ipcMain.handle("desktop:load-older", async (event) => { trustedSender(event); await service.loadOlder(); });
   ipcMain.handle("desktop:get-channel-info", async (event, id: unknown) => { trustedSender(event); return service.getChannelInfo(text(id, 200)); });

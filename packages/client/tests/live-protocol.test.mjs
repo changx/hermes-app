@@ -7,7 +7,7 @@ const {parseCatalogue,parseLiveFrame,watchCommand,LiveProtocolError}=module.expo
 const session={id:'th_A',project_id:'p',title:'A',archived:false,running:true};
 test('directory decoding keeps only lightweight fields, never unread, bodies or prompts',()=>{
   const result=parseCatalogue({items:[{kind:'channel',value:{id:'p',name:'P',description:'not in list'}},{kind:'session',value:{...session,unread_count:9,messages:['private'],active_receipts:[{pending_text:'private'}],pending_interactions:['private'],version:4}}],next_after:null});
-  assert.deepEqual(result,{items:[{kind:'channel',value:{id:'p',name:'P'}},{kind:'session',value:session}],next_after:null});
+  assert.deepEqual(result,{items:[{kind:'channel',value:{id:'p',name:'P'}},{kind:'session',value:{...session,markers:[],markers_updated_at:0}}],next_after:null});
 });
 test('catalogue rejects incomplete/malformed pages and duplicate identities',()=>{
   for(const body of [{items:[],next_after:undefined},{items:[{kind:'session',value:{...session,running:'yes'}}],next_after:null},{items:[{kind:'session',value:session},{kind:'session',value:session}],next_after:null}])assert.throws(()=>parseCatalogue(body),LiveProtocolError);

@@ -8,6 +8,7 @@ import { compactToolCaption, toolPresentation } from "../../../../packages/clien
 import { orderedThreads } from "./thread-navigation";
 import { NavigationPanel } from "./navigation-panel";
 import { NewSessionDialog } from "./new-session-dialog";
+import { LabelPills, LabelsEditor } from './session-labels';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
 const drafts = new LocalDraftMap<string>(value => !!value.trim());
@@ -232,6 +233,9 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
+  const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined } | null>(null);
+  const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.connectionKey }), [snapshot.connectionKey]);
+  useEffect(() => { setLabelTarget(null); }, [snapshot.connectionKey]);
   const [newSessionChannel, setNewSessionChannel] = useState<string>();
   const [preparedDrafts, setPreparedDrafts] = useState<Record<string, number>>({});
   const openNewSession = useCallback((channelId?: string) => { setNewSessionChannel(channelId); setEditor("new-thread"); }, []);
@@ -261,10 +265,10 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
       <header className="pane-header"><h1 id="navigation-heading">Channels</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
-      <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} draftThreads={draftThreads} />
+      <NavigationPanel key={snapshot.connectionKey} snapshot={snapshot} onNewSession={openNewSession} draftThreads={draftThreads} onEditLabels={openLabels} />
       <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
     </nav>
-    <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
+    <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2>{snapshot.supportsSessionLabels === true && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}</div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button>{snapshot.supportsSessionLabels === true && <button type="button" disabled={snapshot.connectionState !== "online"} onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}>Edit labels</button>}<button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
       {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, loadingHistory: snapshot.loadingHistory, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
         const active = page.id === snapshot.selectedThreadId;
@@ -278,6 +282,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
       {!snapshot.selectedThreadId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><div className="empty-mark" aria-hidden="true">H</div><h3>Loading your conversations…</h3><p>Please wait.</p></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>Your conversations will appear here</h3><p>Choose a thread to read its messages.</p></div>)}
       {!snapshot.selectedThreadId && <Composer snapshot={snapshot} />}
     </section>
+    {labelTarget && labelTarget.connectionKey === snapshot.connectionKey && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={snapshot} close={() => setLabelTarget(null)} />}
     {editor === "new-thread" ? <NewSessionDialog snapshot={snapshot} initialChannelId={newSessionChannel} close={() => setEditor(null)} prepared={(threadId, attachments) => { draftAttachments.set(threadId, attachments); setPreparedDrafts(value => ({ ...value, [threadId]: (value[threadId] ?? 0) + 1 })); }} /> : editor ? <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} /> : null}
   </main>;
 };

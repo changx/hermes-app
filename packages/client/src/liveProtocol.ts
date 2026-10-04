@@ -1,4 +1,5 @@
 import type { Channel } from './index';
+import { parseLabelMetadata } from './sessionLabels';
 
 /** Directory metadata and shared completed-result marker only. No counts or bodies. */
 export interface SessionDirectoryItem {
@@ -11,6 +12,8 @@ export interface SessionDirectoryItem {
   result_version?: number;
   result_ref?: number;
   last_message_at?: number;
+  markers?: string[];
+  markers_updated_at?: number;
 }
 export type CatalogueItem = {kind:'channel';value:Channel}|{kind:'session';value:SessionDirectoryItem};
 export interface CataloguePage {items:CatalogueItem[];next_after:string|null}
@@ -43,6 +46,7 @@ export function parseCatalogue(value:unknown):CataloguePage {
     if(row.kind==='channel')return {kind:'channel',value:{id,name:text(entry.name)}};
     if(row.kind!=='session')throw new LiveProtocolError();
     const result:SessionDirectoryItem={id,project_id:text(entry.project_id),title:text(entry.title),archived:bool(entry.archived),running:bool(entry.running)};
+    try { Object.assign(result, parseLabelMetadata(entry, true)); } catch { throw new LiveProtocolError(); }
     if(entry.completed_unread!==undefined){
       result.completed_unread=bool(entry.completed_unread);
       for(const key of ['result_version','result_ref'] as const){

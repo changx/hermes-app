@@ -5,8 +5,8 @@ export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, 
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
-export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; last_ref: number; read_ref: number; unread_count: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
+export interface Thread { id: string; project_id: string; title: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; [key: string]: unknown }
+export interface ThreadSummary { id: string; project_id: string; title: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; last_ref: number; read_ref: number; unread_count: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number; active_receipts?: Receipt[]; pending_interactions?: Interaction[] }
 export interface Channel { id: string; name: string; description?: string; [key: string]: unknown }
 export interface AgentModelSettings { scope: 'connected-default'; provider: string; model: string; providers: {id: string; name: string; models: string[]}[] }
 export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }
@@ -199,6 +199,7 @@ export class HermesClient {
   supportsSendIdentity = false;
   supportsChannelWorkspace = false;
   supportsAttachmentOrigin = false;
+  supportsSessionLabels = false;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -367,7 +368,7 @@ export class HermesClient {
     if (response.status < 200 || response.status >= 300) throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0]);
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
   private async downloadPath(path: string, signal?: AbortSignal): Promise<Uint8Array> {
     if(!this.options.http.download)throw new ProtocolError('Binary download unavailable');
     const reply=await bounded(s=>this.options.http.download!(path,this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);

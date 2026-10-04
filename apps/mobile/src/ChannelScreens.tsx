@@ -8,6 +8,8 @@ import type { LiveSessionClient } from '../../../packages/client/src/liveClient'
 import { NewTopicComposer } from './NewTopicComposer';
 import { threadPatch } from './channel-edits';
 import { MessageTime } from './MessageTime';
+import { LabelPills, LabelsEditor, LabelsFilter } from './SessionLabels';
+import { emptyLabelFilter, labelFilterActive, matchesLabels } from '../../../packages/client/src/sessionLabels';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 
 
@@ -35,6 +37,7 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
 
 export function ChannelScreens({ client, channelId, draftThreads, onChannel, onThread, onNewChannel, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
+  const [labelTarget, setLabelTarget] = useState<string | null>(null), [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -48,6 +51,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   useEffect(() => {
     generation.current++;
     setEditing(false); setRenaming(null); setName(''); setError('');
+    setLabelTarget(null); setLabelFilter(emptyLabelFilter());
     return () => { generation.current++; };
   }, [channelId, client]);
   const run = async (work: (isCurrent: () => boolean) => Promise<void>) => {
@@ -61,8 +65,10 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   const channel = client.channels.get(channelId || '');
   const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
   // Ordinary (non-inverted) list: latest activity is at the top from first frame.
-  const threads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
+  const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
     .sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title));
+  const filtering = client.supportsSessionLabels && labelFilterActive(labelFilter);
+  const threads = filtering ? channelThreads.filter(t => matchesLabels(t.markers, labelFilter)) : channelThreads;
   const startEdit = () => { if (!channel || busy) return; setName(channel.name); setEditing(true); setError(''); };
   const channelMenu = () => Alert.alert('Channel', undefined, [
     { text: 'Rename channel', onPress: startEdit },
@@ -76,6 +82,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
   const sessionMenu = (thread: ThreadSummary) => { if (busy) return; Alert.alert(thread.title, undefined, [
     { text: 'Rename session', onPress: () => rename(thread) },
+    ...(client.supportsSessionLabels ? [{ text: 'Edit labels', onPress: () => setLabelTarget(thread.id) }] : []),
     { text: 'Cancel', style: 'cancel' },
   ]); };
   const channelForm = editing && <View style={[s.form, { marginHorizontal: 12 }]}>
@@ -109,6 +116,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
         <Text style={s.contextText}>AGENTS.md</Text>
       </Pressable>
     </View>}
+    {!!channelId && client.supportsSessionLabels === true && <LabelsFilter key={'labels-filter:' + channelId} rows={channelThreads} value={labelFilter} onChange={setLabelFilter} />}
     {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelForm}
@@ -117,16 +125,17 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
       keyboardDismissMode="on-drag" contentContainerStyle={[s.list, { paddingTop: 16 }]}
       ListHeaderComponent={<Text style={s.sectionHeading}>Sessions</Text>}
       renderItem={({ item }) => <View style={s.card}>
-        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={draftThreads?.has(item.id) ? `${item.title}, draft` : item.title} accessibilityHint="Open session. Long press for options."
-          accessibilityActions={[{ name: 'rename', label: 'Rename session' }]} onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'rename' && !busy) rename(item); }}
+        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}${draftThreads?.has(item.id) ? ', draft' : ''}${client.supportsSessionLabels && item.markers?.length ? ', labels: ' + item.markers.join(', ') : ''}`} accessibilityHint="Open session. Long press for options."
+          accessibilityActions={[{ name: 'rename', label: 'Rename session' }, ...(client.supportsSessionLabels ? [{ name: 'labels', label: 'Edit labels' }] : [])]} onAccessibilityAction={event => { if (!busy && event.nativeEvent.actionName === 'rename') rename(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'labels') setLabelTarget(item.id); }}
           disabled={busy || editing || !!renaming} onPress={() => onThread(item.id)} onLongPress={() => sessionMenu(item)} style={s.fill}>
-          <View style={s.titleRow}><Text style={[s.heading, s.sessionTitle]}>{item.title}</Text>{draftThreads?.has(item.id) && <View style={s.draftBadge}><Text accessibilityLabel="Draft" style={s.draft}>draft</Text></View>}</View><View style={s.meta}><MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
+          <View style={s.titleRow}><Text style={[s.heading, s.sessionTitle]}>{item.title}</Text>{draftThreads?.has(item.id) && <View style={s.draftBadge}><Text accessibilityLabel="Draft" style={s.draft}>draft</Text></View>}</View>{client.supportsSessionLabels && <LabelPills markers={item.markers} />}<View style={s.meta}><MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
         </Pressable>}
       </View>}
-      ListEmptyComponent={<Text style={s.empty}>No sessions yet. Write a message below to start a conversation.</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
+      ListEmptyComponent={<Text style={s.empty}>{filtering ? 'No matching sessions.' : 'No sessions yet. Write a message below to start a conversation.'}</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text></Pressable>}
       ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
     {!!channelId && <NewTopicComposer key={channelId} client={client} channelId={channelId} enqueue={enqueueFirstMessage} onCreated={onThread} disabled={busy || editing || !!renaming} />}
+    {labelTarget && <LabelsEditor key={labelTarget} client={client} threadId={labelTarget} visible={focused} onClose={() => setLabelTarget(null)} />}
     {!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New channel" disabled={busy} onPress={onNewChannel} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
   </View>;
 }

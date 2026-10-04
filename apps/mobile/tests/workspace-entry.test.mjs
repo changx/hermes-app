@@ -1,3 +1,4 @@
+import { labels, labelComponentStubs } from './session-labels-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -39,7 +40,7 @@ async function harness(file,name,client,extra={}) {
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:34})},'expo-symbols':{SymbolView:'Symbol'},
     '../../../packages/client/src/index':{HttpError,utf8Size},'./FontSize':{Text:'Text',TextInput:'TextInput'},'./MessageContent':{MessageContent:'Markdown'},
     './Viewers':{useViewer:()=>viewer},
-    './WorkspaceFilePreview':{WorkspaceFilePreview:'Preview'},'./channel-edits':{threadPatch},'./NewTopicComposer':{NewTopicComposer:'Composer'},'./MessageTime':{MessageTime:'Time'},
+    './WorkspaceFilePreview':{WorkspaceFilePreview:'Preview'},'./channel-edits':{threadPatch},'./NewTopicComposer':{NewTopicComposer:'Composer'},'../../../packages/client/src/sessionLabels': labels, './SessionLabels': labelComponentStubs, './MessageTime':{MessageTime:'Time'},
   };
   function load(path){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../src/'+path,import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,{exports,console,AbortController,require:id=>{if(!(id in mocks))throw Error(id);return mocks[id];}});return exports;}
   mocks['./WorkspaceUI']=load('WorkspaceUI.tsx');

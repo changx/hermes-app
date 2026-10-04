@@ -91,7 +91,7 @@ async function harness({ multiple = false, list = false } = {}) {
       timelines.set(props.threadId, props); React.useImperativeHandle(ref, () => ({ followLatest() {}, holdPosition() {} }));
       return React.createElement('Chat', { threadId: props.threadId, text: props.text });
     }) },
-    './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
+    './SessionLabels': { LabelPills: 'LabelPills', LabelsEditor: 'LabelsEditor' }, './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
     './historyBlocks': historyBlocks,
     './timeline': timeline,
     './sendNotice': sendNotice,

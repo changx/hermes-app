@@ -1,3 +1,4 @@
+import { labels, labelComponentStubs } from './session-labels-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ async function harness(file, component, client, extra = {}) {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
     './FontSize': { Text: 'Text', TextInput: 'TextInput' }, './MessageContent': { MessageContent: 'Markdown' },
     './channel-edits': { threadPatch }, './NewTopicComposer': { NewTopicComposer: 'Composer' },
-    './MessageTime': { MessageTime: 'MessageTime' }, 'expo-symbols': { SymbolView: 'SymbolView' },
+    '../../../packages/client/src/sessionLabels': labels, './SessionLabels': labelComponentStubs, './MessageTime': { MessageTime: 'MessageTime' }, 'expo-symbols': { SymbolView: 'SymbolView' },
   };
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/' + file, import.meta.url), 'utf8'), {

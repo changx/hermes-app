@@ -1,3 +1,4 @@
+import { labels, labelComponentStubs } from './session-labels-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -60,7 +61,7 @@ test('production channel list docks the composer below a top-first list and leav
     'expo-router': { useIsFocused: () => true, useFocusEffect: cb => React.useEffect(cb, [cb]) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
     './FontSize': { Text: 'Text', TextInput: 'Input' }, './NewTopicComposer': { NewTopicComposer: 'Composer' },
-    './channel-edits': { channelPatch: () => ({}), threadPatch: () => ({}) }, './MessageTime': { MessageTime: 'Time' },
+    './channel-edits': { channelPatch: () => ({}), threadPatch: () => ({}) }, '../../../packages/client/src/sessionLabels': labels, './SessionLabels': labelComponentStubs, './MessageTime': { MessageTime: 'Time' },
     'expo-symbols': { SymbolView: 'Symbol' }, './threadListState': { isThreadRunning: () => false },
   };
   const exports = {};

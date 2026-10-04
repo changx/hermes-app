@@ -19,11 +19,16 @@ export class LivePageClient extends LiveSessionClient {
   get openedPageIds(): readonly string[] { return [...this.pages.keys()]; }
   private directoryChanged(): void {
     if (this.isCatalogueReady) for (const [id,page] of [...this.pages]) {
-      page.channels.clear(); for (const [key,value] of this.channels) page.channels.set(key,value);
-      page.threads.clear(); for (const [key,value] of this.threads) page.threads.set(key,value);
+      this.syncPageDirectory(page);
       if (!this.isThreadAvailable(id)) this.releasePage(id,page);
     }
     this.mirror();
+  }
+  private syncPageDirectory(page: LiveSessionClient): void {
+    if (!this.isCatalogueReady) return;
+    page.channels.clear(); for (const [key,value] of this.channels) page.channels.set(key,value);
+    page.threads.clear(); for (const [key,value] of this.threads) page.threads.set(key,value);
+    page.supportsSessionLabels = this.supportsSessionLabels;
   }
   page(id: string): LiveSessionClient | undefined { return this.pages.get(id); }
   acquirePage(id: string): LiveSessionClient {
@@ -31,7 +36,7 @@ export class LivePageClient extends LiveSessionClient {
     const existing = this.pages.get(id);
     if (existing) return existing;
     const page = new LiveSessionClient({ ...this.pageOptions, onCheckpoint: undefined,
-      onChange: () => { if (this.pages.get(id) === page) { this.mirror(); this.pageOptions.onChange?.(); } },
+      onChange: () => { if (this.pages.get(id) === page) { this.syncPageDirectory(page); this.mirror(); this.pageOptions.onChange?.(); } },
       onConnectionState: state => {
         if (this.pages.get(id) !== page) return;
         if (state === 'blocked') { this.suspendConnection(); this.state('blocked'); }

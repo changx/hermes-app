@@ -102,6 +102,7 @@
 ### 共享行为、内容呈现与发布
 
 - [docs/session-links.md](docs/session-links.md)
+- [docs/session-labels.md](docs/session-labels.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)
 - [docs/client-layout-tools-blur-release.md](docs/client-layout-tools-blur-release.md)
 - [docs/command-state-order.md](docs/command-state-order.md)
