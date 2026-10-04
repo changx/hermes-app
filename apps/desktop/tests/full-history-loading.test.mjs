@@ -13,7 +13,7 @@ test('Chromium: loading animation, reduced motion and full-history prepend retai
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {DesktopShellView} from './src/renderer/shell';
     window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{chrome:'test',electron:'test'}}),loadOlder:async()=>{}};
     const root=createRoot(document.getElementById('root')),checks=[];
-    const base={revision:1,phase:'connected',connectionState:'online',channels:[],threads:[],selectedThreadId:'t',interactions:[],canLoadOlder:true};
+    const base={revision:1,phase:'connected',connectionState:'online',tabActive:true,channels:[],threads:[],selectedThreadId:'t',interactions:[],canLoadOlder:true};
     const message=i=>({id:'m'+i,refSeq:i,role:'assistant',text:'Message '+i+' '+('long text '.repeat(80)),toolCalls:[],attachments:[]});
     const recent=Array.from({length:30},(_,i)=>message(i+221));
     const render=extra=>flushSync(()=>root.render(<DesktopShellView snapshot={{...base,messages:recent,...extra}}/>));

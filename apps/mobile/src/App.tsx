@@ -11,7 +11,8 @@ import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import * as Clipboard from 'expo-clipboard';
 import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
-import { connectionFailure } from '../../../packages/client/src/index';
+import { connectionFailure, isRetryableError } from '../../../packages/client/src/index';
+import { NetworkStatusToast } from './NetworkStatusToast';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { SessionNavigationProvider, useSessionNavigation } from './sessionNavigation';
@@ -81,6 +82,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
+  const [retryAt, setRetryAt] = useState<number | null>(null), [networkFailed, setNetworkFailed] = useState(false);
   // Only unsent user input survives leaving a conversation.
   const textDrafts = useRef(new LocalDraftMap<string>(value => !!value.trim()));
   const composerDrafts = useRef(new LocalDraftMap<ComposerDraft>(value => value.items.length > 0));
@@ -160,10 +162,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       onConnectionState: (state: NetworkState) => {
         if (!active) return;
         setStatus(state); box?.setConnection(state);
+        if (state === 'connecting' || state === 'syncing' || state === 'online') setNetworkFailed(false);
         if (state === 'online') { setLoading(false); setError(previous => previous.startsWith('Could not connect') ? '' : previous); setConnectionEpoch((n: number) => n + 1); box?.reconcile(); }
         if (state === 'blocked') { setLoading(false); setError('Could not connect. Contact your admin. Unsent messages are still here.'); }
       },
-      onError: (failure: Error) => { if (active) console.info('[connection]', connectionFailure(failure)); },
+      onRetryScheduled: (deadline: number | null) => { if (active) setRetryAt(deadline); },
+      onError: (failure: Error) => { if (active) { console.info('[connection]', connectionFailure(failure)); if (!isRetryableError(failure)) setNetworkFailed(true); } },
     } as ConstructorParameters<typeof LivePageClient>[0]);
     box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
       if (!active) return;
@@ -171,7 +175,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setError(previous => reconciledSendNotice(previous, items, notice));
     }, undefined, undefined, undefined, true);
     outboxRef.current = box;
-    setSession({ config, client: sdk }); setStatus('connecting'); setLoading(true); setError('');
+    setSession({ config, client: sdk }); setStatus('connecting'); setRetryAt(null); setNetworkFailed(false); setLoading(true); setError('');
     setRecords([]);
     (async () => {
       try {
@@ -186,7 +190,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!client) return;
     const sub = AppState.addEventListener('change', state => {
       appActive.current = state === 'active';
-      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.suspendConnection(); setStatus('suspended'); return; }
+      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.suspendConnection(); setStatus('suspended'); setNetworkFailed(false); return; }
       setStatus('connecting');
       client.connect().catch(() => { /* SDK retry loop owns recovery */ });
     });
@@ -233,7 +237,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value: AppContextValue = { ready, config, client, agentName, identity, revision, records, connectionEpoch,
     loading, status, error, base, pairingCode, pendingPairing, pairingBusy, pairingStatus, busy, editing,
     setPairingCode, setEditing, saveConnection, forget, cancelPairing, textDrafts, composerDrafts, forgottenConnections, outboxRef };
-  return <AppContext.Provider value={value}><SessionNavigationProvider value={{ hasPage: id => !!client?.page(id), server: config?.baseUrl }}>{children}</SessionNavigationProvider></AppContext.Provider>;
+  return <AppContext.Provider value={value}><SessionNavigationProvider value={{ hasPage: id => !!client?.page(id), server: config?.baseUrl }}><View style={styles.flex}>{children}{client && <NetworkStatusToast state={status} retryAt={retryAt} failed={networkFailed} />}</View></SessionNavigationProvider></AppContext.Provider>;
 }
 
 export function useApp() {

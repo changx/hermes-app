@@ -33,12 +33,12 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
       const button=(container,text)=>[...container.querySelectorAll('button')].find(n=>n.textContent===text);
       const inputValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
       (async()=>{try{
-        render();await tick();ensure('recent cutoff',document.querySelectorAll('.tree-thread').length===1);
-        const details=document.querySelector('details');details.open=true;document.querySelector('input[aria-label="Label: Foo"]').click();await tick();
-        ensure('all time 24 batch',document.querySelectorAll('.tree-thread').length===24);ensure('hide empty channels',document.querySelectorAll('.channel-branch').length===1);
+        render();await tick();ensure('running survives recent cutoff',document.querySelectorAll('.tree-thread').length===2);
+        document.querySelector('[aria-label="Filter sessions"]').click();await tick();document.querySelector('input[aria-label="Label: Foo"]').click();await tick();
+        ensure('running plus 24 batch',document.querySelectorAll('.tree-thread').length===25);ensure('hide empty channels',document.querySelectorAll('.channel-branch').length===1);
         ensure('matching branch expanded',document.querySelector('.channel-toggle').getAttribute('aria-expanded')==='true');
         ensure('current session unchanged',selected===0&&snapshot.selectedThreadId==='current');
-        button(document,'Load more threads').click();await tick();ensure('48 batch',document.querySelectorAll('.tree-thread').length===48);
+        button(document,'Show more').click();await tick();ensure('running plus 48 batch',document.querySelectorAll('.tree-thread').length===49);
         ensure('running dot intact',document.querySelectorAll('.thread-status').length===1&&document.querySelectorAll('.thread-result-unread').length===1);
         const pillRow=document.querySelector('.tree-thread .label-pills');const full=()=>[...pillRow.querySelectorAll('.label-pills-visible .label-pill')];
         const widths=[];for(const width of [180,260,420]){document.getElementById('nav').style.width=width+'px';window.dispatchEvent(new Event('resize'));await tick();const box=pillRow.getBoundingClientRect();const pills=full();widths.push(pills.filter(n=>!n.classList.contains('label-overflow')).length);ensure('contained '+width,pills.every(n=>n.getBoundingClientRect().right<=box.right+.5));ensure('one line '+width,new Set(pills.map(n=>n.getBoundingClientRect().top)).size===1);}
@@ -59,14 +59,14 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         gate.reject(Error('Synthetic failure'));await tick();ensure('failed save draft retained',closes===0&&dialog.querySelector('.labels-draft').textContent==='FooEditRemove'&&dialog.textContent.includes('Could not confirm'));
         mode='stale';button(dialog,'Save').click();await tick();ensure('stale save draft retained',closes===0&&dialog.textContent.includes('changed on another device'));
         mode='success';button(dialog,'Save').click();await tick();ensure('confirmed save closes',closes===1);
-        snapshot={...snapshot,connectionKey:'two'};render();await tick();ensure('connection reset',document.querySelectorAll('.tree-thread').length===1&&document.querySelector('input[aria-label="Label: Foo"]').checked===false);
+        snapshot={...snapshot,connectionKey:'two'};render();await tick();ensure('connection reset',document.querySelectorAll('.tree-thread').length===2&&document.querySelector('input[aria-label="Label: Foo"]').checked===false);
         snapshot={...snapshot,supportsSessionLabels:false};render();await tick();ensure('capability gated',!document.querySelector('.labels-filter'));
         window.hermesDesktop.getRuntimeInfo=()=>({platform:'linux',versions:{}});
         const messages=Array.from({length:40},(_,i)=>({id:'synthetic'+i,role:'assistant',text:'Synthetic shell row '+i,toolCalls:[],attachments:[]}));
         const shell={...snapshot,phase:'connected',connectionKey:'shell-one',supportsSessionLabels:true,selectedThreadId:'row0',selectedThreadTitle:'Old 0',messages,interactions:[],sessionPages:[{id:'row0',messages,interactions:[],canLoadOlder:true}]};
         const shellRender=value=>flushSync(()=>root.render(<DesktopShellView snapshot={value}/>));
         shellRender(shell);await tick();
-        const page=document.querySelector('[data-session-page="row0"]'),list=page.querySelector('.message-list'),composer=page.querySelector('[aria-label="Message"]');
+        const page=document.querySelector('.session-tab-page'),list=page.querySelector('.message-list'),composer=page.querySelector('[aria-label="Message"]');
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(composer,'Keep this draft');composer.dispatchEvent(new Event('input',{bubbles:true}));await tick();
         list.scrollTop=120;list.dispatchEvent(new Event('scroll'));await tick();const offset=list.scrollTop;
         button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();
@@ -74,7 +74,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         button(document.querySelector('dialog'),'Cancel').click();await tick();
         const updated={...shell,threads:shell.threads.map(t=>t.id==='row0'?{...t,markers:['Updated header']}:t)};shellRender(updated);await tick();
         ensure('authoritative header labels',document.querySelector('.conversation-header .label-pills').getAttribute('aria-label')==='Labels: Updated header');
-        ensure('composer and page retained',page===document.querySelector('[data-session-page="row0"]')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
+        ensure('composer and page retained',page===document.querySelector('.session-tab-page')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
         button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();shellRender({...updated,connectionKey:'shell-two'});
         ensure('no old dialog on new connection',!document.querySelector('dialog'));
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();

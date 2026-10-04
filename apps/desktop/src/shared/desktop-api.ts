@@ -50,6 +50,14 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
+  activeTabId?: string;
+  tabId?: string;
+  tabActive?: boolean;
+  tabKind?: 'new' | 'session';
+  initialChannelId?: string;
+  connectionName?: string;
+  draftThreadIds?: readonly string[];
   draftIdentity?: string;
   revision: number;
   phase: DesktopPhase;
@@ -78,14 +86,20 @@ export type DesktopSnapshot = Readonly<{
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
-export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[] }>;
+export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 export type DesktopRuntimeInfo = Readonly<{
+  viewRole?: 'workspace' | 'tab';
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
 }>;
 
 export interface HermesDesktopApi {
+  newTab(channelId?: string): Promise<void>;
+  activateTab(tabId: string): Promise<void>;
+  closeTab(tabId: string): Promise<void>;
+  completeNewTab(): Promise<void>;
+  setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;
   getSnapshot(): Promise<DesktopSnapshot>;
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void;

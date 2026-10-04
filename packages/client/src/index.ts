@@ -22,7 +22,7 @@ export interface HttpTransport { request(method: string, path: string, token: st
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
-export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
+export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; onRetryScheduled?: (retryAt: number | null) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 
 const diagnosticRoute = (path: string): string => {
@@ -169,6 +169,7 @@ export class HermesClient {
   get hasCapabilities(): boolean { return this.capabilitiesReady }
   private boundToken: string | null = null;
   supportsLatest = false;
+  supportsFullHistory = false;
   supportsSendIdentity = false;
   supportsChannelWorkspace = false;
   supportsAttachmentOrigin = false;
@@ -263,22 +264,22 @@ export class HermesClient {
     }
     return receipts;
   }
-
-  protected async call(method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: ConditionalHeaders): Promise<Record<string, unknown>> {
+  protected async call(method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: ConditionalHeaders, requestTimeoutMs?: number): Promise<Record<string, unknown>> {
     if (signal?.aborted) throw new Error('aborted');
     const token = this.token();
     if (headers && !this.options.http.conditionalRequest) throw new ProtocolError('Conditional writes unavailable');
     const response = await bounded(s => headers ? this.options.http.conditionalRequest!(method,path,token,headers,body,s)
-      : this.options.http.request(method, path, token, body, s),timeout(this.options.requestTimeoutMs,15000),signal);
+      : this.options.http.request(method, path, token, body, s),timeout(requestTimeoutMs??this.options.requestTimeoutMs,15000),signal);
     if (signal?.aborted) throw new Error('aborted');
 
     if (response.status < 200 || response.status >= 300) throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0]);
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
+    this.supportsFullHistory = owner.supportsFullHistory;
     this.supportsSendIdentity = owner.supportsSendIdentity;
     this.supportsChannelWorkspace = owner.supportsChannelWorkspace;
     this.supportsAttachmentOrigin = owner.supportsAttachmentOrigin;
@@ -344,10 +345,13 @@ export class HermesClient {
   async download(threadId:string,id:string,signal?:AbortSignal):Promise<Uint8Array> {if(!this.options.http.download)throw new ProtocolError('binary download unavailable');const reply=await bounded(s=>this.options.http.download!('/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id),this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,undefined,'download');return reply.body}
   async deleteUnattached(threadId:string,id:string):Promise<void> {const x=await this.call('DELETE','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id));if(x.deleted!==true)throw new ProtocolError('delete not confirmed');this.attachments.set(id,{id,thread_id:threadId,state:'deleted'});this.changed()}
   async search(threadId:string,text:string,after?:string,limit=20,signal?:AbortSignal) {const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/search'+query({q:text,after,limit}),undefined,signal);return {messages:arr(x.messages).map(validMessage),next_cursor:optionalCursor(x.next_cursor)}}
-  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number, refSeq?:number, throughRefSeq?:number) {
+  async history(threadId: string, after?: string, limit = 50, signal?: AbortSignal, afterRefSeq?:number, refSeq?:number, throughRefSeq?:number, full = false) {
+    if(full&&!this.supportsFullHistory)throw new ProtocolError('Server does not support complete history');
     const seq=++this.fetchSequence, epoch=this.projectionEpoch;
-    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query({after,after_ref_seq:afterRefSeq,ref_seq:refSeq,through_ref_seq:throughRefSeq,limit}),undefined,signal);
+    const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages'+query(full?{full:'true'}:{after,after_ref_seq:afterRefSeq,ref_seq:refSeq,through_ref_seq:throughRefSeq,limit}),undefined,signal,undefined,full?60000:undefined);
+    if(full&&(x.complete!==true||x.next_cursor!==null||x.older_cursor!==null))throw new ProtocolError('Incomplete full history response');
     const page=arr(x.messages).map(validMessage); const existing=this.messages.get(threadId)||[];
+    if(full&&page.some((m,i)=>i>0&&m.ref_seq<=page[i-1].ref_seq))throw new ProtocolError('Full history order mismatch');
     if (throughRefSeq !== undefined && (page.length > limit || page.some((m,i)=>m.ref_seq>throughRefSeq||afterRefSeq!==undefined&&m.ref_seq<=afterRefSeq||i>0&&m.ref_seq<=page[i-1].ref_seq))) throw new ProtocolError('History window boundary mismatch');
     const receipts=this.historyReceipts(page,threadId,x.receipts);
     if (refSeq!==undefined && (page.length!==1 || page[0].ref_seq!==refSeq)) throw new ProtocolError('message reference mismatch');

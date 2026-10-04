@@ -43,9 +43,17 @@ export class LiveSessionClient extends HermesClient {
   private initialHistoryComplete=false;
   private fullHistoryLoaded=false;
   private fullHistoryJob:Promise<void>|null=null;
+
+  private initialStartRef:number|undefined;
   get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
   private connectionSuspended=false;
+  private retryAt:number|null=null;
+  get nextRetryAt():number|null{return this.owner?.nextRetryAt??this.retryAt}
+  private scheduleRetry(value:number|null):void{
+    if(this.retryAt===value)return;
+    this.retryAt=value;this.liveOptions.onRetryScheduled?.(value);
+  }
   private publishedMessages:readonly Message[]=[];
   private openTiming:OpenTimingObserver|undefined;
   private timingSequence=0;
@@ -142,7 +150,7 @@ export class LiveSessionClient extends HermesClient {
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.initialStartRef=undefined;this.releaseContent();this.sendWatch();this.changed();
   }
   async connect():Promise<void>{
     this.connectionSuspended=false;
@@ -154,6 +162,7 @@ export class LiveSessionClient extends HermesClient {
   /** Pause transport, not the current reading scene. Reconnect reconciles the
    * same loaded window only after the new watch acknowledgement. */
   suspendConnection():void{
+    this.scheduleRetry(null);
     this.connectionSuspended=true;
     if(this.owner){
       this.scope.abort();this.scope=new AbortController();this.attempt=null;this.hello=false;this.watchReady=false;
@@ -308,14 +317,18 @@ export class LiveSessionClient extends HermesClient {
     const job=(async()=>{
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
-        const start=this.messages.get(id)?.[0]?.ref_seq;
+        // Downloaded older pages are not yet the published reading window.
+        const start=this.fullHistoryLoaded?this.messages.get(id)?.[0]?.ref_seq:this.initialStartRef;
         const initial=!this.initialHistoryComplete;
         const history=(async()=>{
         if(!this.initialHistoryComplete){
           this.observe({stage:'history-start'},timing);
           const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);
           if(this.wanted===id&&this.watchId===watchId)this.observe({stage:'history-ready',rows:this.messages.get(id)?.length??0},timing);
-          if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null}
+          if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null;this.initialStartRef=this.messages.get(id)?.[0]?.ref_seq}
+        }
+        else if(this.fullHistoryLoaded){
+          await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
         }
         else{
           // References are sparse and owned. Refresh the first exact row,
@@ -349,22 +362,15 @@ export class LiveSessionClient extends HermesClient {
     try{await job}finally{linked.done();if(this.contentJob===job){this.contentJob=null;if(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId)await this.refreshContent()}}
   }
   private scoped(signal:AbortSignal|undefined,id:string){return combine(id===this.wanted?this.scope.signal:undefined,signal)}
-  /** One explicit history gesture reads every remaining transport page. */
+  /** One explicit history gesture reads one complete server snapshot. */
   async loadFullHistory(id:string,signal?:AbortSignal):Promise<void>{
     if(id!==this.wanted||!this.watchReady||!this.attempt)throw new ProtocolError('Conversation is not open');
     if(this.fullHistoryLoaded)return;
     if(this.fullHistoryJob)return this.fullHistoryJob;
     const watch=this.watchId,transport=combine(this.scope.signal,this.attempt.signal),linked=combine(transport.signal,signal);
+
     const job=(async()=>{
-      // Restart at the oldest reference on retry: partial pages are not proof
-      // that the complete original transcript has reached this client.
-      let after:string|undefined;const pages=new Set<string>();
-      do{
-        const page=await super.history(id,after,100,linked.signal);
-        after=page.next_cursor??undefined;
-        if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');
-        if(after)pages.add(after);
-      }while(after);
+      await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
       if(linked.signal.aborted||id!==this.wanted||watch!==this.watchId)throw new Error('aborted');
       this.fullHistoryLoaded=true;this.older=null;this.newer=null;this.changed();
     })();this.fullHistoryJob=job;
@@ -391,7 +397,9 @@ export class LiveSessionClient extends HermesClient {
       while(!controller.signal.aborted&&this.liveController===controller){
         const attempt=new AbortController(),abort=()=>attempt.abort();controller.signal.addEventListener('abort',abort,{once:true});this.attempt=attempt;
         let openedSocket:Socket|undefined;
+        let retryAfter=0;
         try{
+          this.scheduleRetry(null);
           this.state(retries?'retrying':'connecting');
           let deadline:ReturnType<typeof setTimeout>|undefined;
           const opening=this.liveOptions.socket.connect('/v1/live',this.token(),attempt.signal);
@@ -407,12 +415,15 @@ export class LiveSessionClient extends HermesClient {
           if(controller.signal.aborted)break;
           const value=error instanceof LiveProtocolError?new ProtocolError(error.message):error instanceof Error?error:new Error('Live connection failed');this.liveOptions.onError?.(value);
           if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.failOpening(value);break}
+          if(value instanceof HttpError&&value.status===429&&Number.isFinite(value.retryAfterMs)&&value.retryAfterMs!>0)retryAfter=value.retryAfterMs!;
         }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.failLive=undefined;this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
-        this.state('retrying');const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
-        try{await wait(delays[Math.min(retries++,delays.length-1)],controller.signal)}catch{break}
+        const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
+        const delay=Math.max(delays[Math.min(retries++,delays.length-1)],retryAfter);
+        this.scheduleRetry(Date.now()+delay);this.state('retrying');
+        try{await wait(delay,controller.signal)}catch{break}
       }
-    }finally{if(this.liveController===controller)this.liveController=null}
+    }finally{if(this.liveController===controller){this.scheduleRetry(null);this.liveController=null}}
   }
   private watchSocket(socket:Socket,attempt:AbortController,stable:()=>void):Promise<void>{
     return new Promise((resolve,reject)=>{

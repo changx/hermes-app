@@ -12,19 +12,20 @@ function fixture(total = 100) {
  const sockets = new Set(); let opened = 0, closed = 0;
  const client = new LivePageClient({ token: () => 'synthetic', onChange() {}, livenessMs: 10000,
   http: { async request(_method, path) {
-   if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, history_latest: true, message_send_identity: true, open_session_live: true, multi_session_live: true } };
+   if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, history_latest: true, history_full: true, message_send_identity: true, open_session_live: true, multi_session_live: true } };
    if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items: [{ kind: 'channel', value: { id: 'p', name: 'Synthetic' } }, ...['A', 'B'].map(id => ({ kind: 'session', value: { id, project_id: 'p', title: id, archived: false, running: false } }))], next_after: null } };
    const id = path.split('/')[3];
    if (path.endsWith('/live-state')) return { status: 200, body: { thread_id: id, active_receipts: [], pending_interactions: [] } };
    if (path.includes('/messages')) {
     const query = new URL('https://fixture.test' + path).searchParams, limit = Number(query.get('limit') ?? 100);
     let start = 1, end = total;
-    if (query.has('latest')) start = Math.max(1, total - limit + 1);
+    if (query.has('full')) { start = 1; end = total; }
+    else if (query.has('latest')) start = Math.max(1, total - limit + 1);
     else if (query.has('before')) { end = Number(query.get('before')) - 1; start = Math.max(1, end - limit + 1); }
     else if (query.has('ref_seq')) start = end = Number(query.get('ref_seq'));
     else { start = Number(query.get('after') ?? (Number(query.get('after_ref_seq') ?? 0) + 1)); end = Math.min(total, start + limit - 1); }
     const rows = Array.from({ length: Math.max(0, end - start + 1) }, (_, i) => ({ id: id + ':' + (start + i), ref_seq: start + i, role: 'assistant', text: id + ':' + (start + i) + ':' + 'x'.repeat(1024) }));
-    return { status: 200, body: JSON.parse(JSON.stringify({ messages: rows, older_cursor: start > 1 ? String(start) : null, next_cursor: query.has('latest') || query.has('before') || query.has('ref_seq') || end === total ? null : String(end + 1), incomplete_turns: [], turn_outcomes: [] })) };
+    return { status: 200, body: JSON.parse(JSON.stringify({ messages: rows, ...(query.has('full') ? { complete:true } : {}), older_cursor: start > 1 ? String(start) : null, next_cursor: query.has('latest') || query.has('before') || query.has('ref_seq') || end === total ? null : String(end + 1), incomplete_turns: [], turn_outcomes: [] })) };
    }
    throw Error('unexpected ' + path);
   } }, socket: { async connect() {

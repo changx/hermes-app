@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-test('Chromium: covered desktop page retains its DOM and reading position on return', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
+test('Chromium: independent session renderers retain DOM and reading position while host switches tabs', {skip:!process.env.HERMES_TEST_CHROME},async()=>{
   const folder=await mkdtemp(join(tmpdir(),'desktop-live-pages-'));
   try {
     const bundle=await build({stdin:{resolveDir:new URL('../../../',import.meta.url).pathname,loader:'tsx',contents:`
@@ -18,8 +18,8 @@ test('Chromium: covered desktop page retains its DOM and reading position on ret
       const messages=Array.from({length:80},(_,i)=>({id:'a'+i,role:'assistant',text:'Synthetic row '+i,toolCalls:[],attachments:[]}));
       const a={id:'a',selectedThreadTitle:'A',messages,interactions:[],canLoadOlder:true},b={id:'b',selectedThreadTitle:'B',messages:[{...messages[0],id:'b1'}],interactions:[],canLoadOlder:false};
       const base={revision:1,phase:'connected',connectionState:'online',connectionLabel:'Online',channels:[{id:'p',name:'P'}],threads:[{id:'a',channelId:'p',title:'A',running:false},{id:'b',channelId:'p',title:'B',running:false}],selectedChannelId:'p',interactions:[],canLoadOlder:true};
-      const render=(id,pages)=>flushSync(()=>root.render(<DesktopShellView snapshot={{...base,selectedThreadId:id,sessionPages:pages,messages:pages.find(p=>p.id===id).messages}}/>));
-      const closed=[];window.hermesDesktop.closeSessionPage=async id=>{closed.push(id);render('a',[a]);};
+      const render=(id,pages)=>flushSync(()=>root.render(<><button aria-label="Close B" onClick={()=>window.hermesDesktop.closeTab('b')}>Close B</button>{pages.map(page=><div key={page.id} data-session-page={page.id} hidden={page.id!==id}><DesktopShellView viewRole="tab" snapshot={{...base,...page,selectedThreadId:page.id,tabActive:page.id===id}}/></div>)}</>));
+      const closed=[];window.hermesDesktop.closeTab=async id=>{closed.push(id);render('a',[a]);};
       render('a',[a]);const original=document.querySelector('[data-session-page="a"]'),list=original.querySelector('.message-list');
       list.scrollTop=220;list.dispatchEvent(new Event('scroll'));setTimeout(()=>{
         const offset=list.scrollTop;render('b',[a,b]);const covered=document.querySelector('[data-session-page="a"]')===original;

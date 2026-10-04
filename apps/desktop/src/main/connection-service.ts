@@ -94,7 +94,7 @@ export class DesktopConnectionService {
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
   private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean; historyLoading?: boolean }>();
-  private readonly pageStack: string[] = [];
+  private readonly openPages: string[] = [];
   private get currentPageState() { return this.selectedThreadId ? this.pageStates.get(this.selectedThreadId) : undefined; }
   private get olderCursor(): string | undefined { return this.currentPageState?.older; }
   private set olderCursor(value: string | undefined) { if (this.currentPageState) this.currentPageState.older = value; }
@@ -120,7 +120,7 @@ export class DesktopConnectionService {
 
   // Retry only reads here. Mutations without an idempotency contract must not
   // be repeated automatically after an ambiguous response.
-  private async recoverRead(key: string, operation: (signal: AbortSignal) => Promise<void>, valid: () => boolean): Promise<void> {
+  private async recoverRead(key: string, operation: (signal: AbortSignal) => Promise<void>, valid: () => boolean, maxAttempts = Infinity): Promise<void> {
     this.readJobs.get(key)?.abort();
     const controller = new AbortController();
     this.readJobs.set(key, controller);
@@ -133,6 +133,10 @@ export class DesktopConnectionService {
           if (!isRetryableError(error)) {
             this.stopIfUnauthorized(error);
             this.actionError(this.connectionError(error instanceof Error ? error : new Error(String(error))) ?? "This conversation could not be opened. Choose another conversation or try again.");
+            return;
+          }
+          if (attempt + 1 >= maxAttempts) {
+            this.actionError("Earlier messages could not be loaded. Your current messages are still here. Try loading earlier messages again.");
             return;
           }
           const delay = Math.min(10_000, 500 * 2 ** Math.min(attempt++, 5));
@@ -187,7 +191,7 @@ export class DesktopConnectionService {
         resultRef: thread.result_ref,
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
-      .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title));
+      .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
     const selected = pageId ? combined.get(pageId) : undefined;
     const receiptByClient = new Map(receipts.map((receipt) => [receipt.client_message_id, receipt]));
     const durable = pageId
@@ -240,6 +244,7 @@ export class DesktopConnectionService {
       connectionLabel: stateLabel[this.connectionState],
       ...(this.connection ? { draftIdentity: this.connection.id } : {}),
       connectionKey: this.connection?.id,
+      connectionName: this.connection?.baseUrl ? new URL(this.connection.baseUrl).hostname : undefined,
       supportsSessionLabels: this.client?.supportsSessionLabels === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
@@ -256,7 +261,7 @@ export class DesktopConnectionService {
       ...(this.selectedChannelId ? { selectedChannelId: this.selectedChannelId } : {}),
       ...(pageId ? { selectedThreadId: pageId } : {}),
       ...(selected ? { selectedThreadTitle: selected.title } : {}),
-      ...(includePages ? { sessionPages: this.pageStack.map(id => {
+      ...(includePages ? { sessionPages: this.openPages.map(id => {
         const page = this.snapshot(id, false);
         return { id, messages: page.messages, interactions: page.interactions,
           loadingMessages: page.loadingMessages, loadingHistory: page.loadingHistory, canLoadOlder: page.canLoadOlder,
@@ -271,7 +276,7 @@ export class DesktopConnectionService {
 
   private changed(): void {
     this.revision += 1;
-    this.publish(this.snapshot());
+    this.publish(this.snapshot(undefined, false));
     if (this.pendingSessionLink && this.client?.isCatalogueReady) queueMicrotask(() => this.applySessionLink());
   }
 
@@ -300,9 +305,9 @@ export class DesktopConnectionService {
     if (this.selectedThreadId === target.threadId) { this.changed(); return; }
     void this.selectThread(target.threadId).catch(() => this.actionError("Could not open this conversation."));
   }
-  sessionLink(): string {
-    if (!this.connection || !this.selectedThreadId) throw new Error("No conversation selected");
-    return buildSessionLink(this.connection.baseUrl, this.selectedThreadId);
+  sessionLink(threadId = this.selectedThreadId): string {
+    if (!this.connection || !threadId) throw new Error("No conversation selected");
+    return buildSessionLink(this.connection.baseUrl, threadId);
   }
 
   async initialize(): Promise<void> {
@@ -334,7 +339,7 @@ export class DesktopConnectionService {
     this.connectionIssue = undefined;
     this.cancelRecovery();
     this.client?.close();
-    this.pageStates.clear(); this.pageStack.length = 0;
+    this.pageStates.clear(); this.openPages.length = 0;
 
     this.connection = connection;
     this.listedThreads.clear();
@@ -354,7 +359,7 @@ export class DesktopConnectionService {
       onChange: () => {
         if (this.closed || this.client !== client) return;
         this.listedThreads = new Map([...client.threads].map(([id,thread]) => [id,{...thread}]));
-        if (client.isCatalogueReady) for (const id of [...this.pageStack]) {
+        if (client.isCatalogueReady) for (const id of [...this.openPages]) {
           if (!client.isThreadAvailable(id)) this.releaseSessionPage(id);
         }
         if (client.isCatalogueReady && this.selectedThreadId && !client.isThreadAvailable(this.selectedThreadId)) {
@@ -498,7 +503,7 @@ export class DesktopConnectionService {
     this.pairingController = null;
     this.client?.close();
     this.client = null;
-    this.pageStates.clear(); this.pageStack.length = 0;
+    this.pageStates.clear(); this.openPages.length = 0;
     this.pendingSessionLink = undefined;
     const connectionId = this.connection?.id;
     this.connection = null;
@@ -519,32 +524,29 @@ export class DesktopConnectionService {
 
   async selectChannel(channelId: string): Promise<void> {
     if (!this.client?.channels.has(channelId)) return;
-    this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
-    this.selectedChannelId = channelId; this.selectedThreadId = undefined;
-    this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
-    for (const id of [...this.pageStack]) this.releaseSessionPage(id);
+    this.selectedChannelId = channelId;
     this.changed();
   }
+
+  deactivateThread(): void { this.selectedThreadId = undefined; this.changed(); }
 
   async markResultRead(threadId: string, version: number, ref: number): Promise<void> {
     if (threadId !== this.selectedThreadId || !Number.isSafeInteger(version) || version <= 0 || !Number.isSafeInteger(ref) || ref <= 0) return;
     await this.client?.markResultRead(threadId, version, ref);
   }
 
-  async selectThread(threadId: string): Promise<void> {
+  async selectThread(threadId: string, activate = true): Promise<void> {
     const client = this.client;
     const thread = client?.threads.get(threadId) ?? this.listedThreads.get(threadId);
     if (!client || !thread || thread.archived || !client.channels.has(thread.project_id)) return;
-    const existing = this.pageStack.indexOf(threadId);
+    const existing = this.openPages.indexOf(threadId);
     if (existing >= 0) {
-      for (const id of this.pageStack.slice(existing + 1)) this.releaseSessionPage(id);
-      this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId;
+      if (activate) { this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId; }
       this.changed(); return;
     }
     this.readJobs.get("history")?.abort(); this.readJobs.get("older")?.abort();
-    this.pageStates.set(threadId, { loading: true }); this.pageStack.push(threadId);
-    this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId;
-    this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = true;
+    this.pageStates.set(threadId, { loading: true }); this.openPages.push(threadId);
+    if (activate) { this.selectedChannelId = thread.project_id; this.selectedThreadId = threadId; }
     this.changed();
     const page = client.acquirePage(threadId);
     const valid = () => !this.closed && this.client === client && client.page(threadId) === page && this.pageStates.has(threadId);
@@ -572,18 +574,18 @@ export class DesktopConnectionService {
     this.readJobs.get('history:' + id)?.abort();
     this.readJobs.get('older:' + id)?.abort();
     this.pageStates.delete(id);
-    const index = this.pageStack.indexOf(id); if (index >= 0) this.pageStack.splice(index, 1);
+    const index = this.openPages.indexOf(id); if (index >= 0) this.openPages.splice(index, 1);
     this.client?.releasePage(id);
   }
 
   closeSessionPage(id: string): void {
     if (!this.pageStates.has(id)) return;
+    const index = this.openPages.indexOf(id);
     this.releaseSessionPage(id);
     if (this.selectedThreadId === id) {
-      this.selectedThreadId = this.pageStack.at(-1);
+      this.selectedThreadId = this.openPages[Math.min(index, this.openPages.length - 1)];
       const thread = this.selectedThreadId ? this.client?.threads.get(this.selectedThreadId) : undefined;
       if (thread) this.selectedChannelId = thread.project_id;
-      this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
     }
     this.changed();
   }
@@ -592,7 +594,7 @@ export class DesktopConnectionService {
   // drafts stay alive; no destroyed renderer owns transcript/watch resources.
   closeSessionPages(): void {
     this.pendingSessionLink = undefined;
-    for (const id of [...this.pageStack]) this.releaseSessionPage(id);
+    for (const id of [...this.openPages]) this.releaseSessionPage(id);
     this.selectedThreadId = undefined;
     this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
     this.changed();
@@ -640,14 +642,15 @@ export class DesktopConnectionService {
     } catch { this.actionError("The channel could not be deleted. Check that it is empty and that you have permission."); }
   }
 
-  async createThread(input: ThreadInput): Promise<string> {
+  async createThread(input: ThreadInput, activate = true): Promise<string> {
     const client = this.requireClient(), channelId = input.channelId ?? this.selectedChannelId;
     const title = input.title.trim();
     if (!channelId || !client.channels.has(channelId) || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(input.clientThreadId)) throw new Error("Choose a channel and enter a topic title.");
     try {
       const thread = await client.createThread(channelId, title, input.clientThreadId);
+      if (this.client !== client) throw new Error('Connection changed during creation');
       this.listedThreads.set(thread.id, thread);
-      await this.selectThread(thread.id);
+      await this.selectThread(thread.id, activate);
       return thread.id;
     } catch { this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed."); }
   }
@@ -684,13 +687,13 @@ export class DesktopConnectionService {
     } catch { this.actionError("The topic could not be archived. Try again after Hermes reconnects."); }
   }
 
-  async loadOlder(): Promise<void> {
-    const client = this.requireClient(), threadId = this.selectedThreadId, before = this.olderCursor;
+  async loadOlder(targetThreadId = this.selectedThreadId): Promise<void> {
+    const client = this.requireClient(), threadId = targetThreadId, before = threadId ? this.pageStates.get(threadId)?.older : undefined;
     if (!threadId || !before || !client.supportsLatest) return;
     const state = this.pageStates.get(threadId), owner = client.page(threadId);
     if (!state || !owner || state.historyLoading || this.readJobs.has("older:" + threadId)) return;
     const valid = () => this.client === client && this.pageStates.get(threadId) === state && client.page(threadId) === owner && state.older === before;
-    state.historyLoading = true; this.changed();
+    state.historyLoading = true; this.errorMessage = undefined; this.changed();
     try {
       await this.recoverRead("older:" + threadId, async (signal) => {
         await owner.loadFullHistory(threadId, signal);
@@ -698,7 +701,7 @@ export class DesktopConnectionService {
           state.start = owner.messages.get(threadId)?.[0]?.ref_seq;
           state.older = undefined; this.changed();
         }
-      }, valid);
+      }, valid, 3);
     } finally {
       if (this.pageStates.get(threadId) === state) { state.historyLoading = false; this.changed(); }
     }
@@ -716,31 +719,44 @@ export class DesktopConnectionService {
     return this.localDraftStore.put(identity, threadId, draft);
   }
 
-  async sendMessage(input: SendMessageInput): Promise<void> {
-    const client = this.requireClient(), connection = this.connection!, threadId = this.selectedThreadId;
+  async sendMessage(input: SendMessageInput, targetThreadId = this.selectedThreadId): Promise<void> {
+    const client = this.requireClient(), connection = this.connection!, threadId = targetThreadId;
     const text = input.text.replace(/\r\n/g, "\n");
     const attachmentIds = [...input.attachmentIds];
     if (this.outboxStorageFault) throw new Error("Saved messages could not be updated. Keep your app data and reopen Hermes.");
     if (!threadId || !client.isThreadAvailable(threadId) || text.length > 100_000 || (!text.trim() && !attachmentIds.length) || attachmentIds.length > 8 || new Set(attachmentIds).size !== attachmentIds.length) throw new Error("Write a message or add an attachment before sending.");
-    // Unsent file IDs belong to the user's draft, not to a hidden content cache.
-    // Revalidate them only when that user explicitly sends the opened draft.
-    for (const id of attachmentIds) {
-      const attachment: Attachment = client.attachments.get(id) ?? await client.getAttachment(threadId, id);
-      if (this.client !== client || this.connection !== connection || this.selectedThreadId !== threadId || attachment.thread_id !== threadId || attachment.state !== "available" || attachment.receipt_id) throw new Error("An attachment is no longer available. Your draft is still here.");
+    const id = input.clientMessageId ?? `desktop:${randomUUID()}`;
+    if (!/^desktop:[A-Za-z0-9-]{8,80}$/.test(id)) throw new Error('Invalid message identity');
+    const existing = this.outbox.find(item => item.id === id);
+    if (existing) {
+      if (existing.threadId !== threadId || existing.text !== text || JSON.stringify(existing.attachmentIds) !== JSON.stringify(attachmentIds)) throw new Error('Message identity changed');
+      return;
     }
-    const pending: OutboxRecord = { version: 1, id: `desktop:${randomUUID()}`, threadId, text, attachmentIds, createdAt: Date.now(), state: "pending" };
+    // A durable ACK can already have retired the outbox. The page still owns its accepted echo.
+    const acknowledged = client.messages.get(threadId)?.find(message => message.client_message_id === id);
+    if (acknowledged) {
+      if (acknowledged.text !== text || JSON.stringify((acknowledged.attachments ?? []).map(attachment => attachment.id)) !== JSON.stringify(attachmentIds)) throw new Error('Message identity changed');
+      return;
+    }
+    for (const attachmentId of attachmentIds) {
+      const attachment: Attachment = client.attachments.get(attachmentId) ?? await client.getAttachment(threadId, attachmentId);
+      if (this.client !== client || this.connection !== connection || !client.isThreadAvailable(threadId) || attachment.thread_id !== threadId || attachment.state !== "available" || attachment.receipt_id) throw new Error("An attachment is no longer available. Your draft is still here.");
+    }
+    const pending: OutboxRecord = { version: 1, id, threadId, text, attachmentIds, createdAt: Date.now(), state: "pending" };
     await this.outboxStore.put(connection.id, pending);
+    if (this.client !== client || this.connection !== connection) throw new Error('The message was saved for the previous connection');
     // The outbox already owns this message. A failed cleanup must not make the user send it twice.
     await this.localDraftStore.put(connection.id, threadId, { text: '', attachments: [] }).catch(() => {
       this.errorMessage = 'Your message was saved, but its local draft could not be cleared. Keep your app data and reopen Hermes.';
     });
+    if (this.client !== client || this.connection !== connection) throw new Error('The message was saved for the previous connection');
     this.outbox.push(pending);
     this.changed();
     await this.deliver(pending);
   }
 
-  async retryMessage(clientMessageId: string): Promise<void> {
-    const pending = this.outbox.find(({ id }) => id === clientMessageId);
+  async retryMessage(clientMessageId: string, threadId = this.selectedThreadId): Promise<void> {
+    const pending = this.outbox.find(item => item.id === clientMessageId && item.threadId === threadId);
     if (pending) { this.checkedReceipts.delete(pending.id); await this.deliver(pending.state === "blocked" && !pending.receiptId ? { ...pending, state: "pending" } : pending); }
   }
 
@@ -809,21 +825,21 @@ export class DesktopConnectionService {
   }
 
 
-  async stopThread(): Promise<void> {
-    if (!this.selectedThreadId) return;
-    try { await this.requireClient().stop(this.selectedThreadId); }
+  async stopThread(threadId = this.selectedThreadId): Promise<void> {
+    if (!threadId) return;
+    try { await this.requireClient().stop(threadId); }
     catch { this.actionError("The running task could not be stopped. It may have already finished."); }
   }
 
-  async cancelQueued(receiptId: string): Promise<void> {
-    if (!this.selectedThreadId || !this.client?.receipts.has(receiptId)) return;
-    try { await this.client.cancelQueued(this.selectedThreadId, receiptId); }
+  async cancelQueued(receiptId: string, threadId = this.selectedThreadId): Promise<void> {
+    if (!threadId || this.client?.receipts.get(receiptId)?.thread_id !== threadId) return;
+    try { await this.client.cancelQueued(threadId, receiptId); }
     catch { this.actionError("The queued message could not be cancelled. Its state may have changed."); }
   }
 
-  async answerInteraction(interactionId: string, choice: string): Promise<void> {
+  async answerInteraction(interactionId: string, choice: string, threadId = this.selectedThreadId): Promise<void> {
     const item = this.client?.interactions.get(interactionId);
-    if (!item || item.thread_id !== this.selectedThreadId || item.state !== "pending" || !item.choices.includes(choice)) return;
+    if (!item || item.thread_id !== threadId || item.state !== "pending" || !item.choices.includes(choice)) return;
     try { await this.client!.answerInteraction(item, choice); }
     catch { this.actionError("That request is no longer pending. Hermes will refresh its status."); await this.client?.getInteraction(item.thread_id, item.id).catch(() => {}); }
   }
@@ -850,7 +866,9 @@ export class DesktopConnectionService {
     }
     const uploaded: DesktopAttachment[] = [];
     try {
+      if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
       for (const file of files) uploaded.push(this.projectAttachment(await client.upload(threadId, file.name, file.bytes)));
+      if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
     } catch {
       await Promise.all(uploaded.map(({ id }) => client.deleteUnattached(threadId, id).catch(() => {})));
       this.actionError("The attachments could not be uploaded. Check their size and try again.");
@@ -859,14 +877,14 @@ export class DesktopConnectionService {
     return uploaded;
   }
 
-  async deleteUnattachedAttachment(attachmentId: string): Promise<void> {
+  async deleteUnattachedAttachment(attachmentId: string, threadId = this.selectedThreadId): Promise<void> {
     const attachment = this.client?.attachments.get(attachmentId);
-    if (!attachment || attachment.thread_id !== this.selectedThreadId || attachment.receipt_id) return;
+    if (!attachment || attachment.thread_id !== threadId || attachment.receipt_id) return;
     await this.client?.deleteUnattached(attachment.thread_id, attachment.id);
   }
 
-  async downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void> {
-    const client = this.requireClient(), threadId = this.selectedThreadId;
+  async downloadAttachment(attachmentId: string, action: "save" | "open", targetThreadId = this.selectedThreadId): Promise<void> {
+    const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
     const bytes = await client.download(threadId, attachmentId);
@@ -899,15 +917,15 @@ export class DesktopConnectionService {
     this.changed();
   }
 
-  async previewAttachmentImage(attachmentId: string): Promise<string> {
-    const client = this.requireClient(), threadId = this.selectedThreadId;
+  async previewAttachmentImage(attachmentId: string, targetThreadId = this.selectedThreadId): Promise<string> {
+    const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available"
         || !/^image\/(png|jpeg|gif|webp)$/.test(attachment.mime ?? "") || !attachment.size || attachment.size > 10 * 1024 * 1024) {
       throw new Error("The image is unavailable.");
     }
     const bytes = await client.download(threadId, attachmentId);
-    if (bytes.length !== attachment.size || this.client !== client || this.selectedThreadId !== threadId) throw new Error("The image is unavailable.");
+    if (bytes.length !== attachment.size || this.client !== client) throw new Error("The image is unavailable.");
     return `data:${attachment.mime};base64,${Buffer.from(bytes).toString("base64")}`;
   }
 

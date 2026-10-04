@@ -113,7 +113,8 @@ async function harness({ multiple = false, list = false, strict = false, product
     'expo-crypto': { randomUUID: () => 'synthetic-send-id' },
     'expo-clipboard': { setStringAsync: async () => {} },
     '../../../packages/client/src/sessionLinks': sessionLinks,
-    '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },
+    '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String, isRetryableError: () => true },
+    './NetworkStatusToast': { NetworkStatusToast: 'NetworkStatusToast' },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     '../../../packages/client/src/livePages': { LivePageClient: productionOwners ? ProductionOwners : SDK },
     './sessionNavigation': { SessionNavigationProvider: ({ children }) => children, useSessionNavigation: () => ({ thread() {}, link() {} }) },
@@ -159,11 +160,34 @@ async function harness({ multiple = false, list = false, strict = false, product
   await render();
   return { finishStatus, render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
+    get networkToast() { return root.root.findByType('NetworkStatusToast').props; },
+    async network(state, deadline) { await act(async () => { api.client.options.onRetryScheduled(deadline); api.client.options.onConnectionState(state); }); },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('account retry schedule reaches one top toast across list, chat and covered routes', async () => {
+  const h = await harness({ list: true });
+  try {
+    await h.network('retrying', 123456);
+    assert.equal(h.networkToast.state, 'retrying');
+    assert.equal(h.networkToast.retryAt, 123456);
+    const scene = h.scenes.get('t_one');
+    await h.render('t_one', true);
+    assert.equal(h.networkToast.retryAt, 123456);
+    assert.equal(h.scenes.get('t_one'), scene);
+    await h.render(false);
+    assert.equal(h.networkToast.state, 'retrying');
+    await h.network('online', null);
+    assert.equal(h.networkToast.retryAt, null);
+    assert.equal(h.networkToast.state, 'online');
+    await h.appState('background');
+    assert.equal(h.networkToast.state, 'suspended');
+    assert.equal(h.networkToast.failed, false);
+  } finally { await h.close(); }
+});
 
 test('removing diagnostics preserves content release before execution status is ready', async () => {
   const h = await harness({ holdStatus:true });

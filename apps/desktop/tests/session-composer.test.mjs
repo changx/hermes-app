@@ -12,21 +12,21 @@ const mobileRequire = require; // Desktop tests also run on CI without installin
 const React = mobileRequire('react');
 const { act, create } = mobileRequire('react-test-renderer');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const output = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `export { NewSessionDialog } from './src/renderer/new-session-dialog'; export { NavigationPanel } from './src/renderer/navigation-panel'; export { DesktopShellView } from './src/renderer/shell';` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime'], write: false });
+const output = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `export { NewSessionPage } from './src/renderer/new-session-page'; export { NavigationPanel } from './src/renderer/navigation-panel'; export { DesktopShellView } from './src/renderer/shell';` }, bundle: true, platform: 'node', format: 'cjs', external: ['react', 'react/jsx-runtime'], write: false });
 const mod = { exports: {} };
 new Function('require','module','exports',output.outputFiles[0].text)(name => name.startsWith('react') ? mobileRequire(name) : require(name), mod, mod.exports);
-const { NewSessionDialog, NavigationPanel, DesktopShellView } = mod.exports;
+const { NewSessionPage, NavigationPanel, DesktopShellView } = mod.exports;
 const snapshot = { revision: 1, phase: 'connected', connectionState: 'online', channels: [{ id:'a', name:'Alpha' }, { id:'b', name:'Beta' }], threads: [], selectedChannelId:'a', messages: [], interactions: [], canLoadOlder:false };
 const prevent = () => ({ preventDefault() {} });
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject}; };
 function environment(api = {}) {
   const listeners = new Map();
-  globalThis.window = { hermesDesktop:api, setInterval:()=>1, clearInterval(){}, addEventListener:(name,fn)=>listeners.set(name,fn), removeEventListener:(name)=>listeners.delete(name) };
+  globalThis.window = { hermesDesktop:{sendMessage:async()=>{},completeNewTab:async()=>{},...api}, setInterval:()=>1, clearInterval(){}, addEventListener:(name,fn)=>listeners.set(name,fn), removeEventListener:(name)=>listeners.delete(name) };
   globalThis.document = { activeElement: null };
   return listeners;
 }
 async function mount(Component, props) { let tree; await act(async()=>{tree=create(React.createElement(Component,props));}); return tree; }
-const title = tree => tree.root.findByProps({name:'title'});
+const title = tree => tree.root.findByProps({'aria-label':'First message'});
 const form = tree => tree.root.findByType('form');
 async function fill(tree) { await act(async()=>title(tree).props.onChange({target:{value:'First session'}})); }
 
@@ -41,8 +41,8 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
     await writeFile(file,`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root">${html}</div><pre id="results"></pre><script>
       const results=[];
       for(const width of [720,1280,1800]) {
-        document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.desktop-shell').style.width=width+'px';
-        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.conversation-pane'),row=document.querySelector('.composer-row');
+        document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.session-tab-page').style.width=width+'px';
+        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.session-tab-page'),row=document.querySelector('.composer-row');
         const bubble=user.getBoundingClientRect(),other=agent.getBoundingClientRect(),bounds=pane.getBoundingClientRect(),controls=[...row.children].map(x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,width:b.width,height:b.height}});
         const stop=document.querySelector('.running-row .stop-button').getBoundingClientRect();
         results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
