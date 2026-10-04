@@ -2,7 +2,16 @@
 
 ## Desktop default font size candidate
 
-### Simple desktop text-size settings (not published)
+### Simple desktop text-size settings (published in v0.1.23)
+
+Jamie authorized main merge and publication. Verified candidate `065de52` was fast-forwarded into main; release source and tag `v0.1.23` are `535935ecc6c924dd7898cfc6b26237cce4902bab`. Only desktop/root version metadata changed after candidate checks; the dependency graph and verified application sources are unchanged.
+
+- [Tag workflow 37186467078](https://github.com/changx/hermes-app/actions/runs/37186467078) passed macOS arm64 checks, dependency audit, native packaging and publication. Release-source main workflow `37186467068` also passed.
+- [Desktop v0.1.23](https://github.com/changx/hermes-app/releases/tag/v0.1.23) is published, not a draft. Downloaded `Hermes-0.1.23-macOS-arm64.zip` passes sidecar SHA-256, ZIP CRC, arm64 executable and plist/ASAR version `0.1.23`. Packaged CSS is byte-identical to the verified candidate; renderer markers confirm default 16, Settings/Text size, 12–24 options, local read/write, startup initialization, reset and save-failure messaging.
+- SHA-256: `9fe6e8a56cbb92f7b86faed7958d1e7027e86eb3becaf465febcfdbf83694a78`. Private readbacks, CI logs, downloaded archive and verifier: Channel workspace `desktop-font-settings/release/`.
+- No mobile deployment, plugin/core change, service restart or Mac installation. Expo and development Gateway PID/start-time readbacks are unchanged. The archive remains unsigned and not notarized; Mac keyboard/visual acceptance is still pending. Rollback package is intact `v0.1.22`; do not clear device preferences, drafts or chat data.
+
+The following paragraphs record the candidate implementation and automatic checks before publication.
 
 Latest request supersedes the fixed 18.4px proposal: provide a simple local setting with **16px default**. Candidate `feat/desktop-font-settings` continues from `880095b`; card `t_5b1d1261` tracks the update.
 
@@ -11,7 +20,7 @@ Latest request supersedes the fixed 18.4px proposal: provide a simple local sett
 - Use a native modal dialog rendered into document.body, outside sidebar selectors. Focus enters Text size and returns to the Settings button on close. Suppress background application shortcuts while this dialog is open. Do not add zoom shortcuts, server fields, credential access or dependencies.
 - Preserve existing margins, padding, gaps, sidebar widths and icon/button dimensions. Retain the previous necessary relative text line heights and label clipping-height adaptation; no page zoom or layout redesign.
 - Desktop TypeScript/build and all **153 tests pass**, with no failures/skips. Production Chromium checks actual Settings interaction, 12/16/18/24px UI/content/code/tool text, unchanged spacing/icons and message DOM identity, default reset, saved value readback, cold restoration in a second browser process, pre-pair access, focus restoration and storage failure/recovery. Existing narrow/wide typography, draft and label/layout regressions also pass.
-- Private evidence: Channel workspace `desktop-font-settings/check.log`. This is an isolated candidate, not yet merged or published; Mac installed-app and keyboard/visual acceptance remain pending. No mobile/plugin/core/main-process changes or service restarts.
+- Candidate-check evidence: Channel workspace `desktop-font-settings/check.log`. Publication is recorded above; Mac installed-app and keyboard/visual acceptance remain pending. No mobile/plugin/core/main-process changes or service restarts.
 
 ### Font-only follow-up: 18.4px (not published)
 
