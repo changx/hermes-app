@@ -16,7 +16,13 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 已确认：手机和桌面的 session 列表为本机未发送文字或附件显示 `draft`。标注不向服务端或其他设备同步；仅空白文字不标注，清空草稿或消息成功进入本地发送队列后清除。不改变列表排序及运行/已完成未读状态。本次沿用已有内存草稿期限，不新增强杀或重启后的草稿恢复。
 
-后续视觉反馈：原灰色小字不够明显。双端改用浅琥珀色底、深棕色粗体及边框的 `draft` 标签；手机放在 Session 标题旁，不再放在时间行。标签不收缩，长标题仍可换行，不复用绿色运行或蓝色未读状态。此改动保留在 `fix/draft-badge-contrast` 候选，发布与真机验收单独记录。
+后续视觉反馈：原灰色小字不够明显。双端改用浅琥珀色底、深棕色粗体及边框的 `draft` 标签；手机放在 Session 标题旁，不再放在时间行。标签不收缩，长标题仍可换行，不复用绿色运行或蓝色未读状态。实现候选为 `fix/draft-badge-contrast / e9c62f6`。
+
+已授权合并并发布：合并提交 `128e5ab`，发布源码与 tag `v0.1.18` 为 `2fd2f2f618f81aa5db45a6d7fab15a951ec81c80`。源码与已验证候选一致，仅更新版本元数据，未改变依赖图。候选手机定向测试 25 通过，桌面含 Chromium 布局的完整检查 130 通过，TypeScript、构建和 iOS/Android 导出通过。沿用已有检查，不在发布阶段重复全套本地测试。
+
+手机 Expo Go 入口仍为 `exps://agent.tuly.space`。公网 iOS/Android manifest 和各自精确 launchAsset 均 HTTP 200、SDK 57；回读代码确认新底色、粗体、边框和标题行。仅重启 Expo；两个 Gateway 的 PID/启动时间、插件哈希及手机 lockfile 均未变。[Desktop v0.1.18](https://github.com/changx/hermes-app/releases/tag/v0.1.18) 已发布，macOS arm64 workflow `37170647067` 成功。实际下载包通过 SHA-256 sidecar、ZIP 完整性、arm64、plist/ASAR 版本和标签代码检查。包为 `Hermes-0.1.18-macOS-arm64.zip`，SHA-256 `c7c5b4d075f4c50a18b8bc70b4c13db0b0fb690224eefb80f5d0700806779f51`。
+
+该桌面包未签名、未 notarize；手机仍是 Expo Go 测试入口，不是独立安装包。iPhone/Mac 真机视觉和操作验收仍待完成。私有证据在 Channel workspace 的 `draft-badge-publication/`。回滚基线为 `9f5a580`；后续回滚需单独授权，使用明确 revert 并仅重启 Expo，不覆盖聊天数据，也不替换已经发布的桌面资产。
 
 候选分支 `feat/local-draft-label`，任务 `t_0843d06d`。复用本地草稿 Map，仅在有无草稿改变时刷新列表。手机按连接身份和稳定 Thread ID 隔离；桌面导航 memo 比较包含本地标注集合。未改服务端协议、插件或 Hermes 核心。候选手机测试 513 通过、1 跳过，桌面测试 117 通过、9 跳过，均无失败。共享客户端与双端 TypeScript、桌面构建及 iOS/Android Expo 导出通过。未发布，未做 iPhone/macOS 真机验收；导出不等于独立安装包。
 
