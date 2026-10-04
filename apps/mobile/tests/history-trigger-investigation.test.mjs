@@ -49,6 +49,11 @@ async function harness() {
       this.resumeTail(id);
     }
     async markRead() {}
+    async loadFullHistory(id) {
+      let before = this.currentOlderCursor;
+      while (before) { const page = await this.historyWindow(id, before, 100); before = page.older_cursor; }
+      this.currentOlderCursor = null;
+    }
     async historyWindow(id, before, limit) {
       const request = { event: 'history-request', direction: before ? 'older' : 'latest', limit: limit ?? 30 };
       trace.push(request);
@@ -142,7 +147,7 @@ test('one load intent plus ordinary SDK revisions only continues older cursors, 
   assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older']);
   await h.finishOlder(); await promise;
   assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'older', 'older']);
-  assert.equal(h.props.rows[0].refSeq, 50);
+  assert.equal(h.props.rows[0].refSeq, 40);
   console.log('NORMAL_SINGLE_INTENT', JSON.stringify(h.trace));
   await h.close();
 });
@@ -156,23 +161,24 @@ test('tail repair during an older load keeps the visible rows and does not reope
   await h.revision();
   assert.deepEqual(h.trace.filter(item => item.event === 'history-request').map(item => item.direction), ['older', 'tail-repair']);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 50, 'the original pull still expands its 5 blocks');
+  assert.equal(h.props.rows[0].refSeq, 40, 'the original pull expands all history');
   await h.finishRepair();
-  assert.equal(h.props.rows[0].refSeq, 50, 'repair does not reset startRef or the older cursor');
+  assert.equal(h.props.rows[0].refSeq, 40, 'repair does not reset startRef');
   assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
   assert.equal(h.props.locatingBusy, false);
   console.log('RECOVERY_FIXED', JSON.stringify({ trace: h.trace, rows_were_cleared: false, native_refresh_events_simulated: 0 }));
   await h.close();
 });
 
-test('repair completing first also leaves the pull alive; a subsequent ordinary pull is allowed', async () => {
+test('repair completing first leaves full-history loading alive; later pulls need no history reads', async () => {
   const h = await harness(); const { promise } = await h.pull();
   await h.flagRecovery(); await h.finishRepair();
   assert.equal(h.props.rows[0].refSeq, 100);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 50);
+  assert.equal(h.props.rows[0].refSeq, 40);
   const next = await h.pull(); await next.promise;
-  assert.equal(h.trace.filter(item => item.event === 'one-user-load-intent').length, 2, 'no per-gesture count gate was added');
+  assert.equal(h.trace.filter(item => item.event === 'one-user-load-intent').length, 2);
+  assert.equal(h.props.hasOlder, false);
   assert.equal(h.props.rows[0].refSeq, 40, 'the next ordinary request can load the remaining older block');
   await h.close();
 });
@@ -182,10 +188,10 @@ test('failed repair keeps current reading and old pagination usable, and a later
   await h.flagRecovery(); await h.finishRepair(true);
   assert.equal(h.props.rows[0].refSeq, 100); assert.equal(h.sdk.tailIncomplete.has('t'), true);
   await h.finishOlder(); await promise;
-  assert.equal(h.props.rows[0].refSeq, 50);
+  assert.equal(h.props.rows[0].refSeq, 40);
   await h.revision(); await h.finishRepair();
   assert.equal(h.sdk.tailIncomplete.has('t'), false);
-  assert.equal(h.props.rows[0].refSeq, 50);
+  assert.equal(h.props.rows[0].refSeq, 40);
   assert.equal(h.boundaryHistory.some(rows => rows.length === 0), false);
   await h.close();
 });

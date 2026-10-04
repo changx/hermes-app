@@ -20,10 +20,9 @@ import { ConnectionScreen } from './ConnectionScreen';
 import { CONFIG_KEY, PAIRING_KEY, completePairing, newPairing, normalizePairingCode, restorePairing, type PendingPairing } from './pairing';
 import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
-import { ChatTimeline, type ChatTimelineHandle } from './ChatTimeline';
+import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
-import { historyBlockStart, loadHistoryBlocks } from './historyBlocks';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
@@ -270,7 +269,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
-  // Every entry opens at the latest message; keep only the loaded history window.
+  // Entry reads one recent page; a history gesture expands the full transcript.
   const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: targetRef === undefined, startRef: null }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
@@ -310,28 +309,20 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
       await openingTask;
       const current = () => focusedRef.current && appActive.current && opening === openingRef.current && client.currentThreadId === id;
       if (!current()) return;
-      if (requestedRef !== undefined) {
-        setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true); return;
-      }
-      const blocks = await loadHistoryBlocks(client, id, null, client.currentOlderCursor, { current, onCursor: setPageCursor });
-      if (!blocks || !current()) return;
-      setPageCursor(blocks.olderCursor); setStartRef(blocks.startRef); setLocated(true);
+      setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true);
     } catch { if (focusedRef.current && opening === openingRef.current) setError(requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
   const loadOlder = async () => {
-    if (!client || !focusedRef.current || !appActive.current || historyBusy) return;
+    if (!client || !focusedRef.current || !appActive.current || historyBusy || !pageCursor) return;
     timelineRef.current?.holdPosition();
     const opening = openingRef.current, id = threadId;
     setHistoryBusy(true);
     try {
-      const blocks = await loadHistoryBlocks(client, id, visibleMessages[0]?.ref_seq ?? null, client.supportsLatest ? pageCursor : null, {
-        current: () => focusedRef.current && opening === openingRef.current,
-        onCursor: setPageCursor
-      });
+      await client.loadFullHistory(id);
       if (!focusedRef.current || opening !== openingRef.current) return;
-      if (blocks) setStartRef(blocks.startRef);
+      setPageCursor(null); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null);
     } catch { if (appActive.current && focusedRef.current && opening === openingRef.current) setError('Could not load earlier messages. Your current conversation is still available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
@@ -364,7 +355,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   });
 
   const messages = client?.messages.get(threadId) || [];
-  const first = windowStart(messages, startRef ?? historyBlockStart(messages).startRef);
+  const first = windowStart(messages, startRef);
   const visibleMessages = located ? messages.slice(first) : [];
   const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
   const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
@@ -416,11 +407,12 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
-  // The target window must exist before FlashList mounts with its native initial index.
+  // Source navigation must mount the list only after the target rows exist, so its
+  // native initial index points at the exact message rather than the latest.
   if (anchor !== undefined && !located) return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation' }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    {!historyBusy && <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
+    {historyBusy ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation',
@@ -429,7 +421,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
       hasNewer={anchor !== undefined && !!client.currentNewerCursor} onNewer={() => run(async () => { await client.loadNewer(threadId); })}
-      startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && (first > 0 || !!pageCursor && client.supportsLatest)}
+      startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && !!pageCursor}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}

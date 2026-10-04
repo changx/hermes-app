@@ -107,6 +107,7 @@ export class LivePageClient extends LiveSessionClient {
     const page = this.pages.get(id); if (!page) throw new ProtocolError('Conversation page is not alive'); return page;
   }
   override async historyWindow(id: string, before?: string, limit=30, signal?: AbortSignal) { return this.requirePage(id).historyWindow(id,before,limit,signal); }
+  override async loadFullHistory(id: string, signal?: AbortSignal) { return this.requirePage(id).loadFullHistory(id,signal); }
   override async historyTail(id: string, signal?: AbortSignal) { return this.requirePage(id).historyTail(id,signal); }
   override async recoverHistoryTail(id: string, signal?: AbortSignal) { return this.requirePage(id).recoverHistoryTail(id,signal); }
   override async loadNewer(id: string) { return this.requirePage(id).loadNewer(id); }

@@ -56,3 +56,15 @@ test('existing conversation stays readable during reconnect',()=>{
   assert.match(markup,/Already loaded content/);
   assert.doesNotMatch(markup,/Loading your conversations/);
 });
+
+test('initial and full-history loading show accessible animation without hiding existing history',()=>{
+  const selected={...base,selectedThreadId:'test-thread',selectedThreadTitle:'Test'};
+  const opening=render({...selected,loadingMessages:true});
+  assert.match(opening,/Loading messages…/);assert.match(opening,/conversation-loading-spinner/);
+  assert.doesNotMatch(opening,/No messages yet/);
+  const loading=render({...selected,loadingHistory:true,canLoadOlder:true,messages:[{id:'m',role:'assistant',text:'Current reading',toolCalls:[],attachments:[]}]});
+  assert.match(loading,/Loading messages…/);assert.match(loading,/Current reading/);
+  assert.doesNotMatch(loading,/Load all earlier messages/);
+  const ready=render({...selected,messages:[{id:'m',role:'assistant',text:'Current reading',toolCalls:[],attachments:[]}]});
+  assert.doesNotMatch(ready,/Loading messages|conversation-loading-spinner|Load all earlier messages/);
+});

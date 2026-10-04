@@ -134,11 +134,12 @@ function callback(name, context) {
   return context.callback;
 }
 
-test('production App loadOlder publishes one completed block window and holds original rows during intermediate fetches', async () => {
+test('production App loadOlder publishes all history once and holds original rows during intermediate fetches', async () => {
   let finish;
   const h = sdk([u(100), m(101)], async before => before === 'c1'
     ? { messages: [u(60), m(61)], cursor: 'c2' }
     : new Promise(resolve => { finish = resolve; }));
+  h.client.loadFullHistory = async id => { let before = 'c1'; while (before) { const page = await h.client.historyWindow(id, before, 100); before = page.older_cursor; } };
   const starts = [], holds = [], context = {
     client: h.client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 1 }, threadId: 't', historyBusy: false,
     timelineRef: { current: { holdPosition: () => holds.push(true) } }, visibleMessages: [u(100), m(101)], pageCursor: 'c1',
@@ -148,19 +149,19 @@ test('production App loadOlder publishes one completed block window and holds or
   };
   const pending = callback('loadOlder', context)();
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(starts, []); assert.equal(context.pageCursor, 'c2');
+  assert.deepEqual(starts, []); assert.equal(context.pageCursor, 'c1');
   assert.deepEqual(h.client.messages.get('t').filter(item => item.ref_seq >= 100).map(item => item.ref_seq), [100, 101]);
   finish({ messages: [u(1), m(2), u(20), m(21)], cursor: null }); await pending;
   assert.deepEqual(starts, [1]); assert.equal(holds.length, 1); assert.equal(context.historyBusy, false);
 });
 
-test('production scoped entry uses fresh server state and selects latest five blocks without read reporting', async () => {
+test('production scoped entry publishes its single page without more history or read reporting', async () => {
   const h = sdk([], {}), events = [];
   h.client.openConversation = async id => { events.push(['open', id]); h.client.currentThreadId = id; h.client.currentConversationKey = {}; h.client.currentOlderCursor = null; h.client.messages.set(id, [u(1), m(2), u(5), m(6), u(10), m(11), u(20), m(21), u(25), m(26), u(30), m(31)]); };
   const context = { client: h.client, focusedRef: { current: true }, appActive: { current: true }, ownedWatch: { current: null }, openingRef: { current: 0 }, loadHistoryBlocks,
     setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => events.push(['start', value]), setError: value => assert.fail(value) };
   await callback('openThread', context)('t');
-  assert.deepEqual(events, [['start', null], ['open', 't'], ['start', 5]]);
+  assert.deepEqual(events, [['start', null], ['open', 't'], ['start', 1]]);
   assert.equal(h.requests.length, 0);
 });
 

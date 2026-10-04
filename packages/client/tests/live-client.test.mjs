@@ -235,3 +235,76 @@ test('durable accepted echo keeps one stable input through history hydration and
   await f.sdk.historyWindow('A');assert.equal(f.sdk.messages.get('A').filter(m=>m.client_message_id==='inputA').length,1);
   f.sdk.closeConversation();f.sdk.rememberAcceptedInput('A','inputA','original',[],1000,receipt);assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.receipts.size,0);f.sdk.close();
 });
+
+function fullHistoryFixture({gate,failOnce=false,target=false,loop=false}={}){
+  const all=Array.from({length:250},(_,i)=>message('m'+(i*2+1)));
+  let failed=false;
+  const f=fixture({request:async(_method,path,_body,_signal)=>{
+    if(target&&path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,open_session_live:true,attachment_origin:true,history_around:true}};
+    if(!path.includes('/A/messages'))return;
+    const q=new URL(path,'https://fixture.test').searchParams;
+    if(q.get('latest'))return {status:200,body:{messages:all.slice(-30),older_cursor:'older',next_cursor:null}};
+    if(q.get('around_ref_seq'))return {status:200,body:{messages:all.slice(35,66),older_cursor:'older',next_cursor:'newer'}};
+    const exact=Number(q.get('ref_seq')),from=Number(q.get('after_ref_seq'))||Number(q.get('after')?.split(':')[1])||0;
+    if(q.get('after')&&gate)await gate.promise;
+    if(q.get('after')&&failOnce&&!failed){failed=true;return {status:503,body:{}}}
+    const rows=exact?all.filter(m=>m.ref_seq===exact):all.filter(m=>m.ref_seq>from).slice(0,Number(q.get('limit')));
+    const next=!exact&&rows.length&&all.some(m=>m.ref_seq>rows.at(-1).ref_seq)?'page:'+rows.at(-1).ref_seq:null;
+    return {status:200,body:{messages:rows,receipts:[],next_cursor:loop?'repeated':next,incomplete_turns:[],turn_outcomes:[]}};
+  }});
+  return {...f,all};
+}
+
+test('entry reads one recent page; one history request reads all pages with no repeat after completion',async()=>{
+  const f=fullHistoryFixture();
+  try{
+    await f.sdk.openConversation('A');assert.equal(f.sdk.messages.get('A').length,30);
+    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1);
+    await f.sdk.loadFullHistory('A');assert.deepEqual(f.sdk.messages.get('A').map(m=>m.ref_seq),f.all.map(m=>m.ref_seq));
+    assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
+    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,4);
+    const count=f.paths.length;await f.sdk.loadFullHistory('A');assert.equal(f.paths.length,count);
+    assert.ok(f.paths.every(([,p])=>!p.includes('/B/messages')));
+  }finally{f.sdk.close()}
+});
+
+test('concurrent history intents share one read and later-page failure can retry the entire original',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate,failOnce:true});
+  try{
+    await f.sdk.openConversation('A');const count=f.paths.length;
+    const a=f.sdk.loadFullHistory('A'),b=f.sdk.loadFullHistory('A');
+    await until(()=>f.paths.length===count+2);gate.resolve();
+    await assert.rejects(a,/503/);await assert.rejects(b,/503/);
+    assert.equal(f.sdk.currentOlderCursor,'older');
+    await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);assert.equal(f.sdk.currentOlderCursor,null);
+  }finally{f.sdk.close()}
+});
+
+test('cancelled full read cannot revive a switched conversation or consume its next pages',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});
+  try{
+    await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
+    await until(()=>f.paths.some(([,p])=>p.includes('after=page')));
+    await f.sdk.openConversation('B');await assert.rejects(pending,/aborted/);
+    const count=f.paths.length;gate.resolve();await tick();
+    assert.equal(f.paths.length,count);assert.deepEqual([...f.sdk.messages.keys()],['B']);
+  }finally{f.sdk.close()}
+});
+
+test('source window stays bounded on entry but explicit history expansion includes both directions',async()=>{
+  const f=fullHistoryFixture({target:true});
+  try{
+    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,31);
+    await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);
+    assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
+    f.all.push(message('m501'));f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.sdk.messages.get('A').length===251);
+    assert.equal(f.sdk.currentNewerCursor,null);
+  }finally{f.sdk.close()}
+});
+
+test('full read rejects a repeated transport cursor instead of looping',async()=>{
+  const f=fullHistoryFixture({loop:true});
+  try{await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/did not advance/);assert.equal(f.sdk.currentOlderCursor,'older')}
+  finally{f.sdk.close()}
+});

@@ -141,8 +141,10 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
   const latest = () => { const node = list.current; if (node) node.scrollTop = node.scrollHeight; setFollowing(true); setNewCount(0); };
   return <div className="timeline-wrap">
     <div className="message-list" aria-live="polite" ref={list} onScroll={scroll}>
-      {snapshot.canLoadOlder ? <button className="load-older" type="button" onClick={() => safely(window.hermesDesktop.loadOlder())}>Load earlier messages</button> : null}
-      {snapshot.messages.length ? snapshot.messages.map((message, index) => {
+      {snapshot.canLoadOlder || snapshot.loadingHistory ? <div className="history-loading-slot">
+        {snapshot.loadingHistory ? <div className="history-loading-status" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" />Loading messages…</div> : <button className="load-older" type="button" onClick={() => safely(window.hermesDesktop.loadOlder())}>Load all earlier messages</button>}
+      </div> : null}
+      {snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" /><h3>Loading messages…</h3></div> : snapshot.messages.length ? snapshot.messages.map((message, index) => {
         const previous = snapshot.messages[index - 1];
         const continuation = message.role === "assistant" && previous?.role === "assistant" && !message.displayKind && !previous.displayKind;
         const group = groups.get(message.id);
@@ -151,11 +153,11 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
           {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
           <MessageRow message={message} continuation={continuation} hidden={!expanded} />
         </div>;
-      }) : snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-busy="true"><h3>Loading messages…</h3></div> : <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div>}
+      }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-}, (before,after) => before.active === after.active && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.errorMessage === after.snapshot.errorMessage);
+}, (before,after) => before.active === after.active && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
 const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
   const threadId = snapshot.selectedThreadId;
@@ -260,7 +262,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
-      {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
+      {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, loadingHistory: snapshot.loadingHistory, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
         const active = page.id === snapshot.selectedThreadId;
         const pageSnapshot = { ...snapshot, ...page, selectedThreadId: page.id };
         return <div key={page.id} className="session-page" data-session-page={page.id} hidden={!active} style={{ display: active ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
