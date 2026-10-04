@@ -105,19 +105,16 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
   };
 }
 
-test('temporary measurement uses a separate zero-dwell helper and leaves normal receipt callbacks unchanged', () => {
+test('temporary measurement helper is removed while normal receipt callbacks remain', () => {
   const plain = mount(); assert.equal(plain.flatList.viewabilityConfigCallbackPairs, undefined);
   let calls = 0;
   const measured = mount({ onMeasuredVisible: () => calls++ });
-  const pairs = measured.flatList.viewabilityConfigCallbackPairs;
-  assert.deepEqual(JSON.parse(JSON.stringify(pairs[0].viewabilityConfig)), { minimumViewTime: 0, itemVisiblePercentThreshold: 1, waitForInteraction: false });
+  assert.equal(measured.flatList.viewabilityConfigCallbackPairs, undefined);
   assert.equal(typeof measured.flatList.onViewableItemsChanged, 'function');
-  const callback = pairs[0].onViewableItemsChanged;
-  callback({ viewableItems: [] }); callback({ viewableItems: [{ isViewable: true, item: { key: 'placeholder' } }] }); assert.equal(calls, 0);
-  callback({ viewableItems: [{ isViewable: false, item: { refSeq: 1 } }] }); assert.equal(calls, 0);
-  callback({ viewableItems: [{ isViewable: true, item: { refSeq: 1 } }] }); assert.equal(calls, 1);
-  measured.rerender(); assert.equal(measured.flatList.viewabilityConfigCallbackPairs, pairs);
-  callback({ viewableItems: [{ isViewable: true, item: { refSeq: 2 } }] }); assert.equal(calls, 1);
+  measured.flatList.onViewableItemsChanged({ viewableItems: [{ isViewable: true, item: { refSeq: 1 } }] });
+  measured.rerender();
+  assert.equal(measured.flatList.viewabilityConfigCallbackPairs, undefined);
+  assert.equal(calls, 0);
 });
 
 test('composer centers a content-sized native input inside its bordered shell', () => {

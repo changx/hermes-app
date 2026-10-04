@@ -1,5 +1,15 @@
 # Temporary session-open measurement
 
+## Removal candidate
+
+The mobile timing feature has been removed in `fix/remove-mobile-timing`, at the user's request. The removal includes the Agent settings switch, result panel, copy action, navigation trace, SDK observer registration and independent FlashList measurement callback. Normal page ownership, early content release, receipt viewability and shared SDK APIs remain unchanged. The previous build flag no longer enables mobile collection.
+
+Verification: mobile tests report 547 passed, 1 skipped and 0 failed. Mobile TypeScript and iOS/Android exports pass. This candidate has not been merged or deployed. iPhone acceptance is not verified. Test evidence is in the Channel workspace under `remove-mobile-timing/tests.log`.
+
+## Historical measurement instructions
+
+The instructions below describe the previous build, not the removal candidate.
+
 This is an opt-in mobile measurement build, not a performance optimization or a production telemetry service. It does not change requests, history windows, authentication, resource limits or page ownership. Desktop has no measurement UI in this candidate.
 
 ## Run the candidate
