@@ -1,6 +1,24 @@
-# One-page entry and full-history expansion
+# Complete Session loading
 
-## Confirmed behavior
+## Current confirmed behavior and isolated candidate
+
+Opening an existing Session now loads its complete original visible timeline with one `GET /v1/threads/{id}/messages?full=true` request. There is no initial recent/around page and no pagination fallback. Normal entry remains at the latest message. Source entry uses the same complete response and locates the exact reference; a missing source fails instead of opening the latest message.
+
+The shared live SDK uses the existing `history_full` capability and complete-response validation. Both clients receive null older/newer cursors, so they offer no history-page action after opening. Initial content remains hidden until the complete history is valid. History and live-state requests still overlap. State failure cannot turn partial history into a completed load. Live updates and reconnection continue to read complete snapshots. Returning to a retained page does not reopen it; closing a page cancels its requests and releases its content.
+
+Resource limits and the 60-second history deadline remain unchanged. Unsupported servers or incomplete responses fail explicitly. Message and attachment metadata load together; attachment file bytes still download on demand. Mobile native list virtualization remains in place. No persistent history database is added.
+
+Candidate: `feat/full-session-entry`, task `t_f4a6a40b`, based on `2c8e932`. Verification: shared SDK 133 passed; mobile 553 passed and one optional browser test skipped; desktop 154 passed and 15 optional browser/native tests skipped. All three TypeScript checks, desktop build and iOS/Android Expo exports passed. The new desktop test exercises the production service and real authenticated loopback HTTP/WS transport with 250 records above 64 KiB; it verifies one initial full-history request, retained re-entry, live refresh and close/reopen. Production mobile callback tests use the actual SDK for normal and source entry and publish all 250 rows together. These are synthetic integration checks, not physical-device acceptance.
+
+Jamie subsequently authorized main merge and publication. Release preparation uses `release/full-session-entry` on main `2bb9b11`, preserving legacy-sync removal, test pruning and independent desktop tab status dots. Modify/delete test conflicts keep main's deleted suites; only the two mobile full-entry regressions move to a focused file. Integrated checks: SDK 16 passed; mobile 61 passed and one optional browser test skipped; desktop 23 passed and 14 optional browser/native tests skipped. TypeScript checks, desktop build, dependency audit and both native Expo exports pass. Desktop version is 0.1.28; dependency versions and mobile lockfile are unchanged. Actual publication evidence is recorded separately in the private Channel workspace under `full-session-publication/`.
+
+The release scope is clients only. It excludes plugin/core changes and Gateway restarts. iPhone/Mac first-frame position, large-history responsiveness, keyboard behavior and weak-network usability remain unverified.
+
+## Historical one-page entry and full-history expansion
+
+The sections below describe the previous requirement and release evidence. The current requirement above supersedes bounded initial/source windows.
+
+## Previous confirmed behavior
 
 - Open a conversation with one recent transport page: 30 records for normal entry, or 31 records around an explicit attachment-source target.
 - Keep normal entry at the latest message. Keep source navigation at its exact target.
