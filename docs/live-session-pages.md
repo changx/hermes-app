@@ -80,7 +80,7 @@
 
 ## 渲染资源复用候选
 
-隔离分支 `perf/render-resource-reuse` 在上述页面所有权基础上增加以下机制。未合并、未发布，不代表当前设备已生效。
+隔离分支 `perf/render-resource-reuse` 在上述页面所有权基础上增加以下机制。下面记录的是发布前的候选验证；后续发布结果见本节末尾。
 
 - 手机每个已挂载 session 使用一个 `RenderResourceScope`。所有存活页面共享一个 LRU 预算：估算 16 MiB、最多 256 项。预算针对可驱逐的派生缓存，不是总 JS 堆或原生内存上限；存活组件直接持有的解析结果、阅读器、引擎静态资产和原生实例不在此预算内。
 - 缓存按页面隔离，按稳定消息身份复用 AST 和渲染资格计划。正文变化重建；字号变化只重建相关 HTML，不重解析正文。节点和文章 HTML 共用该预算，超预算结果可显示但不加入缓存。
@@ -93,3 +93,13 @@
 独立 WebView 仍有独立引擎环境。此次未实现跨 WebView 公共资产加载、共享引擎实例、桌面可见窗口虚拟化或图片任务合并，不用缓存命中率代替这些验收。
 
 本地候选验证：手机 544/544、桌面 147/147，启用 Chromium，零失败、零跳过；手机和桌面 TypeScript、桌面构建、iOS/Android 导出通过。测试执行生产组件与 HTML runtime，但以替身计数渲染引擎及原生组件，不是 iPhone/macOS 原生 CPU、内存或手感证据。完整日志见 Channel `render-resource-reuse/`。
+
+### v0.1.21 发布
+
+Jamie 已授权合并并发布。候选保留 main `44be4be` 的频道工具栏、筛选和运行中排序改动，整合后手机 546/546、桌面 147/147，启用 Chromium，零失败与跳过。TypeScript、双平台导出、桌面构建、依赖审计通过。
+
+发布源 `cd8add8289dc8074dd5ae01118506ef8c784278f` 已合入并推送 main，标签 `v0.1.21` 指向该提交。主分支 CI `37180717553` 和标签发布 CI `37180718314` 均成功。[桌面发布](https://github.com/changx/hermes-app/releases/tag/v0.1.21)包含未签名、未公证的 macOS arm64 开发包。下载后 SHA-256 校验匹配 `75ea735a5e834d792eaa16252cbceda24c6c8d28977f2b7e25390c0104c916a0`；Mach-O 架构为 arm64；ASAR 包版本、稳定 Markdown 配置和延迟折叠挂载代码已核对。
+
+现有手机测试入口 `exps://agent.tuly.space` 已更新，只重启 Expo。公网 iOS/Android manifest 与各自 exact launchAsset 均返回 200、runtime 57；正文缓存、公共脚本、共享监听及既有草稿/页面代码均在所服务 bundle 中。初次无 Expo User-Agent 的 Python 请求返回 403，改用 Expo/57 后读取成功。
+
+发布前后开发与 Jamie Gateway PID/start 状态、插件文件哈希及手机 lockfile 均未变化。未操作签名账户、安装插件、重启 Gateway 或改写聊天数据。运行源码回滚基线 `0de8ffa` 保留于 `rollback/render-reuse-before-0.1.21`；正常回滚使用明确的 Git revert，不能重置聊天数据库。发布与资源验证不代替 iPhone/macOS 真机性能验收。
