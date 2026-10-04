@@ -6,17 +6,21 @@ import { runInNewContext } from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
+import { build } from 'esbuild';
 import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const sdkBundle = await build({ entryPoints: [new URL('../../../packages/client/src/livePages.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
+const sdkModule = { exports: {} }; new Function('module', 'exports', sdkBundle.outputFiles[0].text)(sdkModule, sdkModule.exports);
+const { LivePageClient } = sdkModule.exports;
 const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 
-async function harness({ multiple = false, list = false } = {}) {
+async function harness({ multiple = false, list = false, strict = false, productionOwners = false } = {}) {
   let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
@@ -37,7 +41,7 @@ async function harness({ multiple = false, list = false } = {}) {
       }
       return this.pages.get(id);
     }
-    page(id) { return multiple ? this.pages.get(id) : this.currentThreadId ? this : undefined; }
+    page(id) { return multiple ? this.pages.get(id) : this; }
     releasePage(id) { if (!multiple) this.closeConversation(); else { this.pages.get(id)?.closeConversation(); this.pages.delete(id); } }
     constructor(options) {
       sdkCount++; this.options = options; this.connectionState = 'online'; this.supportsLatest = true;
@@ -61,6 +65,23 @@ async function harness({ multiple = false, list = false } = {}) {
     enqueue() { return new Promise(resolve => { sendFinish = resolve; }); }
     async retryFailed(...args) { retries.push(args); }
   }
+  class ProductionOwners extends LivePageClient {
+    constructor(options) {
+      super(options); sdkCount++;
+      this.channels.set('p_one', { id: 'p_one' });
+      for (const id of ['t_one', 't_two']) this.threads.set(id, { id, project_id: 'p_one', title: id, archived: false });
+      this.directoryReady = true;
+    }
+    async connect() { this.state('online'); }
+    acquirePage(id) {
+      const page = super.acquirePage(id);
+      // Ownership, mirrors and close are real SDK code; only network opening is
+      // replaced in this native-view test. Socket/GC tests run separately.
+      page.openConversation = async thread => { opened++; page.wanted = thread; page.older = null; };
+      return page;
+    }
+    close() { closed++; super.close(); }
+  }
   const exports = {};
   const mocks = {
     react: React,
@@ -79,7 +100,7 @@ async function harness({ multiple = false, list = false } = {}) {
     '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
-    '../../../packages/client/src/livePages': { LivePageClient: SDK },
+    '../../../packages/client/src/livePages': { LivePageClient: productionOwners ? ProductionOwners : SDK },
     './sessionNavigation': { SessionNavigationProvider: ({ children }) => children, useSessionNavigation: () => ({ thread() {}, link() {} }) },
     './transport': { nativeTransport: () => ({}) },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), newSend: (...args) => args },
@@ -104,17 +125,20 @@ async function harness({ multiple = false, list = false } = {}) {
     'expo-symbols': { SymbolView: 'SymbolView' },
   };
   runInNewContext(code, { exports, console, AbortController, require: id => { if (!(id in mocks)) throw Error(id); return mocks[id]; } });
-  function Pages({ thread, settings }) {
+  function Suspender() { throw new Promise(() => {}); }
+  function Pages({ thread, settings, suspend }) {
     api = exports.useApp();
     if (!api.config || !api.client) return null;
     return React.createElement(React.Fragment, {},
       list && React.createElement(exports.ChannelsScreen, { channelId: 'p_one' }),
       thread && (Array.isArray(thread) ? thread : [thread]).map((id,index,ids) => React.createElement(Focus.Provider, { key: id, value: !settings && index === ids.length - 1 }, React.createElement(exports.ThreadScreen, { threadId: id }))),
-      settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)));
+      settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)),
+      suspend && React.createElement(Suspender));
   }
   let root;
-  async function render(thread = 't_one', settings = false) {
-    const tree = React.createElement(exports.AppProvider, {}, React.createElement(Pages, { thread, settings }));
+  async function render(thread = 't_one', settings = false, suspend = false) {
+    const contents = React.createElement(exports.AppProvider, {}, React.createElement(React.Suspense, { fallback: null }, React.createElement(Pages, { thread, settings, suspend })));
+    const tree = strict ? React.createElement(React.StrictMode, {}, contents) : contents;
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
@@ -125,6 +149,88 @@ async function harness({ multiple = false, list = false } = {}) {
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('discarded route renders never acquire pages; committed cleanup releases all owners', async () => {
+  const h = await harness({ multiple: true, productionOwners: true });
+  const account = h.api.client;
+  try {
+    await h.render(false);
+    for (let i = 0; i < 20; i++) {
+      await h.render('discarded_' + i, false, true);
+      assert.equal(account.pages.size, 0);
+    }
+    await h.render('t_one');
+    assert.equal(account.pages.size, 1);
+    await h.render(false);
+    assert.equal(account.pages.size, 0);
+  } finally { await h.close(); }
+});
+
+test('Suspense covering a committed route retains its owner and reading scene', async () => {
+  const h = await harness({ multiple: true, productionOwners: true });
+  try {
+    const account = h.api.client, page = account.page('t_one'), scene = h.scenes.get('t_one');
+    scene.offset = 345;
+    await h.render(['t_one', 'discarded'], false, true);
+    assert.equal(account.page('t_one'), page);
+    assert.equal(account.page('discarded'), undefined);
+    await h.render('t_one');
+    assert.equal(account.page('t_one'), page);
+    assert.equal(h.scenes.get('t_one'), scene);
+    assert.equal(scene.offset, 345);
+  } finally { await h.close(); }
+});
+
+test('StrictMode committed page is registered after effect replay and released on unmount', async () => {
+  const h = await harness({ multiple: true, strict: true, productionOwners: true });
+  const account = h.api.client;
+  try {
+    const page = account.page('t_one');
+    assert.ok(page);
+    assert.equal(page.currentThreadId, 't_one');
+    assert.equal(account.pages.size, 1);
+    await h.render(['t_one', 't_two']);
+    assert.equal(account.page('t_one'), page);
+    assert.equal(account.pages.size, 2);
+    await h.render('t_one');
+    assert.equal(account.page('t_one'), page);
+    assert.equal(account.pages.size, 1);
+  } finally { await h.close(); }
+  assert.equal(account.pages.size, 0);
+});
+
+test('authoritative target removal releases owner instead of reopening a detached page', async () => {
+  const h = await harness({ multiple: true, productionOwners: true });
+  try {
+    const account = h.api.client, page = account.page('t_one'), scene = h.scenes.get('t_one');
+    account.threads.delete('t_one');
+    await h.revision();
+    assert.equal(account.page('t_one'), undefined);
+    assert.equal(page.messages.size, 0);
+    assert.equal(scene.disposed, true);
+    const count = h.opens;
+    await h.revision();
+    assert.equal(h.opens, count);
+  } finally { await h.close(); }
+});
+
+test('typing and directory revisions reuse timeline rows; receipt updates still change reactions', async () => {
+  const h = await harness({ multiple: true });
+  try {
+    const page = h.api.client.page('t_one');
+    page.messages.set('t_one', [{ id: 'input', ref_seq: 1, role: 'user', text: 'hello', receipt_id: 'r', client_message_id: 'c', attachments: [] }]);
+    await h.revision();
+    const rows = h.timelines.get('t_one').rows;
+    await act(async () => h.timelines.get('t_one').onText('typing'));
+    assert.equal(h.timelines.get('t_one').rows, rows);
+    await h.revision();
+    assert.equal(h.timelines.get('t_one').rows, rows);
+    page.receipts.set('r', { id: 'r', thread_id: 't_one', client_message_id: 'c', state: 'running', processing: 'running', durable: true });
+    await h.revision();
+    assert.notEqual(h.timelines.get('t_one').rows, rows);
+    assert.equal(h.timelines.get('t_one').rows[0].reaction.label, 'Working');
+  } finally { await h.close(); }
+});
 
 test('list observes local composer drafts, isolates connections and clears after durable send', async () => {
   const h = await harness({ list: true, multiple: true });

@@ -568,6 +568,28 @@ export class DesktopConnectionService {
     this.client?.releasePage(id);
   }
 
+  closeSessionPage(id: string): void {
+    if (!this.pageStates.has(id)) return;
+    this.releaseSessionPage(id);
+    if (this.selectedThreadId === id) {
+      this.selectedThreadId = this.pageStack.at(-1);
+      const thread = this.selectedThreadId ? this.client?.threads.get(this.selectedThreadId) : undefined;
+      if (thread) this.selectedChannelId = thread.project_id;
+      this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
+    }
+    this.changed();
+  }
+
+  // Window destruction, not minimize/blur. The account/outbox and device-local
+  // drafts stay alive; no destroyed renderer owns transcript/watch resources.
+  closeSessionPages(): void {
+    this.pendingSessionLink = undefined;
+    for (const id of [...this.pageStack]) this.releaseSessionPage(id);
+    this.selectedThreadId = undefined;
+    this.olderCursor = undefined; this.visibleStartRef = undefined; this.loadingMessages = false;
+    this.changed();
+  }
+
   private actionError(message: string): void {
     this.errorMessage = message;
     this.changed();

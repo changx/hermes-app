@@ -25,7 +25,7 @@ async function harness() {
   const config = { id: 'synthetic', baseUrl: 'https://synthetic.invalid', token: 'synthetic-only' };
   class SDK {
     acquirePage() { return this; }
-    page() { return this.currentThreadId ? this : undefined; }
+    page() { return this; }
     releasePage() { this.closeConversation(); }
     constructor(options) {
       sdk = this; this.options = options; this.supportsLatest = true; this.connectionState = 'online';

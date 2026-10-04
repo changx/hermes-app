@@ -13,6 +13,10 @@
 @keyframes conversation-loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .conversation-loading-spinner { animation: none; } }
 .session-page[hidden] .conversation-loading-spinner { animation-play-state: paused; }
+.session-page-controls { display: flex; gap: 6px; padding: 6px 12px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--app-border); }
+.session-page-controls > span { display: inline-flex; flex-shrink: 0; }
+.session-page-controls button { padding: 4px 8px; border: 0; background: transparent; color: var(--app-text); }
+.session-page-controls button[aria-current="page"] { background: var(--app-selected); border-radius: 4px; }
 
 :root {
   /* Neutral application chrome; semantic accents match the mobile client. */

@@ -42,6 +42,8 @@ export class LiveSessionClient extends HermesClient {
   private conversationKey:object={};
   private connectionSuspended=false;
   private publishedMessages:readonly Message[]=[];
+  private minimalChannels=new WeakSet<object>();
+  private minimalThreads=new WeakSet<object>();
   get currentOlderCursor():string|null{return this.older}
   get currentThreadId():string|null{return this.wanted}
   get currentConversationKey():object{return this.conversationKey}
@@ -59,20 +61,30 @@ export class LiveSessionClient extends HermesClient {
     // fresh read, so reconnection alone cannot reload its mounted media parser.
     if(this.wanted){
       const rows=this.messages.get(this.wanted);
-      if(rows){const previous=new Map(this.publishedMessages.map(m=>[m.ref_seq,m]));let altered=false;
+      if(rows&&rows!==this.publishedMessages){const previous=new Map(this.publishedMessages.map(m=>[m.ref_seq,m]));let altered=false;
         const stable=rows.map(row=>{const old=previous.get(row.ref_seq);if(!old)return row;
+          if(old===row)return old;
           if(JSON.stringify(old)===JSON.stringify(row)){altered||=old!==row;return old}
           const tools=JSON.stringify(old.tool_calls)===JSON.stringify(row.tool_calls)?old.tool_calls:row.tool_calls;
           const attachments=JSON.stringify(old.attachments)===JSON.stringify(row.attachments)?old.attachments:row.attachments;
           if(tools!==row.tool_calls||attachments!==row.attachments){altered=true;return {...row,tool_calls:tools,attachments}}
           return row;
-        });if(altered)this.messages.set(this.wanted,stable);this.publishedMessages=this.messages.get(this.wanted)!;
+        });
+        if(stable.length===this.publishedMessages.length&&stable.every((row,index)=>row===this.publishedMessages[index]))
+          this.messages.set(this.wanted,this.publishedMessages as Message[]);
+        else if(altered)this.messages.set(this.wanted,stable);
+        this.publishedMessages=this.messages.get(this.wanted)!;
       }
     }else this.publishedMessages=[];
     // Direct CRUD responses must not leave descriptions/core session metadata
     // resident in the outer directory. Editors read their own temporary detail.
-    for(const [id,c]of this.channels)this.channels.set(id,{id,name:c.name});
-    for(const [id,t]of this.threads)this.threads.set(id,{id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})});
+    for(const [id,c]of this.channels)if(!this.minimalChannels.has(c)){
+      const minimal={id,name:c.name};this.minimalChannels.add(minimal);this.channels.set(id,minimal);
+    }
+    for(const [id,t]of this.threads)if(!this.minimalThreads.has(t)){
+      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
+      this.minimalThreads.add(minimal);this.threads.set(id,minimal);
+    }
   }
   private sendWatch():void{
     if(!this.hello||!this.liveSocket?.send)return;

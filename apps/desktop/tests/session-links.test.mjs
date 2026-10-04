@@ -50,10 +50,11 @@ test('desktop production Markdown invokes purpose-specific IPC for named and bar
   assert.equal(renderer.root.findAllByType('a').length,1); assert.equal(renderer.root.findByType('a').props.target,'_blank'); await act(async()=>renderer.unmount()); delete globalThis.window;
 });
 test('desktop native cold, open-url and second-instance events focus the window and queue exact target', async () => {
-  const handlers={},calls=[],windows=[],ipc={},copied=[];
+  const handlers={},calls=[],windows=[],ipc={},copied=[],updates=[];
+  let service, closedPages=0;
   let ready; const readyPromise=new Promise(r=>ready=r);
-  class Service { snapshot(){return {}} openSessionLink(value){calls.push(value)} async initialize(){} sessionLink(){return url} close(){} }
-  class Window { constructor(){windows.push(this); this.webContents={send(){},session:{setPermissionCheckHandler(){},setPermissionRequestHandler(){}},on(){},setWindowOpenHandler(){}};} loadFile(){} once(){} on(){} isMinimized(){return true} restore(){this.restored=true} show(){} focus(){this.focused=true} static getAllWindows(){return windows} }
+  class Service { constructor(publish){service=this;this.publish=publish} snapshot(){return {}} openSessionLink(value){calls.push(value)} async initialize(){} sessionLink(){return url} close(){} closeSessionPages(){closedPages++} }
+  class Window { constructor(){windows.push(this);this.handlers={}; this.webContents={send(_event,data){updates.push(data)},session:{setPermissionCheckHandler(){},setPermissionRequestHandler(){}},on(){},setWindowOpenHandler(){}};} loadFile(){} once(){} on(name,fn){this.handlers[name]=fn} isDestroyed(){return !!this.destroyed} isMinimized(){return true} restore(){this.restored=true} show(){} focus(){this.focused=true} static getAllWindows(){return windows.filter(w=>!w.destroyed)} }
   const app={isPackaged:true,requestSingleInstanceLock:()=>true,isReady:()=>windows.length>0,whenReady:()=>readyPromise,on:(name,fn)=>handlers[name]=fn,setAsDefaultProtocolClient:scheme=>copied.push(scheme),quit(){}};
   const source=readFileSync(new URL('../src/main/index.ts',import.meta.url),'utf8'),{code}=await transform(source,{loader:'ts',format:'cjs'});
   new Function('require','__dirname','process',code)(name=>name==='electron'?{app,BrowserWindow:Window,clipboard:{writeText:value=>copied.push(value)},ipcMain:{handle:(name,fn)=>ipc[name]=fn},powerMonitor:{on(){}},shell:{openExternal(){throw Error('session links must stay internal')}}}:name==='./connection-service'?{DesktopConnectionService:Service}:name==='./security'?{isAllowedExternalUrl:()=>false,isSameDocumentNavigation:()=>false}:name.includes('sessionLinks')?{parseSessionLink}:name==='../shared/snapshot-delta'?{snapshotDelta:()=>({})}:require(name),'/candidate/dist/main',{argv:['app',url],platform:'darwin'});
@@ -62,4 +63,11 @@ test('desktop native cold, open-url and second-instance events focus the window 
   handlers['second-instance']({},['app',url]); assert.ok(windows[0].focused); assert.ok(windows[0].restored);
   assert.ok(ipc['desktop:open-session-link']); assert.ok(ipc['desktop:copy-session-link']);
   assert.throws(()=>ipc['desktop:open-session-link']({sender:{}},url),/Untrusted/);
+  assert.ok(ipc['desktop:close-session-page']);
+  service.publish({revision:1,messages:['synthetic retained history']});
+  assert.deepEqual(updates.at(-1).messages,['synthetic retained history']);
+  assert.equal(closedPages,0,'minimize/focus does not destroy session ownership');
+  windows[0].destroyed=true;windows[0].handlers.closed();assert.equal(closedPages,1);
+  handlers.activate();assert.equal(windows.length,2);
+  service.publish({revision:2,messages:[]});assert.equal(updates.at(-1).revision,2,'new window receives full baseline, not a delta against destroyed window');
 });

@@ -51,6 +51,31 @@ test('large history never crosses IPC for a status-only update',()=>{
   assert.ok(JSON.stringify(delta).length<1500);assert.ok(JSON.stringify(after).length>1000000);
 });
 
+test('nested page histories never cross IPC for a status-only update',()=>{
+  const before={...base(),sessionPages:['a','b'].map(id=>({id,messages:Array.from({length:2000},(_,i)=>row(id+i,'large body '.repeat(100))),interactions:[],canLoadOlder:false}))};
+  const after=structuredClone(before);after.revision=2;after.threads[1].running=true;
+  const delta=snapshotDelta(before,after);assert.equal(delta.sessionPages,undefined);assert.equal(delta.state.sessionPages,undefined);
+  assert.ok(JSON.stringify(delta).length<1500);
+  const result=applySnapshotDelta(before,structuredClone(delta));assert.equal(result.sessionPages,before.sessionPages);assert.deepEqual(result,after);
+});
+test('page insert/edit/reorder/close and undefined transitions round-trip exactly',()=>{
+  const page=id=>({id,messages:[row(id+'1')],interactions:[],canLoadOlder:false});
+  let before=base();
+  for(const sessionPages of [[page('a'),page('b')],[page('b'),{...page('a'),messages:[row('a1','edit'),row('a2')]}],[page('a')],[],undefined]){
+    const after={...base(),revision:before.revision+1,...(sessionPages===undefined?{}:{sessionPages})};
+    const delta=snapshotDelta(before,after);const result=applySnapshotDelta(before,structuredClone(delta));
+    assert.deepEqual(result,after);before=result;
+  }
+});
+test('nested same-ID edit sends only edited row and page metadata contains no transcript',()=>{
+  const before={...base(),sessionPages:[{id:'a',messages:[row('a1'),row('a2')],interactions:[],canLoadOlder:true}]};
+  const after=structuredClone(before);after.revision=2;after.sessionPages[0].messages[1].text='edit';
+  const delta=snapshotDelta(before,after);assert.equal(delta.sessionPages.upserts.length,1);
+  assert.deepEqual(delta.sessionPages.upserts[0].messages.upserts,[after.sessionPages[0].messages[1]]);
+  assert.equal(delta.sessionPages.upserts[0].state.messages,undefined);
+  const result=applySnapshotDelta(before,structuredClone(delta));assert.equal(result.sessionPages[0].messages[0],before.sessionPages[0].messages[0]);assert.deepEqual(result,after);
+});
+
 test('delta arriving before startup baseline is buffered and merged without a stale overwrite',async()=>{
   let listener,resolve;
   const before=base(),after={...before,revision:2,messages:[...before.messages,row('m3')]};

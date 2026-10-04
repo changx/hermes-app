@@ -53,6 +53,7 @@ const registerDesktopApi = (): void => {
   ipcMain.handle("desktop:save-local-draft", (event, id: unknown, threadId: unknown, draft: unknown) => { trustedSender(event); return service.saveLocalDraft(text(id, 24), text(threadId, 200), draft); });
   ipcMain.handle("desktop:select-channel", async (event, id: unknown) => { trustedSender(event); await service.selectChannel(text(id, 200)); });
   ipcMain.handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
+  ipcMain.handle("desktop:close-session-page", (event, id: unknown) => { trustedSender(event); service.closeSessionPage(text(id, 200)); });
   ipcMain.handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { trustedSender(event); if (typeof version === "number" && typeof ref === "number") await service.markResultRead(text(id, 200), version, ref); });
   ipcMain.handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
   ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createChannel({ name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
@@ -95,6 +96,7 @@ const createMainWindow = (): BrowserWindow => {
     },
   });
   mainWindow = window;
+  publishedSnapshot = undefined;
 
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -110,7 +112,12 @@ const createMainWindow = (): BrowserWindow => {
   });
   window.webContents.on("will-redirect", (event) => event.preventDefault());
   window.once("ready-to-show", () => window.show());
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; });
+  window.on("closed", () => {
+    if (mainWindow !== window) return;
+    mainWindow = null;
+    publishedSnapshot = undefined;
+    service.closeSessionPages();
+  });
   void window.loadFile(join(__dirname, "../renderer/index.html"));
   return window;
 };

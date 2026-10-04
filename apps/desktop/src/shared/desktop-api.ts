@@ -91,6 +91,7 @@ export interface HermesDesktopApi {
   saveLocalDraft(identity: string, threadId: string, draft: DesktopLocalDraft): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   selectThread(threadId: string): Promise<void>;
+  closeSessionPage(threadId: string): Promise<void>;
   openSessionLink(url: string): Promise<void>;
   copySessionLink(): Promise<void>;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;

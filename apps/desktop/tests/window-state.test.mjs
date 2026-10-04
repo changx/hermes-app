@@ -29,6 +29,24 @@ test('return to existing page preserves older window and removes pages above it'
 test('channel selection releases all server-content references without body reads',async()=>{
  const {service,calls}=fixture();await service.selectThread('a');const count=calls.length;await service.selectChannel('p');assert.equal(calls.length,count);assert.equal(service.client.messages.size,0);assert.equal(service.snapshot().selectedThreadId,undefined);service.close();
 });
+test('explicit close removes only that page, preserves other history and leaves local drafts alone',async()=>{
+ const {service}=fixture();await service.selectThread('a');await service.loadOlder();await service.selectThread('b');
+ const a=service.client.messages.get('a');service.closeSessionPage('b');
+ assert.equal(service.snapshot().selectedThreadId,'a');assert.equal(service.client.messages.get('a'),a);
+ assert.deepEqual(service.snapshot().sessionPages.map(p=>p.id),['a']);
+ service.closeSessionPage('a');assert.equal(service.snapshot().selectedThreadId,undefined);assert.equal(service.client.messages.size,0);service.close();
+});
+test('destroying window pages clears all content but account remains usable for a fresh window',async()=>{
+ const {service}=fixture();await service.selectThread('a');await service.selectThread('b');const client=service.client;
+ service.closeSessionPages();assert.equal(service.client,client);assert.equal(client.messages.size,0);
+ assert.equal(service.pageStates.size,0);assert.equal(service.snapshot().sessionPages.length,0);
+ await service.selectThread('a');assert.equal(service.snapshot().selectedThreadId,'a');assert.equal(service.snapshot().messages.length,50);service.close();
+});
+test('closing a covered page preserves the selected page and its exact row objects',async()=>{
+ const {service}=fixture();await service.selectThread('a');await service.selectThread('b');const b=service.client.messages.get('b');
+ service.closeSessionPage('a');assert.equal(service.snapshot().selectedThreadId,'b');assert.equal(service.client.messages.get('b'),b);
+ assert.deepEqual(service.snapshot().sessionPages.map(p=>p.id),['b']);service.close();
+});
 test('directory running state needs no cached receipts and has no unread count',()=>{
  const {service}=fixture();assert.equal(service.snapshot().threads.find(x=>x.id==='b').running,true);assert.ok(service.snapshot().threads.every(x=>!('unreadCount' in x)));assert.equal(service.client.receipts.size,0);service.close();
 });

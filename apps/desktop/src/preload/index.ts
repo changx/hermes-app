@@ -22,6 +22,7 @@ const api: HermesDesktopApi = Object.freeze({
   saveLocalDraft: (identity: string, threadId: string, draft: import('../shared/desktop-api').DesktopLocalDraft) => ipcRenderer.invoke("desktop:save-local-draft", identity, threadId, draft),
   selectChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:select-channel", channelId),
   selectThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:select-thread", threadId),
+  closeSessionPage: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:close-session-page", threadId),
   openSessionLink: (url: string): Promise<void> => ipcRenderer.invoke("desktop:open-session-link", url),
   copySessionLink: (): Promise<void> => ipcRenderer.invoke("desktop:copy-session-link"),
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),

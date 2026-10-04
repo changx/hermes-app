@@ -15,7 +15,7 @@ import { connectionFailure } from '../../../packages/client/src/index';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { SessionNavigationProvider, useSessionNavigation } from './sessionNavigation';
-import type { Attachment, Interaction } from '../../../packages/client/src/index';
+import type { Attachment, Interaction, Message } from '../../../packages/client/src/index';
 import { nativeTransport } from './transport';
 import { DEFAULT_BASE, connection, newSend } from './send';
 import { ConnectionScreen } from './ConnectionScreen';
@@ -60,6 +60,7 @@ type AppContextValue = {
   forgottenConnections: React.RefObject<Set<string>>;
 };
 const AppContext = createContext<AppContextValue | null>(null);
+const EMPTY_MESSAGES: Message[] = [];
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -246,10 +247,26 @@ export function ThreadScreen({ threadId, targetRef }: { threadId: string; target
 }
 
 function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
+  const { client: account } = useApp();
+  const [owner, setOwner] = useState<{ account: LivePageClient; id: string; page: LiveSessionClient } | null>(null);
+  // Registration is a committed lifetime, never a render side effect. A render
+  // that suspends/is discarded owns nothing. Effect replay reacquires a fresh
+  // owner before rendering its contents; cleanup releases only that exact owner.
+  useEffect(() => {
+    if (!account) return;
+    const page = account.acquirePage(threadId);
+    setOwner({ account, id: threadId, page });
+    return () => account.releasePage(threadId, page);
+  }, [account, threadId]);
+  if (!owner || owner.account !== account || owner.id !== threadId) return null;
+  if (account?.page(threadId) !== owner.page) return <Notice text="This conversation is unavailable." />;
+  return <MountedThreadScreen client={owner.page} threadId={threadId} targetRef={targetRef} />;
+}
+
+function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
   const router = useRouter();
-  const { config, client: accountClient, agentName, revision, records, connectionEpoch, status, error: connectionError,
+  const { config, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
-  const client = useMemo(() => accountClient?.acquirePage(threadId) ?? null, [accountClient, threadId]);
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -363,12 +380,18 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
     if (focusedRef.current) await client.answerInteraction(current, choice);
   });
 
-  const messages = client?.messages.get(threadId) || [];
-  const first = windowStart(messages, startRef);
-  const visibleMessages = located ? messages.slice(first) : [];
-  const receipts = client ? [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')) : [];
-  const interactions = client ? [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending') : [];
-  const rows = projectTimeline(visibleMessages, null, threadId, client?.drafts.get(threadId), client?.supportsSendIdentity, records, client?.receipts, interactions, messages);
+  const messages = client.messages.get(threadId) ?? EMPTY_MESSAGES;
+  const first = useMemo(() => windowStart(messages, startRef), [messages, startRef]);
+  const visibleMessages = useMemo(() => located ? messages.slice(first) : EMPTY_MESSAGES, [located, messages, first]);
+  // Scoped receipt/interaction maps mutate in place. Their small signatures are
+  // dependencies, while transcript objects never enter a serialized signature.
+  const receiptSignature = JSON.stringify([...client.receipts.values()]);
+  const interactionSignature = JSON.stringify([...client.interactions.values()]);
+  const receipts = useMemo(() => [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')), [client, threadId, receiptSignature]);
+  const interactions = useMemo(() => [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending'), [client, threadId, interactionSignature]);
+  const draft = client.drafts.get(threadId);
+  const rows = useMemo(() => projectTimeline(visibleMessages, null, threadId, draft, client.supportsSendIdentity, records, client.receipts, interactions, messages),
+    [visibleMessages, threadId, draft, client, client.supportsSendIdentity, records, receiptSignature, interactions, messages]);
   const result = client?.threads.get(threadId);
   useEffect(() => {
     if (!client || !focused || !foreground || !located || !result?.completed_unread || !result.result_version || !result.result_ref || !visibleRefs.includes(result.result_ref)) return;
@@ -409,8 +432,8 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
     if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (lostOwnership || !pageCursor) && (anchor === undefined || !error)) void openThread(threadId, anchor);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
-    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); if (client) accountClient?.releasePage(threadId, client); };
-  }, [accountClient, client, threadId]);
+    return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
+  }, [client, threadId]);
 
   const selected = client?.threads.get(threadId);
   if (!config || !client) return <Notice text="Opening conversation…" />;

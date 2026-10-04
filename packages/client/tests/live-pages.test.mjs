@@ -52,6 +52,28 @@ test('A and B live simultaneously; covered A updates, B release keeps A exact ob
   }finally{f.sdk.close();}
 });
 
+test('unmodified refresh retains the whole row array; metadata updates do not serialize history',async()=>{
+  const f=fixture();try{
+    const a=f.sdk.acquirePage('A');await a.openConversation('A');
+    const rows=a.messages.get('A');
+    await a.history('A');
+    assert.equal(a.messages.get('A'),rows);
+    const thread=a.threads.get('A'),channel=a.channels.get('p');
+    const stringify=JSON.stringify;let serializedMessages=0;
+    try{
+      JSON.stringify=function(value,...args){if(value&&value.role&&value.text)serializedMessages++;return stringify(value,...args);};
+      a.changed();
+    }finally{JSON.stringify=stringify;}
+    assert.equal(serializedMessages,0);
+    assert.equal(a.threads.get('A'),thread);
+    assert.equal(a.channels.get('p'),channel);
+    f.rows.A[0]={...f.rows.A[0],text:'edited'};
+    await a.history('A');
+    assert.notEqual(a.messages.get('A'),rows);
+    assert.equal(a.messages.get('A')[0].text,'edited');
+  }finally{f.sdk.close();}
+});
+
 test('background retains every page and reconnect reconciles them without latest reset or duplicate sockets',async()=>{
   const f=fixture();try{
     await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);

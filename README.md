@@ -12,7 +12,7 @@
 ## 文档
 
 - [设计需求](docs/requirements.md)：已确认目标、功能需求、建议与待决项。
-- [存活 session 页面](docs/live-session-pages.md)：双端页面所有权、并发订阅、唯一页面和销毁规则。
+- [存活 session 页面](docs/live-session-pages.md)：双端页面所有权、并发订阅、唯一页面、销毁规则与内存释放修复。
 - [架构与复用评估](docs/architecture.md)：现有 Hermes 能力、缺口、候选实现路线。
 - [开发阶段与验收](docs/development-plan.md)：实施顺序、测试矩阵、下一步。
 - [项目执行约定](AGENTS.md)：范围、安全、变更与验证规则。

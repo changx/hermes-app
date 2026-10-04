@@ -55,7 +55,7 @@ test('channels push native routes; settings remains independent from chat', () =
 test('chat composer retains route-local identity and hides callbacks after blur', () => {
   const client = { channels: new Map([['p_one', {}]]), threads: new Map([['t_one', { project_id: 'p_one', title: 'Conversation one' }]]), supportsLatest: true };
   const calls = [], focusedRef = { current: true }, currentComposer = { current: 'conn:t_one' };
-  const nodes = renderReturn('OpenedThreadScreen', {
+  const nodes = renderReturn('MountedThreadScreen', {
     config: { id: 'conn' }, client, selected: client.threads.get('t_one'), threadId: 't_one', anchor: undefined, showLatest() {}, router: { push: path => calls.push(path) }, rows: [], visibleMessages: [], located: true, first: 0,
     draftKey: 'conn:t_one', composerDrafts: { current: new Map() }, forgottenConnections: { current: new Set() }, pageCursor: null, historyBusy: false, entryPosition: { offset: 0, following: true, startRef: null }, timelineRef: { current: { pasteText: value => calls.push(value) } },
     text: 'draft', draftAttachments: [{ id: 'att' }], attachmentsBusy: false, receipts: [], interactions: [], answers: {}, status: 'online',

@@ -293,6 +293,12 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>
       {snapshot.errorMessage ? <div className="error-banner" role="alert">{snapshot.errorMessage}</div> : null}
       {draftError ? <div className="error-banner" role="alert">{draftError}</div> : null}
+      {!!snapshot.sessionPages?.length && <nav className="session-page-controls" aria-label="Open conversations">
+        {snapshot.sessionPages.map(page => <span key={page.id}>
+          <button type="button" aria-current={page.id === snapshot.selectedThreadId ? 'page' : undefined} onClick={() => safely(window.hermesDesktop.selectThread(page.id))}>{page.selectedThreadTitle || 'Conversation'}</button>
+          <button type="button" aria-label={`Close ${page.selectedThreadTitle || 'conversation'}`} title="Close conversation" onClick={() => safely(window.hermesDesktop.closeSessionPage(page.id))}>×</button>
+        </span>)}
+      </nav>}
       {(snapshot.sessionPages ?? (snapshot.selectedThreadId ? [{ id: snapshot.selectedThreadId, messages: snapshot.messages, interactions: snapshot.interactions, loadingMessages: snapshot.loadingMessages, loadingHistory: snapshot.loadingHistory, canLoadOlder: snapshot.canLoadOlder, selectedThreadTitle: snapshot.selectedThreadTitle }] : [])).map(page => {
         const active = page.id === snapshot.selectedThreadId;
         const pageSnapshot = { ...snapshot, ...page, selectedThreadId: page.id };
