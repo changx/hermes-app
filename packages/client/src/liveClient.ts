@@ -46,6 +46,12 @@ export class LiveSessionClient extends HermesClient {
   get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
   private connectionSuspended=false;
+  private retryAt:number|null=null;
+  get nextRetryAt():number|null{return this.owner?.nextRetryAt??this.retryAt}
+  private scheduleRetry(value:number|null):void{
+    if(this.retryAt===value)return;
+    this.retryAt=value;this.liveOptions.onRetryScheduled?.(value);
+  }
   private publishedMessages:readonly Message[]=[];
   private openTiming:OpenTimingObserver|undefined;
   private timingSequence=0;
@@ -154,6 +160,7 @@ export class LiveSessionClient extends HermesClient {
   /** Pause transport, not the current reading scene. Reconnect reconciles the
    * same loaded window only after the new watch acknowledgement. */
   suspendConnection():void{
+    this.scheduleRetry(null);
     this.connectionSuspended=true;
     if(this.owner){
       this.scope.abort();this.scope=new AbortController();this.attempt=null;this.hello=false;this.watchReady=false;
@@ -395,7 +402,9 @@ export class LiveSessionClient extends HermesClient {
       while(!controller.signal.aborted&&this.liveController===controller){
         const attempt=new AbortController(),abort=()=>attempt.abort();controller.signal.addEventListener('abort',abort,{once:true});this.attempt=attempt;
         let openedSocket:Socket|undefined;
+        let retryAfter=0;
         try{
+          this.scheduleRetry(null);
           this.state(retries?'retrying':'connecting');
           let deadline:ReturnType<typeof setTimeout>|undefined;
           const opening=this.liveOptions.socket.connect('/v1/live',this.token(),attempt.signal);
@@ -411,12 +420,15 @@ export class LiveSessionClient extends HermesClient {
           if(controller.signal.aborted)break;
           const value=error instanceof LiveProtocolError?new ProtocolError(error.message):error instanceof Error?error:new Error('Live connection failed');this.liveOptions.onError?.(value);
           if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.failOpening(value);break}
+          if(value instanceof HttpError&&value.status===429&&Number.isFinite(value.retryAfterMs)&&value.retryAfterMs!>0)retryAfter=value.retryAfterMs!;
         }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.failLive=undefined;this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
-        this.state('retrying');const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
-        try{await wait(delays[Math.min(retries++,delays.length-1)],controller.signal)}catch{break}
+        const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
+        const delay=Math.max(delays[Math.min(retries++,delays.length-1)],retryAfter);
+        this.scheduleRetry(Date.now()+delay);this.state('retrying');
+        try{await wait(delay,controller.signal)}catch{break}
       }
-    }finally{if(this.liveController===controller)this.liveController=null}
+    }finally{if(this.liveController===controller){this.scheduleRetry(null);this.liveController=null}}
   }
   private watchSocket(socket:Socket,attempt:AbortController,stable:()=>void):Promise<void>{
     return new Promise((resolve,reject)=>{

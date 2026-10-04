@@ -38,7 +38,7 @@ export interface ClientCheckpoint {
   messageSequence: Array<[string, number]>;
   knownEmptyThreads: string[];
 }
-export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onCheckpoint?: (checkpoint: ClientCheckpoint) => Promise<void>; onResync?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
+export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onCheckpoint?: (checkpoint: ClientCheckpoint) => Promise<void>; onResync?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; onRetryScheduled?: (retryAt: number | null) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 export class ResyncRequired extends ProtocolError { constructor(message: string) { super(message); this.name = 'ResyncRequired' } }
 export class ExpiredCursor extends ResyncRequired { constructor() { super('expired sync cursor'); this.name = 'ExpiredCursor' } }
