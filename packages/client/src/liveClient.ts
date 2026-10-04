@@ -43,7 +43,7 @@ export class LiveSessionClient extends HermesClient {
   private initialHistoryComplete=false;
   private fullHistoryLoaded=false;
   private fullHistoryJob:Promise<void>|null=null;
-  private fullHistoryProgress:{afterRef?:number}|null=null;
+
   private initialStartRef:number|undefined;
   get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
@@ -144,7 +144,7 @@ export class LiveSessionClient extends HermesClient {
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.fullHistoryProgress=null;this.initialStartRef=undefined;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.initialStartRef=undefined;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
     this.connectionSuspended=false;
@@ -324,6 +324,9 @@ export class LiveSessionClient extends HermesClient {
           if(this.wanted===id&&this.watchId===watchId)this.observe({stage:'history-ready',rows:this.messages.get(id)?.length??0},timing);
           if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null;this.initialStartRef=this.messages.get(id)?.[0]?.ref_seq}
         }
+        else if(this.fullHistoryLoaded){
+          await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
+        }
         else{
           // References are sparse and owned. Refresh the first exact row,
           // then read forward from that real anchor; never invent start-1.
@@ -356,28 +359,17 @@ export class LiveSessionClient extends HermesClient {
     try{await job}finally{linked.done();if(this.contentJob===job){this.contentJob=null;if(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId)await this.refreshContent()}}
   }
   private scoped(signal:AbortSignal|undefined,id:string){return combine(id===this.wanted?this.scope.signal:undefined,signal)}
-  /** One explicit history gesture reads every remaining transport page. */
+  /** One explicit history gesture reads one complete server snapshot. */
   async loadFullHistory(id:string,signal?:AbortSignal):Promise<void>{
     if(id!==this.wanted||!this.watchReady||!this.attempt)throw new ProtocolError('Conversation is not open');
     if(this.fullHistoryLoaded)return;
     if(this.fullHistoryJob)return this.fullHistoryJob;
     const watch=this.watchId,transport=combine(this.scope.signal,this.attempt.signal),linked=combine(transport.signal,signal);
-    const progress=this.fullHistoryProgress??(this.fullHistoryProgress={});
+
     const job=(async()=>{
-      // Resume only after a successfully validated page. A stable reference
-      // survives reconnects without reusing a transport cursor from an old epoch.
-      let after:string|undefined;const pages=new Set<string>();
-      do{
-        const page=await super.history(id,after,100,linked.signal,after?undefined:progress.afterRef);
-        if(linked.signal.aborted||id!==this.wanted||watch!==this.watchId)throw new Error('aborted');
-        after=page.next_cursor??undefined;
-        if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');
-        if(after)pages.add(after);
-        const last=page.messages.at(-1)?.ref_seq;
-        if(last!==undefined)progress.afterRef=last;
-      }while(after);
+      await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
       if(linked.signal.aborted||id!==this.wanted||watch!==this.watchId)throw new Error('aborted');
-      this.fullHistoryLoaded=true;this.fullHistoryProgress=null;this.older=null;this.newer=null;this.changed();
+      this.fullHistoryLoaded=true;this.older=null;this.newer=null;this.changed();
     })();this.fullHistoryJob=job;
     try{await job}finally{linked.done();transport.done();if(this.fullHistoryJob===job)this.fullHistoryJob=null}
   }
