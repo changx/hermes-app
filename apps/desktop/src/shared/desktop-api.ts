@@ -47,6 +47,7 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  draftIdentity?: string;
   revision: number;
   phase: DesktopPhase;
   connectionState: ConnectionState;
@@ -73,6 +74,7 @@ export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceNam
 export type ChannelInput = Readonly<{ name: string; description: string }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[] }>;
+export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 export type DesktopRuntimeInfo = Readonly<{
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
@@ -85,6 +87,8 @@ export interface HermesDesktopApi {
   pair(request: PairingRequest): Promise<void>;
   cancelPairing(): Promise<void>;
   forgetConnection(): Promise<void>;
+  loadLocalDrafts(identity: string): Promise<Record<string, DesktopLocalDraft>>;
+  saveLocalDraft(identity: string, threadId: string, draft: DesktopLocalDraft): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   selectThread(threadId: string): Promise<void>;
   openSessionLink(url: string): Promise<void>;

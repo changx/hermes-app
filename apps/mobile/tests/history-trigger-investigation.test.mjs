@@ -79,6 +79,7 @@ async function harness() {
   const mocks = {
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
+    './localDraftStorage': { bindLocalDraftStorage: () => () => {} },
     'react-native': { KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => ({ push() {}, replace() {} }), useIsFocused: () => React.useContext(Focus),
       useFocusEffect: callback => { const focused = React.useContext(Focus); React.useEffect(() => focused ? callback() : undefined, [focused, callback]); } },

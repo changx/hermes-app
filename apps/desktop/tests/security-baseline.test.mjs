@@ -71,6 +71,8 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "pair",
     "cancelPairing",
     "forgetConnection",
+    "loadLocalDrafts",
+    "saveLocalDraft",
     "selectChannel",
     "selectThread",
     "openSessionLink",

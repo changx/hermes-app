@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LocalDraftMap } from '../../../packages/client/src/localDraftMap';
+import { bindLocalDraftStorage } from './localDraftStorage';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
@@ -87,8 +88,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let stopDraftStorage: (() => void) | undefined;
     Promise.all([SecureStore.getItemAsync(CONFIG_KEY), SecureStore.getItemAsync(PAIRING_KEY)]).then(([raw, savedPairing]) => {
       if (!mounted) return;
+      stopDraftStorage = bindLocalDraftStorage(textDrafts.current, composerDrafts.current, () => {
+        if (mounted) setError("Your draft could not be saved on this device. Keep the app open and copy your text before closing it.");
+      });
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') throw new Error('Saved connection is invalid');
@@ -101,8 +106,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (pending && (!raw || JSON.parse(raw).token !== pending.config.token)) {
         setPendingPairing(pending); setBase(pending.config.baseUrl); setPairingCode(pending.code); setEditing(true);
       } else if (pending) void SecureStore.deleteItemAsync(PAIRING_KEY).catch(() => {});
-    }).catch(() => { if (mounted) setError("Could not load your connection. Don't clear this app's data; reopen the app."); }).finally(() => { if (mounted) setReady(true); });
-    return () => { mounted = false; };
+    }).catch(() => { if (mounted) setError("Could not load your connection or local drafts. Don't clear this app's data; reopen the app."); }).finally(() => { if (mounted) setReady(true); });
+    return () => { mounted = false; stopDraftStorage?.(); };
   }, []);
 
   useEffect(() => {
@@ -205,9 +210,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await SecureStore.deleteItemAsync(PAIRING_KEY);
     setPendingPairing(null);
     const old = outboxRef.current;
+    if (config) forgottenConnections.current.add(config.id);
     if (old) { await old.stop(); await old.storage.clear(); forgottenConnections.current.add(old.storage.connectionId); }
     await SecureStore.deleteItemAsync(CONFIG_KEY);
-    textDrafts.current.clear(); composerDrafts.current.forEach(releaseComposerDraft); composerDrafts.current.clear();
+    const prefix = (old?.storage.connectionId ?? config?.id) + ':';
+    for (const key of [...textDrafts.current.keys()]) if (key.startsWith(prefix)) textDrafts.current.delete(key);
+    for (const [key, draft] of [...composerDrafts.current]) if (key.startsWith(prefix)) { composerDrafts.current.delete(key); releaseComposerDraft(draft); }
     setRecords([]); setSession(null); setConfig(null); setIdentity(n => n + 1); setPairingCode(''); setEditing(false); setStatus('suspended');
     router.replace('/connection');
   });

@@ -9,6 +9,7 @@ import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../p
 import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
+import { LocalDraftStore } from './local-draft-store';
 
 import { mainTransport, normalizeBaseUrl } from "./transport";
 
@@ -76,6 +77,7 @@ const pairingRequest = async (baseUrl: string, path: string, init: RequestInit, 
 export class DesktopConnectionService {
   private readonly store = new CredentialStore();
   private readonly outboxStore = new OutboxStore();
+  private readonly localDraftStore = new LocalDraftStore();
   private client: LivePageClient | null = null;
   private connection: StoredConnection | null = null;
   private pairingController: AbortController | null = null;
@@ -234,6 +236,7 @@ export class DesktopConnectionService {
       phase: this.phase,
       connectionState: this.connectionState,
       connectionLabel: stateLabel[this.connectionState],
+      ...(this.connection ? { draftIdentity: this.connection.id } : {}),
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
@@ -502,6 +505,7 @@ export class DesktopConnectionService {
     this.olderCursor = undefined;
     await this.store.delete();
     if (connectionId) await this.outboxStore.clear(connectionId);
+    if (connectionId) await this.localDraftStore.clear(connectionId);
     this.phase = "unpaired";
     this.connectionState = "suspended";
     this.statusMessage = undefined;
@@ -661,6 +665,18 @@ export class DesktopConnectionService {
     }
   }
 
+  async flushLocalDrafts(): Promise<void> { await this.localDraftStore.flush(); }
+
+  async loadLocalDrafts(identity: string) {
+    if (!this.connection || this.connection.id !== identity) throw new Error('Connection changed');
+    return this.localDraftStore.list(identity);
+  }
+
+  async saveLocalDraft(identity: string, threadId: string, draft: unknown): Promise<void> {
+    if (this.closed || !this.connection || this.connection.id !== identity) throw new Error('Connection changed');
+    return this.localDraftStore.put(identity, threadId, draft);
+  }
+
   async sendMessage(input: SendMessageInput): Promise<void> {
     const client = this.requireClient(), connection = this.connection!, threadId = this.selectedThreadId;
     const text = input.text.replace(/\r\n/g, "\n");
@@ -675,6 +691,10 @@ export class DesktopConnectionService {
     }
     const pending: OutboxRecord = { version: 1, id: `desktop:${randomUUID()}`, threadId, text, attachmentIds, createdAt: Date.now(), state: "pending" };
     await this.outboxStore.put(connection.id, pending);
+    // The outbox already owns this message. A failed cleanup must not make the user send it twice.
+    await this.localDraftStore.put(connection.id, threadId, { text: '', attachments: [] }).catch(() => {
+      this.errorMessage = 'Your message was saved, but its local draft could not be cleared. Keep your app data and reopen Hermes.';
+    });
     this.outbox.push(pending);
     this.changed();
     await this.deliver(pending);

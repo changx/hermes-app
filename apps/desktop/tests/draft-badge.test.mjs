@@ -13,17 +13,18 @@ function luminance(hex) {
   return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
 }
 
-test('draft badge uses the same distinct high-contrast colors on both clients', async () => {
+test('draft text changes only color on both clients', async () => {
   const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
   const mobile = await readFile(new URL('../../mobile/src/ChannelScreens.tsx', import.meta.url), 'utf8');
-  for (const color of ['#8a4b00', '#fff1cc', '#e8b454']) { assert.ok(css.includes(color)); assert.ok(mobile.includes(color)); }
-  assert.match(css, /\.thread-draft \{[^}]*font-weight: 700;[^}]*white-space: nowrap;[^}]*flex-shrink: 0;/);
-  const contrast = (luminance('fff1cc') + 0.05) / (luminance('8a4b00') + 0.05);
+  assert.ok(mobile.includes("draft: { color: '#dc2626', fontSize: 12, fontWeight: '600' }"));
+  assert.equal(/\.thread-draft \{([^}]*)\}/.exec(css)[1].trim(), 'color: #dc2626; font-size: 11px; font-weight: 600; flex-shrink: 0;');
+  assert.ok(!mobile.includes('draftBadge:'));
+  const contrast = (luminance('ffffff') + 0.05) / (luminance('dc2626') + 0.05);
   assert.ok(contrast >= 4.5);
-  console.log('Draft badge text/background contrast:', contrast.toFixed(2));
+  console.log('Draft red text/white background contrast:', contrast.toFixed(2));
 });
 
-test('Chromium: production draft badge remains distinct and contained beside long session titles', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: red draft text retains original size and has no badge decoration', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';
     import { NavigationPanel } from './src/renderer/navigation-panel';
@@ -44,7 +45,7 @@ test('Chromium: production draft badge remains distinct and contained beside lon
         document.getElementById('preview').style.width=width+'px';
         for(const badge of document.querySelectorAll('.thread-draft')) {
           const s=getComputedStyle(badge),b=badge.getBoundingClientRect(),row=badge.closest('button').getBoundingClientRect(),title=badge.previousElementSibling.getBoundingClientRect();
-          results.push({width,color:s.color,background:s.backgroundColor,border:s.borderTopColor,weight:s.fontWeight,size:s.fontSize,nowrap:s.whiteSpace,contained:b.right<=row.right && b.left>=row.left,nonoverlap:title.right<=b.left,visible:b.width>0&&b.height>0});
+          results.push({width,color:s.color,background:s.backgroundColor,border:s.borderTopWidth,padding:s.padding,weight:s.fontWeight,size:s.fontSize,contained:b.right<=row.right && b.left>=row.left,nonoverlap:title.right<=b.left,visible:b.width>0&&b.height>0});
         }
       }
       document.getElementById('results').textContent=JSON.stringify(results);document.currentScript.remove();
@@ -53,8 +54,8 @@ test('Chromium: production draft badge remains distinct and contained beside lon
     const rows=JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1]??'null');
     assert.equal(rows?.length,6);
     for(const row of rows) {
-      assert.equal(row.color,'rgb(138, 75, 0)');assert.equal(row.background,'rgb(255, 241, 204)');assert.equal(row.border,'rgb(232, 180, 84)');
-      assert.equal(row.weight,'700');assert.equal(row.size,'12px');assert.equal(row.nowrap,'nowrap');assert.ok(row.visible);assert.ok(row.contained);assert.ok(row.nonoverlap);
+      assert.equal(row.color,'rgb(220, 38, 38)');assert.equal(row.background,'rgba(0, 0, 0, 0)');assert.equal(row.border,'0px');assert.equal(row.padding,'0px');
+      assert.equal(row.weight,'600');assert.equal(row.size,'11px');assert.ok(row.visible);assert.ok(row.contained);assert.ok(row.nonoverlap);
     }
   } finally { await rm(folder,{recursive:true,force:true}); }
 });
