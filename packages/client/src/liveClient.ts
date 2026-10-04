@@ -276,9 +276,23 @@ export class LiveSessionClient extends HermesClient {
     this.adoptCapabilities(this.owner);this.state(this.owner.connectionState);
     this.watchId=String(++this.owner.watchNumber);this.sendWatch();
   }
-  sharedState(value:Parameters<LiveSessionClient['state']>[0]):void{this.state(value);}
+  sharedState(value:Parameters<LiveSessionClient['state']>[0]):void{if(!this.connectionSuspended||value==='blocked')this.state(value);}
   protected connectionReady(_frame:Extract<LiveFrame,{type:'hello'}>):void{this.sendWatch();}
-  failOpening(error:Error):void{this.opened?.reject(error);}
+  failOpening(error:Error):void{
+    this.opened?.reject(error);
+    if(this.anchor!==undefined&&!(error instanceof HttpError&&(error.status===401||error.status===403)))this.opened=null;
+  }
+  private contentFailure(error:unknown, watchId:string):void{
+    if(watchId!==this.watchId||this.connectionSuspended)return;
+    const value=error instanceof Error?error:new Error('Content refresh failed');
+    if(value.message==='aborted')return;
+    if(this.owner&&!isRetryableError(value)&&!(value instanceof HttpError&&(value.status===401||value.status===403))){
+      this.failOpening(value);this.opened=null;
+      if(this.owner.hello&&this.wanted)this.owner.liveSocket?.send?.(watchCommand(this.wanted,this.watchId,'remove'));
+      this.suspendConnection();this.liveOptions.onError?.(value);return;
+    }
+    (this.owner??this).failLive?.(value);
+  }
   receiveScopedFrame(frame:Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>):void{
     if(frame.request_id!==this.watchId||frame.thread_id!==this.wanted)return;
     if(frame.type==='unavailable'){
@@ -286,7 +300,7 @@ export class LiveSessionClient extends HermesClient {
       void this.snapshot(this.attempt?.signal).catch(error=>(this.owner??this).failLive?.(error));
     }else{
       if(frame.type==='watching'){this.watchReady=true;this.observe({stage:'watch-ready'});}
-      void this.refreshContent().catch(error=>(this.owner??this).failLive?.(error));
+      void this.refreshContent().catch(error=>this.contentFailure(error,frame.request_id));
     }
   }
   protected scopedFrame(frame:Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>):void{this.receiveScopedFrame(frame);}
@@ -396,7 +410,7 @@ export class LiveSessionClient extends HermesClient {
         }catch(error){
           if(controller.signal.aborted)break;
           const value=error instanceof LiveProtocolError?new ProtocolError(error.message):error instanceof Error?error:new Error('Live connection failed');this.liveOptions.onError?.(value);
-          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.failOpening(value);if(this.anchor!==undefined&&!(value instanceof HttpError&&(value.status===401||value.status===403)))this.opened=null;break}
+          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.failOpening(value);break}
         }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.failLive=undefined;this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
         this.state('retrying');const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];

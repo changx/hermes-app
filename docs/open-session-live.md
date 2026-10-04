@@ -32,6 +32,8 @@ The candidate hello adds `multi_session_live:true`. `watch` without `mode` still
 
 Capabilities and socket establishment run concurrently. A matching subscription acknowledgement still precedes body reads. Initial history and live-state then run concurrently. `openConversation` accepts a fourth, content-ready callback for first UI release; its Promise still waits for history and state. Returning to an already content-ready opening invokes the current callback immediately. Initial-history readiness is recorded before state completes, so reconnect does not reset a shown window to latest. Neither UI invents receipts, approvals or an idle result while status is pending.
 
+A non-retryable page read/source error pauses only that page's subscription and retains its scene; explicit reopening can retry it. It does not close the account or other pages. Authentication failures and shared transport recovery remain account-owned. No separate page retry framework is added.
+
 `GET /v1/threads/{id}/live-state` provides only the opened conversation's receipts/approvals; outer catalogue never includes these bodies. `GET /v1/channels/{id}` provides temporary editor detail rather than storing descriptions in the directory.
 
 Plugin-owned Store post-commit notifications wake the publisher, including writes through formal history hooks; never notify before a failed/rolled-back write. Reuse existing server metadata/change records privately for reliable publication; do not add another authoritative store or make clients replay it. Old /snapshot,/sync,/events remain server-compatible for already published clients until their upgrade; candidate apps use only the new scoped path.

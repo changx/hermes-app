@@ -13,7 +13,7 @@ function fixture(multi=true){
   const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>{},
     http:{async request(method,path,_token,body,signal){
       paths.push([method,path]);
-      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,message_send_identity:true,open_session_live:true}};
+      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
       if(path.startsWith('/v1/catalogue'))return {status:200,body:{items:[{kind:'channel',value:{id:'p',name:'P'}},...available.map(id=>({kind:'session',value:{id,project_id:'p',title:id,archived:false,running:false}}))],next_after:null}};
       const id=path.split('/')[3];
       if(path.includes('/messages')){
@@ -22,6 +22,7 @@ function fixture(multi=true){
         let result=rows[id]??[];
         if(query.has('ref_seq'))result=result.filter(row=>row.ref_seq===Number(query.get('ref_seq')));
         else if(query.has('after_ref_seq'))result=result.filter(row=>row.ref_seq>Number(query.get('after_ref_seq')));
+        if(query.has('ref_seq')&&!result.length||query.has('around_ref_seq')&&!result.some(row=>row.ref_seq===Number(query.get('around_ref_seq'))))return {status:404,body:{}};
         return {status:200,body:{messages:result,older_cursor:'before:'+id,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}};
       }
       if(path.endsWith('/live-state')){const gate=statusGates.get(id);if(gate){statusGates.delete(id);await gate.promise;}return {status:200,body:{thread_id:id,active_receipts:[],pending_interactions:[]}};}
@@ -41,6 +42,9 @@ test('A and B live simultaneously; covered A updates, B release keeps A exact ob
     await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
     const a=f.sdk.acquirePage('A');await a.openConversation('A');const key=a.currentConversationKey, original=a.messages.get('A')[0], cursor=a.currentOlderCursor;
     const b=f.sdk.acquirePage('B');await b.openConversation('B');
+    await assert.rejects(b.openConversation('B',999),error=>error.status===404);
+    assert.equal(f.sdk.connectionState,'online');assert.equal(f.sockets[0].closed,false);
+    assert.equal(a.messages.get('A')[0],original);await b.openConversation('B');
     const unchanged=a.messages.get('A');await a.history('A');assert.equal(a.messages.get('A'),unchanged);
     assert.equal(a.channels,f.sdk.channels);assert.equal(b.threads,f.sdk.threads);
     assert.equal(f.sockets.length,1);assert.equal(f.paths.filter(([,p])=>p==='/v1/capabilities').length,1);assert.equal(f.paths.filter(([,p])=>p.startsWith('/v1/catalogue')).length,1);
