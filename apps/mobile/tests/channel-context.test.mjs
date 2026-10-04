@@ -93,6 +93,14 @@ test('local draft labels update without changing catalogue rows, running or unre
     assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Draft' }).length, 0);
     await h.drafts(['t_one', 'not-in-this-list']);
     assert.equal(h.root.root.findByProps({ accessibilityLabel: 'Draft' }).props.children, 'draft');
+    const draft = h.root.root.findByProps({ accessibilityLabel: 'Draft' });
+    assert.equal(draft.props.style.color, '#8a4b00');
+    assert.equal(draft.props.style.fontWeight, '700');
+    assert.equal(draft.props.style.fontSize, 13);
+    assert.equal(draft.parent.props.style.backgroundColor, '#fff1cc');
+    assert.equal(draft.parent.props.style.borderColor, '#e8b454');
+    assert.equal(draft.parent.props.style.flexShrink, 0);
+    assert.ok(draft.parent.parent.findAllByType('Text').some(node => node.props.children === 'One'), 'badge shares the title row, not metadata');
     assert.ok(h.button('One, draft'));
     assert.equal(h.root.root.findByType('FlatList').props.extraData.has('t_one'), true);
     assert.equal(h.root.root.findAllByProps({ accessibilityLabel: 'Running' }).length, 1);
