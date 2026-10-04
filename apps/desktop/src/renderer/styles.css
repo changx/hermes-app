@@ -320,8 +320,14 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
 .native-sidebar { display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
 .native-sidebar .channel-tree { flex: 1; overflow-y: auto; padding: 0 6px; }
-.native-sidebar .thread-children { margin: 0 4px 12px; border: 0; }
+.native-sidebar .thread-children { margin: 0 4px 12px 24px; padding-left: 10px; border-left: 1px solid var(--app-field-border); }
 .native-sidebar .tree-thread { border-radius: 8px; }
+.native-sidebar .channel-toolbar { border-radius: 8px; }
+.native-sidebar .channel-toolbar:hover, .native-sidebar .channel-toolbar:focus-within,
+.native-sidebar .tree-thread:hover, .native-sidebar .tree-thread:focus-visible,
+.native-sidebar .tree-more:hover, .native-sidebar .sidebar-new-chat:hover, .native-sidebar .sidebar-filter-icon:hover { background: var(--app-border); }
+.native-sidebar .tree-thread.selected { background: var(--app-selected); }
+.native-sidebar .tree-more { border-radius: 8px; }
 .native-sidebar .channel-toggle { color: var(--app-muted); font-size: var(--app-font-size); }
 .native-sidebar .channel-new-session, .native-sidebar .channel-options { width: 26px; height: 28px; border: 0; padding: 0; border-radius: 6px; background: transparent; color: var(--app-muted); opacity: 0; }
 .native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session, .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }

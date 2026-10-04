@@ -22,4 +22,18 @@ Verification:
 - Fresh Electron installation raced on the first concurrent test invocation; after installation completed, the full desktop gate was rerun successfully.
 - Changes remain on isolated desktop-tree-navigation branch; no deployment or new Release performed.
 
+## Native sidebar indentation and hover candidate
+
+Branch: `fix/sidebar-tree-hover`; card: `t_6cd23e5f`.
+
+The native-sidebar override removed the original child indent and branch border. The existing Session hover used the same color as the sidebar, so it had no visible contrast.
+
+- Restore a 24px child-container inset, 10px internal gutter and 1px branch guide. Actual Session titles sit 17px to the right of Channel titles.
+- Give Channel rows and Session rows a visible neutral hover background. Keep selected Sessions blue; retain keyboard focus outlines and existing actions.
+- No changes to navigation logic, ordering, mobile, shared protocol, backend or dependencies.
+- Regression uses production React and CSS with real Chromium pointer input through DevTools. It failed on the baseline with -14px title indentation and no guide, then passed at 230px and 280px sidebar widths.
+- Desktop TypeScript and build passed. Browser-enabled full desktop tests: 37 passed, 1 native Electron test skipped, no failures. Tests cover collapse/reopen, Session click, status retention, labels, drafts, selection and narrow layouts.
+- Private computed-style evidence and screenshot: Channel workspace `sidebar-tree-hover/`.
+- Candidate only. Not merged or published. Installed macOS visual acceptance remains open.
+
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side 24-hour query; the current list API exposes cursor/limit, not an activity cutoff.
