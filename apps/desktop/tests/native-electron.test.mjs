@@ -50,7 +50,12 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  await evaluate(shell,'window.hermesDesktop.selectThread("'+b+'")');const second=[...manager.tabs.values()][1],bc=second.view.webContents;
  await until(()=>evaluate(bc,'!!document.querySelector(".message-list")'),'session B');assert.equal(manager.tabs.size,2);
- client.threads.set(a,{...client.threads.get(a),completed_unread:true,result_version:1,result_ref:200});service.changed();
+ client.threads.set(a,{...client.threads.get(a),running:true,completed_unread:true,result_version:1,result_ref:200});service.changed();
+ await until(()=>evaluate(shell,'document.querySelectorAll(".desktop-tab")[0].querySelectorAll(".desktop-tab-dot").length===3'),'inactive A has running, durable draft and unread dots');
+ assert.equal(await evaluate(shell,'document.querySelectorAll(".desktop-tab")[1].querySelectorAll(".desktop-tab-dot").length'),1,'B has only its own running dot');
+ client.threads.set(a,{...client.threads.get(a),running:false,completed_unread:false});service.changed();
+ await until(()=>evaluate(shell,'document.querySelectorAll(".desktop-tab")[0].querySelectorAll(".desktop-tab-dot").length===1&&!!document.querySelectorAll(".desktop-tab")[0].querySelector(".desktop-tab-dot-draft")'),'directory clearing retains only local draft dot');
+ client.threads.set(a,{...client.threads.get(a),completed_unread:true});service.changed();
  await evaluate(ac,'window.hermesDesktop.markResultRead("'+a+'",1,200)');assert.equal(calls.filter(x=>x[0]==='read').length,0,'hidden tab cannot confirm read');
 
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(first.id)+')');

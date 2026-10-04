@@ -346,7 +346,13 @@ dialog.labels-editor::backdrop { background: #0005; }
 .desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: 100px; max-width: 240px; border-radius: 8px; color: var(--app-muted); }
 .desktop-tab.active { background: var(--app-background); color: var(--app-text); }
 .desktop-tab button { border: 0; background: transparent; color: inherit; padding: 8px; }
-.desktop-tab [role="tab"] { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.desktop-tab [role="tab"] { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }
+.desktop-tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.desktop-tab-statuses { display: flex; align-items: center; gap: 4px; flex: none; }
+.desktop-tab-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.desktop-tab-dot-running { background: #16a34a; }
+.desktop-tab-dot-draft { background: #dc2626; }
+.desktop-tab-dot-unread { background: #4DA3FF; }
 .desktop-tab-close { opacity: 0; }
 .desktop-tab:hover .desktop-tab-close, .desktop-tab:focus-within .desktop-tab-close, .desktop-tab.active .desktop-tab-close { opacity: 1; }
 .desktop-tab-add { flex-shrink: 0; border: 0; background: transparent; color: var(--app-muted); padding: 6px; }

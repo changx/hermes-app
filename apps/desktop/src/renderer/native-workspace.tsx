@@ -8,6 +8,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
 }) {
   const [collapsed, setCollapsed] = useState(false), [error, setError] = useState('');
   const content = useRef<HTMLElement>(null), tabs = snapshot.tabs ?? [];
+  const threadsById = new Map(snapshot.threads.map(thread => [thread.id, thread]));
   const invoke = (operation: Promise<void>) => { setError(''); void operation.catch(() => setError('The tab action could not be completed. Try again.')); };
   useEffect(() => {
     const element = content.current; if (!element) return;
@@ -36,10 +37,24 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
       <div className="native-sidebar-footer"><button type="button" onClick={onCreateProject} disabled={snapshot.phase !== 'connected'}>＋ New project</button><div><span title={snapshot.connectionName}>{snapshot.connectionName ?? 'Hermes'}</span><button type="button" aria-label="Settings" onClick={onSettings}>⚙</button></div></div>
     </aside>}
     <section className="native-workspace-main">
-      <div className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => <div className={`desktop-tab ${tab.id === snapshot.activeTabId ? 'active' : ''}`} key={tab.id}>
-        <button type="button" role="tab" aria-selected={tab.id === snapshot.activeTabId} title={tab.title} onClick={() => invoke(window.hermesDesktop.activateTab(tab.id))}>{tab.kind === 'new' ? '✎ ' : ''}{tab.title}</button>
-        <button type="button" className="desktop-tab-close" aria-label={`Close tab: ${tab.title}`} onClick={() => invoke(window.hermesDesktop.closeTab(tab.id))}>×</button>
-      </div>)}<button type="button" className="desktop-tab-add" aria-label="New chat tab" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>＋</button></div>
+      <div className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => {
+        const thread = tab.kind === 'session' && tab.threadId ? threadsById.get(tab.threadId) : undefined;
+        const running = thread?.running === true;
+        const draft = tab.kind === 'session' && !!tab.threadId && draftThreads.has(tab.threadId);
+        const unread = thread?.completedUnread === true;
+        const statuses = [running && 'Running', draft && 'Draft', unread && 'Completed, unread'].filter(Boolean);
+        return <div className={`desktop-tab ${tab.id === snapshot.activeTabId ? 'active' : ''}`} key={tab.id}>
+          <button type="button" role="tab" aria-selected={tab.id === snapshot.activeTabId} aria-label={[tab.title, ...statuses].join(', ')} title={[tab.title, ...statuses].join(' — ')} onClick={() => invoke(window.hermesDesktop.activateTab(tab.id))}>
+            <span className="desktop-tab-title">{tab.kind === 'new' ? '✎ ' : ''}{tab.title}</span>
+            {statuses.length > 0 && <span className="desktop-tab-statuses" aria-hidden="true">
+              {running && <span className="desktop-tab-dot desktop-tab-dot-running" />}
+              {draft && <span className="desktop-tab-dot desktop-tab-dot-draft" />}
+              {unread && <span className="desktop-tab-dot desktop-tab-dot-unread" />}
+            </span>}
+          </button>
+          <button type="button" className="desktop-tab-close" aria-label={`Close tab: ${tab.title}`} onClick={() => invoke(window.hermesDesktop.closeTab(tab.id))}>×</button>
+        </div>;
+      })}<button type="button" className="desktop-tab-add" aria-label="New chat tab" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>＋</button></div>
       <main ref={content} className="native-view-slot">{snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{!snapshot.activeTabId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="empty-session" role="status" aria-live="polite" aria-busy="true"><h1>Loading your conversations…</h1></div> : <div className="empty-session"><h1>Start a conversation</h1><p>Open a recent session or create a new chat.</p>{snapshot.phase === 'connected' && <button type="button" onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>New chat</button>}</div>)}</main>
     </section>
     {error && <div className="native-tab-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Dismiss tab error">×</button></div>}
