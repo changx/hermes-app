@@ -33,6 +33,16 @@ The mobile App publishes the initial page directly, without fetching enough page
 
 The desktop service retains the visible start reference until full loading finishes. It publishes per-page `loadingHistory`, separate from initial `loadingMessages`. The renderer keeps a fixed-height earlier-history status slot. Its existing prepend correction owns reading position; browser CSS anchoring is disabled to prevent double adjustment. Animation stops under reduced motion and on hidden pages.
 
+## Desktop HTTP response-limit correction (isolated candidate)
+
+The deployed full-history endpoint succeeds, but desktop `mainTransport` still rejects responses above 64 KiB. Its generic error is retryable, so three attempts end with the earlier-history failure message. Earlier SDK/service tests mocked the transport and did not catch this integration boundary.
+
+Candidate branch `fix/desktop-history-response-limit`, based on `f96d440`, permits up to 64 MiB only for successful `GET /v1/threads/{id}/messages` responses, matching the plugin history budget. Ordinary responses, error responses, uploads and WebSocket frames keep their existing limits. Streaming reads count decompressed UTF-8 bytes and cancel oversized bodies before reading the whole response. No pagination fallback, truncated success, protocol or server change.
+
+Verification: the actual baseline transport rejects an authenticated deployed 136,853-byte complete history snapshot. The corrected transport returns HTTP 200, `complete: true`, null cursors and all 154 messages in that snapshot. This is a live snapshot, not a fixed message total. Desktop typecheck/build pass; tests: 153 passed, 15 optional browser/native tests skipped, zero failures. New real HTTP tests cover history above 64 KiB, ordinary/error/method/path isolation and UTF-8 limits. Controlled streams cover 64 MiB overflow cancellation, split Unicode, exact ordinary boundaries and abort errors. The first test invocation failed because reused dependency links were incomplete; isolated `npm ci --ignore-scripts` resolved this, without changing lockfiles.
+
+Private evidence: active Channel `desktop-history-limit-check.log`, `desktop-history-limit-live.json` and `desktop-history-limit-verify.cjs`. Public HTTPS probing returned HTTP 403, so this correction's authenticated live verification uses loopback. No main merge, publication, service restart, plugin/core change or native Mac acceptance is claimed.
+
 ## Verification and delivery boundary
 
 The initial implementation was isolated in `feat/full-history-loading`. It changed clients only, with no plugin, server protocol, core or lockfile change. Jamie later authorized main merge and publication; the verified release is recorded below.

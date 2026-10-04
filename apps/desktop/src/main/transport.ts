@@ -25,9 +25,28 @@ const retryAfterMs = (value: string | null): number | undefined => {
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
 };
 
-const responseBody = async (response: Response): Promise<unknown> => {
-  const raw = await response.text();
-  if (raw.length > MAX_REPLY_BYTES) throw new Error("Server response is too large.");
+const MAX_HISTORY_BYTES = 64 * 1024 * 1024;
+const responseBody = async (response: Response, maxBytes = MAX_REPLY_BYTES): Promise<unknown> => {
+  // Bound decompressed UTF-8 bytes while reading, not UTF-16 characters after allocation.
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("Server response is too large.");
+      }
+      chunks.push(decoder.decode(chunk.value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+  } finally { reader.releaseLock(); }
+  const raw = chunks.join("");
   if (!raw) return null;
   return response.headers.get("content-type")?.includes("json") ? JSON.parse(raw) : raw;
 };
@@ -45,7 +64,9 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
         signal,
       });
       const retry = retryAfterMs(response.headers.get("retry-after"));
-      return { status: response.status, body: await responseBody(response), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
+      const historyRead = method === "GET" && /^\/v1\/threads\/[A-Za-z0-9_-]+\/messages(?:\?|$)/.test(path);
+      const maxBytes = response.ok && historyRead ? MAX_HISTORY_BYTES : MAX_REPLY_BYTES;
+      return { status: response.status, body: await responseBody(response, maxBytes), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
     },
     async upload(path, token, name, bytes, signal) {
       if (!name || name.length > 180 || name === "." || name === ".." || /[/\\\x00\r\n]/.test(name)) throw new Error("Invalid attachment name.");
