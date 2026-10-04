@@ -21,7 +21,7 @@
 :root {
   /* Neutral application chrome; semantic accents match the mobile client. */
   color-scheme: light;
-  --app-font-size: 14px;
+  --app-font-size: 16px;
   font-size: var(--app-font-size);
   --app-text: #1f2937;
   --app-muted: #6b7280;
@@ -142,7 +142,7 @@ textarea:disabled {
 .empty-state {
   padding: 24px 20px;
   color: var(--app-muted);
-  font-size: 14px;
+  font-size: var(--app-font-size);
   line-height: 1.5;
 }
 
@@ -152,7 +152,7 @@ textarea:disabled {
 .pairing-wrap { display: grid; place-items: center; }
 .pairing-card { display: grid; width: min(440px, calc(100vw - 48px)); gap: 16px; padding: 30px; border: 1px solid var(--app-border); border-radius: 18px; background: #fff; box-shadow: 0 18px 60px rgb(17 24 39 / 12%); }
 .pairing-card > p,
-.connection-notice { color: var(--app-muted); font-size: 14px; line-height: 1.5; }
+.connection-notice { color: var(--app-muted); font-size: var(--app-font-size); line-height: 1.5; }
 .pairing-card label { display: grid; gap: 6px; color: var(--app-label); font-size: var(--app-font-size); font-weight: 650; }
 .pairing-card input { min-height: 42px; border: 1px solid var(--app-field-border); border-radius: 10px; padding: 9px 11px; color: var(--app-text); background: #fff; font: inherit; font-weight: 400; }
 .pairing-actions { display: flex; gap: 10px; }
@@ -272,6 +272,9 @@ textarea:disabled {
 .activity-bar button { width: 38px; height: 38px; border: 0; border-radius: 7px; background: transparent; color: var(--app-label); font-size: 24px; }
 .activity-bar button:hover { background: #fff; }
 .activity-bar button[aria-expanded="true"] { color: #2b4e81; background: var(--app-selected); }
+.activity-bar .font-settings-button { margin-top: auto; }
+dialog.font-settings { margin: auto; max-height: calc(100dvh - 48px); overflow-y: auto; }
+dialog.font-settings::backdrop { background: rgb(17 24 39 / 38%); }
 .tree-caption, .tree-empty { color: var(--app-muted); font-size: var(--app-font-size); padding: 12px; }
 .channel-toggle { display: flex; gap: 8px; align-items: center; width: 100%; padding: 10px 12px; border: 0; background: transparent; text-align: left; color: var(--app-text); }
 .channel-toolbar { display: flex; align-items: center; min-width: 0; }
@@ -283,9 +286,9 @@ textarea:disabled {
 .thread-children { margin: 0 8px 8px 21px; border-left: 1px solid var(--app-border); }
 .tree-thread { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; padding: 9px 10px; border: 0; background: transparent; text-align: left; color: var(--app-text); }
 .thread-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.label-pills { position: relative; display: block; width: 100%; min-width: 0; height: 22px; pointer-events: none; font-size: var(--app-font-size); font-weight: 500; }
-.label-pills-visible { display: flex; align-items: center; gap: 4px; overflow: hidden; height: 22px; }
-.label-pill { display: inline-block; box-sizing: border-box; flex: none; padding: 2px 7px; border-radius: 6px; color: #42566f; background: #edf2f7; line-height: 16px; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.label-pills { position: relative; display: block; width: 100%; min-width: 0; height: calc(var(--app-font-size) * 1.15 + 4px); pointer-events: none; font-size: var(--app-font-size); font-weight: 500; }
+.label-pills-visible { display: flex; align-items: center; gap: 4px; overflow: hidden; height: calc(var(--app-font-size) * 1.15 + 4px); }
+.label-pill { display: inline-block; box-sizing: border-box; flex: none; padding: 2px 7px; border-radius: 6px; color: #42566f; background: #edf2f7; line-height: 1.15; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .label-measure { position: absolute; visibility: hidden; display: flex; width: max-content; max-width: none; pointer-events: none; }
 .label-measure .label-pill { max-width: none; }
 .label-overflow { flex-shrink: 0; }
@@ -375,7 +378,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .message .message-role { display: flex; align-items: baseline; gap: 9px; margin-top: 0; font-size: var(--app-font-size); letter-spacing: 0; text-transform: none; color: #50647b; }
 .message-time { color: var(--app-muted); font-size: var(--app-font-size); font-weight: 400; }
 .tool-records { display: grid; gap: 4px; }
-.tool-record { min-width: 0; color: #52657c; font-size: var(--app-font-size); line-height: 20px; white-space: normal; }
+.tool-record { min-width: 0; color: #52657c; font-size: var(--app-font-size); line-height: 1.5; white-space: normal; }
 .tool-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .tool-icon { flex: 0 0 20px; text-align: center; }
 .tool-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -390,7 +393,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .new-messages { position: absolute; right: 24px; bottom: 16px; border: 0; border-radius: 999px; padding: 8px 13px; color: #294e7b; background: #e7eef7; box-shadow: 0 5px 18px rgb(0 0 0 / 20%); }
 .composer { display: block; padding: 7px 10px; border-top: 1px solid rgba(205, 215, 227, .72); background: rgba(248, 250, 253, .78); backdrop-filter: blur(16px); box-shadow: 0 -4px 10px -4px rgba(23, 42, 64, .16); }
 .composer-row { display: flex; align-items: flex-end; gap: 5px; }
-.composer textarea { flex: 1; min-width: 0; min-height: 42px; max-height: 120px; resize: none; overflow-y: auto; border: 1px solid #cdd7e3; border-radius: 12px; padding: 9px 12px; color: #172a40; background: #fff; font: inherit; line-height: 22px; }
+.composer textarea { flex: 1; min-width: 0; min-height: 42px; max-height: 120px; resize: none; overflow-y: auto; border: 1px solid #cdd7e3; border-radius: 12px; padding: 9px 12px; color: #172a40; background: #fff; font: inherit; line-height: 1.5; }
 .composer-row > button { flex-shrink: 0; width: 40px; height: 42px; border: 0; border-radius: 10px; padding: 0; color: #fff; background: #285ea5; font-weight: 650; font-size: 24px; }
 .composer-row .attach-button { color: #294e7b; background: #e7eef7; }
 .running-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; }
