@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { loadRenderResources } from './render-resource-fixture.mjs';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import * as timeline from '../src/timeline.ts';
@@ -77,6 +78,7 @@ async function harness() {
   }
   class Box { constructor(storage) { this.storage = storage; } async start() {} async stop() {} reconcile() {} setConnection() {} }
   const mocks = {
+    './RenderResources': loadRenderResources(React),
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
     './localDraftStorage': { bindLocalDraftStorage: () => () => {} },

@@ -1,5 +1,5 @@
 import { getRandomBytes } from 'expo-crypto';
-import { KATEX_CSS, KATEX_SCRIPT, MERMAID_SCRIPT } from './markdownRenderer.generated';
+import { KATEX_CSS, markdownEngineScript } from './markdownEngines';
 import { safeFontScale } from './fontScale';
 
 /** Bundled engines/data only; the bridge returns fixed render status, never commands. */
@@ -12,7 +12,7 @@ export function renderMarkdownHtml(kind: 'math' | 'diagram', source: string, dis
   }
   const nonce = Array.from(getRandomBytes(24), byte => byte.toString(16).padStart(2, '0')).join('');
   const data = JSON.stringify(source).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-  const engine = (kind === 'math' ? KATEX_SCRIPT : MERMAID_SCRIPT).replace(/<\/script/gi, '<\\/script');
+  const engine = markdownEngineScript(kind);
   const css = kind === 'math' ? KATEX_CSS : '';
   const draw = kind === 'math'
     ? `document.getElementById('content').innerHTML=katex.renderToString(${data},{displayMode:${display},throwOnError:true,trust:false,maxExpand:1000});`

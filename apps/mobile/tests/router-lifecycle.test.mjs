@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
+import { loadRenderResources } from './render-resource-fixture.mjs';
 import { build } from 'esbuild';
 import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
@@ -84,6 +85,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   }
   const exports = {};
   const mocks = {
+    './RenderResources': loadRenderResources(React),
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
     './localDraftStorage': { bindLocalDraftStorage: () => () => {} },

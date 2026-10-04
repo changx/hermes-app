@@ -77,3 +77,19 @@
 这是隔离分支 `fix/session-page-memory` 的本地验证，不是 iPhone/macOS 原生进程内存测量，也不代表已经合并或在手机生效。Hermes 核心和插件协议均未修改。
 
 已核对 React 参考：[useEffect](https://react.dev/reference/react/useEffect)、[Suspense](https://react.dev/reference/react/Suspense)。
+
+## 渲染资源复用候选
+
+隔离分支 `perf/render-resource-reuse` 在上述页面所有权基础上增加以下机制。未合并、未发布，不代表当前设备已生效。
+
+- 手机每个已挂载 session 使用一个 `RenderResourceScope`。所有存活页面共享一个 LRU 预算：估算 16 MiB、最多 256 项。预算针对可驱逐的派生缓存，不是总 JS 堆或原生内存上限；存活组件直接持有的解析结果、阅读器、引擎静态资产和原生实例不在此预算内。
+- 缓存按页面隔离，按稳定消息身份复用 AST 和渲染资格计划。正文变化重建；字号变化只重建相关 HTML，不重解析正文。节点和文章 HTML 共用该预算，超预算结果可显示但不加入缓存。
+- 解析及 HTML 缓存允许 FlashList 行复挂载复用。全文、表格和图表阅读器显式携带原页面的资源上下文，不依赖根导航上下文继承。实际关闭页面清理缓存；失焦不清理。未提交渲染不注册全局资源，StrictMode effect 重放不误释放。
+- 首次折叠的过程不挂载正文与附件。首次展开后再折叠保留已挂载实例。手机回收行换消息时重置首次展开记录及正文实例，防止旧消息状态进入新消息。
+- `suspended` 在重型 HTML 构建前返回。数学/图表和全文 WebView 使用稳定 `source` 对象，尺寸及状态更新不创建等值对象触发重载。
+- 历史消息不创建发送颜色动画；曾经发送中的消息共用一个减少动态效果监听。迟到的系统查询不能覆盖更新后的事件。
+- KaTeX/Mermaid 公共脚本的结束标签转义每个执行环境只执行一次。桌面 Mermaid 首次加载和初始化合并为一个 Promise，失败可重试；Markdown 的组件类型和插件数组固定。单篇手机文章内多个图表只初始化 Mermaid 一次。
+
+独立 WebView 仍有独立引擎环境。此次未实现跨 WebView 公共资产加载、共享引擎实例、桌面可见窗口虚拟化或图片任务合并，不用缓存命中率代替这些验收。
+
+本地候选验证：手机 544/544、桌面 147/147，启用 Chromium，零失败、零跳过；手机和桌面 TypeScript、桌面构建、iOS/Android 导出通过。测试执行生产组件与 HTML runtime，但以替身计数渲染引擎及原生组件，不是 iPhone/macOS 原生 CPU、内存或手感证据。完整日志见 Channel `render-resource-reuse/`。

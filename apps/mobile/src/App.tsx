@@ -27,6 +27,7 @@ import { ChannelScreens } from './ChannelScreens';
 import { LabelPills, LabelsEditor } from './SessionLabels';
 import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
+import { RenderResourceProvider } from './RenderResources';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
@@ -261,7 +262,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   }, [account, threadId]);
   if (!owner || owner.account !== account || owner.id !== threadId) return null;
   if (account?.page(threadId) !== owner.page) return <Notice text="This conversation is unavailable." />;
-  return <MountedThreadScreen client={owner.page} threadId={threadId} targetRef={targetRef} />;
+  return <RenderResourceProvider><MountedThreadScreen client={owner.page} threadId={threadId} targetRef={targetRef} /></RenderResourceProvider>;
 }
 
 function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {

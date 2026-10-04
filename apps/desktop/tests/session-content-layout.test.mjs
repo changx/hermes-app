@@ -49,9 +49,9 @@ test('right-aligned user bubbles use intrinsic width, an 80 percent cap and gray
 
 test('content layout preserves real message order, process grouping and command escaping',()=>{
   const html=mod.exports.html;
-  assert.equal((html.match(/<article /g)||[]).length,messages.length);
+  assert.equal((html.match(/<article /g)||[]).length,messages.length - 2, 'cold completed process rows have no mounted body');
   assert.equal((html.match(/class="message-role"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
-  assert.equal((html.match(/message-continuation/g)||[]).length,1);
+  assert.equal((html.match(/message-continuation/g)||[]).length,0);
   assert.equal((html.match(/message-final/g)||[]).length,1);
   assert.doesNotMatch(html, /class="message-role">(?:You|Hermes|Notice)/);
   assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
@@ -68,10 +68,10 @@ test('content layout preserves real message order, process grouping and command 
       assert.ok(article[2].includes(`>${expected}</time>`), 'local current year is omitted; other years retained');
     }
   }
-  assert.ok(html.indexOf('Hi')<html.indexOf('I will align'));
-  assert.ok(html.indexOf('Reading styles.css')<html.indexOf('Updated display'));
+  assert.ok(html.indexOf('Hi')<html.indexOf('Updated display'));
+  assert.doesNotMatch(html,/I will align|Reading styles\.css/);
   assert.ok(html.indexOf('Updated display')<html.indexOf('A longer user'));
-  assert.match(html,/<pre class="tool-command">npm run desktop:check<\/pre>/);
+  assert.doesNotMatch(html,/<pre class="tool-command">npm run desktop:check<\/pre>/);
   assert.doesNotMatch(html,/<details|<summary/);
 });
 

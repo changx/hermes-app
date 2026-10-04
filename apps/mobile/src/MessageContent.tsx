@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Alert, AppState, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Alert, AppState, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -16,13 +16,20 @@ import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
 import { compactFileDetail, compactToolCaption, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
 import { useViewer } from './Viewers';
+import { RenderResourceContext, useRenderResources } from './RenderResources';
+import { subscribeReducedMotion } from './reducedMotion';
+
+function countNodes(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0;
+  return 1 + Object.values(value).reduce<number>((sum, child) => sum + countNodes(child), 0);
+}
 
 export const copyMessageText = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('Copy failed', 'Could not copy to the clipboard.'));
 };
 const copy = copyMessageText;
 
-type Tone = (color: string) => { color: Animated.AnimatedInterpolation<string> };
+type Tone = (color: string) => { color: string | Animated.AnimatedInterpolation<string> };
 type ExpandTarget = { kind: 'message' } | { kind: 'table' | 'diagram'; block: Block };
 type OpenExpand = (target: ExpandTarget) => void;
 const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
@@ -130,8 +137,8 @@ function VideoPreview({ video }: { video: Extract<Inline, { kind: 'video' }> | E
 
 function RichText({ nodes, tone, style, allowed, onInteraction, suspended = false }: { nodes: Inline[]; tone: Tone; style: object; allowed: WeakSet<object>; onInteraction: () => void; suspended?: boolean }) {
   return <View style={styles.richText}>{segments(nodes).map((part, index) => part.kind === 'media'
-    ? part.media.kind === 'image' ? <ImagePreview key={index} image={part.media} /> : <VideoPreview key={index} video={part.media} />
-    : part.kind === 'math' ? <OfflineRenderer key={index} kind="math" source={part.node.text} enabled={allowed.has(part.node)} display={false} suspended={suspended} />
+    ? part.media.kind === 'image' ? <ImagePreview key={`${index}:${part.media.src}`} image={part.media} /> : <VideoPreview key={`${index}:${part.media.src}`} video={part.media} />
+    : part.kind === 'math' ? <OfflineRenderer key={index} resourceKey={part.node} kind="math" source={part.node.text} enabled={allowed.has(part.node)} display={false} suspended={suspended} />
     : <AnimatedText key={index} selectable style={[style, tone('#172a40')]}>
         <InlineText nodes={part.nodes} tone={tone} onInteraction={onInteraction} />
       </AnimatedText>)}</View>;
@@ -167,13 +174,19 @@ function webViewAllowlist(blocks: Block[]): WeakSet<object> {
   visit(blocks);
   return allowed;
 }
-function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = false, suspended = false }: { kind: 'math' | 'diagram'; source: string; enabled: boolean; display?: boolean; fullscreen?: boolean; suspended?: boolean }) {
+function OfflineRenderer({ kind, source, resourceKey, enabled, display = true, fullscreen = false, suspended = false }: { kind: 'math' | 'diagram'; source: string; resourceKey: object; enabled: boolean; display?: boolean; fullscreen?: boolean; suspended?: boolean }) {
   const { scale } = useFontSize();
+  const resources = useRenderResources();
   const [failedHtml, setFailedHtml] = useState<string | null>(null);
   const [readyHtml, setReadyHtml] = useState<string | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const tooLarge = !enabled || source.length > (kind === 'math' ? MAX_MATH_SOURCE : MAX_DIAGRAM_SOURCE);
-  const html = useMemo(() => tooLarge ? '' : renderMarkdownHtml(kind, source, display, scale), [kind, source, tooLarge, display, scale]);
+  const html = useMemo(() => {
+    if (tooLarge || suspended) return '';
+    const create = () => renderMarkdownHtml(kind, source, display, scale);
+    return resources ? resources.read(resourceKey, [kind, source, display, scale], create, value => value.length * 2 + source.length * 2) : create();
+  }, [resources, resourceKey, kind, source, tooLarge, suspended, display, scale]);
+  const webSource = useMemo(() => ({ html }), [html]);
   useEffect(() => { if (suspended) setReadyHtml(null); }, [suspended]);
   const fallback = <ScrollView onTouchStart={stopTouch} style={fullscreen ? styles.fullscreenFallback : display ? styles.renderFallback : styles.inlineRenderFallback} nestedScrollEnabled>
     <Text selectable style={styles.codeText}>{source}</Text>
@@ -186,7 +199,7 @@ function OfflineRenderer({ kind, source, enabled, display = true, fullscreen = f
     }
   }}>
     {/* Route every URL to our deny-by-default callback; WebView sends URLs outside its whitelist to Linking. */}
-    {size && <WebView source={{ html }} originWhitelist={['*']} onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
+    {size && <WebView source={webSource} originWhitelist={['*']} onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
       onMessage={event => {
         if (event.nativeEvent.data === 'render-failed') setFailedHtml(html);
         else if (event.nativeEvent.data === 'render-ready') setReadyHtml(html);
@@ -261,11 +274,11 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
         </ScrollView>
       </View>;
     case 'math':
-      return <OfflineRenderer kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;
+      return <OfflineRenderer resourceKey={block} kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;
     case 'diagram':
       return <View style={fullscreenDiagram ? styles.fullscreenDiagram : styles.diagramBlock} onTouchStart={stopTouch}>
         {!fullscreenDiagram && <ExpandButton label="View diagram fullscreen" onPress={() => onExpand({ kind: 'diagram', block })} />}
-        <OfflineRenderer kind="diagram" source={block.text} enabled={allowed.has(block)} fullscreen={fullscreenDiagram} suspended={suspended} />
+        <OfflineRenderer resourceKey={block} kind="diagram" source={block.text} enabled={allowed.has(block)} fullscreen={fullscreenDiagram} suspended={suspended} />
       </View>;
     case 'video':
       return <VideoPreview video={block} />;
@@ -316,18 +329,21 @@ function ToolCalls({ calls, onInteraction, compact = true, onDetails }: { calls?
 function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { text: string; blocks: Block[]; toolCalls?: readonly ToolCall[]; onExpand: OpenExpand; tone: Tone; allowed: WeakSet<object> }) {
   const router = useSessionNavigation();
   const { scale } = useFontSize();
+  const resources = useRenderResources();
   const page = useMemo(() => {
     if (text.length > ARTICLE_TEXT_LIMIT) return null;
-    const result = renderArticleHtml(blocks, toolCalls, scale);
+    const create = () => renderArticleHtml(blocks, toolCalls, scale);
+    const result = resources ? resources.read(blocks, [toolCalls, scale], create, value => value.html.length * 2 + text.length * 2) : create();
     return result.html.length <= 8_000_000 ? result : null; // includes the local engine bundles
-  }, [text, blocks, toolCalls, scale]);
+  }, [resources, text, blocks, toolCalls, scale]);
+  const webSource = useMemo(() => ({ html: page?.html ?? '' }), [page]);
   const [failed, setFailed] = useState(false);
   if (!page || failed) return <ScrollView style={styles.modalScroll} contentContainerStyle={styles.articleFallbackContent}>
     <Text style={styles.articleFailure}>{!page ? 'This article is too long. Showing the standard view instead.' : 'This article could not load. Showing the standard view instead.'}</Text>
     <RenderBlocks blocks={blocks} tone={tone} allowed={allowed} onExpand={onExpand} onInteraction={() => {}} suspended />
     <ToolCalls calls={toolCalls} compact={false} onInteraction={() => {}} />
   </ScrollView>;
-  return <WebView style={styles.articleWeb} source={{ html: page.html }} originWhitelist={['*']}
+  return <WebView style={styles.articleWeb} source={webSource} originWhitelist={['*']}
     onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
     onMessage={event => {
       const match = /^(expand|link):(0|[1-9][0-9]{0,8})$/.exec(event.nativeEvent.data);
@@ -379,13 +395,17 @@ function ExpandedContent({ target, text, blocks, toolCalls, onExpand, tone, allo
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
-export const MessageContent = memo(function MessageContent({ text, toolCalls, pending = false, canExpand = false }: { text: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
-  const parsed = useMemo(() => parseMessageMarkdown(text), [text]);
-  const allowed = useMemo(() => webViewAllowlist(parsed), [parsed]);
+export const MessageContent = memo(function MessageContent({ text, resourceId, toolCalls, pending = false, canExpand = false }: { text: string; resourceId?: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
+  const resources = useRenderResources();
+  const content = useMemo(() => {
+    const create = () => { const parsed = parseMessageMarkdown(text); return { parsed, allowed: webViewAllowlist(parsed) }; };
+    return resources && resourceId ? resources.read(`message:${resourceId}`, [text], create, value => text.length * 4 + countNodes(value.parsed) * 128) : create();
+  }, [resources, resourceId, text]);
+  const { parsed, allowed } = content;
   const focused = useIsFocused();
   const { openViewer } = useViewer();
   const expand: OpenExpand = target => openViewer(target.kind === 'message' ? 'Message' : target.kind === 'table' ? 'Table' : 'Diagram',
-    <ExpandedContent target={target} text={text} blocks={parsed} toolCalls={toolCalls} onExpand={expand} tone={tone} allowed={allowed} />);
+    <RenderResourceContext.Provider value={resources}><ExpandedContent target={target} text={text} blocks={parsed} toolCalls={toolCalls} onExpand={expand} tone={tone} allowed={allowed} /></RenderResourceContext.Provider>);
   // Observe ordinary text taps without becoming a responder (selection and
   // nested links/scroll views retain their native touch handling).
   const gesture = useRef<{ start?: { target: number; x: number; y: number; at: number }; tap?: { target: number; x: number; y: number; at: number } }>({});
@@ -408,22 +428,24 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
       Math.abs(previous.x - now.x) <= 24 && Math.abs(previous.y - now.y) <= 24) expand({ kind: 'message' });
     else gesture.current.tap = now;
   };
-  const progress = useRef(new Animated.Value(pending ? 0 : 1)).current;
+  const progressRef = useRef<Animated.Value | null>(null);
+  if (pending && !progressRef.current) progressRef.current = new Animated.Value(0);
+  const progress = progressRef.current;
   const wasPending = useRef(pending);
-  const reducedMotion = useRef(false);
+  const reducedMotion = useRef(true);
   const currentPending = useRef(pending);
   currentPending.current = pending;
   useEffect(() => {
-    let alive = true;
+    if (!progress) return;
     const update = (value: boolean) => {
       reducedMotion.current = value;
       if (value) { progress.stopAnimation(); progress.setValue(currentPending.current ? 0 : 1); }
     };
-    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (alive) update(value); }).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', update);
-    return () => { alive = false; sub.remove(); progress.stopAnimation(); };
+    const unsubscribe = subscribeReducedMotion(update);
+    return () => { unsubscribe(); progress.stopAnimation(); };
   }, [progress]);
   useEffect(() => {
+    if (!progress) return;
     if (pending) { progress.stopAnimation(); progress.setValue(0); }
     else if (wasPending.current && !reducedMotion.current) {
       // Real acceptance starts this visual transition; it never delays sending.
@@ -431,7 +453,11 @@ export const MessageContent = memo(function MessageContent({ text, toolCalls, pe
     } else progress.setValue(1);
     wasPending.current = pending;
   }, [pending, progress]);
-  const tone: Tone = color => ({ color: progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }) });
+  const tone = useMemo<Tone>(() => {
+    if (!progress) return color => ({ color });
+    const colors = new Map<string, Animated.AnimatedInterpolation<string>>();
+    return color => { let value = colors.get(color); if (!value) { value = progress.interpolate({ inputRange: [0, 1], outputRange: ['#93a0b0', color] }); colors.set(color, value); } return { color: value }; };
+  }, [progress]);
   return <View style={styles.root} onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd} onTouchCancel={() => { gesture.current = {}; }}>
     <RenderBlocks blocks={parsed} tone={tone} allowed={allowed} onExpand={expand} onInteraction={() => { gesture.current = {}; }} />
     <ToolCalls calls={toolCalls} onDetails={canExpand ? () => expand({ kind: 'message' }) : undefined} onInteraction={() => { gesture.current = {}; }} />

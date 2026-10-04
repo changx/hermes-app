@@ -76,6 +76,11 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
 };
 
 const MessageRow = memo(({ message, continuation, hidden = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean }) => {
+  const revealed = useRef(false);
+  if (!hidden) revealed.current = true;
+  // A never-opened process does not parse Markdown or initialize attachments.
+  // After first reveal, folding preserves its mounted content and interaction state.
+  if (!revealed.current) return null;
   const finalReply = message.role === "assistant" && message.displayKind === "final";
   const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
   const timestamp = message.createdAt !== undefined ? new Date(message.createdAt * 1000) : undefined;

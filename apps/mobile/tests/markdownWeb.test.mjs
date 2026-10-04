@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { loadMarkdownEngines } from './render-resource-fixture.mjs';
 import { safeFontScale } from '../src/fontScale.ts';
 
 // Execute the production HTML generator with small bundled-engine sentinels.
@@ -11,7 +12,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/markdownWeb.ts',
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText, { module, exports: module.exports, require: name => {
   if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(7) };
-  if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: '/* local katex */', MERMAID_SCRIPT: '/* local mermaid */' };
+  if (name === './markdownEngines') return loadMarkdownEngines({ KATEX_CSS: '.katex{}', KATEX_SCRIPT: '/* local katex */', MERMAID_SCRIPT: '/* local mermaid */' });
   if (name === './fontScale') return { safeFontScale };
   throw Error(`unexpected import ${name}`);
 } });

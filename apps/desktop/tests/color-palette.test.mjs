@@ -38,7 +38,7 @@ test('Chromium: production screens resolve neutral chrome and mobile content col
     import { NewSessionDialog } from './src/renderer/new-session-dialog';
     const snapshot = { revision: 1, phase: 'connected', connectionState: 'online', channels: [{id:'a',name:'Example'}], threads:[{id:'t',channelId:'a',title:'Palette preview',running:true,lastMessageAt:Date.now()/1000}], selectedChannelId:'a',selectedThreadId:'t',interactions:[],canLoadOlder:false,errorMessage:'Example error',messages:[
       {id:'u',role:'user',text:'A user message',toolCalls:[],attachments:[]},
-      {id:'a',role:'assistant',text:${JSON.stringify('[A link](https://example.com) and inline `code`.\n\n| Name | Value |\n| --- | --- |\n| Example | Light theme |\n\n```text\nExample code\n```')},toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status --short'}],attachments:[]},
+      {id:'a',role:'assistant',displayKind:'direct',text:${JSON.stringify('[A link](https://example.com) and inline `code`.\n\n| Name | Value |\n| --- | --- |\n| Example | Light theme |\n\n```text\nExample code\n```')},toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status --short'}],attachments:[]},
       {id:'f',role:'assistant',displayKind:'final',text:'Final reply',toolCalls:[],attachments:[]}
     ]};
     export const shell = renderToStaticMarkup(createElement(DesktopShellView,{snapshot}));

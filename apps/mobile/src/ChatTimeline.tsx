@@ -26,6 +26,9 @@ type HistoryPullRequest = { started: boolean; release?: (released: boolean) => v
 
 const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, animateHistory, onHistoryShown, historyBoundary, highlighted, work, workExpanded = true, onWorkToggle }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; animateHistory?: boolean; onHistoryShown?: (key: string) => void; historyBoundary?: boolean; highlighted?: boolean; work?: WorkGroup; workExpanded?: boolean; onWorkToggle?: (group: WorkGroup, expanded: boolean) => void }) {
   const own = row.role === 'user';
+  const revealed = useRef({ key: row.key, value: false });
+  if (revealed.current.key !== row.key) revealed.current = { key: row.key, value: false };
+  if (!work || workExpanded) revealed.current.value = true;
   // Keep the native entering configuration stable after the parent consumes
   // eligibility; ordinary rerenders must not change the animation's nativeID.
   const entrance = useRef({ key: row.key, animation: animateHistory ? historyEntrance : undefined });
@@ -47,7 +50,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const contentStyle = work && !workExpanded ? [messageStyle, styles.workHidden] : messageStyle;
   const content = <Animated.View entering={own ? undefined : entering} accessibilityElementsHidden={!!work && !workExpanded} importantForAccessibility={work && !workExpanded ? 'no-hide-descendants' : 'auto'} style={highlighted ? [contentStyle, { backgroundColor: '#d9eaff' }] : contentStyle}>
     {row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} absolute={row.role === 'user'} /></View>}
-    <MessageContent text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />
+    {revealed.current.value && <MessageContent key={row.key} resourceId={row.key} text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />}
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
     {!!failedId && <View style={styles.failedActions}>
@@ -55,7 +58,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       {!!row.text && action('Copy', () => copyMessageText(row.text))}
       {!!onDeleteFailed && action('Delete', () => confirmFailedMessageDelete(row, onDeleteFailed, Alert.alert), busy)}
     </View>}
-    {renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>Attachment: {a.name || 'Unnamed attachment'} ({a.state === 'available' ? 'Available' : 'Unavailable for now'})</Text>)}
+    {revealed.current.value && (renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>Attachment: {a.name || 'Unnamed attachment'} ({a.state === 'available' ? 'Available' : 'Unavailable for now'})</Text>))}
     {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
       {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}

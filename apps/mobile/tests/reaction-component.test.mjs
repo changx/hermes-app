@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import { compile } from './render-resource-fixture.mjs';
+import { noRenderResources, loadReducedMotion } from './render-resource-fixture.mjs';
 import * as historyLayout from '../src/historyLayout.ts';
 import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 import { projectTimeline } from '../src/timeline.ts';
@@ -21,6 +25,7 @@ const react = {
   useCallback: fn => fn, useEffect: () => {}, useImperativeHandle: () => {}, useMemo: fn => fn()
 };
 const modules = {
+  './RenderResources': noRenderResources, './reducedMotion': loadReducedMotion(native),
   '../../../packages/client/src/workPresentation': workPresentation,
   '../../../packages/client/src/sessionLinks': sessionLinks,
   '../../../packages/client/src/toolPresentation': toolPresentation,
@@ -70,6 +75,25 @@ function mount(rows, receipts = [], interactions = [], overrides = {}) {
   return { tree, rowTree, calls };
 }
 const click = (nodes, label) => { const button = named(nodes, 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(button, `missing ${label}`); button.props.onPress(); };
+
+test('actual recycled row lazily mounts collapsed content, retains it after reveal and clears the next message', async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  let mounts = 0, releases = 0;
+  const Content = () => { React.useEffect(() => { mounts++; return () => { releases++; }; }, []); return React.createElement('Content'); };
+  const { TestRow } = compile('ChatTimeline.tsx', { ...modules, react: React, './MessageContent': { MessageContent: Content } }, '\nexport const TestRow = MessageRow;');
+  const row = projectTimeline([{ id: 'p', ref_seq: 1, role: 'assistant', text: 'Hidden graph' }], null, 'th')[0];
+  const props = { row, work: { key: row.key, label: 'Worked' }, onCancel() {}, busy: false };
+  let root;
+  await act(async () => { root = create(React.createElement(TestRow, { ...props, workExpanded: false })); });
+  assert.equal(mounts, 0); assert.equal(root.root.findAllByType('Content').length, 0);
+  await act(async () => root.update(React.createElement(TestRow, { ...props, workExpanded: true })));
+  const content = root.root.findByType('Content'); assert.equal(mounts, 1);
+  await act(async () => root.update(React.createElement(TestRow, { ...props, workExpanded: false })));
+  assert.equal(root.root.findByType('Content'), content); assert.equal(releases, 0);
+  await act(async () => root.update(React.createElement(TestRow, { ...props, row: { ...row, key: 'ref:2' }, workExpanded: false })));
+  assert.equal(root.root.findAllByType('Content').length, 0); assert.equal(releases, 1);
+  await act(async () => root.unmount());
+});
 
 test('production mobile rows: Working toggle, final auto collapse, exact retained content and reopen', () => {
   const oldState = modules.react.useState, states = []; let cursor = 0;

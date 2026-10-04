@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { noRenderResources, loadReducedMotion } from './render-resource-fixture.mjs';
 
 // Execute production hooks across pending -> confirmed renders; no fake device/frame claim.
 function mount(initialPending, reduced = false) {
@@ -42,6 +43,7 @@ function mount(initialPending, reduced = false) {
     StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 390, height: 844 }), Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal'
   };
   const modules = { react: { ...react, default: react }, 'react-native': native, 'expo-clipboard': {},
+    './RenderResources': noRenderResources, './reducedMotion': loadReducedMotion(native),
     '../../../packages/client/src/sessionLinks': sessionLinks,
     'expo-router': { useRouter: () => ({ push() {} }), useIsFocused: () => true }, './Viewers': { useViewer: () => ({ openViewer() {} }) },
     './sessionNavigation': { useSessionNavigation: () => ({ link() {} }) },
@@ -93,7 +95,8 @@ test('pending stays gray; real confirmation animates the same value to normal wi
 
 test('confirmed history starts solid and never replays sending', () => {
   const h = mount(false);
-  assert.equal(h.initial.value.value, 1);
+  assert.equal(h.initial, '#172a40');
+  assert.equal(h.values.length, 0, 'history does not allocate an animation value');
   h.render(false);
   assert.equal(h.animations().length, 0);
 });

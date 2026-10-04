@@ -1,5 +1,6 @@
 import { memo, useEffect, useId, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
+import { getMermaid } from "./mermaid-engine";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -29,8 +30,10 @@ const MermaidDiagram = ({ source }: { source: string }) => {
   useEffect(() => {
     let active = true;
     if (source.length > 20_000) { setError(true); return; }
-    void import("mermaid").then(async ({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, maxTextSize: 20_000, theme: "neutral" });
+    setError(false);
+    if (host.current) host.current.replaceChildren();
+    void getMermaid().then(async mermaid => {
+      if (!active) return;
       const { svg } = await mermaid.render(`diagram${id}`, source);
       if (active && host.current) host.current.innerHTML = sanitizeDiagram(svg);
     }).catch(() => { if (active) setError(true); });
@@ -48,28 +51,29 @@ const allowedLink = (href: string | undefined): string | undefined => {
   } catch { return undefined; }
 };
 
+// Stable component functions keep code/diagram subtrees mounted across updates.
+const markdownComponents: Components = {
+  table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
+  a: ({ href, children }) => {
+    const safe = allowedLink(href);
+    if (safe && parseSessionLink(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop.openSessionLink(safe).catch(() => {}); }}>{children}</a>;
+    return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
+  },
+  img: ({ alt }) => <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
+  code: ({ className, children, ...props }) => {
+    const language = /language-([^ ]+)/.exec(className ?? "")?.[1];
+    const source = String(children).replace(/\n$/, "");
+    return language === "mermaid" ? <MermaidDiagram source={source} /> : <code className={className} {...props}>{children}</code>;
+  },
+  pre: ({ children }) => <pre className="code-block">{children}</pre>,
+};
+const remarkPlugins = [remarkGfm, remarkMath, remarkSessionLinks];
+const rehypePlugins = [rehypeKatex];
+const transformUrl = (url: string) => allowedLink(url) ?? "";
+
 export const MessageContent = memo(({ text }: { text: string }) => (
   <div className="message-markdown">
-  <ReactMarkdown
-    skipHtml
-    remarkPlugins={[remarkGfm, remarkMath, remarkSessionLinks]}
-    rehypePlugins={[rehypeKatex]}
-    urlTransform={(url) => allowedLink(url) ?? ""}
-    components={{
-      table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
-      a: ({ href, children }) => {
-        const safe = allowedLink(href);
-        if (safe && parseSessionLink(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop.openSessionLink(safe).catch(() => {}); }}>{children}</a>;
-        return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
-      },
-      img: ({ alt }) => <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
-      code: ({ className, children, ...props }) => {
-        const language = /language-([^ ]+)/.exec(className ?? "")?.[1];
-        const source = String(children).replace(/\n$/, "");
-        return language === "mermaid" ? <MermaidDiagram source={source} /> : <code className={className} {...props}>{children}</code>;
-      },
-      pre: ({ children }) => <pre className="code-block">{children}</pre>,
-    }}
-  >{text}</ReactMarkdown>
+    <ReactMarkdown skipHtml remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}
+      urlTransform={transformUrl} components={markdownComponents}>{text}</ReactMarkdown>
   </div>
 ));

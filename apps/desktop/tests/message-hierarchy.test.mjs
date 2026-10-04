@@ -7,13 +7,17 @@ import { readFile } from 'node:fs/promises';
 const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DesktopShellView } from './src/renderer/shell';
+import { HierarchyRow } from './src/renderer/shell';
 const tool = (id, name, label, detail) => ({ id, name, label, detail });
 const msg = (id, text, toolCalls = [], extra = {}) => ({ id, role: 'assistant', text, createdAt: 1700000000, toolCalls, attachments: [], ...extra });
-export const html = renderToStaticMarkup(createElement(DesktopShellView, { snapshot: {
+const snapshot = {
  revision: 1, phase: 'connected', selectedThreadId: 'test-thread', connectionState: 'online', connectionLabel: 'Connected', channels: [], threads: [], interactions: [], canLoadOlder: false,
  messages: [msg('a','Checking'), msg('b','',[tool('read','read_file','Read file','src/file.ts · offset=10')]), msg('c','',[tool('cmd','terminal','Run command','git status --short')]), msg('d','Result',[],{displayKind:'final'}), msg('e','Direct reply',[],{displayKind:'direct'}), msg('f','Next', [tool('legacy',undefined,'Unknown action','Safe detail')]), msg('g','',[{...tool('server','read_file','Read file','path=/repo/private/long/a.py · offset=1 · limit=2'),caption:'Reading a.py L1-2',icon:'📖'}])]
-}}));` }, bundle: true, external: ['react', 'react/jsx-runtime', 'react-dom/server'], format: 'cjs', platform: 'node', write: false });
+};
+// Row presentation is tested in its explicitly expanded state. Cold folding is
+// exercised separately by work-collapse and render-resource-reuse.
+export const html = renderToStaticMarkup(createElement('div', null, snapshot.messages.map((message, index) => createElement(HierarchyRow, { key: message.id, message, continuation: index > 0 && !message.displayKind && !snapshot.messages[index - 1].displayKind }))));
+` }, bundle: true, plugins: [{ name: 'expose-row', setup(builder) { builder.onLoad({ filter: /[\\/]shell\.tsx$/ }, async args => ({ contents: (await readFile(args.path, 'utf8')) + '\nexport const HierarchyRow = MessageRow;', loader: 'tsx' })); } }], external: ['react', 'react/jsx-runtime', 'react-dom/server'], format: 'cjs', platform: 'node', write: false });
 const out = { exports: {} };
 new Function('require','module','exports',bundle.outputFiles[0].text)(createRequire(import.meta.url), out, out.exports);
 const html = out.exports.html;

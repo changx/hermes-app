@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { loadMarkdownEngines } from './render-resource-fixture.mjs';
 import { safeFontScale } from '../src/fontScale.ts';
 import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
@@ -16,7 +17,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 }).outputText, { module: output, exports: output.exports, URL, require: name => {
   if (name === 'expo-crypto') return { getRandomBytes: count => Uint8Array.from({ length: count }, (_, i) => i + 1) };
   if (name === '../../../packages/client/src/toolPresentation') return toolPresentation;
-  if (name === './markdownRenderer.generated') return sampleEngines;
+  if (name === './markdownEngines') return loadMarkdownEngines(sampleEngines);
   if (name === './messageMarkdown') return { safeLinkUrl };
   if (name === './fontScale') return { safeFontScale };
   throw Error(name);
@@ -111,6 +112,17 @@ test('nonce CSP isolates local engines and preserves browser default text select
   assert.match(html, /<p>普通段落。<\/p><p>下一段。<\/p>/);
   assert.match(html, /securityLevel:'strict'/);
   assert.match(html, /trust:false/);
+});
+
+test('production article runtime initializes Mermaid once for all diagrams in that reader', async () => {
+  const html = render(Array.from({ length: 3 }, (_, i) => '```mermaid\ngraph TD; A' + i + '-->B\n```').join('\n\n')).html;
+  const runtime = [...html.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)].at(-1)[1];
+  let initializes = 0, renders = 0;
+  const elements = Array.from({ length: 3 }, (_, i) => ({ dataset: { render: 'diagram' }, innerHTML: '', querySelector: selector => selector === '.original' ? { textContent: `graph TD; A${i}-->B` } : {} }));
+  runInNewContext(runtime, { document: { addEventListener() {}, querySelectorAll: () => elements },
+    mermaid: { initialize(config) { initializes++; assert.equal(config.securityLevel, 'strict'); }, async render() { renders++; return { svg: '<svg/>' }; } } });
+  await new Promise(setImmediate);
+  assert.equal(initializes, 1); assert.equal(renders, 3);
 });
 
 test('one WebView bounds engine initialization and retains original source on overflow', () => {

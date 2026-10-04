@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
+import { noRenderResources, loadReducedMotion, loadMarkdownEngines } from './render-resource-fixture.mjs';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
 import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
 import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
@@ -112,12 +113,14 @@ function mount(text, { canExpand = false, toolCalls, screen = { width: 390, heig
     './markdownWeb': { renderMarkdownHtml: (kind, source, display, scale) => { webCalls.push({ kind, source, display, scale }); return `<!doctype html><meta charset="utf-8">${kind}:${JSON.stringify(source)}:display=${display}`; } },
     './messageMarkdown': { parseMessageMarkdown, safeLinkUrl } };
   const articleOutput = { exports: {} };
+  modules['./RenderResources'] = noRenderResources;
+  modules['./reducedMotion'] = loadReducedMotion(native);
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
   }).outputText, { module: articleOutput, exports: articleOutput.exports, require: name => {
     if (name === 'expo-crypto') return { getRandomBytes: count => new Uint8Array(count).fill(42) };
     if (name === '../../../packages/client/src/toolPresentation') return toolPresentation;
-    if (name === './markdownRenderer.generated') return { KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' };
+    if (name === './markdownEngines') return loadMarkdownEngines({ KATEX_CSS: '.katex{}', KATEX_SCRIPT: 'window.katex={}', MERMAID_SCRIPT: 'window.mermaid={}' });
     if (name === './messageMarkdown') return modules[name];
     if (name === './fontScale') return { safeFontScale: value => [0.9, 1, 1.15, 1.3].includes(value) ? value : 1 };
     throw Error(name);
