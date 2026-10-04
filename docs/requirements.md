@@ -14,6 +14,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 ### R02 Channel / Thread 内容组织
 
+最新确认的手机 Channel 布局与排序：第一行放 Context、Files、AGENTS.md 轻量入口及无常驻底色的更多菜单。第二行未筛选时显示 `Filters: All sessions` 与加号；筛选后显示可移除的标签及 Clear，沿用 OR/No labels 语义。Session 列表先排 `running === true`，其余状态合为第二组；各组按最后消息时间从新到旧，不为草稿或已完成未读增加优先级。窄屏/大字体及较长筛选行横向滚动，不自动换行。该规则取代下文手机仅按时间排序的旧记录；桌面不变。候选及验证边界见 [手机 Channel](mobile-channel-context.md#current-mobile-toolbar-and-sorting-candidate)。
+
 已确认：手机和桌面的 session 列表为本机未发送文字或附件显示 `draft`。标注不向服务端或其他设备同步；仅空白文字不标注，清空草稿或消息成功进入本地发送队列后清除。不改变列表排序及运行/已完成未读状态。最新要求取代此前的仅内存期限：未发送内容及草稿状态在本地持久化，App 重启后恢复。
 
 2026-10-03 已确认 Session labels：稳定 Thread 保存跨设备共享的 `markers: string[]` 与客户端毫秒 `markers_updated_at`。仅严格更新的时间戳整组替换，空数组清除，相等/旧值保留服务端权威状态；不修正时间。首版最多 10 个精确文本标签，每个最多 30 个可见字素，Emoji 序列按完整字素计数；不改标题、运行、已完成未读、最后消息时间或模型/历史内容。桌面当前频道树与手机频道 Session 列表显示紧凑标签，按实际宽度截断并显示 `+N`；过滤采用多选 OR 和独立 No labels。桌面过滤时覆盖全部时间，先过滤再每批 24 项；手机仅当前 Channel。双端提供在线编辑、复用、Save/Cancel 及失败草稿保留，连接与稳定 Thread 隔离。隔离候选、协议、真实合成 HTTP/WS 验证及待发布/真机边界见 [Session labels](session-labels.md)。

@@ -1,5 +1,17 @@
 # Mobile Channel: sessions and context
 
+## Current mobile toolbar and sorting candidate
+
+Confirmed in `th_868e2e5252104c67a8770c7ef580e594`: Context, Files and AGENTS.md share the first row. Use transparent icon/text entries, no Context chevron, and a transparent overflow control. The entries scroll horizontally on narrow screens or large fonts; workspace capability gating and existing routes remain unchanged.
+
+The second row shows `Filters: All sessions` and an add control when inactive. Selected labels replace the all-session text with removable chips. `No labels` remains a separate filter, even when a literal label has that text. Clear restores all sessions. Existing OR matching, Channel-only candidates and capability gating remain unchanged. Long filter rows scroll horizontally without wrapping.
+
+Sessions now sort `running === true` before every other state. Each group sorts by descending `last_message_at`; missing times use the existing zero fallback. Existing ref/title ties remain, followed by stable Thread ID. Completed-unread and local drafts do not create additional priority groups. Directory state changes recompute order without opening conversation bodies or replacing the composer.
+
+Candidate: `feat/mobile-channel-toolbar`, task `t_fdfefb50`, base `0de8ffa`. Mobile component tests exercise production sorting/status changes, filtering, toolbar capability/navigation and composer identity. Full mobile suite: 533 passed, zero failures, one optional browser-layout test skipped. Mobile TypeScript and both iOS/Android Expo exports passed. Root esbuild's missing optional binary was supplied from the same-version existing mobile installation; no dependency or lockfile changes.
+
+Private evidence is in this Channel workspace under `mobile-channel-toolbar/`. No main merge, publication, service restart, plugin/core change or desktop change. Expo exports and native component substitutes do not prove iPhone layout, touch or large-font behavior; device acceptance remains separate. Earlier newest-first-only descriptions below are historical and are superseded by this running-first rule.
+
 ## Confirmed direction
 
 Jamie approved the mobile-first redesign in `th_a6e883886ccc4b00b9dbc80fde91728e` on 2026-10-02. Session lists now put latest activity first at the top; this supersedes the old channel-list bottom-first rule. Conversation timelines still open at their latest message at the bottom. Desktop is out of this change.
