@@ -2,6 +2,17 @@
 
 ## Desktop default font size candidate
 
+### Authorized publication: v0.1.22
+
+Jamie authorized main merge and desktop packaging/publication. Candidate `f0f99bc` was fast-forwarded into main; release source and tag `v0.1.22` are `222436c918588a5537af761d975b98c9b089145f`. Only desktop/root version metadata changed after candidate verification; dependency graph, mobile and shared client source are unchanged.
+
+- [Tag workflow 37184663874](https://github.com/changx/hermes-app/actions/runs/37184663874) passed macOS arm64 checks, dependency audit, packaging and publication. Main workflow `37184663825` also passed.
+- [Desktop v0.1.22](https://github.com/changx/hermes-app/releases/tag/v0.1.22) is published, not a draft. Downloaded `Hermes-0.1.22-macOS-arm64.zip` passes sidecar SHA-256, ZIP CRC, arm64 executable, plist/ASAR version `0.1.22` and byte-exact packaged CSS comparison with the verified candidate. SHA-256: `646a89c44b97f0a18da914d8c9b950e2a5d6de308a33b366a909db2f742379ea`.
+- No mobile deployment or service restart. Expo and development Gateway PID/start-time readbacks are unchanged. No plugin, Hermes core, signing or device installation changes.
+- Private evidence: Channel workspace `desktop-font-14/release/`. The package remains unsigned and not notarized; installed Mac visual acceptance is pending. Rollback package is intact `v0.1.21`; source rollback requires an explicit revert, not storage changes or replacement of published assets.
+
+The following paragraphs describe the pre-publication candidate checks, not the current publication state.
+
 Jamie requested a desktop default of **14px for UI and content**. Candidate `fix/desktop-default-font-14` starts from main `d675836`; tracking card `t_5b1d1261`.
 
 - Root text, native form controls, navigation, dialogs, status text, timestamps, labels, draft text, message paragraphs/lists/tables, inline/fenced code and tool commands use the shared 14px default. Preserve icon sizes, colors, layout rules and behavior. Mobile is unchanged. This supersedes the earlier desktop 11px draft-text size only.
