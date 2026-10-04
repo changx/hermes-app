@@ -291,11 +291,16 @@ function fullHistoryFixture({gate,failOnce=false,target=false,loop=false}={}){
   const all=Array.from({length:250},(_,i)=>message('m'+(i*2+1)));
   let failed=false;
   const f=fixture({request:async(_method,path,_body,_signal)=>{
-    if(target&&path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,open_session_live:true,attachment_origin:true,history_around:true}};
+    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_full:true,open_session_live:true,...(target?{attachment_origin:true,history_around:true}:{})}};
     if(!path.includes('/A/messages'))return;
     const q=new URL(path,'https://fixture.test').searchParams;
     if(q.get('latest'))return {status:200,body:{messages:all.slice(-30),older_cursor:'older',next_cursor:null}};
     if(q.get('around_ref_seq'))return {status:200,body:{messages:all.slice(35,66),older_cursor:'older',next_cursor:'newer'}};
+    if(q.get('full')){
+      if(gate)await gate.promise;
+      if(failOnce&&!failed){failed=true;return {status:503,body:{}}}
+      return {status:200,body:{messages:all,receipts:[],complete:true,older_cursor:null,next_cursor:loop?'unexpected':null,incomplete_turns:[],turn_outcomes:[]}};
+    }
     const exact=Number(q.get('ref_seq')),from=Number(q.get('after_ref_seq'))||Number(q.get('after')?.split(':')[1])||0;
     if(q.get('after')&&gate)await gate.promise;
     if(q.get('after')&&failOnce&&!failed){failed=true;return {status:503,body:{}}}
@@ -306,36 +311,75 @@ function fullHistoryFixture({gate,failOnce=false,target=false,loop=false}={}){
   return {...f,all};
 }
 
-test('entry reads one recent page; one history request reads all pages with no repeat after completion',async()=>{
+test('entry reads one recent page; expansion is one complete request, with no repeat after completion',async()=>{
   const f=fullHistoryFixture();
   try{
     await f.sdk.openConversation('A');assert.equal(f.sdk.messages.get('A').length,30);
     assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1);
     await f.sdk.loadFullHistory('A');assert.deepEqual(f.sdk.messages.get('A').map(m=>m.ref_seq),f.all.map(m=>m.ref_seq));
     assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
-    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,4);
+    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,2);
+    assert.equal(f.paths.filter(([,p])=>p.endsWith('/A/messages?full=true')).length,1);
     const count=f.paths.length;await f.sdk.loadFullHistory('A');assert.equal(f.paths.length,count);
     assert.ok(f.paths.every(([,p])=>!p.includes('/B/messages')));
   }finally{f.sdk.close()}
 });
 
-test('concurrent history intents share one read and later-page failure can retry the entire original',async()=>{
+test('concurrent history intents share one complete request and failure retains the current window',async()=>{
   const gate=deferred(),f=fullHistoryFixture({gate,failOnce:true});
   try{
     await f.sdk.openConversation('A');const count=f.paths.length;
     const a=f.sdk.loadFullHistory('A'),b=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.length===count+2);gate.resolve();
+    await until(()=>f.paths.length===count+1);gate.resolve();
     await assert.rejects(a,/503/);await assert.rejects(b,/503/);
     assert.equal(f.sdk.currentOlderCursor,'older');
+    assert.equal(f.sdk.messages.get('A').length,30);
+    const retryStart=f.paths.length;
     await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);assert.equal(f.sdk.currentOlderCursor,null);
+    const retryPaths=f.paths.slice(retryStart).filter(([,p])=>p.includes('/A/messages'));
+    assert.equal(retryPaths.length,1);
+    assert.ok(retryPaths[0][1].endsWith('?full=true'));
   }finally{f.sdk.close()}
 });
 
-test('cancelled full read cannot revive a switched conversation or consume its next pages',async()=>{
+test('pending complete snapshot does not widen concurrent live refresh',async()=>{
   const gate=deferred(),f=fullHistoryFixture({gate});
   try{
     await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.some(([,p])=>p.includes('after=page')));
+    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
+    const count=f.paths.length;
+    f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.paths.slice(count).some(([,p])=>p.includes('after_ref_seq')));
+    const refresh=f.paths.slice(count).filter(([,p])=>p.includes('/A/messages'));
+    assert.equal(new URL(refresh[0][1],'https://fixture.test').searchParams.get('ref_seq'),'441');
+    assert.equal(new URL(refresh[1][1],'https://fixture.test').searchParams.get('after_ref_seq'),'441');
+    gate.resolve();await pending;
+  }finally{gate.resolve();f.sdk.close()}
+});
+
+test('full-history failure can reconnect and retry one complete request; a fresh opening remains bounded',async()=>{
+  const f=fullHistoryFixture({failOnce:true});
+  try{
+    await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/503/);
+    const reconnectStart=f.paths.length;
+    f.sockets[0].close();
+    await until(()=>f.sockets.length===2&&f.sdk.connectionState==='online'&&f.paths.slice(reconnectStart).some(([,p])=>p.includes('after_ref_seq=441')));
+    const count=f.paths.length;
+    await f.sdk.loadFullHistory('A');
+    assert.ok(f.paths.slice(count).find(([,p])=>p.includes('/A/messages'))[1].endsWith('?full=true'));
+    assert.equal(f.sdk.messages.get('A').length,250);
+    f.sdk.closeConversation();await f.sdk.openConversation('A');
+    const fresh=f.paths.length;await f.sdk.loadFullHistory('A');
+    assert.equal(new URL(f.paths[fresh][1],'https://fixture.test').searchParams.has('after_ref_seq'),false);
+    assert.equal(f.sdk.messages.get('A').length,250);
+  }finally{f.sdk.close()}
+});
+
+test('cancelled full response cannot revive a switched conversation',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});
+  try{
+    await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
+    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
     await f.sdk.openConversation('B');await assert.rejects(pending,/aborted/);
     const count=f.paths.length;gate.resolve();await tick();
     assert.equal(f.paths.length,count);assert.deepEqual([...f.sdk.messages.keys()],['B']);
@@ -354,8 +398,24 @@ test('source window stays bounded on entry but explicit history expansion includ
   }finally{f.sdk.close()}
 });
 
-test('full read rejects a repeated transport cursor instead of looping',async()=>{
+test('full history has a finite deadline and no fallback pagination on an unsupported server',async(t)=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});
+  try{
+    await f.sdk.openConversation('A');
+    f.sdk.supportsFullHistory=false;const count=f.paths.length;
+    await assert.rejects(f.sdk.loadFullHistory('A'),/does not support complete history/);
+    assert.equal(f.paths.length,count);
+    f.sdk.supportsFullHistory=true;t.mock.timers.enable({apis:['setTimeout']});
+    const pending=f.sdk.loadFullHistory('A');
+    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
+    t.mock.timers.tick(60000);await assert.rejects(pending,/timed out/);
+    assert.equal(f.sdk.messages.get('A').length,30);
+    assert.equal(f.sdk.currentOlderCursor,'older');
+  }finally{gate.resolve();f.sdk.close()}
+});
+
+test('full response rejects a continuation cursor without merging partial rows or paginating',async()=>{
   const f=fullHistoryFixture({loop:true});
-  try{await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/did not advance/);assert.equal(f.sdk.currentOlderCursor,'older')}
+  try{await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/Incomplete full history/);assert.equal(f.sdk.currentOlderCursor,'older');assert.equal(f.sdk.messages.get('A').length,30);assert.equal(f.paths.filter(([,p])=>p.includes('full=true')).length,1)}
   finally{f.sdk.close()}
 });

@@ -5,7 +5,7 @@
 - Open a conversation with one recent transport page: 30 records for normal entry, or 31 records around an explicit attachment-source target.
 - Keep normal entry at the latest message. Keep source navigation at its exact target.
 - On the first earlier-history action, read the complete original timeline automatically. Do not ask the user to load another block or page.
-- Continue using the existing paged HTTP API with a maximum of 100 records per request. Full loading is one user action, not a new unbounded server endpoint.
+- Full expansion uses one `GET /v1/threads/{id}/messages?full=true` request and one complete response. Neither client nor server loops through history pages. Initial/source windows remain bounded.
 - Show `Loading messages…` and a loading indicator on initial entry. Show loading feedback during full-history expansion while retaining current visible messages.
 - Preserve the original reading anchor when the full history is published. Do not reveal partially downloaded earlier blocks.
 - Retain downloaded history for the existing live page lifecycle. Returning to a retained page does not load it again. A removed page releases its content.
@@ -15,7 +15,17 @@ This supersedes five-user-block initial/history expansion. Historical five-block
 
 ## Implementation
 
-`LiveSessionClient.loadFullHistory` shares concurrent requests, reads forward from the oldest reference, rejects repeated cursors and clears older/newer cursors only after completion. A retry restarts the full read; stable references merge without duplicate records. Page ownership, transport cancellation and caller cancellation prevent a late response from restoring removed content.
+`LiveSessionClient.loadFullHistory` shares concurrent requests and consumes one complete snapshot. The paired plugin advertises `history_full`; the SDK rejects unsupported servers rather than silently falling back to pagination. It checks `complete: true`, null older/next cursors and ordered references before merging. A failed response leaves current messages and the visible window intact. Requests have a 60-second deadline. Page ownership and cancellation prevent a late response from restoring removed content.
+
+Before full loading completes, live refresh retains the initial window. After completion, refresh also uses one full snapshot request. Desktop expansion tries transient failures three times, then clears loading, keeps rows and restores the earlier-history action with a readable error. Other send behavior remains unchanged.
+
+### Single-request candidate
+
+Jamie reported `Load all earlier messages` remaining on `Loading messages…`. Baseline regression tests reproduced three defects: retry downloaded the first successful page again; live refresh widened to partially downloaded old rows; desktop history recovery kept retrying without leaving the loading state. These are verified code paths, not a captured trace of Jamie's physical device.
+
+Jamie then explicitly replaced pagination with a single complete load. This supersedes the unpublished checkpoint-retry candidate `0b44bf0`. The plugin selects the full reference snapshot once and reuses original projection and receipt identity. It never truncates success: above 20,000 references or 64 MiB JSON, it returns a resource error. Compression is negotiated; attachment files still load on demand.
+
+Isolated branches: App `fix/history-load-reliability`, plugin `feat/full-history-single`; task `t_111b3661`. Real authenticated HTTP returns 255 original messages plus matching receipts in one response. SDK tests: 125 passed. Plugin targeted tests: 17 passed. Desktop: 140 passed, 14 browser/native tests skipped. Mobile: 547 passed, one browser test skipped. All three TypeScript checks, desktop build and both Expo exports passed. Evidence: active Channel `history-single-*-final.log`. No main merge, publication, plugin installation or Gateway restart. No native device acceptance is claimed.
 
 `LivePageClient` routes full loading to the exact page owner. Unopened conversations still receive no body reads.
 
