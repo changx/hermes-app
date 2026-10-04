@@ -1,5 +1,13 @@
 # OPEN-SESSION-LIVE — cross-end refactor
 
+## Release v0.1.24 / plugin v0.2.3
+
+This release retains main's desktop local font settings and 16px default from v0.1.23. SDK, mobile and desktop checks/build, Chromium tests, iOS/Android exports and the related plugin HTTP/WS gates passed after integration. The unchanged pinned Hermes baseline is not upgraded.
+
+The user authorized both client releases and plugin code installation, and reserved Gateway restart. Only the active `hermes-app-dev` installed plugin directory is in scope. Installation preserves prior code and reads back exact hashes; it does not change databases or credentials. A code backup is not a coherent database backup.
+
+Publication is in progress. Desktop uses the unsigned, non-notarized macOS arm64 archive. Mobile uses the existing Expo Go iOS/Android entry, not a standalone/App Store package. The new client requires the plugin's multi-topic hello; installed files do not activate it in a running Gateway. Runtime activation and real-device performance remain pending until the user's Gateway restart. Old clients remain compatible with the new plugin. Exact release/install evidence is retained in Channel `account-network/`.
+
 Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal and the v0.1.6 cache/replay design. App baseline main 4a80671; App branch refactor/open-session-live; standalone plugin branch feat/plugin-open-session-live based on cf90647. Never modify Hermes core or other profiles.
 
 ## Product contract (confirmed)
