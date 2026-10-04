@@ -88,15 +88,17 @@ test('unsubmitted label edit blocks save and cancellation sends no requests', as
   try { await h.type('Pending'); await h.press('Save'); assert.equal(f.saves.length, 0); assert.equal(h.clockCalls, 0); await h.press('Cancel'); assert.equal(f.saves.length, 0); }
   finally { await h.close(); }
 });
-test('Channel filter uses current Channel candidates, OR/No labels, newest-first and retains composer instance', async () => {
-  const f = clientFixture(), opens = [], h = await harness('ChannelScreens', { client: f.client, channelId: 'p', onThread: id => opens.push(id), onContext() {}, onFiles() {}, onAgents() {}, enqueueFirstMessage: async () => {} });
+test('Channel filter uses current Channel candidates, OR/No labels, running-first and retains composer instance', async () => {
+  const f = clientFixture(), opens = [];
+  f.client.threads.set('A', { ...f.client.threads.get('A'), running: true });
+  const h = await harness('ChannelScreens', { client: f.client, channelId: 'p', onThread: id => opens.push(id), onContext() {}, onFiles() {}, onAgents() {}, enqueueFirstMessage: async () => {} });
   try {
     const composer = h.root.root.findByType('Composer');
     const filter = () => h.root.root.findByType(h.module.LabelsFilter);
-    assert.deepEqual(plain(filter().props.rows.map(t => t.id)), ['B', 'Empty', 'A']);
+    assert.deepEqual(plain(filter().props.rows.map(t => t.id)), ['A', 'B', 'Empty']);
     assert.ok(!h.text().includes('Other channel'));
     await act(async () => filter().props.onChange({ labels: ['Original'], noLabels: true }));
-    assert.deepEqual(plain(h.root.root.findByType('List').props.data.map(t => t.id)), ['Empty', 'A']);
+    assert.deepEqual(plain(h.root.root.findByType('List').props.data.map(t => t.id)), ['A', 'Empty']);
     assert.equal(h.root.root.findByType('Composer'), composer); assert.deepEqual(opens, []);
     const session = h.root.root.findAllByType('Pressable').find(n => n.props.onLongPress && n.props.accessibilityLabel?.startsWith('A,'));
     await act(async () => session.props.onLongPress());
@@ -121,6 +123,31 @@ test('production filter candidates remain exact and searchable; clear has a sepa
     await h.press('Clear filters'); assert.deepEqual(plain(value), { labels: [], noLabels: false });
   } finally { await h.close(); }
 });
+test('inline filters show all sessions, open with plus, remove exact chips and clear without changing labels', async () => {
+  let value = { labels: [], noLabels: false };
+  const h = await harness('LabelsFilter', { rows: [row('A', ['work', 'bug', 'No labels'], 1)], value, onChange(next) { value = next; } });
+  try {
+    const all = () => h.root.root.findAllByType('Text').some(node => node.props.children === 'All sessions');
+    assert.ok(all()); assert.equal(h.button('Labels'), undefined); assert.equal(h.button('Clear all filters'), undefined);
+    assert.equal(h.root.root.findByType('Modal').props.visible, false);
+    await h.press('Add label filter'); assert.equal(h.root.root.findByType('Modal').props.visible, true);
+    await h.press('Label: work'); await h.render({ value });
+    await h.press('Label: bug'); await h.render({ value });
+    await h.press('Label: No labels'); await h.render({ value });
+    await h.press('No labels'); await h.render({ value });
+    await h.press('Done'); assert.equal(h.root.root.findByType('Modal').props.visible, false);
+    assert.ok(!all());
+    await h.press('Remove filter label work'); await h.render({ value });
+    assert.deepEqual(plain(value), { labels: ['bug', 'No labels'], noLabels: true });
+    await h.press('Remove no-label filter'); await h.render({ value });
+    assert.deepEqual(plain(value), { labels: ['bug', 'No labels'], noLabels: false });
+    await h.press('Edit filter label bug'); assert.equal(h.root.root.findByType('Modal').props.visible, true);
+    await h.press('Done'); await h.press('Clear all filters'); await h.render({ value });
+    assert.deepEqual(plain(value), { labels: [], noLabels: false }); assert.ok(all());
+    assert.equal(h.root.root.findAllByType('ScrollView').find(node => node.props.horizontal).props.showsHorizontalScrollIndicator, false);
+  } finally { await h.close(); }
+});
+
 test('production pills use layout measurements, truncate long text and never own row touches', async () => {
   const h = await harness('LabelPills', { markers: ['Long label', 'Second', 'Third'] });
   try {

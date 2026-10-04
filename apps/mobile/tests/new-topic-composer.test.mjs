@@ -57,7 +57,7 @@ async function harness(overrides = {}) {
 test('production channel list docks the composer below a top-first list and leaves channel creation unchanged', async () => {
   const source = readFileSync(new URL('../src/ChannelScreens.tsx', import.meta.url), 'utf8');
   const modules = {
-    react: React, 'react-native': { FlatList: 'List', ActivityIndicator: 'Spinner', Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
+    react: React, 'react-native': { FlatList: 'List', ScrollView: 'ScrollView', ActivityIndicator: 'Spinner', Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { useIsFocused: () => true, useFocusEffect: cb => React.useEffect(cb, [cb]) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 34 }) },
     './FontSize': { Text: 'Text', TextInput: 'Input' }, './NewTopicComposer': { NewTopicComposer: 'Composer' },

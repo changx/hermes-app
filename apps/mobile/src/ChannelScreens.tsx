@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from './FontSize';
@@ -64,9 +64,9 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   };
   const channel = client.channels.get(channelId || '');
   const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
-  // Ordinary (non-inverted) list: latest activity is at the top from first frame.
+  // Running sessions first; latest activity first within each group.
   const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
-    .sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title));
+    .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.last_ref - a.last_ref || b.title.localeCompare(a.title) || a.id.localeCompare(b.id));
   const filtering = client.supportsSessionLabels && labelFilterActive(labelFilter);
   const threads = filtering ? channelThreads.filter(t => matchesLabels(t.markers, labelFilter)) : channelThreads;
   const startEdit = () => { if (!channel || busy) return; setName(channel.name); setEditing(true); setError(''); };
@@ -96,15 +96,13 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   </View>;
   return <View style={s.fill}>
     {channelId ? <View style={s.top}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.fill} contentContainerStyle={s.toolbarLinks}>
       <Pressable accessibilityRole="button" accessibilityLabel="Channel context" disabled={busy || editing || !!renaming}
         onPress={() => onContext(channelId)} style={({ pressed }) => [s.contextLink, pressed && s.iconActionPressed]}>
         <SymbolView name={{ ios: 'info.circle', android: 'info' }} size={18} tintColor="#2b4e81" fallback={<Text>ⓘ</Text>} />
-        <Text style={[s.contextText, s.fill]}>Channel context</Text>
-        <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={14} tintColor="#65758b" fallback={<Text>›</Text>} />
+        <Text style={s.contextText}>Context</Text>
       </Pressable>
-      <IconAction label="Channel options" ios="ellipsis" android="more_horiz" disabled={busy || editing || !!renaming} onPress={channelMenu} />
-    </View> : <View style={s.top}><Text style={s.heading}>Channels</Text></View>}
-    {!!channelId && client.supportsChannelWorkspace === true && <View style={s.workspaceLinks}>
+      {client.supportsChannelWorkspace === true && <>
       <Pressable accessibilityRole="button" accessibilityLabel="Channel files" disabled={busy || editing || !!renaming}
         onPress={() => { if (focusedRef.current) onFiles(channelId); }} style={({ pressed }) => [s.workspaceLink, pressed && s.iconActionPressed]}>
         <SymbolView name={{ ios: 'folder', android: 'folder' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
@@ -115,7 +113,10 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
         <SymbolView name={{ ios: 'doc.text', android: 'description' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
         <Text style={s.contextText}>AGENTS.md</Text>
       </Pressable>
-    </View>}
+      </>}
+      </ScrollView>
+      <IconAction label="Channel options" ios="ellipsis" android="more_horiz" disabled={busy || editing || !!renaming} onPress={channelMenu} />
+    </View> : <View style={s.top}><Text style={s.heading}>Channels</Text></View>}
     {!!channelId && client.supportsSessionLabels === true && <LabelsFilter key={'labels-filter:' + channelId} rows={channelThreads} value={labelFilter} onChange={setLabelFilter} />}
     {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
@@ -140,14 +141,14 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
   </View>;
 }
 const s = StyleSheet.create({
-  fill: { flex: 1 }, top: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }, row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  contextLink: { flex: 1, minHeight: 44, paddingHorizontal: 10, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  workspaceLinks: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, flexWrap: 'wrap' },
-  workspaceLink: { minHeight: 44, paddingHorizontal: 10, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fill: { flex: 1 }, top: { paddingHorizontal: 12, paddingTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }, row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  toolbarLinks: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  contextLink: { minHeight: 44, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  workspaceLink: { minHeight: 44, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
   contextText: { fontSize: 14, color: '#2b4e81' }, sectionHeading: { fontSize: 13, fontWeight: '600', color: '#65758b', marginBottom: 12 },
   list: { paddingHorizontal: 12, paddingBottom: 24 }, heading: { fontSize: 17, fontWeight: '600', color: '#172a40' }, hint: { color: '#65758b', fontSize: 13, lineHeight: 19, marginTop: 4 }, summary: { color: '#42566f', lineHeight: 22, marginBottom: 12 },
   form: { padding: 12, backgroundColor: '#edf3fc', borderRadius: 12, marginBottom: 12, gap: 9 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' }, description: { minHeight: 140, maxHeight: 260, textAlignVertical: 'top' },
-  card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8, gap: 8 }, action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, actionText: { color: '#fff', fontWeight: '600' }, secondary: { backgroundColor: '#e7eef8' }, secondaryText: { color: '#2b4e81' }, iconAction: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#e7eef8' }, iconActionPressed: { backgroundColor: '#d8e4f3' }, iconFallback: { color: '#2b4e81', fontSize: 21, lineHeight: 24 }, disabled: { opacity: 0.5 },
+  card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8, gap: 8 }, action: { backgroundColor: '#2960ad', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, actionText: { color: '#fff', fontWeight: '600' }, secondary: { backgroundColor: '#e7eef8' }, secondaryText: { color: '#2b4e81' }, iconAction: { width: 44, height: 44, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }, iconActionPressed: { backgroundColor: '#d8e4f3' }, iconFallback: { color: '#2b4e81', fontSize: 21, lineHeight: 24 }, disabled: { opacity: 0.5 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }, running: { flexDirection: 'row', alignItems: 'center', gap: 4 }, runningDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#238636' }, runningText: { color: '#237a35', fontSize: 12, fontWeight: '600' }, unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4DA3FF' },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, margin: 12, borderRadius: 8 }, empty: { color: '#65758b', textAlign: 'center', padding: 24 },
   draft: { color: '#dc2626', fontSize: 12, fontWeight: '600' },
