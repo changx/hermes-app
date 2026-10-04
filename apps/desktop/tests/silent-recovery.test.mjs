@@ -192,6 +192,31 @@ test("full history retries without hiding already visible content", async () => 
   service.close();
 });
 
+test("persistent full-history failures stop loading, keep rows and allow another attempt", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { service } = fixture();
+  service.olderCursor = 'before-original';
+  service.client.messages.set('thread-a', [{ id:'m441', ref_seq:441, role:'assistant', text:'Still readable' }]);
+  let attempts=0;
+  service.client.loadFullHistory = async () => { attempts++; throw new TimeoutError('timeout'); };
+  service.client.acquirePage('thread-a');
+  const pending=service.loadOlder();
+  try {
+    for(let i=0;i<4;i++){ await turn();t.mock.timers.tick(10000); }
+    await turn();
+    assert.equal(attempts,3);
+    assert.equal(service.snapshot().loadingHistory,false);
+    assert.equal(service.snapshot().canLoadOlder,true);
+    assert.equal(service.snapshot().messages[0].text,'Still readable');
+    assert.match(service.snapshot().errorMessage,/Earlier messages could not be loaded/);
+    await pending;
+    service.client.loadFullHistory=async()=>{};
+    await service.loadOlder();
+    assert.equal(service.snapshot().canLoadOlder,false);
+    assert.equal(service.snapshot().errorMessage,undefined);
+  } finally { service.close();await pending; }
+});
+
 test("concurrent send recovery owns only one in-flight request and late ACK cannot revive confirmed outbox", async () => {
   const { service, sends } = fixture();
   let release;

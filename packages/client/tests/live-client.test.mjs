@@ -319,7 +319,7 @@ test('entry reads one recent page; one history request reads all pages with no r
   }finally{f.sdk.close()}
 });
 
-test('concurrent history intents share one read and later-page failure can retry the entire original',async()=>{
+test('concurrent history intents share one read and later-page retry resumes after confirmed progress',async()=>{
   const gate=deferred(),f=fullHistoryFixture({gate,failOnce:true});
   try{
     await f.sdk.openConversation('A');const count=f.paths.length;
@@ -327,7 +327,44 @@ test('concurrent history intents share one read and later-page failure can retry
     await until(()=>f.paths.length===count+2);gate.resolve();
     await assert.rejects(a,/503/);await assert.rejects(b,/503/);
     assert.equal(f.sdk.currentOlderCursor,'older');
+    const retryStart=f.paths.length;
     await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);assert.equal(f.sdk.currentOlderCursor,null);
+    const retryPaths=f.paths.slice(retryStart).filter(([,p])=>p.includes('/A/messages'));
+    assert.equal(retryPaths.length,2);
+    assert.equal(new URL(retryPaths[0][1],'https://fixture.test').searchParams.get('after_ref_seq'),'199');
+  }finally{f.sdk.close()}
+});
+
+test('partial full-history pages do not widen concurrent live refresh',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});
+  try{
+    await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
+    await until(()=>f.paths.some(([,p])=>p.includes('after=page')));
+    const count=f.paths.length;
+    f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.paths.slice(count).some(([,p])=>p.includes('after_ref_seq')));
+    const refresh=f.paths.slice(count).filter(([,p])=>p.includes('/A/messages'));
+    assert.equal(new URL(refresh[0][1],'https://fixture.test').searchParams.get('ref_seq'),'441');
+    assert.equal(new URL(refresh[1][1],'https://fixture.test').searchParams.get('after_ref_seq'),'441');
+    gate.resolve();await pending;
+  }finally{gate.resolve();f.sdk.close()}
+});
+
+test('confirmed full-history progress survives reconnect but not a fresh page opening',async()=>{
+  const f=fullHistoryFixture({failOnce:true});
+  try{
+    await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/503/);
+    const reconnectStart=f.paths.length;
+    f.sockets[0].close();
+    await until(()=>f.sockets.length===2&&f.sdk.connectionState==='online'&&f.paths.slice(reconnectStart).some(([,p])=>p.includes('after_ref_seq=441')));
+    const count=f.paths.length;
+    await f.sdk.loadFullHistory('A');
+    assert.equal(new URL(f.paths.slice(count).find(([,p])=>p.includes('/A/messages'))[1],'https://fixture.test').searchParams.get('after_ref_seq'),'199');
+    assert.equal(f.sdk.messages.get('A').length,250);
+    f.sdk.closeConversation();await f.sdk.openConversation('A');
+    const fresh=f.paths.length;await f.sdk.loadFullHistory('A');
+    assert.equal(new URL(f.paths[fresh][1],'https://fixture.test').searchParams.has('after_ref_seq'),false);
+    assert.equal(f.sdk.messages.get('A').length,250);
   }finally{f.sdk.close()}
 });
 

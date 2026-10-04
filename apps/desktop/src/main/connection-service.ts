@@ -120,7 +120,7 @@ export class DesktopConnectionService {
 
   // Retry only reads here. Mutations without an idempotency contract must not
   // be repeated automatically after an ambiguous response.
-  private async recoverRead(key: string, operation: (signal: AbortSignal) => Promise<void>, valid: () => boolean): Promise<void> {
+  private async recoverRead(key: string, operation: (signal: AbortSignal) => Promise<void>, valid: () => boolean, maxAttempts = Infinity): Promise<void> {
     this.readJobs.get(key)?.abort();
     const controller = new AbortController();
     this.readJobs.set(key, controller);
@@ -133,6 +133,10 @@ export class DesktopConnectionService {
           if (!isRetryableError(error)) {
             this.stopIfUnauthorized(error);
             this.actionError(this.connectionError(error instanceof Error ? error : new Error(String(error))) ?? "This conversation could not be opened. Choose another conversation or try again.");
+            return;
+          }
+          if (attempt + 1 >= maxAttempts) {
+            this.actionError("Earlier messages could not be loaded. Your current messages are still here. Try loading earlier messages again.");
             return;
           }
           const delay = Math.min(10_000, 500 * 2 ** Math.min(attempt++, 5));
@@ -690,7 +694,7 @@ export class DesktopConnectionService {
     const state = this.pageStates.get(threadId), owner = client.page(threadId);
     if (!state || !owner || state.historyLoading || this.readJobs.has("older:" + threadId)) return;
     const valid = () => this.client === client && this.pageStates.get(threadId) === state && client.page(threadId) === owner && state.older === before;
-    state.historyLoading = true; this.changed();
+    state.historyLoading = true; this.errorMessage = undefined; this.changed();
     try {
       await this.recoverRead("older:" + threadId, async (signal) => {
         await owner.loadFullHistory(threadId, signal);
@@ -698,7 +702,7 @@ export class DesktopConnectionService {
           state.start = owner.messages.get(threadId)?.[0]?.ref_seq;
           state.older = undefined; this.changed();
         }
-      }, valid);
+      }, valid, 3);
     } finally {
       if (this.pageStates.get(threadId) === state) { state.historyLoading = false; this.changed(); }
     }

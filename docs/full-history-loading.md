@@ -15,7 +15,17 @@ This supersedes five-user-block initial/history expansion. Historical five-block
 
 ## Implementation
 
-`LiveSessionClient.loadFullHistory` shares concurrent requests, reads forward from the oldest reference, rejects repeated cursors and clears older/newer cursors only after completion. A retry restarts the full read; stable references merge without duplicate records. Page ownership, transport cancellation and caller cancellation prevent a late response from restoring removed content.
+`LiveSessionClient.loadFullHistory` shares concurrent requests, starts at the oldest reference, rejects repeated cursors and clears older/newer cursors only after completion. The reliability candidate resumes after the last successfully validated page using its exact stable reference, not a cursor from an earlier connection epoch. A fresh page opening clears this progress. Stable references merge without duplicate records. Page ownership, transport cancellation and caller cancellation prevent a late response from restoring removed content.
+
+Until full loading finishes, live refresh starts at the initial published window, not the oldest partially downloaded row. This avoids a second full-history request chain on each live notification or reconnect. Desktop full-history expansion tries transient failures three times, then clears the loading state, keeps current rows and restores the earlier-history action with a readable error. Other background recovery and send behavior remain unchanged.
+
+### Loading reliability candidate
+
+Jamie reported `Load all earlier messages` remaining on `Loading messages…`. Baseline regression tests reproduced three defects: retry downloaded the first successful page again; live refresh widened to partially downloaded old rows; desktop history recovery kept retrying without leaving the loading state. These are verified code paths, not a captured trace of Jamie's physical device.
+
+Isolated branch `fix/history-load-reliability`, task `t_111b3661`, based on `b2e42ed`. Shared SDK tests: 124 passed. Desktop tests: 140 passed, 14 browser/native-dependent tests skipped. Mobile tests: 547 passed, one optional browser test skipped. Shared, desktop and mobile TypeScript checks, desktop build, iOS/Android Expo exports and `git diff --check` passed. No native device or public deployment verification is claimed. Candidate only: no main merge, push, service restart, plugin or Hermes core change.
+
+Private evidence: active Channel workspace `history-load-*.log`. Initial validation required isolated dependency installation and SDK/Markdown renderer generation; final successful checks followed those prerequisites. Existing mobile lockfile dependencies reported 29 audit findings during installation; dependency changes are outside this fix.
 
 `LivePageClient` routes full loading to the exact page owner. Unopened conversations still receive no body reads.
 
