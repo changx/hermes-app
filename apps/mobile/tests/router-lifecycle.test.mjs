@@ -9,13 +9,14 @@ import ts from 'typescript';
 import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
+import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 
-async function harness({ multiple = false } = {}) {
+async function harness({ multiple = false, list = false } = {}) {
   let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
@@ -63,6 +64,7 @@ async function harness({ multiple = false } = {}) {
   const exports = {};
   const mocks = {
     react: React,
+    '../../../packages/client/src/localDraftMap': localDraftMap,
     'react-native': { Keyboard: { dismiss() {} }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: appState, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => router, useIsFocused: () => React.useContext(Focus),
       useFocusEffect: cb => { const focused = React.useContext(Focus); React.useEffect(() => focused ? cb() : undefined, [focused, cb]); } },
@@ -105,6 +107,7 @@ async function harness({ multiple = false } = {}) {
     api = exports.useApp();
     if (!api.config || !api.client) return null;
     return React.createElement(React.Fragment, {},
+      list && React.createElement(exports.ChannelsScreen, { channelId: 'p_one' }),
       thread && (Array.isArray(thread) ? thread : [thread]).map((id,index,ids) => React.createElement(Focus.Provider, { key: id, value: !settings && index === ids.length - 1 }, React.createElement(exports.ThreadScreen, { threadId: id }))),
       settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)));
   }
@@ -115,11 +118,38 @@ async function harness({ multiple = false } = {}) {
   }
   await render();
   return { render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+    get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('list observes local composer drafts, isolates connections and clears after durable send', async () => {
+  const h = await harness({ list: true, multiple: true });
+  try {
+    const ids = () => Array.from(h.draftThreads).sort();
+    assert.deepEqual(ids(), []);
+    await act(async () => h.timelines.get('t_one').onText(' \n '));
+    assert.deepEqual(ids(), []);
+    await act(async () => h.timelines.get('t_one').onText('unfinished'));
+    assert.deepEqual(ids(), ['t_one']);
+    await h.render(['t_one', 't_two']);
+    assert.deepEqual(ids(), ['t_one']);
+    await act(async () => h.api.composerDrafts.current.set('connection-a:t_two', { items: [{ id: 1 }], files: [] }));
+    assert.deepEqual(ids(), ['t_one', 't_two']);
+    await act(async () => h.api.textDrafts.current.set('connection-b:foreign', 'private other connection'));
+    assert.deepEqual(ids(), ['t_one', 't_two']);
+    await h.render('t_one');
+    await act(async () => { void h.timelines.get('t_one').onSend(); });
+    assert.deepEqual(ids(), ['t_one', 't_two'], 'pending storage must retain draft');
+    await h.finishSend();
+    assert.deepEqual(ids(), ['t_two']);
+    await act(async () => h.api.composerDrafts.current.delete('connection-a:t_two'));
+    assert.deepEqual(ids(), []);
+    assert.deepEqual(h.reads, []);
+  } finally { await h.close(); }
+});
 
 test('two mounted session routes retain independent scenes; returning A releases only B', async () => {
   const h = await harness({ multiple: true });

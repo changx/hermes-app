@@ -31,7 +31,7 @@ test('channels push native routes; settings remains independent from chat', () =
   const calls = [], client = { channels: new Map(), connectionState: 'online' };
   const router = { push: path => calls.push(path), back: () => calls.push('back') };
   const channels = renderReturn('ChannelsScreen', {
-    ready: true, config: { id: 'conn' }, client, channelId: null, error: '', loading: false, router,
+    ready: true, config: { id: 'conn' }, client, channelId: null, draftThreads: new Set(), error: '', loading: false, router,
     navigation: { thread: threadId => calls.push({ pathname: '/threads/[threadId]', params: { threadId } }) },
     View: 'View', Text: 'Text', HeaderActions: 'HeaderActions', FormKeyboardAvoidingView: 'FormKeyboardAvoidingView', ChannelScreens: 'ChannelScreens', Notice: 'Notice',
   });

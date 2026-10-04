@@ -1,5 +1,6 @@
 import { AttachmentView } from "./attachment-view";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
+import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
@@ -9,8 +10,8 @@ import { NavigationPanel } from "./navigation-panel";
 import { NewSessionDialog } from "./new-session-dialog";
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
-const drafts = new Map<string, string>();
-const draftAttachments = new Map<string, readonly DesktopAttachment[]>();
+const drafts = new LocalDraftMap<string>(value => !!value.trim());
+const draftAttachments = new LocalDraftMap<readonly DesktopAttachment[]>(value => value.length > 0);
 const EmptyState = ({ children }: { children: string }) => <p className="empty-state">{children}</p>;
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
 
@@ -225,6 +226,9 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
 };
 
 export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+  const textVersion = useSyncExternalStore(drafts.subscribe, drafts.getSnapshot, drafts.getSnapshot);
+  const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
+  const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
   const [newSessionChannel, setNewSessionChannel] = useState<string>();
   const [preparedDrafts, setPreparedDrafts] = useState<Record<string, number>>({});
@@ -255,7 +259,7 @@ export const DesktopShellView = ({ snapshot }: { snapshot: DesktopSnapshot }) =>
     </nav>
     <nav id="navigation-panel" className="pane navigation-panel" hidden={!panelOpen} aria-labelledby="navigation-heading">
       <header className="pane-header"><h1 id="navigation-heading">Channels</h1><button type="button" aria-label="Create a channel" onClick={() => setEditor("new-channel")}>+</button><button type="button" aria-label="Collapse navigation" onClick={() => setPanelOpen(false)}>‹</button></header>
-      <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} />
+      <NavigationPanel snapshot={snapshot} onNewSession={openNewSession} draftThreads={draftThreads} />
       <footer className="sidebar-footer">{channel ? <div className="resource-actions"><button type="button" onClick={() => setEditor("edit-channel")}>Edit channel</button><button type="button" onClick={deleteChannel}>Delete channel</button></div> : null}<button type="button" className="text-button" onClick={forget}>Forget connection</button></footer>
     </nav>
     <section className="pane conversation-pane" aria-labelledby="conversation-heading"><header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? "Conversation"}</p><h2 id="conversation-heading"><button type="button" className="thread-switcher" title="Switch thread (⌘K)" onClick={() => setEditor("palette")}>{snapshot.selectedThreadTitle ?? "Choose a thread"} ▾</button></h2></div><div className="conversation-actions">{snapshot.selectedThreadId ? <><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy session link</button><button type="button" onClick={() => setEditor("rename-thread")}>Rename</button><button type="button" onClick={archive}>Archive</button></> : null}</div></header>

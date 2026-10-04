@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { LocalDraftMap } from '../../../packages/client/src/localDraftMap';
 import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
@@ -54,8 +55,8 @@ type AppContextValue = {
   pairingStatus: string; busy: boolean; editing: boolean;
   setPairingCode: (value: string) => void; setEditing: (value: boolean) => void;
   saveConnection: () => void; forget: () => void; cancelPairing: () => void;
-  textDrafts: React.RefObject<Map<string, string>>; outboxRef: React.RefObject<MobileOutbox | null>;
-  composerDrafts: React.RefObject<Map<string, ComposerDraft>>;
+  textDrafts: React.RefObject<LocalDraftMap<string>>; outboxRef: React.RefObject<MobileOutbox | null>;
+  composerDrafts: React.RefObject<LocalDraftMap<ComposerDraft>>;
   forgottenConnections: React.RefObject<Set<string>>;
 };
 const AppContext = createContext<AppContextValue | null>(null);
@@ -77,8 +78,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
   // Only unsent user input survives leaving a conversation.
-  const textDrafts = useRef(new Map<string, string>());
-  const composerDrafts = useRef(new Map<string, ComposerDraft>());
+  const textDrafts = useRef(new LocalDraftMap<string>(value => !!value.trim()));
+  const composerDrafts = useRef(new LocalDraftMap<ComposerDraft>(value => value.items.length > 0));
   const forgottenConnections = useRef(new Set<string>());
   const [records, setRecords] = useState<SendRecord[]>([]);
   const outboxRef = useRef<MobileOutbox | null>(null);
@@ -476,7 +477,16 @@ export function FormKeyboardAvoidingView({ children }: { children: React.ReactNo
 
 export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
   const navigation = useSessionNavigation();
-  const { ready, config, client, error, outboxRef } = useApp();
+  const { ready, config, client, error, outboxRef, textDrafts, composerDrafts } = useApp();
+  const textVersion = useSyncExternalStore(textDrafts.current.subscribe, textDrafts.current.getSnapshot);
+  const attachmentVersion = useSyncExternalStore(composerDrafts.current.subscribe, composerDrafts.current.getSnapshot);
+  const draftThreads = useMemo(() => {
+    const ids = new Set<string>(), prefix = `${config?.id ?? ''}:`;
+    for (const map of [textDrafts.current, composerDrafts.current]) {
+      for (const key of map.keys()) if (key.startsWith(prefix) && map.hasDraft(key)) ids.add(key.slice(prefix.length));
+    }
+    return ids;
+  }, [config?.id, textVersion, attachmentVersion, textDrafts, composerDrafts]);
   const router = useRouter();
   if (!ready) return <Notice text="Opening…" />;
   if (!config || !client) return <Notice text="Opening…" />;
@@ -488,7 +498,7 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
     </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>
-      <ChannelScreens key={config.id} client={client} channelId={channelId} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
+      <ChannelScreens key={config.id} client={client} channelId={channelId} draftThreads={draftThreads} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
         onThread={id => navigation.thread(id)}
         onNewChannel={() => router.push('/new-channel')}
         onContext={id => router.push({ pathname: '/channels/[channelId]/context', params: { channelId: id } })}
