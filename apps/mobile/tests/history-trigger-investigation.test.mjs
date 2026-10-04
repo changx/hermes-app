@@ -78,6 +78,8 @@ async function harness() {
   }
   class Box { constructor(storage) { this.storage = storage; } async start() {} async stop() {} reconcile() {} setConnection() {} }
   const mocks = {
+    './sessionTimingSwitch': { SESSION_TIMING_AVAILABLE: false, sessionTimingForPage: () => null },
+    './SessionTimingPanel': {},
     './RenderResources': loadRenderResources(React),
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,

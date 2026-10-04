@@ -2,13 +2,14 @@ import React, { createContext, useContext } from 'react';
 import { useRouter } from 'expo-router';
 import { parseSessionLink, sessionLinkRoute, sessionServer } from '../../../packages/client/src/sessionLinks';
 import { Alert } from 'react-native';
+import { beginSessionTiming } from './sessionTimingSwitch';
 
 const Pages = createContext<{ hasPage: (id: string) => boolean; server?: string }>({ hasPage: () => false });
 export const SessionNavigationProvider = Pages.Provider;
 
 export function navigateSession(router: Pick<ReturnType<typeof useRouter>, 'navigate' | 'dismissTo'>, hasPage: (id: string) => boolean, id: string, route: Parameters<ReturnType<typeof useRouter>['navigate']>[0]) {
   if (hasPage(id)) router.dismissTo(route);
-  else router.navigate(route);
+  else { beginSessionTiming(id); router.navigate(route); }
 }
 
 export function useSessionNavigation() {

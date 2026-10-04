@@ -10,7 +10,7 @@ const { StackRouter } = require('../node_modules/expo-router/build/react-navigat
 const exports = {};
 runInNewContext(ts.transpileModule(readFileSync(new URL('../src/sessionNavigation.tsx', import.meta.url),'utf8'), {
   compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true},
-}).outputText,{exports,require:name=>name==='react'?React:name==='expo-router'?{}:name==='react-native'?{}:{}});
+}).outputText,{exports,require:name=>name==='react'?React:name==='./sessionTimingSwitch'?{beginSessionTiming(){}}:name==='expo-router'?{}:name==='react-native'?{}:{}});
 
 test('new target navigates; existing target dismisses to original native page',()=>{
   const router = StackRouter({initialRouteName:'index'}), options={routeNames:['index','threads/[threadId]'],routeParamList:{},routeGetIdList:{'threads/[threadId]':({params})=>params.threadId}};

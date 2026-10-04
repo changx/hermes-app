@@ -16,7 +16,7 @@ const timeline = { exports: {} };
 runInNewContext(ts.transpileModule(readFileSync(new URL('../src/timeline.ts', import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: timeline, exports: timeline.exports, require: name => name === './messageTime.ts' ? messageTime : assert.fail(name) });
 
-function mount({ rows = ['a'], position, motion = false, keyboard = false, scale = 1, fontScale = 1, platform = 'ios' } = {}) {
+function mount({ rows = ['a'], position, motion = false, keyboard = false, scale = 1, fontScale = 1, platform = 'ios', onMeasuredVisible } = {}) {
   const calls = [], frames = [], hooks = [], subscriptions = {}, effects = [];
   let index = 0, flatList, sticky, input, field, tree, keyboardHandler, visible = keyboard;
   const list = { getScrollResponder: () => ({ scrollToEnd: options => calls.push({ animated: options.animated }) }), scrollToOffset: options => calls.push({ fallback: { offset: options.offset, animated: options.animated } }) };
@@ -27,6 +27,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     useRef: initial => { const slot = index++; return hooks[slot] ??= { current: initial }; },
     useState: initial => { const slot = index++; hooks[slot] ??= { current: typeof initial === 'function' ? initial() : initial }; return [hooks[slot].current, value => { hooks[slot].current = value; }]; },
     useCallback: fn => { index++; return fn; },
+    useMemo: (fn, deps) => { const slot = index++; const old = hooks[slot]; if (!old || deps.some((value, i) => !Object.is(value, old.deps[i]))) hooks[slot] = { value: fn(), deps }; return hooks[slot].value; },
     useEffect: (fn, deps) => {
       const slot = index++;
       const previous = hooks[slot]?.deps;
@@ -60,7 +61,7 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     { module: output, exports: output.exports, require: name => { assert.ok(name in modules, name); return modules[name]; },
       requestAnimationFrame: cb => { frames.push(cb); return frames.length; }, cancelAnimationFrame: () => {} });
   const props = {
-    active: true, threadId: 'th', rows: rows.map(row => typeof row === 'string' ? { key: row, role: 'user', text: row } : row), startRef: null, hasOlder: false,
+    active: true, threadId: 'th', onMeasuredVisible, rows: rows.map(row => typeof row === 'string' ? { key: row, role: 'user', text: row } : row), startRef: null, hasOlder: false,
     onOlder() {}, onPosition() {}, onVisibleRef() {}, text: '', onText() {}, onSend() {}, records: [], receipts: [], interactions: [], answers: {},
     onAnswerText() {}, onAnswer() {}, onCancel() {}, onStop() {}, busy: false, position
   };
@@ -103,6 +104,21 @@ function mount({ rows = ['a'], position, motion = false, keyboard = false, scale
     visible: value => { visible = value; }, motion: value => subscriptions.motion(value), app: state => subscriptions.app(state)
   };
 }
+
+test('temporary measurement uses a separate zero-dwell helper and leaves normal receipt callbacks unchanged', () => {
+  const plain = mount(); assert.equal(plain.flatList.viewabilityConfigCallbackPairs, undefined);
+  let calls = 0;
+  const measured = mount({ onMeasuredVisible: () => calls++ });
+  const pairs = measured.flatList.viewabilityConfigCallbackPairs;
+  assert.deepEqual(JSON.parse(JSON.stringify(pairs[0].viewabilityConfig)), { minimumViewTime: 0, itemVisiblePercentThreshold: 1, waitForInteraction: false });
+  assert.equal(typeof measured.flatList.onViewableItemsChanged, 'function');
+  const callback = pairs[0].onViewableItemsChanged;
+  callback({ viewableItems: [] }); callback({ viewableItems: [{ isViewable: true, item: { key: 'placeholder' } }] }); assert.equal(calls, 0);
+  callback({ viewableItems: [{ isViewable: false, item: { refSeq: 1 } }] }); assert.equal(calls, 0);
+  callback({ viewableItems: [{ isViewable: true, item: { refSeq: 1 } }] }); assert.equal(calls, 1);
+  measured.rerender(); assert.equal(measured.flatList.viewabilityConfigCallbackPairs, pairs);
+  callback({ viewableItems: [{ isViewable: true, item: { refSeq: 2 } }] }); assert.equal(calls, 1);
+});
 
 test('composer centers a content-sized native input inside its bordered shell', () => {
   for (const scale of [1, 1.1, 1.15, 1.3]) for (const fontScale of [1, 1.5, 2]) {

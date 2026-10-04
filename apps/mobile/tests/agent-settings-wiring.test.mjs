@@ -14,7 +14,7 @@ function renderReturn(name, values) {
   assert.ok(screen, `production ${name} exists`);
   const result = screen.body.statements.filter(ts.isReturnStatement).at(-1);
   const jsx = ts.transpileModule(`(function render() { ${result.getText(app)} })`, { compilerOptions: { jsx: ts.JsxEmit.React } }).outputText;
-  return walk(runInNewContext(jsx, { React: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }, styles: {}, ...values })());
+  return walk(runInNewContext(jsx, { React: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) }, styles: {}, SESSION_TIMING_AVAILABLE: false, measurement: null, ...values })());
 }
 
 test('Expo Router owns entry, native stack and credential-scoped viewer; no modal navigator', () => {

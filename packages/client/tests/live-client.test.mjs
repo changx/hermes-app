@@ -33,6 +33,57 @@ function fixture({request,ack=true}={}){
 }
 const watch=(socket,id)=>socket.sent.map(s=>s==='ping'?null:JSON.parse(s)).filter(s=>s?.thread_id===id).at(-1);
 
+test('temporary open observation records the real SDK gate without changing request order or leaking payloads', async () => {
+  const stateGate = deferred(), events = [];
+  const f = fixture({ request: async (_method, path, _body, _signal, reply) => {
+    if (path.endsWith('/live-state')) { await stateGate.promise; return reply(path); }
+  } });
+  try {
+    const opening = f.sdk.openConversation('A', undefined, event => events.push(event));
+    await until(() => events.some(e => e.stage === 'history-ready'));
+    assert.equal(f.sdk.messages.get('A').length, 1, 'history exists while opening remains gated');
+    assert.ok(!events.some(e => e.stage === 'open-ready'));
+    stateGate.resolve(); await opening;
+    const stages = events.filter(e => e.stage).map(e => e.stage);
+    assert.deepEqual(stages, ['open-start','watch-ready','history-start','history-ready','state-start','state-ready','open-ready']);
+    for (const kind of ['history','state']) {
+      const spans = events.filter(e => e.request === kind);
+      assert.equal(spans.length, 2); assert.equal(spans[0].edge, 'start'); assert.equal(spans[1].edge, 'end'); assert.equal(spans[0].sequence, spans[1].sequence);
+    }
+    for (const event of events) assert.ok(Object.keys(event).every(k => ['stage','rows','request','edge','sequence'].includes(k)));
+    const encoded = JSON.stringify(events); assert.ok(!encoded.includes('synthetic') && !encoded.includes('m1') && !encoded.includes('/v1/'));
+    const count = events.length;
+    f.sockets[0].emit({ ...watch(f.sockets[0], 'A'), type: 'conversation_changed' }); await tick(); await tick();
+    assert.equal(events.length, count, 'finished sample ignores ordinary live refresh');
+  } finally { f.sdk.close(); }
+});
+
+test('disabled and throwing diagnostic observers leave production SDK requests and content unchanged', async () => {
+  const plain = fixture(), measured = fixture();
+  try {
+    await plain.sdk.openConversation('A');
+    await measured.sdk.openConversation('A', undefined, () => { throw Error('diagnostic failure'); });
+    assert.deepEqual(measured.paths, plain.paths); assert.deepEqual(measured.sdk.messages.get('A'), plain.sdk.messages.get('A'));
+    assert.equal(measured.errors.length, 0);
+  } finally { plain.sdk.close(); measured.sdk.close(); }
+});
+
+test('cancelled opening cannot transfer old request completions into the next observer', async () => {
+  const gate = deferred(), a = [], b = [];
+  const f = fixture({ request: async (_method, path, _body, _signal, reply) => {
+    if (path.includes('/A/messages')) { await gate.promise; return reply(path); }
+  } });
+  try {
+    const first = f.sdk.openConversation('A', undefined, event => a.push(event));
+    await until(() => a.some(e => e.request === 'history' && e.edge === 'start'));
+    const rejected = assert.rejects(first, /aborted/);
+    await f.sdk.openConversation('B', undefined, event => b.push(event)); await rejected;
+    assert.ok(a.some(e => e.stage === 'cancelled'));
+    const count = b.length; gate.resolve(); await tick(); await tick(); assert.equal(b.length, count);
+    assert.equal(b.filter(e => e.request === 'history' && e.edge === 'end').length, 1);
+  } finally { gate.resolve(); f.sdk.close(); }
+});
+
 test('target opening reads a bounded window, reconciles only its loaded range and leaves later pages explicit',async()=>{
   let remote=Array.from({length:100},(_,i)=>message('m'+(i*2+1)));
   let rangeGate=null;

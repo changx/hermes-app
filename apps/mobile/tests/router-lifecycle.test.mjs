@@ -12,6 +12,7 @@ import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
+import { SessionOpenMeasurement } from '../src/sessionTiming.ts';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const sdkBundle = await build({ entryPoints: [new URL('../../../packages/client/src/livePages.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
@@ -21,7 +22,8 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 
-async function harness({ multiple = false, list = false, strict = false, productionOwners = false } = {}) {
+async function harness({ multiple = false, list = false, strict = false, productionOwners = false, measuring = false } = {}) {
+  const measurement = measuring ? new SessionOpenMeasurement('tap') : null;
   let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
@@ -55,7 +57,14 @@ async function harness({ multiple = false, list = false, strict = false, product
     suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
-    async openConversation(id) { opened++; this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null; }
+    async openConversation(id, _target, timing) {
+      opened++; this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null;
+      if (measuring) {
+        for (const stage of ['open-start','watch-ready','history-start','history-ready','state-start','state-ready','open-ready']) timing?.({ stage, ...(stage === 'history-ready' ? { rows: 1 } : {}) });
+        this.messages.set(id, [{ id: 'row', ref_seq: 1, role: 'assistant', text: 'Synthetic content' }]);
+        this.options.onChange();
+      }
+    }
     closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
     resumeTail() {}
     async markRead(...args) { reads.push(args); }
@@ -85,6 +94,8 @@ async function harness({ multiple = false, list = false, strict = false, product
   }
   const exports = {};
   const mocks = {
+    './sessionTimingSwitch': { SESSION_TIMING_AVAILABLE: measuring, sessionTimingForPage: () => measurement },
+    './SessionTimingPanel': { SessionTimingPanel: 'TimingPanel', SessionTimingControl: 'TimingControl' },
     './RenderResources': loadRenderResources(React),
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
@@ -144,13 +155,37 @@ async function harness({ multiple = false, list = false, strict = false, product
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { measurement, render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('opt-in measurement follows production App UI release and first nonempty viewable callback, not the response alone', async () => {
+  const h = await harness({ measuring: true });
+  try {
+    assert.equal(h.measurement.result, null, 'HTTP/open completion is not presentation completion');
+    await act(async () => h.timelines.get('t_one').onVisibleRefs([])); assert.equal(h.measurement.result, null);
+    await act(async () => h.timelines.get('t_one').onMeasuredVisible());
+    assert.equal(h.measurement.result.outcome, 'visible-rows');
+    assert.equal(h.measurement.result.rows, 1);
+    assert.ok(h.measurement.result.stages['ui-ready'] >= h.measurement.result.stages['open-ready']);
+    const result = h.measurement.result;
+    await h.render('t_one', true); await h.render('t_one'); await h.revision();
+    assert.equal(h.measurement.result, result, 'returning a living page does not overwrite its first-opening sample');
+  } finally { await h.close(); }
+});
+
+test('backgrounding an unfinished measurement produces cancellation, not a slow render sample', async () => {
+  const h = await harness({ measuring: true });
+  try {
+    await h.appState('background'); assert.equal(h.measurement.result.outcome, 'cancelled');
+    await h.appState('active'); await act(async () => h.timelines.get('t_one').onMeasuredVisible());
+    assert.equal(h.measurement.result.outcome, 'cancelled');
+  } finally { await h.close(); }
+});
 
 test('discarded route renders never acquire pages; committed cleanup releases all owners', async () => {
   const h = await harness({ multiple: true, productionOwners: true });

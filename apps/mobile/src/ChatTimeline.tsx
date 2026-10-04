@@ -1,4 +1,4 @@
-import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, TextInput } from './FontSize';
@@ -85,6 +85,8 @@ interface Props {
   position?: TimelinePosition;
   onPosition(position: TimelinePosition): void;
   onVisibleRefs?(refs: number[]): void;
+  /** Temporary timing only; separate from the normal receipt viewability dwell. */
+  onMeasuredVisible?(): void;
 
   text: string;
   onText(value: string): void;
@@ -135,6 +137,17 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const list = useRef<FlashListRef<TimelineRow>>(null);
   const visibleCallback = useRef(props.onVisibleRefs);
   visibleCallback.current = props.onVisibleRefs;
+  const measuredCallback = useRef(props.onMeasuredVisible);
+  measuredCallback.current = props.onMeasuredVisible;
+  const measuredOnce = useRef(false);
+  const measuredVisibility = useMemo(() => props.onMeasuredVisible ? [{
+    viewabilityConfig: { minimumViewTime: 0, itemVisiblePercentThreshold: 1, waitForInteraction: false },
+    onViewableItemsChanged: ({ viewableItems }: { viewableItems: { item: TimelineRow; isViewable: boolean }[] }) => {
+      if (!measuredOnce.current && viewableItems.some(v => v.isViewable && v.item.refSeq !== undefined)) {
+        measuredOnce.current = true; measuredCallback.current?.();
+      }
+    },
+  }] : undefined, []);
   const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: { item: TimelineRow; isViewable: boolean }[] }) => {
     if (sourceTarget.current !== undefined && viewableItems.some(v => v.isViewable && v.item.refSeq === sourceTarget.current)) setHighlightVisible(true);
     visibleCallback.current?.(viewableItems.filter(v => v.isViewable && v.item.refSeq !== undefined).map(v => v.item.refSeq!));
@@ -376,7 +389,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         </View>}
         ListEmptyComponent={props.locatingBusy ? <ConversationLoading active={props.active} /> : props.locatingMessage ? null : <Text style={styles.empty}>No messages yet</Text>}
 
-        onViewableItemsChanged={onViewableItemsChanged}
+        onViewableItemsChanged={onViewableItemsChanged} viewabilityConfigCallbackPairs={measuredVisibility}
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;

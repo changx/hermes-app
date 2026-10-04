@@ -28,6 +28,9 @@ import { LabelPills, LabelsEditor } from './SessionLabels';
 import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
+import { SESSION_TIMING_AVAILABLE, sessionTimingForPage } from './sessionTimingSwitch';
+import { SessionTimingControl, SessionTimingPanel } from './SessionTimingPanel';
+import type { SessionOpenMeasurement } from './sessionTiming';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { AgentSettings, useAgentName } from './AgentSettings';
@@ -250,22 +253,24 @@ export function ThreadScreen({ threadId, targetRef }: { threadId: string; target
 
 function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
   const { client: account } = useApp();
-  const [owner, setOwner] = useState<{ account: LivePageClient; id: string; page: LiveSessionClient } | null>(null);
+  const [owner, setOwner] = useState<{ account: LivePageClient; id: string; page: LiveSessionClient; measurement: SessionOpenMeasurement | null } | null>(null);
   // Registration is a committed lifetime, never a render side effect. A render
   // that suspends/is discarded owns nothing. Effect replay reacquires a fresh
   // owner before rendering its contents; cleanup releases only that exact owner.
   useEffect(() => {
     if (!account) return;
+    const measurement = sessionTimingForPage(threadId);
+    measurement?.mark('page-mounted');
     const page = account.acquirePage(threadId);
-    setOwner({ account, id: threadId, page });
-    return () => account.releasePage(threadId, page);
+    setOwner({ account, id: threadId, page, measurement });
+    return () => { measurement?.mark('cancelled'); account.releasePage(threadId, page); };
   }, [account, threadId]);
   if (!owner || owner.account !== account || owner.id !== threadId) return null;
   if (account?.page(threadId) !== owner.page) return <Notice text="This conversation is unavailable." />;
-  return <RenderResourceProvider><MountedThreadScreen client={owner.page} threadId={threadId} targetRef={targetRef} /></RenderResourceProvider>;
+  return <RenderResourceProvider><MountedThreadScreen client={owner.page} measurement={owner.measurement} threadId={threadId} targetRef={targetRef} /></RenderResourceProvider>;
 }
 
-function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
+function MountedThreadScreen({ client, threadId, targetRef, measurement }: { client: LiveSessionClient; threadId: string; targetRef?: number; measurement: SessionOpenMeasurement | null }) {
   const router = useRouter();
   const { client: accountClient, config, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
@@ -312,13 +317,16 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const [foreground, setForeground] = useState(appActive.current);
   const [visibleRefs, setVisibleRefs] = useState<number[]>([]);
   const onVisibleRefs = useCallback((refs: number[]) => setVisibleRefs(old => old.length === refs.length && old.every((v, i) => v === refs[i]) ? old : refs), []);
+  const onMeasuredVisible = useCallback(() => {
+    if (located && focusedRef.current && appActive.current) measurement?.mark('visible-rows');
+  }, [located, measurement]);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; setForeground(appActive.current); });
+    const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; if (!appActive.current) measurement?.mark('cancelled'); setForeground(appActive.current); });
     return () => sub.remove();
   }, []);
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
-    return () => { focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
+    return () => { measurement?.mark('cancelled'); focusedRef.current = false; ++openingRef.current; setHistoryBusy(false); tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, []));
 
   const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
@@ -334,12 +342,13 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     const opening = ++openingRef.current;
     setPageCursor(null); setHistoryBusy(true); setLocated(false); setStartRef(null);
     try {
-      const openingTask = client.openConversation(id, requestedRef); ownedWatch.current = client.currentConversationKey;
+      const openingTask = client.openConversation(id, requestedRef, measurement?.observe); ownedWatch.current = client.currentConversationKey;
       await openingTask;
       const current = () => focusedRef.current && appActive.current && opening === openingRef.current && client.currentThreadId === id;
       if (!current()) return;
+      measurement?.mark('ui-ready');
       setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true);
-    } catch { if (focusedRef.current && opening === openingRef.current) setError(requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
+    } catch { measurement?.mark('failed'); if (focusedRef.current && opening === openingRef.current) setError(requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
     finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
@@ -439,6 +448,11 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   }, [client, threadId]);
 
   const selected = accountClient?.threads.get(threadId);
+  useEffect(() => {
+    if (!measurement || !located || rows.length || !focused || !foreground) return;
+    const frame = requestAnimationFrame(() => measurement.mark('empty-frame'));
+    return () => cancelAnimationFrame(frame);
+  }, [measurement, located, rows.length, focused, foreground]);
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
@@ -448,6 +462,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     <Stack.Screen options={{ title: selected.title || 'Conversation' }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {historyBusy ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
+    {SESSION_TIMING_AVAILABLE && <SessionTimingPanel measurement={measurement} active={focused && foreground} />}
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation',
@@ -463,7 +478,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
       onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}
       onOlder={loadOlder}
       position={entryPosition} onPosition={() => {}}
-      onVisibleRefs={onVisibleRefs}
+      onVisibleRefs={onVisibleRefs} onMeasuredVisible={measurement ? onMeasuredVisible : undefined}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
@@ -482,6 +497,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
       }, 'Could not retry this message. It is still saved on this device.')}
       onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
+    {SESSION_TIMING_AVAILABLE && <SessionTimingPanel measurement={measurement} active={focused && foreground} />}
   </View>;
 }
 
@@ -563,6 +579,7 @@ export function SettingsRoute() {
       saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => router.back()}>
       <ModelSettings key={config.id} client={client} />
       <FontSizeSettings />
+      {SESSION_TIMING_AVAILABLE && <SessionTimingControl />}
     </AgentSettings>
   </FormKeyboardAvoidingView>;
 }

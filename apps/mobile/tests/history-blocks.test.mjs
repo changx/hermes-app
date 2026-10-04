@@ -127,6 +127,7 @@ test('the reference of an existing reading boundary must be found exactly, never
 
 const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function callback(name, context) {
+  context.measurement ??= null;
   let initializer;
   function visit(node) { if (ts.isVariableDeclaration(node) && node.name.getText(app) === name) initializer = node.initializer.getText(app); ts.forEachChild(node, visit); }
   visit(app); assert.ok(initializer);

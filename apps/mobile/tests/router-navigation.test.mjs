@@ -7,6 +7,7 @@ import { routeId } from '../src/routeId.ts';
 
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function callback(name, context) {
+  context.measurement ??= null;
   let initializer;
   const visit = node => {
     if (ts.isVariableDeclaration(node) && node.name.getText(source) === name) initializer = node.initializer.getText(source);

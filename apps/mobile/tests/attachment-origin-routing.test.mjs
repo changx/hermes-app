@@ -15,7 +15,7 @@ function openHarness({failure,gate}={}){
   const events=[],focusedRef={current:true},openingRef={current:0};
   const client={currentThreadId:'th_one',currentConversationKey:{},currentOlderCursor:'older',messages:new Map([['th_one',[{ref_seq:19},{ref_seq:73}]]]),
     async openConversation(id,target){events.push(['open',id,target]);await gate;if(failure)throw Error('unavailable');}};
-  const context={client,focusedRef,appActive:{current:true},openingRef,ownedWatch:{current:null},
+  const context={measurement:null,client,focusedRef,appActive:{current:true},openingRef,ownedWatch:{current:null},
     setPageCursor:value=>events.push(['cursor',value]),setHistoryBusy:value=>events.push(['busy',value]),setLocated:value=>events.push(['located',value]),setStartRef:value=>events.push(['start',value]),setError:value=>events.push(['error',value]),
     async loadHistoryBlocks(){events.push(['blocks']);return {olderCursor:'older-latest',startRef:99};}};
   runInNewContext(ts.transpileModule('globalThis.openThread='+opener,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
