@@ -179,6 +179,8 @@ export class DesktopConnectionService {
         id: thread.id,
         channelId: thread.project_id,
         title: thread.title,
+        markers: thread.markers ?? [],
+        markersUpdatedAt: thread.markers_updated_at ?? 0,
         running: "running" in thread ? Boolean(thread.running) : runningThreads.has(thread.id),
         completedUnread: thread.completed_unread,
         resultVersion: thread.result_version,
@@ -237,6 +239,8 @@ export class DesktopConnectionService {
       connectionState: this.connectionState,
       connectionLabel: stateLabel[this.connectionState],
       ...(this.connection ? { draftIdentity: this.connection.id } : {}),
+      connectionKey: this.connection?.id,
+      supportsSessionLabels: this.client?.supportsSessionLabels === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
@@ -649,6 +653,15 @@ export class DesktopConnectionService {
     if (!title || title.length > 200 || !this.listedThreads.has(threadId)) throw new Error("Enter a topic title.");
     try { const thread = await this.requireClient().updateThread(threadId, { title }); this.listedThreads.set(thread.id, thread); this.changed(); }
     catch { this.actionError("The topic could not be renamed. It may have changed on another device."); throw new Error("Topic rename was not confirmed."); }
+  }
+
+  async saveThreadLabels(threadId: string, markers: string[], timestamp: number, connectionKey: string) {
+    const client = this.requireClient(), connection = this.connection;
+    if (!connection || connection.id !== connectionKey) throw new Error('This connection changed. Reopen the label editor.');
+    const result = await client.saveThreadLabels(threadId, markers, timestamp);
+    if (this.client !== client || this.connection !== connection || this.closed) throw new Error('Label save was not confirmed.');
+    this.changed();
+    return result;
   }
 
   async archiveThread(threadId: string): Promise<void> {

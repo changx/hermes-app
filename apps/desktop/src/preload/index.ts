@@ -32,6 +32,7 @@ const api: HermesDesktopApi = Object.freeze({
   deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),
   createThread: (input: ThreadInput): Promise<string> => ipcRenderer.invoke("desktop:create-thread", input),
   renameThread: (threadId: string, title: string): Promise<void> => ipcRenderer.invoke("desktop:rename-thread", threadId, title),
+  saveThreadLabels: (threadId: string, markers: string[], timestamp: number, connectionKey: string) => ipcRenderer.invoke('desktop:save-thread-labels', threadId, markers, timestamp, connectionKey),
   archiveThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:archive-thread", threadId),
   loadOlder: (): Promise<void> => ipcRenderer.invoke("desktop:load-older"),
   getChannelInfo: (channelId: string) => ipcRenderer.invoke("desktop:get-channel-info", channelId),

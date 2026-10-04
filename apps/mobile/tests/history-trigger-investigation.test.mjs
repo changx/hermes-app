@@ -100,7 +100,7 @@ async function harness() {
       React.useImperativeHandle(ref, () => ({ holdPosition: () => trace.push({ event: 'hold-position' }), followLatest() {} }));
       return React.createElement('Chat');
     }) },
-    './ChannelScreens': {}, './historyBlocks': blocks, './timeline': timeline,
+    './SessionLabels': { LabelPills: 'LabelPills', LabelsEditor: 'LabelsEditor' }, './ChannelScreens': {}, './historyBlocks': blocks, './timeline': timeline,
     './sendNotice': sendNotice,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments' },

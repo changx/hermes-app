@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LocalDraftMap } from '../../../packages/client/src/localDraftMap';
 import { bindLocalDraftStorage } from './localDraftStorage';
-import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
@@ -24,6 +24,7 @@ import type { Connection, SendRecord } from './send';
 import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
+import { LabelPills, LabelsEditor } from './SessionLabels';
 import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
@@ -40,9 +41,9 @@ function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSy
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
-export function HeaderActions({ onConnection, onSettings, onCopyLink }: { onConnection: () => void; onSettings: () => void; onCopyLink?: () => void }) {
+export function HeaderActions({ onConnection, onSettings, onCopyLink, onSessionMenu }: { onConnection: () => void; onSettings: () => void; onCopyLink?: () => void; onSessionMenu?: () => void }) {
   return <View style={styles.headerActions}>
-    {onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
+    {onSessionMenu ? <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onSessionMenu} /> : onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
     <HeaderIcon label="Connection" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
     <HeaderIcon label="Agent settings" ios="gearshape" android="settings" onPress={onSettings} />
   </View>;
@@ -265,11 +266,12 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
 
 function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
   const router = useRouter();
-  const { config, agentName, revision, records, connectionEpoch, status, error: connectionError,
+  const { client: accountClient, config, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
+  const [editingLabels, setEditingLabels] = useState(false);
   const draftKey = `${config?.id ?? ''}:${threadId}`;
   const [text, setText] = useState(() => textDrafts.current.get(draftKey) || ''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
   useEffect(() => {
@@ -435,7 +437,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, [client, threadId]);
 
-  const selected = client?.threads.get(threadId);
+  const selected = accountClient?.threads.get(threadId);
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
@@ -448,8 +450,10 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation',
-      headerRight: () => <HeaderActions onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
+      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
+    {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
+    {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
       hasNewer={anchor !== undefined && !!client.currentNewerCursor} onNewer={() => run(async () => { await client.loadNewer(threadId); })}

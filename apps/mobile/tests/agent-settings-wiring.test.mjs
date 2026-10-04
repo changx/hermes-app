@@ -53,10 +53,11 @@ test('channels push native routes; settings remains independent from chat', () =
 });
 
 test('chat composer retains route-local identity and hides callbacks after blur', () => {
-  const client = { channels: new Map([['p_one', {}]]), threads: new Map([['t_one', { project_id: 'p_one', title: 'Conversation one' }]]), supportsLatest: true };
-  const calls = [], focusedRef = { current: true }, currentComposer = { current: 'conn:t_one' };
+  const client = { channels: new Map([['p_one', {}]]), threads: new Map([['t_one', { project_id: 'p_one', title: 'Conversation one' }]]), supportsLatest: true, supportsSessionLabels: true };
+  const calls = [], alerts = [], focusedRef = { current: true }, currentComposer = { current: 'conn:t_one' };
   const nodes = renderReturn('MountedThreadScreen', {
-    config: { id: 'conn' }, client, selected: client.threads.get('t_one'), threadId: 't_one', anchor: undefined, showLatest() {}, router: { push: path => calls.push(path) }, rows: [], visibleMessages: [], located: true, first: 0,
+    config: { id: 'conn', baseUrl: 'https://synthetic.test' }, client, accountClient: client, editingLabels: false, setEditingLabels: value => calls.push(value), LabelPills: 'LabelPills', LabelsEditor: 'LabelsEditor', Alert: { alert: (...args) => alerts.push(args) }, selected: client.threads.get('t_one'), threadId: 't_one', anchor: undefined, showLatest() {}, router: { push: path => calls.push(path) }, rows: [], visibleMessages: [], located: true, first: 0,
+
     draftKey: 'conn:t_one', composerDrafts: { current: new Map() }, forgottenConnections: { current: new Set() }, pageCursor: null, historyBusy: false, entryPosition: { offset: 0, following: true, startRef: null }, timelineRef: { current: { pasteText: value => calls.push(value) } },
     text: 'draft', draftAttachments: [{ id: 'att' }], attachmentsBusy: false, receipts: [], interactions: [], answers: {}, status: 'online',
     composerScope: 'conn:t_one', currentComposer, focusedRef, attachmentClearKey: 3, agentName: { name: 'Tuly' }, busy: false,
@@ -67,6 +68,9 @@ test('chat composer retains route-local identity and hides callbacks after blur'
   assert.equal(nodes.find(n => n.type === 'StackScreen').props.options.title, 'Conversation one');
   const header = nodes.find(n => n.type === 'StackScreen').props.options.headerRight();
   header.props.onSettings(); assert.deepEqual(calls, ['/settings']); calls.length = 0;
+  header.props.onSessionMenu();
+  assert.deepEqual(JSON.parse(JSON.stringify(alerts[0][2].map(action => action.text))), ['Edit labels', 'Copy session link', 'Cancel']);
+  alerts[0][2][0].onPress(); assert.deepEqual(calls, [true]); calls.length = 0;
   const timeline = nodes.find(n => n.type === 'ChatTimeline');
   assert.equal(timeline.props.threadId, 't_one'); assert.equal(timeline.props.text, 'draft');
   assert.equal(timeline.props.typingIndicator.props.name, 'Tuly');

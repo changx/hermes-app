@@ -1,5 +1,6 @@
 import type { ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
+import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 
@@ -8,6 +9,8 @@ export type DesktopThread = Readonly<{
   id: string;
   channelId: string;
   title: string;
+  markers?: readonly string[];
+  markersUpdatedAt?: number;
 
   lastMessageAt?: number;
   running: boolean;
@@ -52,6 +55,8 @@ export type DesktopSnapshot = Readonly<{
   phase: DesktopPhase;
   connectionState: ConnectionState;
   connectionLabel: string;
+  connectionKey?: string;
+  supportsSessionLabels?: boolean;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
   loadingHistory?: boolean;
@@ -101,6 +106,7 @@ export interface HermesDesktopApi {
   deleteChannel(channelId: string): Promise<void>;
   createThread(input: ThreadInput): Promise<string>;
   renameThread(threadId: string, title: string): Promise<void>;
+  saveThreadLabels(threadId: string, markers: string[], timestamp: number, connectionKey: string): Promise<LabelDetail>;
   archiveThread(threadId: string): Promise<void>;
   loadOlder(): Promise<void>;
   getChannelInfo(channelId: string): Promise<DesktopChannel>;

@@ -1,5 +1,6 @@
 import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type Message } from './index';
 import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError } from './liveProtocol';
+import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 
 const wait=(ms:number,signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{
   if(signal.aborted){reject(new Error('aborted'));return}
@@ -32,6 +33,7 @@ export class LiveSessionClient extends HermesClient {
   private contentJob:Promise<void>|null=null;
   private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>}|null=null;
   private directoryReady=false;
+  private labelSaves = new Set<string>();
   private older:string|null=null;
   private anchor:number|undefined;
   private newer:string|null=null;
@@ -82,7 +84,7 @@ export class LiveSessionClient extends HermesClient {
       const minimal={id,name:c.name};this.minimalChannels.add(minimal);this.channels.set(id,minimal);
     }
     for(const [id,t]of this.threads)if(!this.minimalThreads.has(t)){
-      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
+      const minimal={id,project_id:t.project_id,title:t.title,archived:t.archived,last_ref:0,read_ref:0,unread_count:0,...(t.last_message_at===undefined?{}:{last_message_at:t.last_message_at}),running:Boolean(t.running),markers:t.markers??[],markers_updated_at:t.markers_updated_at??0,...(t.completed_unread===undefined?{}:{completed_unread:t.completed_unread,result_version:t.result_version,result_ref:t.result_ref})};
       this.minimalThreads.add(minimal);this.threads.set(id,minimal);
     }
   }
@@ -169,6 +171,35 @@ export class LiveSessionClient extends HermesClient {
     const body=await this.call('GET','/v1/channels/'+encodeURIComponent(id),undefined,signal),raw=body.channel as Record<string,unknown>;
     if(!raw||raw.id!==id||typeof raw.name!=='string'||raw.description!==undefined&&typeof raw.description!=='string')throw new ProtocolError('channel identity mismatch');
     return {id,name:raw.name,...(typeof raw.description==='string'?{description:raw.description}:{})};
+  }
+  private labelTarget(id: string): string {
+    if (!this.supportsSessionLabels || this.connectionState !== 'online' || !this.isThreadAvailable(id)) throw new ProtocolError('Labels are unavailable');
+    return this.threads.get(id)!.project_id;
+  }
+  private parseLabelDetail(raw: Record<string, unknown>, id: string, channel: string): LabelDetail {
+    if (raw.thread_id !== id || raw.project_id !== channel) throw new ProtocolError('Label target mismatch');
+    try { return { thread_id: id, project_id: channel, ...parseLabelMetadata(raw) }; }
+    catch { throw new ProtocolError('Invalid labels'); }
+  }
+  async getThreadLabels(id: string, signal?: AbortSignal): Promise<LabelDetail> {
+    const channel = this.labelTarget(id);
+    return this.parseLabelDetail(await this.call('GET', '/v1/threads/' + encodeURIComponent(id) + '/labels', undefined, signal), id, channel);
+  }
+  async saveThreadLabels(id: string, markers: string[], timestamp: number, signal?: AbortSignal): Promise<LabelDetail> {
+    const channel = this.labelTarget(id), labels = validateLabels(markers), time = labelTimestamp(timestamp);
+    if (this.labelSaves.has(id)) throw new ProtocolError('Label save is already in progress');
+    this.labelSaves.add(id);
+    const linked = combine(signal, this.attempt?.signal), owner = this.liveController;
+    try {
+      const path = '/v1/threads/' + encodeURIComponent(id) + '/labels';
+      this.parseLabelDetail(await this.call('PUT', path, { markers: labels, markers_updated_at: time }, linked.signal), id, channel);
+      // Validate the exact target again on readback. Never project a proposed array.
+      await this.getThreadLabels(id, linked.signal);
+      await this.refreshDirectory(linked.signal);
+      if (owner !== this.liveController || linked.signal.aborted || !this.isThreadAvailable(id) || this.threads.get(id)!.project_id !== channel) throw new ProtocolError('Label save not confirmed');
+      const current = this.threads.get(id)!;
+      return { thread_id: id, project_id: channel, markers: [...(current.markers ?? [])], markers_updated_at: current.markers_updated_at ?? 0 };
+    } finally { this.labelSaves.delete(id); linked.done(); }
   }
   private async refreshDirectory(signal?:AbortSignal):Promise<void>{
     this.directoryDirty=true;

@@ -85,6 +85,7 @@ test("preload surface matches the approved purpose-specific desktop API", () => 
     "deleteChannel",
     "createThread",
     "renameThread",
+    "saveThreadLabels",
     "archiveThread",
     "loadOlder",
     "getChannelInfo",
