@@ -4,7 +4,7 @@
 
 The mobile timing feature has been removed in `fix/remove-mobile-timing`, at the user's request. The removal includes the Agent settings switch, result panel, copy action, navigation trace, SDK observer registration and independent FlashList measurement callback. Normal page ownership, early content release, receipt viewability and shared SDK APIs remain unchanged. The previous build flag no longer enables mobile collection.
 
-Verification: mobile tests report 547 passed, 1 skipped and 0 failed. Mobile TypeScript and iOS/Android exports pass. This candidate has not been merged or deployed. iPhone acceptance is not verified. Test evidence is in the Channel workspace under `remove-mobile-timing/tests.log`.
+Verification: mobile tests report 547 passed, 1 skipped and 0 failed. Mobile TypeScript and iOS/Android exports pass. The removal was merged into `main` as `829a7d31db33fa16b89fd9343b4036c117f0539d` and published to `exps://agent.tuly.space`. Public iOS/Android manifests and exact launch assets returned HTTP 200 with SDK 57. Bundle checks confirm the timing UI and collector are absent, while early content release, normal viewability, page ownership, drafts and settings remain. Only Expo restarted; Gateway PIDs/start times, plugin hashes and the mobile lockfile did not change. iPhone acceptance is not verified. Evidence is in the Channel workspace under `remove-mobile-timing/tests.log` and `remove-mobile-timing/release-verification.json`. Rollback uses an explicit revert of the removal or merge commit and only an Expo restart; it does not restore or overwrite chat data.
 
 ## Historical measurement instructions
 
