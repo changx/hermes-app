@@ -1,7 +1,7 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Text, TextInput } from './FontSize';
+import { Text, TextInput, useFontSize } from './FontSize';
 import type { ScrollViewProps } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, ReduceMotion, runOnJS, useSharedValue } from 'react-native-reanimated';
@@ -109,6 +109,13 @@ interface Props {
 }
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, startRef, position, onPosition } = props;
+  const { scale } = useFontSize();
+  const { fontScale } = useWindowDimensions();
+  const composerLineHeight = Platform.OS === 'ios' ? 22 : 19;
+  const composerMaxHeight = composerLineHeight * scale * fontScale * 6;
+  // Freeze native initial positioning. Returning to a living page must not reset it.
+  const [initialHistoryPosition] = useState(() => ({ ...historyPosition,
+    startRenderingFromBottom: props.targetRef === undefined && (position?.following ?? true) }));
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
   const groups = workGroups(rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp })), hasRunningReceipt(props.threadId, props.receipts));
   const onWorkToggle = useCallback((group: WorkGroup, expanded: boolean) => setWorkChoices(old => ({ ...old, [`${props.threadId}:${group.key}`]: { completion: group.completion, expanded } })), [props.threadId]);
@@ -324,14 +331,17 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   } }), [followLatest, savePosition, props.text, props.onText]);
   useEffect(() => { savePosition(); }, [startRef, savePosition]);
   const previousRows = useRef<readonly TimelineRow[]>([]);
+  const initialHistoryReady = useRef(false);
   useEffect(() => {
+    const firstHistory = !initialHistoryReady.current && rows.length > 0;
+    if (firstHistory) initialHistoryReady.current = true;
     const newOutput = agentOutputAdded(previousRows.current, rows);
     previousRows.current = rows;
     // Commit the new FlashList data first, then use the native content extent.
     // Content-size may be unchanged (or onScroll may have observed it already).
     // New output should appear at the tail without visibly scrolling the whole
     // conversation. Explicit send/latest actions remain animated.
-    if (newOutput && following.current) scheduleFollow();
+    if ((newOutput || firstHistory && sourceTarget.current === undefined) && following.current) scheduleFollow();
   }, [rows, scheduleFollow]);
 
   const composerControls = <><Pressable accessible={false} focusable={false} style={styles.composeField} onPress={() => composerInput.current?.focus()}>
@@ -339,7 +349,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         // Fabric iOS: reset empty measurement without fixing font height.
         // Android setLines also fixes the widget's height, so leave it unset there.
         numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
-        style={styles.composeInput} underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
+        style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
       </Pressable>
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   // The app currently has an English-only interface. Keep copy in that language.
@@ -358,7 +368,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         ListFooterComponent={props.hasNewer ? action('Load later messages', () => props.onNewer?.(), props.busy || !!props.locatingBusy, true) : null}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         // List-owned position maintenance; no competing prepend scrolls.
-        maintainVisibleContentPosition={historyPosition}
+        maintainVisibleContentPosition={initialHistoryPosition}
+        onLoad={() => {
+          if (following.current && sourceTarget.current === undefined) scheduleFollow();
+        }}
         // Rich message descendants have image/video/WebView state; use the
         // supported non-recycling mode instead of reusing that state across messages.
         maxItemsInRecyclePool={0}
@@ -540,8 +553,8 @@ const styles = StyleSheet.create({
   statusStopButton: { width: 34, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#e6edf7' },
   stopIcon: { color: '#425874', fontSize: 17 },
   // Center the content-sized native input, not text inside a fixed-height UITextView.
-  composeField: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  composeInput: { maxHeight: 102, padding: 0, color: '#172a40' },
+  composeField: { flex: 1, minWidth: 0, minHeight: 42, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  composeInput: { padding: 0, color: '#172a40' },
   // One shadow around the shared surface; blur never owns interactive content.
   composerSurface: { backgroundColor: 'rgba(248, 250, 253, 0.78)', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
   composerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 },

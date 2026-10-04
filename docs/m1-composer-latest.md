@@ -44,3 +44,16 @@ Jamie 再次要求“发布”后，`42a20a9adaf9ff5d0842515db1cd3c17adec2706` �
 - 真机视觉、透明区域手势穿透与按钮点击仍未验收；公网资源核验不代替设备测试。
 
 卡片：`t_774c8f06`。
+
+## Session initial tail and six-line composer
+
+候选分支 `fix/session-initial-tail-six-lines`，基线 `33e2975`，卡片 `t_a128128a`。仅修改手机 `ChatTimeline`，不发布、不改桌面、协议、插件或 Hermes 核心。
+
+- 首次普通进入使用 FlashList 的 `startRenderingFromBottom`，配置在组件挂载时固定。保留原有列表锚点机制。
+- 第一批非空历史提交后安排无动画到底部，不依赖新消息是 Agent 回复，也不只依赖 content-size 事件。FlashList 首次布局完成的 `onLoad` 再使用现有原生精确到底部函数。
+- 附件目标不启用底部初始化。上翻、失焦、后台和键盘的既有保护仍生效；返回存活页面不重新初始化。
+- 输入框保留内容驱动的自然高度和空值单行复位。显式平台行高随原有字体包装器缩放；最大高度为六行，包含 App 字号和系统字体倍率。取消原外层 120pt 上限，超过六行后原生输入框内部滚动，不截断文字。
+
+验证：新增真实 React 组件回归 5 项，原生组件边界使用测试替身，覆盖空页到第一批用户历史、onLoad、阅读/覆盖返回、附件目标、恢复阅读位置、四种 App 字号、两种系统倍率、iOS/Android、长文编辑及空值复位。相关定向测试 27/27；完整手机测试 69 通过、1 跳过（既有 Chromium 表格测试未启用），0 失败。TypeScript、iOS/Android Expo 导出与 diff check 通过。准备工作树时先补建既有 Markdown 生成文件；根目录 esbuild 缺可选二进制时使用相同版本的手机依赖二进制，没有改依赖或 lockfile。
+
+当前为隔离候选。没有合入 main、更新 Expo 或重启服务。自动检查证明组件调用和构建结果，不证明 iPhone 的逐帧滚动、原生六行高度或键盘操作体验；这些仍须真机验收。私有证据位于 Channel workspace 的 `session-initial-tail-six-lines/`。
