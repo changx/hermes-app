@@ -280,7 +280,7 @@ textarea:disabled {
 .tree-thread:hover { background: var(--app-hover); }
 .tree-thread.selected { color: #2b4e81; background: var(--app-selected); }
 .thread-status { color: #237a35; font-size: 11px; }
-.thread-draft { color: var(--app-muted); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.thread-draft { color: #8a4b00; background: #fff1cc; border: 1px solid #e8b454; border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700; line-height: 18px; white-space: nowrap; flex-shrink: 0; }
 .thread-result-unread { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #4DA3FF; }
 .tree-more { width: 100%; padding: 9px 10px; border: 0; background: transparent; color: var(--app-link); text-align: left; font-size: 12px; }
 .thread-switcher { max-width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
