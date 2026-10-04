@@ -36,4 +36,23 @@ The native-sidebar override removed the original child indent and branch border.
 - Private computed-style evidence and screenshot: Channel workspace `sidebar-tree-hover/`.
 - Candidate only. Not merged or published. Installed macOS visual acceptance remains open.
 
+## Resizable native sidebar candidate
+
+Branch: `feat/sidebar-resize`; card: `t_4295a06a`. This candidate includes the indentation/hover candidate above.
+
+Confirmed behavior:
+- Drag the sidebar's right edge to change its width. Default 280px; minimum 200px; maximum 480px. Smaller windows reduce the maximum to leave 360px for the conversation where possible.
+- Save only the device-local width preference on release. Window resizing temporarily clamps the layout without replacing the preferred width. Collapse/expand preserves the preference.
+- Double-click the edge to reset to 280px. The focusable separator supports Left/Right in 10px steps and Home/End for the current limits.
+- Reuse the existing renderer-to-main content-bounds API. Resize retained native views; do not recreate tabs, reload conversation history or change drafts.
+- Pointer release/cancel and window blur terminate dragging. A host-window release listener also covers native pointer capture loss at the width limits.
+- Storage failures leave resizing usable and explain that the preference could not be saved.
+
+Verification:
+- Desktop TypeScript, build and all 40 tests passed with Chromium and native Electron enabled. No skips or failures.
+- Linux/Xvfb used real Electron input and production renderers/preload/IPC with controlled transport/storage fixtures. Checked drag to 380px, both limits, native bounds, collapse/expand, window shrink/restore, keyboard change, double-click reset, saved-width restoration after host renderer reload, storage failure, retained native view identity and conversation DOM.
+- Previous tree/hover and label/draft regressions still pass. No mobile, backend, protocol, dependency or release changes.
+- Private log and native screenshot: Channel workspace `sidebar-resize/`.
+- Not merged or published. Full installed-app restart and macOS pointer/visual acceptance remain separate from Linux renderer restoration checks.
+
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side 24-hour query; the current list API exposes cursor/limit, not an activity cutoff.
