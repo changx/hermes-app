@@ -155,6 +155,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const scrollGeometry = useRef<ScrollGeometry | null>(null);
   const restored = useRef(initialTargetIndex !== undefined);
   const reducedMotion = useRef(false);
+  const [reduceLoadingMotion, setReduceLoadingMotion] = useState(true);
   const previousKeys = useRef<string[]>([]);
   const historyBoundaryKey = useRef<string | null>(null);
   const historyThread = useRef(props.threadId);
@@ -228,8 +229,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   useEffect(() => {
     let mounted = true;
     active.current = props.active;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) reducedMotion.current = value; }).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) { reducedMotion.current = value; setReduceLoadingMotion(value); } }, () => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; setReduceLoadingMotion(value); });
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
       if (state !== 'active') {
@@ -363,14 +364,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         ListHeaderComponent={<View>
           <View testID="history-hint" style={styles.historyHint} accessible={!!historyHintText} accessibilityLabel={historyHintText || undefined} accessibilityLiveRegion={historyHint === 'loading' ? 'polite' : 'none'}>
             <View style={styles.historyHintIcon} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              {historyHint === 'loading' ? <ActivityIndicator size="small" color="#697b90" /> : !!historyHintText && props.hasOlder ? <Text style={styles.historyHintArrow}>↓</Text> : null}
+              {historyHint === 'loading' ? <ActivityIndicator size="small" color="#697b90" animating={!reduceLoadingMotion && props.active && motionForeground.current} /> : !!historyHintText && props.hasOlder ? <Text style={styles.historyHintArrow}>↓</Text> : null}
             </View>
             {!!historyHintText && <Text numberOfLines={1} style={styles.historyHintText}>{historyHintText}</Text>}
           </View>
           {props.locatingMessage && <View style={styles.older}><Text style={styles.locating}>{props.locatingMessage}</Text>
             {props.onLocateNext && action('Keep looking', props.onLocateNext, props.locatingBusy, true)}</View>}
         </View>}
-        ListEmptyComponent={props.locatingMessage || props.locatingBusy ? null : <Text style={styles.empty}>No messages yet</Text>}
+        ListEmptyComponent={props.locatingBusy ? <ConversationLoading active={props.active} /> : props.locatingMessage ? null : <Text style={styles.empty}>No messages yet</Text>}
 
         onViewableItemsChanged={onViewableItemsChanged}
         onLayout={e => {
@@ -472,8 +473,26 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   </KeyboardGestureArea>;
 });
 
+export function ConversationLoading({ active = true }: { active?: boolean }) {
+  const [reduced, setReduced] = useState(true);
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted) setReduced(value); }).catch(() => {});
+    const motion = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    const app = AppState.addEventListener('change', state => setForeground(state === 'active'));
+    return () => { mounted = false; motion.remove(); app.remove(); };
+  }, []);
+  return <View testID="conversation-loading" style={styles.loading} accessible accessibilityLabel="Loading messages…" accessibilityLiveRegion="polite" accessibilityState={{ busy: true }}>
+    {reduced ? <View style={styles.loadingStatic} accessible={false} /> : <ActivityIndicator size="small" color="#697b90" animating={active && foreground} accessible={false} />}
+    <Text style={styles.locating}>Loading messages…</Text>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  loading: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
+  loadingStatic: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#697b90' },
   // Keep the real content height: growing short content to the viewport makes
   // the keyboard controller scroll empty space and push top-aligned rows away.
   messages: { paddingTop: 12, paddingBottom: 96 },

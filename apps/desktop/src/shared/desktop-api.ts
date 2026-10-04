@@ -53,6 +53,7 @@ export type DesktopSnapshot = Readonly<{
   connectionLabel: string;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
+  loadingHistory?: boolean;
   statusMessage?: string;
   errorMessage?: string;
   channels: readonly DesktopChannel[];
@@ -64,7 +65,7 @@ export type DesktopSnapshot = Readonly<{
   selectedThreadTitle?: string;
   canLoadOlder: boolean;
   sessionPages?: readonly Readonly<{ id: string; messages: readonly DesktopMessage[];
-    interactions: readonly DesktopInteraction[]; loadingMessages?: boolean;
+    interactions: readonly DesktopInteraction[]; loadingMessages?: boolean; loadingHistory?: boolean;
     canLoadOlder: boolean; selectedThreadTitle?: string }>[];
 }>;
 

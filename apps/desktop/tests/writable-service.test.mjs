@@ -106,12 +106,12 @@ test("unknown delivery is reconciled by receipt and is not blindly resent", asyn
 test("history fetch does not mark read until the renderer reports a visible ref", async () => {
   const { service, calls } = fixture();
   service.olderCursor = "older-a";
-  service.client.historyWindow = async (threadId, cursor) => {
-    calls.push(["history", threadId, cursor]);
-    return { messages: [], older_cursor: null };
+  service.client.loadFullHistory = async (threadId) => {
+    calls.push(["history", threadId]);
   };
+  service.client.acquirePage('thread-a');
   await service.loadOlder();
-  assert.deepEqual(calls, [["history", "thread-a", "older-a"]]);
+  assert.deepEqual(calls, [["history", "thread-a"]]);
   assert.equal(service.markVisible, undefined);
   assert.equal(calls.some(([kind]) => kind === "read"), false);
 });

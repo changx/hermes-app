@@ -25,7 +25,7 @@ test('production source opening publishes the around window without latest block
   const h=openHarness();await h.context.openThread('th_one',73);
   assert.deepEqual(h.events.find(e=>e[0]==='open'),['open','th_one',73]);assert.equal(h.events.some(e=>e[0]==='blocks'),false);
   assert.deepEqual(h.events.filter(e=>e[0]==='start').at(-1),['start',19]);assert.deepEqual(h.events.filter(e=>e[0]==='located').at(-1),['located',true]);
-  const ordinary=openHarness();await ordinary.context.openThread('th_one',undefined);assert.equal(ordinary.events.filter(e=>e[0]==='blocks').length,1);
+  const ordinary=openHarness();await ordinary.context.openThread('th_one',undefined);assert.equal(ordinary.events.filter(e=>e[0]==='blocks').length,0);
 });
 test('source failure never falls back to latest; late open cannot publish into a departed scene',async()=>{
   const failed=openHarness({failure:true});await failed.context.openThread('th_one',73);

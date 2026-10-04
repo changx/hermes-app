@@ -91,7 +91,7 @@ export class DesktopConnectionService {
   private selectingInitialChannel = false;
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
-  private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean }>();
+  private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean; historyLoading?: boolean }>();
   private readonly pageStack: string[] = [];
   private get currentPageState() { return this.selectedThreadId ? this.pageStates.get(this.selectedThreadId) : undefined; }
   private get olderCursor(): string | undefined { return this.currentPageState?.older; }
@@ -238,6 +238,7 @@ export class DesktopConnectionService {
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
       loadingMessages: pageState?.loading ?? false,
+      loadingHistory: pageState?.historyLoading ?? false,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
       ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
       channels,
@@ -251,7 +252,7 @@ export class DesktopConnectionService {
       ...(includePages ? { sessionPages: this.pageStack.map(id => {
         const page = this.snapshot(id, false);
         return { id, messages: page.messages, interactions: page.interactions,
-          loadingMessages: page.loadingMessages, canLoadOlder: page.canLoadOlder,
+          loadingMessages: page.loadingMessages, loadingHistory: page.loadingHistory, canLoadOlder: page.canLoadOlder,
           selectedThreadTitle: page.selectedThreadTitle };
       }) } : {}),
     });
@@ -644,15 +645,20 @@ export class DesktopConnectionService {
     const client = this.requireClient(), threadId = this.selectedThreadId, before = this.olderCursor;
     if (!threadId || !before || !client.supportsLatest) return;
     const state = this.pageStates.get(threadId), owner = client.page(threadId);
-    if (!state || this.readJobs.has("older:" + threadId)) return;
+    if (!state || !owner || state.historyLoading || this.readJobs.has("older:" + threadId)) return;
     const valid = () => this.client === client && this.pageStates.get(threadId) === state && client.page(threadId) === owner && state.older === before;
-    await this.recoverRead("older:" + threadId, async (signal) => {
-      const page = await client.historyWindow(threadId, before, 50, signal);
-      if (!signal.aborted && valid()) {
-        if (page.messages?.length) state.start = Math.min(state.start ?? Infinity,page.messages[0].ref_seq);
-        state.older = page.older_cursor ?? undefined; this.changed();
-      }
-    }, valid);
+    state.historyLoading = true; this.changed();
+    try {
+      await this.recoverRead("older:" + threadId, async (signal) => {
+        await owner.loadFullHistory(threadId, signal);
+        if (!signal.aborted && valid()) {
+          state.start = owner.messages.get(threadId)?.[0]?.ref_seq;
+          state.older = undefined; this.changed();
+        }
+      }, valid);
+    } finally {
+      if (this.pageStates.get(threadId) === state) { state.historyLoading = false; this.changed(); }
+    }
   }
 
   async sendMessage(input: SendMessageInput): Promise<void> {

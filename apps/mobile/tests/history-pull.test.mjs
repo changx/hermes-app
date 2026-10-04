@@ -41,7 +41,7 @@ function load(text, imports, extras = {}) {
 }
 const frames = new Map(); let nextFrame = 0;
 const highlights = new Map(); let nextHighlight = 0;
-const { ChatTimeline } = load(source, modules, {
+const { ChatTimeline, ConversationLoading } = load(source, modules, {
   // No Date or timers provided: obsolete delay/measurement code must not execute.
   requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; }, cancelAnimationFrame: id => frames.delete(id),
   setTimeout: (fn, ms) => { assert.equal(ms, 2400, 'only highlight expiry uses a timer'); highlights.set(++nextHighlight, fn); return nextHighlight; }, clearTimeout: id => highlights.delete(id)
@@ -280,10 +280,11 @@ test('stale callbacks and pending completions do not address a blurred/unmounted
   }
 });
 
-test('App still uses original authoritative pagination and cached window expansion', () => {
+test('App expands all authoritative history with one user intent, not five-block pagination', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /onOlder=\{loadOlder\}/);
-  assert.match(app, /await loadHistoryBlocks\(client, id, visibleMessages\[0\]\?\.ref_seq \?\? null/);
+  assert.match(app, /await client\.loadFullHistory\(id\)/);
+  assert.doesNotMatch(app, /loadHistoryBlocks|historyBlockStart/);
   assert.doesNotMatch(app, /setStartRef\(olderStart/);
 });
 
@@ -491,4 +492,39 @@ test('padded divider stays outside the original assistant, tool and notice roots
     await h.flush(); assert.deepEqual(h.scrolls, [], 'FlashList remains the only prepend anchor');
     await act(async () => rendered.unmount()); await h.close();
   }
+});
+
+test('entry loading has truthful accessible text and animation; empty history has no loading status', async () => {
+  const h = await mount({ rows: [], hasOlder: false, locatingBusy: true }, { released: false });
+  assert.equal(h.list().refreshControl, undefined);
+  assert.equal(h.list().ListEmptyComponent.type, ConversationLoading);
+  let loader; await act(async () => { loader = create(h.list().ListEmptyComponent); });
+  const status = loader.root.findByProps({ testID: 'conversation-loading' });
+  assert.equal(status.props.accessibilityLabel, 'Loading messages…');
+  assert.equal(status.props.accessibilityState.busy, true);
+  assert.equal(loader.root.findByType('ActivityIndicator').props.animating, true);
+  await act(async () => loader.update(React.createElement(ConversationLoading, { active: false })));
+  assert.equal(loader.root.findByType('ActivityIndicator').props.animating, false);
+  await act(async () => { for (const listener of [...appHandlers]) listener('background'); });
+  assert.equal(loader.root.findByType('ActivityIndicator').props.animating, false);
+  await act(async () => loader.unmount());
+  await h.update({ locatingBusy: false });
+  assert.equal(h.list().ListEmptyComponent.props.children, 'No messages yet');
+  await h.close();
+});
+
+test('loading animation respects reduced motion and cleans native listeners on removal', async () => {
+  const previous = native.AccessibilityInfo;
+  let motion, removed = 0;
+  native.AccessibilityInfo = { isReduceMotionEnabled: async () => true, addEventListener: (_name, fn) => { motion = fn; return { remove() { removed++; } }; } };
+  let loader;
+  try {
+    await act(async () => { loader = create(React.createElement(ConversationLoading)); });
+    assert.equal(loader.root.findAllByType('ActivityIndicator').length, 0);
+    assert.equal(loader.root.findByProps({ testID: 'conversation-loading' }).props.accessibilityLabel, 'Loading messages…');
+    await act(async () => motion(false));
+    assert.equal(loader.root.findByType('ActivityIndicator').props.animating, true);
+    await act(async () => loader.unmount()); loader = null;
+    assert.equal(removed, 1);
+  } finally { if (loader) await act(async () => loader.unmount()); native.AccessibilityInfo = previous; }
 });

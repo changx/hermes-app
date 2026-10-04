@@ -30,7 +30,7 @@ test('sessions show newest at the top from first frame without scrolling', () =>
 test('no generic Opening status is shown over channels or conversations', () => {
   assert.doesNotMatch(app, /loading && <Text[^>]*>Opening…/);
   assert.doesNotMatch(app, /'Opening conversation…' :/);
-  assert.match(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'), /ListEmptyComponent=\{props\.locatingMessage \|\| props\.locatingBusy \? null :/);
+  assert.match(readFileSync(new URL('../src/ChatTimeline.tsx', import.meta.url), 'utf8'), /ListEmptyComponent=\{props\.locatingBusy \? <ConversationLoading/);
 });
 
 test('every conversation entry follows the latest message instead of restoring an old offset', () => {

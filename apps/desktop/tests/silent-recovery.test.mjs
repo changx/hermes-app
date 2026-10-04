@@ -173,18 +173,20 @@ test("channel navigation uses the directory without a redundant list request", a
   service.close();
 });
 
-test("older history retries its original cursor and keeps already visible content", async () => {
+test("full history retries without hiding already visible content", async () => {
   const { service } = fixture();
   service.olderCursor = "before-original";
   const cursors = [];
-  service.client.historyWindow = async (_id, cursor) => {
-    cursors.push(cursor);
+  service.client.loadFullHistory = async (id) => {
+    cursors.push(id);
     if (cursors.length === 1) throw new TimeoutError("timeout");
-    return { older_cursor: "before-next" };
+
   };
+  service.client.acquirePage('thread-a');
   await service.loadOlder();
-  assert.deepEqual(cursors, ["before-original", "before-original"]);
-  assert.equal(service.olderCursor, "before-next");
+  assert.deepEqual(cursors, ["thread-a", "thread-a"]);
+  assert.equal(service.olderCursor, undefined);
+  assert.equal(service.snapshot().loadingHistory, false);
   assert.equal(service.snapshot().errorMessage, undefined);
   service.close();
 });

@@ -35,6 +35,9 @@ export class LiveSessionClient extends HermesClient {
   private older:string|null=null;
   private anchor:number|undefined;
   private newer:string|null=null;
+  private initialHistoryComplete=false;
+  private fullHistoryLoaded=false;
+  private fullHistoryJob:Promise<void>|null=null;
   get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
   private connectionSuspended=false;
@@ -92,7 +95,7 @@ export class LiveSessionClient extends HermesClient {
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
     this.connectionSuspended=false;
@@ -106,7 +109,7 @@ export class LiveSessionClient extends HermesClient {
     this.connectionSuspended=true;
     this.liveController?.abort();this.liveController=null;this.attempt?.abort();this.attempt=null;
     this.scope.abort();this.scope=new AbortController();this.liveSocket?.close();this.liveSocket=null;this.hello=false;this.watchReady=false;
-    this.directoryJob=null;this.contentJob=null;this.state('suspended');this.changed();
+    this.directoryJob=null;this.contentJob=null;this.fullHistoryJob=null;this.state('suspended');this.changed();
   }
   override close():void{
     this.suspendConnection();this.opened?.reject(new Error('aborted'));this.opened=null;this.publishedMessages=[];this.releaseContent();super.close();this.changed();
@@ -192,14 +195,17 @@ export class LiveSessionClient extends HermesClient {
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
         const start=this.messages.get(id)?.[0]?.ref_seq;
-        if(start===undefined){const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null}}
+        if(!this.initialHistoryComplete){
+          const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);
+          if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null}
+        }
         else{
           // References are sparse and owned. Refresh the first exact row,
           // then read forward from that real anchor; never invent start-1.
-          await super.history(id,undefined,1,linked.signal,undefined,start);
-          const end=this.anchor===undefined?undefined:this.messages.get(id)?.at(-1)?.ref_seq;
+          if(start!==undefined)await super.history(id,undefined,1,linked.signal,undefined,start);
+          const end=this.anchor===undefined||this.fullHistoryLoaded?undefined:this.messages.get(id)?.at(-1)?.ref_seq;
           let after:string|undefined;const pages=new Set<string>();
-          do{const page=await super.history(id,after,100,linked.signal,after?undefined:start,undefined,end);after=page.next_cursor??undefined;if(this.wanted===id&&this.watchId===watchId&&end!==undefined&&this.messages.get(id)?.at(-1)?.ref_seq===end)this.newer=page.newer_cursor??null;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
+          do{const page=await super.history(id,after,100,linked.signal,after?undefined:start,undefined,end);after=page.next_cursor??undefined;if(this.wanted===id&&this.watchId===watchId&&end!==undefined&&!this.fullHistoryLoaded&&this.messages.get(id)?.at(-1)?.ref_seq===end)this.newer=page.newer_cursor??null;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
         }
         const state=this.decodeScopedState(await this.call('GET','/v1/threads/'+encodeURIComponent(id)+'/live-state',undefined,linked.signal),id);
         if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
@@ -208,12 +214,33 @@ export class LiveSessionClient extends HermesClient {
           this.interactions.clear();for(const i of state.interactions)if(i.state==='pending')this.interactions.set(i.id,i);
           this.changed();
         });
-        this.opened?.resolve();
+        this.initialHistoryComplete=true;this.opened?.resolve();
       }
     })();this.contentJob=job;
     try{await job}finally{linked.done();if(this.contentJob===job){this.contentJob=null;if(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId)await this.refreshContent()}}
   }
   private scoped(signal:AbortSignal|undefined,id:string){return combine(id===this.wanted?this.scope.signal:undefined,signal)}
+  /** One explicit history gesture reads every remaining transport page. */
+  async loadFullHistory(id:string,signal?:AbortSignal):Promise<void>{
+    if(id!==this.wanted||!this.watchReady||!this.attempt)throw new ProtocolError('Conversation is not open');
+    if(this.fullHistoryLoaded)return;
+    if(this.fullHistoryJob)return this.fullHistoryJob;
+    const watch=this.watchId,transport=combine(this.scope.signal,this.attempt.signal),linked=combine(transport.signal,signal);
+    const job=(async()=>{
+      // Restart at the oldest reference on retry: partial pages are not proof
+      // that the complete original transcript has reached this client.
+      let after:string|undefined;const pages=new Set<string>();
+      do{
+        const page=await super.history(id,after,100,linked.signal);
+        after=page.next_cursor??undefined;
+        if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');
+        if(after)pages.add(after);
+      }while(after);
+      if(linked.signal.aborted||id!==this.wanted||watch!==this.watchId)throw new Error('aborted');
+      this.fullHistoryLoaded=true;this.older=null;this.newer=null;this.changed();
+    })();this.fullHistoryJob=job;
+    try{await job}finally{linked.done();transport.done();if(this.fullHistoryJob===job)this.fullHistoryJob=null}
+  }
   async loadNewer(id:string):Promise<void>{
     if(id!==this.wanted||!this.watchReady||this.anchor===undefined||!this.newer)throw new ProtocolError('Target conversation is not open');
     const cursor=this.newer,watch=this.watchId,s=this.scoped(undefined,id);
