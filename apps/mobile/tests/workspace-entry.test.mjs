@@ -63,6 +63,11 @@ test('compact Channel links are capability gated and do not prefetch file detail
   const h=await harness('ChannelScreens.tsx','ChannelScreens',f.client,{onAgents:id=>h.actions.push(['agents',id])});
   assert.equal(h.button('Channel files'),undefined);
   f.client.supportsChannelWorkspace=true;await h.render();
+  const toolbar = h.root.root.findByType('ScrollView');
+  assert.equal(toolbar.props.horizontal, true);
+  assert.deepEqual(toolbar.findAllByType('Pressable').map(node => node.props.accessibilityLabel), ['Channel context', 'Channel files', 'Channel AGENTS.md']);
+  assert.equal(h.button('Channel options').props.style({ pressed: false })[0].backgroundColor, undefined);
+  assert.ok(toolbar.findAllByType('Text').some(node => node.props.children === 'Context'));
   await h.press('Channel files');await h.press('Channel AGENTS.md');
   assert.deepEqual(h.actions,[['files','p_one'],['agents','p_one']]);
   assert.equal(f.calls.length,0);assert.equal(h.root.root.findByType('Composer').props.channelId,'p_one');

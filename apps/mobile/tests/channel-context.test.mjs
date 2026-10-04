@@ -86,6 +86,31 @@ test('production list is latest-first, excludes archived/other channels, and rea
   await h.close();
 });
 
+test('running sessions precede all other states, sort by time, and move on real status updates', async () => {
+  const rows = [
+    { id: 'recent', title: 'Recent', last_message_at: 100, running: false, completed_unread: true },
+    { id: 'running-old', title: 'Running old', last_message_at: 10, running: true },
+    { id: 'running-new', title: 'Running new', last_message_at: 20, running: true },
+    { id: 'idle', title: 'Idle', last_message_at: 50 },
+    { id: 'empty', title: 'Empty' },
+    { id: 'running-empty', title: 'Running empty', running: true },
+  ].map(row => ({ project_id: 'p_one', last_ref: 0, ...row }));
+  const client = { channels: new Map([['p_one', { id: 'p_one', name: 'Project' }]]), threads: new Map(rows.map(row => [row.id, row])) };
+  const h = await harness('ChannelScreens.tsx', 'ChannelScreens', client);
+  try {
+    const order = () => plain(h.root.root.findByType('FlatList').props.data.map(row => row.id));
+    const composer = h.root.root.findByType('Composer');
+    assert.deepEqual(order(), ['running-new', 'running-old', 'running-empty', 'recent', 'idle', 'empty']);
+    client.threads.set('running-new', { ...client.threads.get('running-new'), running: false });
+    client.threads.set('idle', { ...client.threads.get('idle'), running: true });
+    await h.render();
+    assert.deepEqual(order(), ['idle', 'running-old', 'running-empty', 'recent', 'running-new', 'empty']);
+    assert.equal(h.root.root.findByType('Composer'), composer);
+    await h.drafts(['empty']);
+    assert.deepEqual(order(), ['idle', 'running-old', 'running-empty', 'recent', 'running-new', 'empty']);
+  } finally { await h.close(); }
+});
+
 test('local draft labels update without changing catalogue rows, running or unread state', async () => {
   const thread = { id: 't_one', project_id: 'p_one', title: 'One', last_ref: 0, running: true, completed_unread: true };
   const client = { channels: new Map([['p_one', { id: 'p_one', name: 'Project' }]]), threads: new Map([[thread.id, thread]]) };
