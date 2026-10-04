@@ -12,7 +12,7 @@ import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
-import { SessionOpenMeasurement } from '../src/sessionTiming.ts';
+
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const sdkBundle = await build({ entryPoints: [new URL('../../../packages/client/src/livePages.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
@@ -22,8 +22,7 @@ const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.me
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 
-async function harness({ multiple = false, list = false, strict = false, productionOwners = false, measuring = false, holdStatus = false } = {}) {
-  const measurement = measuring ? new SessionOpenMeasurement('tap') : null;
+async function harness({ multiple = false, list = false, strict = false, productionOwners = false, holdStatus = false } = {}) {
   let finishStatus;
   const statusGate = new Promise(resolve => { finishStatus = resolve; });
   let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
@@ -61,13 +60,12 @@ async function harness({ multiple = false, list = false, strict = false, product
     async historyWindow() { return { messages: [], older_cursor: null }; }
     async openConversation(id, _target, timing, contentReady) {
       opened++; this.currentThreadId = id; this.currentConversationKey = id; this.currentOlderCursor = null;
-      if (measuring) {
-        for (const stage of ['open-start','watch-ready','history-start','state-start']) timing?.({ stage });
+      if (holdStatus) {
+        assert.equal(timing, undefined, 'mobile does not register a measurement observer');
         this.messages.set(id, [{ id: 'row', ref_seq: 1, role: 'assistant', text: 'Synthetic content' }]);
         this.options.onChange();
-        timing?.({ stage:'history-ready', rows:1 }); contentReady?.();
-        if(holdStatus)await statusGate;
-        timing?.({ stage:'state-ready' }); timing?.({ stage:'open-ready' });
+        contentReady?.();
+        await statusGate;
       }
     }
     closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
@@ -99,8 +97,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   }
   const exports = {};
   const mocks = {
-    './sessionTimingSwitch': { SESSION_TIMING_AVAILABLE: measuring, sessionTimingForPage: () => measurement },
-    './SessionTimingPanel': { SessionTimingPanel: 'TimingPanel', SessionTimingControl: 'TimingControl' },
+
     './RenderResources': loadRenderResources(React),
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
@@ -160,7 +157,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { finishStatus, measurement, render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { finishStatus, render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
@@ -168,30 +165,16 @@ async function harness({ multiple = false, list = false, strict = false, product
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
 
-test('opt-in measurement follows production App UI release and first nonempty viewable callback, not the response alone', async () => {
-  const h = await harness({ measuring: true, holdStatus:true });
+test('removing diagnostics preserves content release before execution status is ready', async () => {
+  const h = await harness({ holdStatus:true });
   try {
-    assert.equal(h.measurement.result, null, 'content ready is not presentation completion');
     assert.equal(h.timelines.get('t_one').rows.length,1,'production App displays content while execution status is pending');
-    await act(async () => h.timelines.get('t_one').onVisibleRefs([])); assert.equal(h.measurement.result, null);
-    await act(async () => h.timelines.get('t_one').onMeasuredVisible());
-    assert.equal(h.measurement.result.outcome, 'visible-rows');
-    assert.equal(h.measurement.result.rows, 1);
-    assert.ok(h.measurement.result.stages['ui-ready'] >= h.measurement.result.stages['history-ready']);
-    assert.equal(h.measurement.result.stages['state-ready'],undefined);
+    assert.equal(h.timelines.get('t_one').onMeasuredVisible, undefined);
+    assert.equal(typeof h.timelines.get('t_one').onVisibleRefs, 'function');
     await act(async()=>h.finishStatus());
-    const result = h.measurement.result;
+    const opens = h.opens;
     await h.render('t_one', true); await h.render('t_one'); await h.revision();
-    assert.equal(h.measurement.result, result, 'returning a living page does not overwrite its first-opening sample');
-  } finally { await h.close(); }
-});
-
-test('backgrounding an unfinished measurement produces cancellation, not a slow render sample', async () => {
-  const h = await harness({ measuring: true });
-  try {
-    await h.appState('background'); assert.equal(h.measurement.result.outcome, 'cancelled');
-    await h.appState('active'); await act(async () => h.timelines.get('t_one').onMeasuredVisible());
-    assert.equal(h.measurement.result.outcome, 'cancelled');
+    assert.equal(h.opens, opens, 'returning a living page does not reopen it');
   } finally { await h.close(); }
 });
 
