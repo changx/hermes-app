@@ -9,13 +9,13 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-test('desktop defines an explicit shared 18.4px text default', () => {
-  assert.match(css, /--app-font-size: 18\.4px;/);
+test('desktop defines an explicit shared 16px text default', () => {
+  assert.match(css, /--app-font-size: 16px;/);
   assert.match(css, /font-size: var\(--app-font-size\);/);
   assert.match(css, /button, input, textarea, select \{ color: inherit; font-family: inherit; font-size: inherit; \}/);
 });
 
-test('Chromium: production UI and content use 18.4px at narrow and wide widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: production UI and content use 16px at narrow and wide widths', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';
     import { DesktopShellView } from './src/renderer/shell';
@@ -48,8 +48,8 @@ test('Chromium: production UI and content use 18.4px at narrow and wide widths',
     const rows = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1]??'null');
     assert.equal(rows?.length,selectors.length*3);
     for(const row of rows) {
-      assert.equal(row.size,'18.4px',`${row.width} ${row.selector}`);
-      if (['.composer textarea','.tool-record'].includes(row.selector)) assert.ok(Math.abs(parseFloat(row.lineHeight)-27.6)<0.01, row.selector);
+      assert.equal(row.size,'16px',`${row.width} ${row.selector}`);
+      if (['.composer textarea','.tool-record'].includes(row.selector)) assert.ok(Math.abs(parseFloat(row.lineHeight)-24)<0.01, row.selector);
       if (row.selector === '.composer textarea') assert.equal(row.paddingLeft,'12px');
     }
   } finally { await rm(folder,{recursive:true,force:true}); }

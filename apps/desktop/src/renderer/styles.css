@@ -21,7 +21,7 @@
 :root {
   /* Neutral application chrome; semantic accents match the mobile client. */
   color-scheme: light;
-  --app-font-size: 18.4px;
+  --app-font-size: 16px;
   font-size: var(--app-font-size);
   --app-text: #1f2937;
   --app-muted: #6b7280;
@@ -272,6 +272,9 @@ textarea:disabled {
 .activity-bar button { width: 38px; height: 38px; border: 0; border-radius: 7px; background: transparent; color: var(--app-label); font-size: 24px; }
 .activity-bar button:hover { background: #fff; }
 .activity-bar button[aria-expanded="true"] { color: #2b4e81; background: var(--app-selected); }
+.activity-bar .font-settings-button { margin-top: auto; }
+dialog.font-settings { margin: auto; max-height: calc(100dvh - 48px); overflow-y: auto; }
+dialog.font-settings::backdrop { background: rgb(17 24 39 / 38%); }
 .tree-caption, .tree-empty { color: var(--app-muted); font-size: var(--app-font-size); padding: 12px; }
 .channel-toggle { display: flex; gap: 8px; align-items: center; width: 100%; padding: 10px 12px; border: 0; background: transparent; text-align: left; color: var(--app-text); }
 .channel-toolbar { display: flex; align-items: center; min-width: 0; }

@@ -24,7 +24,7 @@ test('draft text keeps red and no decoration; desktop uses the shared font defau
   console.log('Draft red text/white background contrast:', contrast.toFixed(2));
 });
 
-test('Chromium: red draft text uses 18.4px without decoration, clipping or overlap', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: red draft text uses 16px without decoration, clipping or overlap', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
     import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server';
     import { NavigationPanel } from './src/renderer/navigation-panel';
@@ -55,7 +55,7 @@ test('Chromium: red draft text uses 18.4px without decoration, clipping or overl
     assert.equal(rows?.length,6);
     for(const row of rows) {
       assert.equal(row.color,'rgb(220, 38, 38)');assert.equal(row.background,'rgba(0, 0, 0, 0)');assert.equal(row.border,'0px');assert.equal(row.padding,'0px');
-      assert.equal(row.weight,'600');assert.equal(row.size,'18.4px');assert.ok(row.visible);assert.ok(row.contained);assert.ok(row.nonoverlap);
+      assert.equal(row.weight,'600');assert.equal(row.size,'16px');assert.ok(row.visible);assert.ok(row.contained);assert.ok(row.nonoverlap);
     }
   } finally { await rm(folder,{recursive:true,force:true}); }
 });
