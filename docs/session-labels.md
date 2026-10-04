@@ -1,5 +1,15 @@
 # Session labels
 
+## Publication: App v0.1.20 and Plugin v0.2.2
+
+Jamie authorized publishing all current integrated updates. App source/tag is `0de8ffa4c43c923171363082f573f2352dcceea5`; Plugin source/tag is `7e2bffb9b57d87d48e9dd061e5f5fa549f462a25`. Both remote main branches and release tags were read back. App releases include labels, committed-page/memory-release fixes, persistent local drafts and original-position red draft text.
+
+The Expo Go entry `exps://agent.tuly.space` was restarted on the release source. Its public iOS and Android manifests and bundles were read back and verified for labels, page release and persistent drafts. GitHub main/tag builds passed. The downloaded unsigned macOS arm64 v0.1.20 ZIP passed checksum, ZIP/ASAR identity and compiled labels/memory/draft checks. The downloaded Plugin v0.2.2 archive matches the packaged SHA-256.
+
+Fresh release checks passed: shared legacy 24, reliability 20, package 119; desktop 143; mobile 532; plugin P1 366. All passed with zero skipped tests. Mobile exports passed. Evidence: channel `p_6cf55361/all-updates-publication/`.
+
+**Backend activation is pending.** The active dev Gateway is an ancestor of this session. It was not stopped or restarted; installed plugin files and both Gateway services remain unchanged. Installation requires an external terminal, a stopped owner and a coherent private profile backup. A guarded `activate-plugin.py` operator helper passed read-only preflight and the ancestor-refusal check; its actual installation path has not run. Session label UI remains capability-gated until activation. Physical-device acceptance, signed desktop distribution and independent mobile packages remain pending.
+
 ## Main integration
 
 Jamie authorized merging the verified labels candidates into both local main branches. The App integration starts from `7e54065` and preserves newer persistent-local-draft behavior, original-position red draft text, committed-page ownership and memory-release safeguards. Conflict resolution keeps the directory's stable object identities while adding label fields, combines label IPC validation with window-release checks, and binds the mobile header/editor to the account directory without changing page ownership.
