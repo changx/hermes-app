@@ -344,7 +344,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
   // The app currently has an English-only interface. Keep copy in that language.
   const historyHintText = historyHint === 'loading' ? 'Loading history…' : historyHint === 'release' ? 'Release to load'
-    : rows.length && !props.locatingMessage && !props.locatingBusy ? props.hasOlder ? 'Pull down for earlier messages' : 'Start of conversation' : '';
+    : rows.length && props.hasOlder && !props.locatingMessage && !props.locatingBusy ? 'Pull down for earlier messages' : '';
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}

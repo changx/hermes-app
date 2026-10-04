@@ -55,3 +55,9 @@ The padded separator is a sibling before the original message root, inside the s
 Hidden Measurement renders include the same spacer as real Cells, avoiding a shorter preliminary measurement. Sticky copies still exclude it. FlashList continues to own layout/anchor correction; no new application scroll commands. Padding/measurement parity, original native-root identity and existing hint/boundary behavior are covered by the 374 passing mobile tests. TypeScript, both exports and actual compiled padding/inner-hairline checks pass.
 
 This follow-up is local-only, not merged or deployed. Phone reading/visual acceptance after the height change remains pending.
+
+## Follow-up: remove conversation-start text
+
+The latest user requirement removes `Start of conversation` from the mobile list header. Complete history now has no hint text or accessibility label. Keep the existing fixed-height header slot to avoid changing message layout. Earlier-history, release and loading hints, the reading divider and locate actions remain unchanged.
+
+Candidate branch: `fix/remove-conversation-start`, based on current main `a1e2e3c`. Three regressions execute the actual production hint initializer and verify exhausted, partial, release, loading, empty and locating states. These and four timeline identity/follow tests pass. Mobile TypeScript and iOS/Android exports pass. Tests do not prove iPhone visual behavior. No main merge, public deployment or service restart is included.
