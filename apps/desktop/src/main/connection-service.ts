@@ -549,13 +549,17 @@ export class DesktopConnectionService {
     const page = client.acquirePage(threadId);
     const valid = () => !this.closed && this.client === client && client.page(threadId) === page && this.pageStates.has(threadId);
     await this.recoverRead("history:" + threadId, async signal => {
-      await page.openConversation(threadId);
+      const releaseContent = () => {
       if (!signal.aborted && valid()) {
         const state = this.pageStates.get(threadId)!;
+        if (!state.loading) return;
         state.older = page.currentOlderCursor ?? undefined;
         state.start = page.messages.get(threadId)?.[0]?.ref_seq;
         state.loading = false; this.changed();
       }
+      };
+      await page.openConversation(threadId, undefined, undefined, releaseContent);
+      releaseContent();
     }, valid);
   }
 

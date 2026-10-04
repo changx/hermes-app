@@ -47,7 +47,7 @@ function fixture({ capability = true, request: intercept } = {}) {
   const sdk = new LivePageClient({ token: () => 'synthetic', livenessMs: 10000, backoffMs: [10], http: { async request(method, path, token, body, signal) {
     paths.push({ method, path, body });
     const reply = await intercept?.({ method, path, body, signal }); if (reply) return reply;
-    if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, open_session_live: true, history_latest: true, session_labels: capability } };
+    if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, open_session_live: true, multi_session_live: true, history_latest: true, session_labels: capability } };
     if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items, next_after: null } };
     const id = decodeURIComponent(path.split('/')[3]), row = items.find(i => i.kind === 'session' && i.value.id === id)?.value;
     if (path.endsWith('/labels')) {
@@ -61,7 +61,7 @@ function fixture({ capability = true, request: intercept } = {}) {
   } }, socket: { async connect() {
     let message, close;
     const pending = [], socket = { emit(value) { const data = JSON.stringify(value); if (message) message(data); else pending.push(data); }, onMessage(fn) { message = fn; pending.splice(0).forEach(fn); }, onClose(fn) { close = fn; }, close() { close?.(); }, send(data) { if (data === 'ping') return; queueMicrotask(() => socket.emit({ ...JSON.parse(data), type: 'watching' })); } };
-    sockets.push(socket); queueMicrotask(() => socket.emit({ type: 'hello', protocol: 1, open_session_live: true })); return socket;
+    sockets.push(socket); queueMicrotask(() => socket.emit({ type: 'hello', protocol: 1, open_session_live: true, multi_session_live: true })); return socket;
   } } });
   return { sdk, paths, sockets, items, setItems(value) { items = value; } };
 }

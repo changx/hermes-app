@@ -1,5 +1,5 @@
 import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type Message } from './index';
-import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError } from './liveProtocol';
+import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
 
@@ -19,6 +19,8 @@ const combine=(scope:AbortSignal|undefined,parent:AbortSignal|undefined)=>{
  * event replay, message unread counts, background body cache or business polling. */
 export class LiveSessionClient extends HermesClient {
   private readonly liveOptions:Options;
+  private readonly owner?:LiveSessionClient;
+  private failLive:((error:unknown)=>void)|undefined;
   private liveController:AbortController|null=null;
   private liveSocket:Socket|null=null;
   private attempt:AbortController|null=null;
@@ -32,7 +34,7 @@ export class LiveSessionClient extends HermesClient {
   private directoryJob:Promise<void>|null=null;
   private contentDirty=false;
   private contentJob:Promise<void>|null=null;
-  private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>}|null=null;
+  private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>;contentReady?:()=>void}|null=null;
   private directoryReady=false;
   private labelSaves = new Set<string>();
   private older:string|null=null;
@@ -66,13 +68,13 @@ export class LiveSessionClient extends HermesClient {
   get currentOlderCursor():string|null{return this.older}
   get currentThreadId():string|null{return this.wanted}
   get currentConversationKey():object{return this.conversationKey}
-  get isCatalogueReady():boolean{return this.directoryReady}
+  get isCatalogueReady():boolean{return this.owner?.isCatalogueReady??this.directoryReady}
   isThreadAvailable(id:string):boolean{const t=this.threads.get(id);return Boolean(t&&!t.archived&&this.channels.has(t.project_id))}
 
-  constructor(options:Options){
+  constructor(options:Options, owner?:LiveSessionClient){
     let self:LiveSessionClient|undefined;
-    super({...options,onCheckpoint:undefined,onChange:()=>{self?.prune();options.onChange?.()}});
-    this.liveOptions=options;self=this;
+    super({...options,onCheckpoint:undefined,onChange:()=>{self?.prune();options.onChange?.()}},owner);
+    this.liveOptions=options;this.owner=owner;self=this;
   }
   private prune():void{
     this.retainContent(this.wanted);
@@ -97,6 +99,7 @@ export class LiveSessionClient extends HermesClient {
     }else this.publishedMessages=[];
     // Direct CRUD responses must not leave descriptions/core session metadata
     // resident in the outer directory. Editors read their own temporary detail.
+    if(this.owner)return;
     for(const [id,c]of this.channels)if(!this.minimalChannels.has(c)){
       const minimal={id,name:c.name};this.minimalChannels.add(minimal);this.channels.set(id,minimal);
     }
@@ -106,12 +109,21 @@ export class LiveSessionClient extends HermesClient {
     }
   }
   private sendWatch():void{
+    if(this.owner){
+      if(this.owner.hello&&this.owner.liveSocket?.send&&this.wanted){
+        this.watchReady=false;this.owner.liveSocket.send(watchCommand(this.wanted,this.watchId,'add'));
+      }
+      return;
+    }
     if(!this.hello||!this.liveSocket?.send)return;
     this.watchReady=false;this.liveSocket.send(watchCommand(this.wanted,this.watchId));
   }
-  openConversation(id:string, targetRef?:number, timing?:OpenTimingObserver):Promise<void>{
+  openConversation(id:string, targetRef?:number, timing?:OpenTimingObserver, contentReady?:()=>void):Promise<void>{
     if(targetRef!==undefined&&(!Number.isSafeInteger(targetRef)||targetRef<=0))return Promise.reject(new ProtocolError('Invalid target reference'));
-    if(this.wanted===id&&this.opened&&this.anchor===targetRef)return this.opened.promise;
+    if(this.wanted===id&&this.opened&&this.anchor===targetRef){
+      if(contentReady){if(this.initialHistoryComplete)contentReady();else this.opened.contentReady=contentReady;}
+      return this.opened.promise;
+    }
     this.closeConversation();this.wanted=id;this.anchor=targetRef;this.watchId=String(++this.watchNumber);
     this.openTiming=timing;this.observe({stage:'open-start'});
     let resolve!:()=>void,reject!:(error:Error)=>void;
@@ -119,11 +131,13 @@ export class LiveSessionClient extends HermesClient {
     // A cancelled view may have no remaining observer; keep cancellation from
     // becoming an unhandled rejection, while returning the original promise.
     void promise.catch(()=>{});
-    this.opened={id,resolve,reject,promise};this.sendWatch();
-    if(!this.liveController&&!this.connectionSuspended)void this.connect();
+    this.opened={id,resolve,reject,promise,contentReady};
+    if(this.owner&&this.owner.hello){this.sharedConnected();}
+    else{this.sendWatch();if(!this.liveController&&!this.connectionSuspended)void this.connect();}
     this.changed();return promise;
   }
   closeConversation():void{
+    if(this.owner?.hello&&this.wanted)this.owner.liveSocket?.send?.(watchCommand(this.wanted,this.watchId,'remove'));
     this.observe({stage:'cancelled'});this.openTiming=undefined;
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
@@ -132,6 +146,7 @@ export class LiveSessionClient extends HermesClient {
   }
   override async connect():Promise<void>{
     this.connectionSuspended=false;
+    if(this.owner){await this.owner.connect();if(this.owner.hello&&this.attempt!==this.owner.attempt)this.sharedConnected();return;}
     if(this.liveController)return;
     const controller=new AbortController();this.liveController=controller;
     this.state('connecting');void this.runLive(controller);
@@ -140,17 +155,22 @@ export class LiveSessionClient extends HermesClient {
    * same loaded window only after the new watch acknowledgement. */
   suspendConnection():void{
     this.connectionSuspended=true;
+    if(this.owner){
+      this.scope.abort();this.scope=new AbortController();this.attempt=null;this.hello=false;this.watchReady=false;
+      this.contentJob=null;this.fullHistoryJob=null;this.state('suspended');this.changed();return;
+    }
     this.liveController?.abort();this.liveController=null;this.attempt?.abort();this.attempt=null;
     this.scope.abort();this.scope=new AbortController();this.liveSocket?.close();this.liveSocket=null;this.hello=false;this.watchReady=false;
     this.directoryJob=null;this.contentJob=null;this.fullHistoryJob=null;this.state('suspended');this.changed();
   }
   override close():void{
+    if(this.owner)this.closeConversation();
     this.observe({stage:'cancelled'});this.openTiming=undefined;
     this.suspendConnection();this.opened?.reject(new Error('aborted'));this.opened=null;this.publishedMessages=[];this.releaseContent();super.close();this.changed();
   }
   override async retryNow():Promise<void>{this.suspendConnection();await this.connect()}
-  override async snapshot(signal?:AbortSignal):Promise<void>{await this.refreshDirectory(signal)}
-  override async catchUp(signal?:AbortSignal):Promise<void>{await this.refreshDirectory(signal);await this.refreshContent()}
+  override async snapshot(signal?:AbortSignal):Promise<void>{await (this.owner??this).refreshDirectory(signal)}
+  override async catchUp(signal?:AbortSignal):Promise<void>{await this.snapshot(signal);await this.refreshContent()}
   override async resync(signal?:AbortSignal):Promise<void>{await this.catchUp(signal)}
   override async markRead(_id:string,_ref:number):Promise<number>{return 0} // no network/read accounting
   /** UI calls only after this exact result has been displayed in the foreground. */
@@ -163,7 +183,7 @@ export class LiveSessionClient extends HermesClient {
       const body=await this.call('POST','/v1/threads/'+encodeURIComponent(id)+'/result-read',{result_version:version},linked.signal);
       if(body.thread_id!==id)throw new ProtocolError('result acknowledgement identity mismatch');
       // Read back the authoritative directory, not a locally invented cleared flag.
-      await this.refreshDirectory(linked.signal);
+      await this.snapshot(linked.signal);
     }finally{linked.done()}
   }
   override checkpoint():never{throw new ProtocolError('Live conversations are not persisted')}
@@ -215,7 +235,7 @@ export class LiveSessionClient extends HermesClient {
       this.parseLabelDetail(await this.call('PUT', path, { markers: labels, markers_updated_at: time }, linked.signal), id, channel);
       // Validate the exact target again on readback. Never project a proposed array.
       await this.getThreadLabels(id, linked.signal);
-      await this.refreshDirectory(linked.signal);
+      await this.snapshot(linked.signal);
       if (owner !== this.liveController || linked.signal.aborted || !this.isThreadAvailable(id) || this.threads.get(id)!.project_id !== channel) throw new ProtocolError('Label save not confirmed');
       const current = this.threads.get(id)!;
       return { thread_id: id, project_id: channel, markers: [...(current.markers ?? [])], markers_updated_at: current.markers_updated_at ?? 0 };
@@ -249,6 +269,27 @@ export class LiveSessionClient extends HermesClient {
     })();this.directoryJob=job;
     try{await job}finally{if(this.directoryJob===job)this.directoryJob=null}
   }
+  /** Page transport belongs to the account; page content/abort scope stays local. */
+  sharedConnected():void{
+    if(!this.owner?.hello)return;
+    this.connectionSuspended=false;this.attempt=this.owner.attempt;this.hello=true;
+    this.adoptCapabilities(this.owner);this.state(this.owner.connectionState);
+    this.watchId=String(++this.owner.watchNumber);this.sendWatch();
+  }
+  sharedState(value:Parameters<LiveSessionClient['state']>[0]):void{this.state(value);}
+  protected connectionReady(_frame:Extract<LiveFrame,{type:'hello'}>):void{this.sendWatch();}
+  failOpening(error:Error):void{this.opened?.reject(error);}
+  receiveScopedFrame(frame:Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>):void{
+    if(frame.request_id!==this.watchId||frame.thread_id!==this.wanted)return;
+    if(frame.type==='unavailable'){
+      this.opened?.reject(new HttpError(404));this.closeConversation();
+      void this.snapshot(this.attempt?.signal).catch(error=>(this.owner??this).failLive?.(error));
+    }else{
+      if(frame.type==='watching'){this.watchReady=true;this.observe({stage:'watch-ready'});}
+      void this.refreshContent().catch(error=>(this.owner??this).failLive?.(error));
+    }
+  }
+  protected scopedFrame(frame:Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>):void{this.receiveScopedFrame(frame);}
   private async refreshContent():Promise<void>{
     const id=this.wanted,watchId=this.watchId;
     if(!id||!this.watchReady||!this.attempt)return;
@@ -258,6 +299,8 @@ export class LiveSessionClient extends HermesClient {
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
         const start=this.messages.get(id)?.[0]?.ref_seq;
+        const initial=!this.initialHistoryComplete;
+        const history=(async()=>{
         if(!this.initialHistoryComplete){
           this.observe({stage:'history-start'},timing);
           const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);
@@ -272,16 +315,25 @@ export class LiveSessionClient extends HermesClient {
           let after:string|undefined;const pages=new Set<string>();
           do{const page=await super.history(id,after,100,linked.signal,after?undefined:start,undefined,end);after=page.next_cursor??undefined;if(this.wanted===id&&this.watchId===watchId&&end!==undefined&&!this.fullHistoryLoaded&&this.messages.get(id)?.at(-1)?.ref_seq===end)this.newer=page.newer_cursor??null;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
         }
+        if(initial&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
+          this.initialHistoryComplete=true;
+          const ready=this.opened?.contentReady;if(this.opened)this.opened.contentReady=undefined;ready?.();
+        }
+        })();
         this.observe({stage:'state-start'},timing);
-        const state=this.decodeScopedState(await this.call('GET','/v1/threads/'+encodeURIComponent(id)+'/live-state',undefined,linked.signal),id);
+        const status=this.call('GET','/v1/threads/'+encodeURIComponent(id)+'/live-state',undefined,linked.signal).then(body=>{
         if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
+        const state=this.decodeScopedState(body,id);
         this.batchChanges(()=>{
           for(const r of state.receipts)this.storeReceipt(r,false);
           this.interactions.clear();for(const i of state.interactions)if(i.state==='pending')this.interactions.set(i.id,i);
           this.changed();
         });
         this.observe({stage:'state-ready'},timing);
-        this.initialHistoryComplete=true;this.observe({stage:'open-ready'},timing);this.openTiming=undefined;this.opened?.resolve();
+        });
+        await Promise.all([history,status]);
+        if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
+        this.observe({stage:'open-ready'},timing);this.openTiming=undefined;this.opened?.resolve();
       }
     })();this.contentJob=job;
     try{await job}finally{linked.done();if(this.contentJob===job){this.contentJob=null;if(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId)await this.refreshContent()}}
@@ -330,12 +382,12 @@ export class LiveSessionClient extends HermesClient {
         const attempt=new AbortController(),abort=()=>attempt.abort();controller.signal.addEventListener('abort',abort,{once:true});this.attempt=attempt;
         let openedSocket:Socket|undefined;
         try{
-          this.state(retries?'retrying':'connecting');const caps=await this.capabilities(attempt.signal);
-          if(caps.open_session_live!==true)throw new ProtocolError('Server does not support scoped live conversations');
+          this.state(retries?'retrying':'connecting');
           let deadline:ReturnType<typeof setTimeout>|undefined;
           const opening=this.liveOptions.socket.connect('/v1/live',this.token(),attempt.signal);
-          void opening.then(s=>{if(attempt.signal.aborted)s.close()},()=>{});
-          const socket=await Promise.race([opening,new Promise<Socket>((_,reject)=>{deadline=setTimeout(()=>reject(new TimeoutError('WebSocket connection timed out')),this.liveOptions.connectTimeoutMs??10_000)})]).finally(()=>clearTimeout(deadline));
+          void opening.then(s=>{openedSocket=s;if(attempt.signal.aborted)s.close()},()=>{});
+          const [caps,socket]=await Promise.all([this.capabilities(attempt.signal),Promise.race([opening,new Promise<Socket>((_,reject)=>{deadline=setTimeout(()=>reject(new TimeoutError('WebSocket connection timed out')),this.liveOptions.connectTimeoutMs??10_000)})])]).finally(()=>clearTimeout(deadline));
+          if(caps.open_session_live!==true)throw new ProtocolError('Server does not support scoped live conversations');
           openedSocket=socket;
           if(attempt.signal.aborted){socket.close();break}
           if(!socket.send)throw new ProtocolError('Live transport requires send support');
@@ -344,8 +396,8 @@ export class LiveSessionClient extends HermesClient {
         }catch(error){
           if(controller.signal.aborted)break;
           const value=error instanceof LiveProtocolError?new ProtocolError(error.message):error instanceof Error?error:new Error('Live connection failed');this.liveOptions.onError?.(value);
-          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');const opening=this.opened;if(this.anchor!==undefined&&!(value instanceof HttpError&&(value.status===401||value.status===403)))this.opened=null;opening?.reject(value);break}
-        }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
+          if(!isRetryableError(value)){this.state(value instanceof HttpError&&(value.status===401||value.status===403)?'blocked':'suspended');this.failOpening(value);if(this.anchor!==undefined&&!(value instanceof HttpError&&(value.status===401||value.status===403)))this.opened=null;break}
+        }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.failLive=undefined;this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
         this.state('retrying');const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
         try{await wait(delays[Math.min(retries++,delays.length-1)],controller.signal)}catch{break}
@@ -361,6 +413,7 @@ export class LiveSessionClient extends HermesClient {
       const finish=(error?:unknown)=>{if(finished)return;finished=true;clearTimeout(handshake);clearTimeout(pong);clearInterval(ping);attempt.signal.removeEventListener('abort',abort);attempt.abort();socket.close();if(error)reject(error);else resolve()};
       const abort=()=>finish();attempt.signal.addEventListener('abort',abort,{once:true});
       const failure=(error:unknown)=>{if(!attempt.signal.aborted&&!(error instanceof Error&&error.message==='aborted'))finish(error)};
+      this.failLive=failure;
       socket.onClose(()=>finish());
       socket.onMessage(data=>{
         if(finished)return;
@@ -368,7 +421,7 @@ export class LiveSessionClient extends HermesClient {
           if(data==='pong'){if(!this.hello)throw new ProtocolError('pong before hello');awaitingPong=false;clearTimeout(pong);stable();return}
           const frame=parseLiveFrame(JSON.parse(data));
           if(frame.type==='hello'){
-            if(this.hello)throw new ProtocolError('duplicate live hello');this.hello=true;clearTimeout(handshake);this.state('syncing');this.sendWatch();
+            if(this.hello)throw new ProtocolError('duplicate live hello');this.hello=true;clearTimeout(handshake);this.state('syncing');this.connectionReady(frame);
             void this.refreshDirectory(attempt.signal).then(()=>{if(!attempt.signal.aborted)this.state('online')},failure);
             ping=setInterval(()=>{if(awaitingPong||finished)return;awaitingPong=true;pong=setTimeout(()=>finish(new TimeoutError('WebSocket liveness timed out')),interval);try{socket.send!('ping')}catch(error){finish(error)}},interval);
           }else if(!this.hello)throw new ProtocolError('live notification before hello');
@@ -377,10 +430,7 @@ export class LiveSessionClient extends HermesClient {
             const t=this.threads.get(frame.thread_id);
             if(t){this.threads.set(t.id,{...t,running:frame.running});this.changed()}
             else void this.refreshDirectory(attempt.signal).catch(failure);
-          }else if(frame.request_id===this.watchId&&frame.thread_id===this.wanted){
-            if(frame.type==='unavailable'){this.opened?.reject(new HttpError(404));this.closeConversation();void this.refreshDirectory(attempt.signal).catch(failure)}
-            else{if(frame.type==='watching'){this.watchReady=true;this.observe({stage:'watch-ready'})}void this.refreshContent().catch(failure)}
-          }
+          }else this.scopedFrame(frame);
         }catch(error){finish(error)}
       });
       if(attempt.signal.aborted)finish();

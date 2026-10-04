@@ -29,13 +29,15 @@ Measure several plain-text sessions and several sessions with heavy content sepa
 - SDK open to history start: connection/hello/watch readiness and scheduling.
 - History start to ready: decoded HTTP request plus local validation, merge and callbacks.
 - State start to ready: decoded HTTP request plus local state processing.
-- History ready to UI release: the existing status gate and scheduling before `setLocated(true)`.
+- History ready to UI release: scheduling before `setLocated(true)`. The account-network candidate removes the state gate.
 - UI release to first viewable-row callback: client presentation and callback scheduling.
 - Decoded history/state response to local ready: remaining local work after the final response.
 
 The measurement uses an independent FlashList viewability pair with zero minimum dwell and 1% item visibility. The existing receipt/source-highlight callback and its default dwell remain unchanged. No helper is added when timing is disabled. FlashList may defer callbacks when JS is busy; this is not a native pixel-paint timestamp. Empty pages end one animation frame after release. Images, mathematical formulas and diagrams may finish later; this probe does not claim they are ready.
 
 HTTP spans observe requests started after the SDK opening marker. A capability request already started during page acquisition is not retroactively measured. HTTP duration includes network, server, transport and response-body decoding; it cannot identify server processing alone. Parallel request durations overlap, so the report does not add them to the total. Local response timings are not a measure of all client CPU.
+
+With the account-network candidate, page opening does not issue its own capabilities/catalogue requests. History and state overlap, and the first-row callback can precede state completion. Pending requests are labelled explicitly; their incomplete duration is not reported as a completed zero-duration request. State stages may remain `not measured` when the sample ends first. The measurement itself adds no new detailed connection instrumentation.
 
 The conclusion states whether elapsed time is mostly before or after UI release. A result mostly before release is **not** automatically a server bottleneck. Inspect the request timings, connection wait, local processing and post-history gate together. If requests dominate, measure server processing separately before changing server code. If presentation dominates, measure parsing/layout/heavy engines next.
 

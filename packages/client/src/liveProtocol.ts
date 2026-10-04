@@ -18,7 +18,7 @@ export interface SessionDirectoryItem {
 export type CatalogueItem = {kind:'channel';value:Channel}|{kind:'session';value:SessionDirectoryItem};
 export interface CataloguePage {items:CatalogueItem[];next_after:string|null}
 export type LiveFrame =
-  | {type:'hello';protocol:1;open_session_live:true}
+  | {type:'hello';protocol:1;open_session_live:true;multi_session_live?:boolean}
   | {type:'watching';thread_id:string|null;request_id:string}
   | {type:'directory_changed'}
   | {type:'session_state';thread_id:string;running:boolean}
@@ -67,7 +67,7 @@ export function parseLiveFrame(value:unknown):LiveFrame {
   const row=object(value);
   if(row.type==='hello'){
     if(row.protocol!==1||row.open_session_live!==true)throw new LiveProtocolError();
-    return {type:'hello',protocol:1,open_session_live:true};
+    return {type:'hello',protocol:1,open_session_live:true,...(row.multi_session_live === true ? {multi_session_live:true} : {})};
   }
   if(row.type==='directory_changed')return {type:'directory_changed'};
   if(row.type==='session_state')return {type:'session_state',thread_id:text(row.thread_id),running:bool(row.running)};
@@ -75,6 +75,6 @@ export function parseLiveFrame(value:unknown):LiveFrame {
   if(row.type==='conversation_changed'||row.type==='unavailable')return {type:row.type,thread_id:text(row.thread_id),request_id:text(row.request_id,128)};
   throw new LiveProtocolError();
 }
-export function watchCommand(threadId:string|null,requestId:string):string {
-  return JSON.stringify({type:'watch',thread_id:threadId===null?null:text(threadId),request_id:text(requestId,128)});
+export function watchCommand(threadId:string|null,requestId:string,mode?:'add'|'remove'):string {
+  return JSON.stringify({type:'watch',thread_id:threadId===null?null:text(threadId),request_id:text(requestId,128),...(mode ? {mode} : {})});
 }

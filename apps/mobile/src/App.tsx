@@ -341,15 +341,18 @@ function MountedThreadScreen({ client, threadId, targetRef, measurement }: { cli
     if (!client || !focusedRef.current || !appActive.current) return;
     const opening = ++openingRef.current;
     setPageCursor(null); setHistoryBusy(true); setLocated(false); setStartRef(null);
+    let contentShown = false;
+    const releaseContent = () => {
+      if (contentShown || !focusedRef.current || !appActive.current || opening !== openingRef.current || client.currentThreadId !== id) return;
+      contentShown = true; measurement?.mark('ui-ready');
+      setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true); setHistoryBusy(false);
+    };
     try {
-      const openingTask = client.openConversation(id, requestedRef, measurement?.observe); ownedWatch.current = client.currentConversationKey;
+      const openingTask = client.openConversation(id, requestedRef, measurement?.observe, releaseContent); ownedWatch.current = client.currentConversationKey;
       await openingTask;
-      const current = () => focusedRef.current && appActive.current && opening === openingRef.current && client.currentThreadId === id;
-      if (!current()) return;
-      measurement?.mark('ui-ready');
-      setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true);
-    } catch { measurement?.mark('failed'); if (focusedRef.current && opening === openingRef.current) setError(requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
-    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
+      releaseContent();
+    } catch { measurement?.mark('failed'); if (focusedRef.current && opening === openingRef.current) setError(contentShown ? 'Could not refresh conversation status. It will resume when the connection returns.' : requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
+    finally { if (!contentShown && focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
   const loadOlder = async () => {

@@ -12,7 +12,7 @@ function fixture(total = 100) {
  const sockets = new Set(); let opened = 0, closed = 0;
  const client = new LivePageClient({ token: () => 'synthetic', onChange() {}, livenessMs: 10000,
   http: { async request(_method, path) {
-   if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, history_latest: true, message_send_identity: true, open_session_live: true } };
+   if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, history_latest: true, message_send_identity: true, open_session_live: true, multi_session_live: true } };
    if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items: [{ kind: 'channel', value: { id: 'p', name: 'Synthetic' } }, ...['A', 'B'].map(id => ({ kind: 'session', value: { id, project_id: 'p', title: id, archived: false, running: false } }))], next_after: null } };
    const id = path.split('/')[3];
    if (path.endsWith('/live-state')) return { status: 200, body: { thread_id: id, active_receipts: [], pending_interactions: [] } };
@@ -35,7 +35,7 @@ function fixture(total = 100) {
     send(data) { queueMicrotask(() => socket.emit(data === 'ping' ? 'pong' : { ...JSON.parse(data), type: 'watching' })); },
     close() { if (dead) return; dead = true; closed++; sockets.delete(socket); const fn = closeListener; listener = null; closeListener = null; pending.length = 0; fn?.(); }
    };
-   sockets.add(socket); queueMicrotask(() => socket.emit({ type: 'hello', protocol: 1, open_session_live: true })); return socket;
+   sockets.add(socket); queueMicrotask(() => socket.emit({ type: 'hello', protocol: 1, open_session_live: true, multi_session_live: true })); return socket;
   } } });
  return { client, sockets, get counts() { return { opened, closed, active: sockets.size }; } };
 }

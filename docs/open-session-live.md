@@ -20,13 +20,17 @@ Status: In progress. Approved scope supersedes the withdrawn SYNC-STATE proposal
 
 ## Simplest wire boundary
 
-The page-owner extension uses one directory connection plus one scoped WebSocket per living page. The existing one-watch-per-socket plugin contract remains unchanged; no core or plugin change is required. Historical work breakdown and verification below describe the earlier single-owner release, not current page-lifetime acceptance.
+The account-network candidate uses one WebSocket and one directory per account, with concurrent scoped subscriptions for living pages. It requires the paired plugin's `multi_session_live:true` hello. Legacy clients retain their single-watch semantics against that plugin; new clients reject an older plugin explicitly rather than maintaining a second transport architecture. Historical work breakdown below describes the earlier single-owner release.
 
-Reuse existing authenticated capabilities/history/receipt/interaction/attachment APIs. Add one lightweight catalogue endpoint and one live WebSocket route in the plugin. Catalogue contains only directory fields and running state (no unread, receipt bodies, prompts or messages). Live connection observes directory/running changes for the account; watch command selects at most one Thread for content notifications. Frames are state/change hints, not replay instructions. No client event cursor, data version or local sync journal.
+Reuse existing authenticated capabilities/history/receipt/interaction/attachment APIs. Catalogue contains only directory fields and running state (no unread counts, receipt bodies, prompts or messages). The account connection observes directory/running changes and content hints for its living pages. Frames remain change hints, not replay instructions. No client event cursor, data-version chain or history store is introduced.
 
 `GET /v1/catalogue?after=<ordinary page anchor>&limit=30` returns directory items and next_after; full pagination must succeed before applying absence. Ordinary history/catalogue pagination is not a synchronization cursor.
 
 `WS /v1/live`: hello; `{type:watch,thread_id:<id|null>,request_id:<ephemeral request identity>}`; matching watching acknowledgement; directory_changed, session_state (running), conversation_changed scoped to the watched request. Request identity is only to ignore stale subscription responses, not a stored entity version. Ping/pong is health-only. Slow consumers close/reconnect instead of silently dropping required changes.
+
+The candidate hello adds `multi_session_live:true`. `watch` without `mode` still replaces all subscriptions, including clearing them with `thread_id:null`. `mode:add` installs/replaces the given Thread's subscription without touching others. `mode:remove` removes only the matching Thread/request identity and needs no acknowledgement. Each command carries one Thread, not an unbounded batch. The server validates existence/access on subscription and retains authentication, input-size, buffer and scoped-state limits.
+
+Capabilities and socket establishment run concurrently. A matching subscription acknowledgement still precedes body reads. Initial history and live-state then run concurrently. `openConversation` accepts a fourth, content-ready callback for first UI release; its Promise still waits for history and state. Returning to an already content-ready opening invokes the current callback immediately. Initial-history readiness is recorded before state completes, so reconnect does not reset a shown window to latest. Neither UI invents receipts, approvals or an idle result while status is pending.
 
 `GET /v1/threads/{id}/live-state` provides only the opened conversation's receipts/approvals; outer catalogue never includes these bodies. `GET /v1/channels/{id}` provides temporary editor detail rather than storing descriptions in the directory.
 

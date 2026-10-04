@@ -33,7 +33,7 @@ function fixture({request,ack=true}={}){
 }
 const watch=(socket,id)=>socket.sent.map(s=>s==='ping'?null:JSON.parse(s)).filter(s=>s?.thread_id===id).at(-1);
 
-test('temporary open observation records the real SDK gate without changing request order or leaking payloads', async () => {
+test('temporary open observation records parallel history/state gates without leaking payloads',async()=>{
   const stateGate = deferred(), events = [];
   const f = fixture({ request: async (_method, path, _body, _signal, reply) => {
     if (path.endsWith('/live-state')) { await stateGate.promise; return reply(path); }
@@ -45,7 +45,7 @@ test('temporary open observation records the real SDK gate without changing requ
     assert.ok(!events.some(e => e.stage === 'open-ready'));
     stateGate.resolve(); await opening;
     const stages = events.filter(e => e.stage).map(e => e.stage);
-    assert.deepEqual(stages, ['open-start','watch-ready','history-start','history-ready','state-start','state-ready','open-ready']);
+    assert.deepEqual(stages, ['open-start','watch-ready','history-start','state-start','history-ready','state-ready','open-ready']);
     for (const kind of ['history','state']) {
       const spans = events.filter(e => e.request === kind);
       assert.equal(spans.length, 2); assert.equal(spans[0].edge, 'start'); assert.equal(spans[1].edge, 'end'); assert.equal(spans[0].sequence, spans[1].sequence);
@@ -269,7 +269,7 @@ test('remote archive during background becomes unavailable on recovery and relea
 
 test('auth rejection blocks instead of repeatedly reconnecting or pairing',async()=>{
   const f=fixture({request:async(_m,p)=>p==='/v1/capabilities'?{status:403,body:{}}:undefined});await f.sdk.connect();await until(()=>f.sdk.connectionState==='blocked');
-  assert.equal(f.paths.length,1);assert.equal(f.sockets.length,0);f.sdk.close();
+  assert.equal(f.paths.length,1);assert.equal(f.sockets.length,1);assert.equal(f.sockets[0].closed,true);f.sdk.close();
 });
 
 test('conversation ownership survives reconnect but cannot close a later same-ID opening',async()=>{

@@ -5,7 +5,7 @@ export type TimingResult = {
   origin: 'tap' | 'page'; outcome: 'visible-rows' | 'empty-frame' | 'cancelled' | 'failed';
   stages: Partial<Record<TimingMark, number>>; rows: number;
   localAfterResponse: Partial<Record<'history' | 'state', number>>;
-  requests: Partial<Record<OpenRequestKind, { count: number; ms: number; lastEnd?: number }>>;
+  requests: Partial<Record<OpenRequestKind, { count: number; ms: number; lastEnd?: number; pending?:number }>>;
 };
 
 /** Temporary measurement, one opening only. No IDs, payloads, persistence or upload. */
@@ -29,6 +29,7 @@ export class SessionOpenMeasurement {
     if (stage === 'visible-rows' || stage === 'empty-frame' || stage === 'cancelled' || stage === 'failed') {
       this.result = { origin: this.origin, outcome: stage, stages: { ...this.stages }, rows: this.rows, localAfterResponse: { ...this.localAfterResponse },
         requests: Object.fromEntries(Object.entries(this.requests).map(([kind, value]) => [kind, { ...value }])) };
+      for (const request of this.pending.values()) this.result.requests[request.kind]!.pending = (this.result.requests[request.kind]!.pending ?? 0) + 1;
       this.pending.clear();
       for (const listener of this.listeners) listener(this.result);
     }
@@ -75,7 +76,7 @@ export function timingReport(result: TimingResult): string {
     : result.outcome === 'empty-frame' ? 'Empty conversation; no message-render measurement.'
     : before === undefined || local === undefined ? 'Incomplete phase data; do not classify.'
     : before > local ? 'Most elapsed time was before UI release, not after it.' : 'Most elapsed time was after UI release; inspect client presentation.';
-  const requestLines = Object.entries(result.requests).map(([kind, value]) => `${kind}: ${value.count} request(s), ${Math.round(value.ms)} ms`);
+  const requestLines = Object.entries(result.requests).map(([kind, value]) => `${kind}: ${value.count} request(s), ${Math.round(value.ms)} ms${value.pending ? ` completed spans; ${value.pending} still pending at callback` : ''}`);
   const localMs = (kind: 'history' | 'state') => result.localAfterResponse[kind] === undefined ? 'not measured' : `${Math.round(result.localAfterResponse[kind]!)} ms`;
   return [
     `Temporary session timing: ${result.outcome}`,

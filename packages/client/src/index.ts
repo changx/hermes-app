@@ -171,8 +171,8 @@ const bounded = async <T>(start: (signal: AbortSignal) => Promise<T>, ms: number
 };
 
 export class HermesClient {
-  readonly channels = new Map<string, Channel>();
-  readonly threads = new Map<string, ThreadSummary>();
+  readonly channels: Map<string, Channel>;
+  readonly threads: Map<string, ThreadSummary>;
   readonly receipts = new Map<string, Receipt>();
   private receiptIdentity = new Map<string, string>();
   readonly interactions = new Map<string, Interaction>();
@@ -205,7 +205,9 @@ export class HermesClient {
   private tailContinuations = new Map<string, { cursor: string }>();
   private tailRecoveryJobs = new Map<string, { promise: Promise<Message[]>; signal?: AbortSignal }>();
   private knownEmptyThreads = new Set<string>();
-  constructor(private readonly options: Options) {
+  constructor(private readonly options: Options, directory?: Pick<HermesClient, 'channels' | 'threads'>) {
+    this.channels = directory?.channels ?? new Map();
+    this.threads = directory?.threads ?? new Map();
     this.workspace = createWorkspaceApi((method,path,body,signal,headers) => this.call(method,path,body,signal,headers),
       (path,signal) => this.downloadPath(path,signal), message => new ProtocolError(message));
   }
@@ -369,6 +371,14 @@ export class HermesClient {
     return obj(response.body);
   }
   async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1 || x.durable_sync !== true) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
+  protected adoptCapabilities(owner: HermesClient): void {
+    this.capabilitiesReady = owner.capabilitiesReady;
+    this.supportsLatest = owner.supportsLatest;
+    this.supportsSendIdentity = owner.supportsSendIdentity;
+    this.supportsChannelWorkspace = owner.supportsChannelWorkspace;
+    this.supportsAttachmentOrigin = owner.supportsAttachmentOrigin;
+    this.supportsSessionLabels = owner.supportsSessionLabels;
+  }
   private async downloadPath(path: string, signal?: AbortSignal): Promise<Uint8Array> {
     if(!this.options.http.download)throw new ProtocolError('Binary download unavailable');
     const reply=await bounded(s=>this.options.http.download!(path,this.token(),s),timeout(this.options.requestTimeoutMs,15000),signal);

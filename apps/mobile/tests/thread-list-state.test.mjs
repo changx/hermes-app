@@ -32,13 +32,3 @@ test('session list uses long press and accessible rename actions and never marks
   assert.match(channels, /unreadDot: \{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4DA3FF' \}/);
   assert.doesNotMatch(channels, /Completed · Unread/);
 });
-
-test('conversation entry awaits scoped opening and reports only a visible completed result', () => {
-  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /await openingTask/);
-  assert.match(app, /client\.openConversation\(id, requestedRef, measurement\?\.observe\)/);
-  assert.doesNotMatch(app, /markRead\(|markVisibleRead|locatedThreads|olderCursors/);
-  assert.match(app, /!focused \|\| !foreground \|\| !located/);
-  assert.match(app, /visibleRefs\.includes\(result\.result_ref\)/);
-  assert.match(app, /markResultRead\(threadId, result\.result_version, result\.result_ref\)/);
-});

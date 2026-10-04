@@ -1,9 +1,9 @@
 import { LiveSessionClient } from './liveClient';
 import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction } from './index';
+import type { LiveFrame } from './liveProtocol';
+import type { OpenTimingObserver } from './openTiming';
 
-/** One account directory plus one scoped live connection for each mounted page.
- * The existing one-watch-per-socket protocol already supports this. No history
- * persistence, hidden unopened transcripts, new server protocol or polling. */
+/** One account connection/directory. Living pages own only content and scopes. */
 export class LivePageClient extends LiveSessionClient {
   private readonly pageOptions: Options;
   private readonly pages = new Map<string, LiveSessionClient>();
@@ -12,40 +12,37 @@ export class LivePageClient extends LiveSessionClient {
   private disposed = false;
   constructor(options: Options) {
     let self: LivePageClient | undefined;
-    super({ ...options, onChange: () => { self?.directoryChanged(); options.onChange?.(); } });
+    super({ ...options, onChange: () => { self?.directoryChanged(); options.onChange?.(); },
+      onConnectionState: value => { for(const page of self?.pages.values() ?? []) page.sharedState(value); options.onConnectionState?.(value); } });
     self = this;
     this.pageOptions = options;
   }
   get openedPageIds(): readonly string[] { return [...this.pages.keys()]; }
   private directoryChanged(): void {
     if (this.isCatalogueReady) for (const [id,page] of [...this.pages]) {
-      this.syncPageDirectory(page);
       if (!this.isThreadAvailable(id)) this.releasePage(id,page);
     }
     this.mirror();
   }
-  private syncPageDirectory(page: LiveSessionClient): void {
-    if (!this.isCatalogueReady) return;
-    page.channels.clear(); for (const [key,value] of this.channels) page.channels.set(key,value);
-    page.threads.clear(); for (const [key,value] of this.threads) page.threads.set(key,value);
-    page.supportsSessionLabels = this.supportsSessionLabels;
+  protected override connectionReady(frame: Extract<LiveFrame,{type:'hello'}>): void {
+    if(!frame.multi_session_live)throw new ProtocolError('Server needs account session subscription support');
+    super.connectionReady(frame);
+    for(const page of this.pages.values())page.sharedConnected();
   }
+  protected override scopedFrame(frame: Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>): void {
+    if(frame.thread_id)this.pages.get(frame.thread_id)?.receiveScopedFrame(frame);
+    else super.scopedFrame(frame);
+  }
+  override failOpening(error: Error): void { super.failOpening(error); for(const page of this.pages.values())page.failOpening(error); }
   page(id: string): LiveSessionClient | undefined { return this.pages.get(id); }
   acquirePage(id: string): LiveSessionClient {
     if (this.disposed) throw new ProtocolError('Connection is closed');
     const existing = this.pages.get(id);
     if (existing) return existing;
     const page = new LiveSessionClient({ ...this.pageOptions, onCheckpoint: undefined,
-      onChange: () => { if (this.pages.get(id) === page) { this.syncPageDirectory(page); this.mirror(); this.pageOptions.onChange?.(); } },
-      onConnectionState: state => {
-        if (this.pages.get(id) !== page) return;
-        if (state === 'blocked') { this.suspendConnection(); this.state('blocked'); }
-        this.pageOptions.onChange?.();
-      },
-    });
-    // Seed directory metadata only; no transcript is copied or read here.
-    for (const [key,value] of this.channels) page.channels.set(key,value);
-    for (const [key,value] of this.threads) page.threads.set(key,value);
+      onChange: () => { if (this.pages.get(id) === page) { this.mirror(); this.pageOptions.onChange?.(); } },
+      onConnectionState: undefined,
+    },this);
     this.pages.set(id,page);
     if (this.paused) page.suspendConnection();
     return page;
@@ -78,15 +75,14 @@ export class LivePageClient extends LiveSessionClient {
   override get currentOlderCursor(): string | null { return this.currentPage()?.currentOlderCursor ?? null; }
   override get currentNewerCursor(): string | null { return this.currentPage()?.currentNewerCursor ?? null; }
   private currentPage(): LiveSessionClient | undefined { return this.selectedPage ? this.pages.get(this.selectedPage) : undefined; }
-  override openConversation(id: string, targetRef?: number): Promise<void> {
+  override openConversation(id: string, targetRef?: number, timing?: OpenTimingObserver, contentReady?:()=>void): Promise<void> {
     this.selectedPage = id;
-    return this.acquirePage(id).openConversation(id,targetRef);
+    return this.acquirePage(id).openConversation(id,targetRef,timing,contentReady);
   }
   override closeConversation(): void { if (this.selectedPage) this.releasePage(this.selectedPage); }
   override async connect(): Promise<void> {
     this.disposed = false; this.paused = false;
     await super.connect();
-    await Promise.all([...this.pages.values()].map(page => page.connect()));
   }
   override suspendConnection(): void {
     this.paused = true;
