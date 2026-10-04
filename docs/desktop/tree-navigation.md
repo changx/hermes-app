@@ -22,4 +22,37 @@ Verification:
 - Fresh Electron installation raced on the first concurrent test invocation; after installation completed, the full desktop gate was rerun successfully.
 - Changes remain on isolated desktop-tree-navigation branch; no deployment or new Release performed.
 
+## Native sidebar indentation and hover candidate
+
+Branch: `fix/sidebar-tree-hover`; card: `t_6cd23e5f`.
+
+The native-sidebar override removed the original child indent and branch border. The existing Session hover used the same color as the sidebar, so it had no visible contrast.
+
+- Restore a 24px child-container inset, 10px internal gutter and 1px branch guide. Actual Session titles sit 17px to the right of Channel titles.
+- Give Channel rows and Session rows a visible neutral hover background. Keep selected Sessions blue; retain keyboard focus outlines and existing actions.
+- No changes to navigation logic, ordering, mobile, shared protocol, backend or dependencies.
+- Regression uses production React and CSS with real Chromium pointer input through DevTools. It failed on the baseline with -14px title indentation and no guide, then passed at 230px and 280px sidebar widths.
+- Desktop TypeScript and build passed. Browser-enabled full desktop tests: 37 passed, 1 native Electron test skipped, no failures. Tests cover collapse/reopen, Session click, status retention, labels, drafts, selection and narrow layouts.
+- Private computed-style evidence and screenshot: Channel workspace `sidebar-tree-hover/`.
+- Candidate only. Not merged or published. Installed macOS visual acceptance remains open.
+
+## Resizable native sidebar candidate
+
+Branch: `feat/sidebar-resize`; card: `t_4295a06a`. This candidate includes the indentation/hover candidate above.
+
+Confirmed behavior:
+- Drag the sidebar's right edge to change its width. Default 280px; minimum 200px; maximum 480px. Smaller windows reduce the maximum to leave 360px for the conversation where possible.
+- Save only the device-local width preference on release. Window resizing temporarily clamps the layout without replacing the preferred width. Collapse/expand preserves the preference.
+- Double-click the edge to reset to 280px. The focusable separator supports Left/Right in 10px steps and Home/End for the current limits.
+- Reuse the existing renderer-to-main content-bounds API. Resize retained native views; do not recreate tabs, reload conversation history or change drafts.
+- Pointer release/cancel and window blur terminate dragging. A host-window release listener also covers native pointer capture loss at the width limits.
+- Storage failures leave resizing usable and explain that the preference could not be saved.
+
+Verification:
+- Desktop TypeScript, build and all 40 tests passed with Chromium and native Electron enabled. No skips or failures.
+- Linux/Xvfb used real Electron input and production renderers/preload/IPC with controlled transport/storage fixtures. Checked drag to 380px, both limits, native bounds, collapse/expand, window shrink/restore, keyboard change, double-click reset, saved-width restoration after host renderer reload, storage failure, retained native view identity and conversation DOM.
+- Previous tree/hover and label/draft regressions still pass. No mobile, backend, protocol, dependency or release changes.
+- Private log and native screenshot: Channel workspace `sidebar-resize/`.
+- Not merged or published. Full installed-app restart and macOS pointer/visual acceptance remain separate from Linux renderer restoration checks.
+
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side 24-hour query; the current list API exposes cursor/limit, not an activity cutoff.

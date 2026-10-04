@@ -83,6 +83,35 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(await evaluate(shell,'document.querySelector(".tree-thread").textContent.includes("Session B")'),true);
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
+ // Real input reaches the production host renderer while retained native views resize.
+
+ const resizeTo=async target=>{
+   const point=await evaluate(shell,'(()=>{const r=document.querySelector(".sidebar-resize-handle").getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+80)}})()');
+   shell.sendInputEvent({type:'mouseMove',...point});shell.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});
+   await until(()=>evaluate(shell,'document.querySelector(".native-workspace").classList.contains("sidebar-resizing")'),'pointer captured');
+   shell.sendInputEvent({type:'mouseMove',x:target-3,y:point.y,movementX:target-3-point.x,movementY:0});
+   await until(()=>draft.view.getBounds().x===Math.max(200,Math.min(480,target)),'native view tracks drag '+target);
+   shell.sendInputEvent({type:'mouseUp',x:target-3,y:point.y,button:'left',clickCount:1});
+
+   await until(()=>evaluate(shell,'!document.querySelector(".native-workspace").classList.contains("sidebar-resizing")'),'pointer released');
+ };
+ await resizeTo(380);assert.equal(await evaluate(shell,'localStorage.getItem("hermes.desktop.sidebar-width")'),'380');
+ await resizeTo(150);await resizeTo(600);
+ const nativeWidth=draft.view.getBounds();assert.equal(nativeWidth.x+nativeWidth.width,window.getContentSize()[0]);
+ assert.equal(manager.tabs.size,3);assert.equal(draft.view.webContents.id,originalView);
+ await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===0,'resized sidebar collapse');
+ await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===480,'resized sidebar expand');
+ window.setSize(720,820);await until(()=>draft.view.getBounds().x===360,'narrow window clamps sidebar');
+ window.setSize(1280,820);await until(()=>draft.view.getBounds().x===480,'wide window restores preferred width');
+ await evaluate(shell,'document.querySelector(".sidebar-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowLeft",bubbles:true}))');await until(()=>draft.view.getBounds().x===470,'keyboard resize');
+ await evaluate(shell,'document.querySelector(".sidebar-resize-handle").dispatchEvent(new MouseEvent("dblclick",{bubbles:true}))');await until(()=>draft.view.getBounds().x===280,'double click resets width');
+ await resizeTo(380);shell.reload();await until(()=>evaluate(shell,'!!document.querySelector(".sidebar-resize-handle")'),'reloaded workspace');await until(()=>draft.view.getBounds().x===380,'cold renderer restores width');
+ assert.equal(await evaluate(ac,'window.retainedRow===document.querySelector(".message-assistant")'),true);
+ assert.equal(draft.view.webContents.id,originalView);assert.equal(manager.tabs.size,3);
+ await evaluate(shell,'(()=>{window.originalSidebarSave=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==="hermes.desktop.sidebar-width")throw Error("Controlled storage failure");return window.originalSidebarSave.call(this,k,v)};document.querySelector(".sidebar-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));})()');
+ await until(()=>draft.view.getBounds().x===390,'storage failure keeps live resize');
+ assert.equal(await evaluate(shell,'document.querySelector(".native-tab-error").textContent.includes("could not be saved")'),true);
+ await evaluate(shell,'Storage.prototype.setItem=window.originalSidebarSave;document.querySelector(".native-tab-error button").click();document.querySelector(".sidebar-resize-handle").dispatchEvent(new MouseEvent("dblclick",{bubbles:true}))');await until(()=>draft.view.getBounds().x===280,'restore default before existing checks');
  await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>!draft.view.getVisible(),'modal hides native view');assert.equal(manager.snapshot(dc).tabActive,false);
  await evaluate(shell,'[...document.querySelectorAll(".editor-dialog button")].find(e=>e.textContent==="Close").click()');await until(()=>draft.view.getVisible(),'modal restores native view');
  await evaluate(dc,'document.querySelector("[aria-label=Settings]").click()');await until(()=>evaluate(dc,'!!document.querySelector(".font-settings select")'),'font dialog');
