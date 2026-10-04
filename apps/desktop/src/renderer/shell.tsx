@@ -80,7 +80,7 @@ const MessageRow = memo(({ message, continuation, hidden = false }: { message: D
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
   const two = (value: number) => String(value).padStart(2, "0");
   const timeLabel = hasTime && (message.role === "user"
-    ? `${timestamp.getFullYear()}-${two(timestamp.getMonth() + 1)}-${two(timestamp.getDate())} ${two(timestamp.getHours())}:${two(timestamp.getMinutes())}`
+    ? `${timestamp.getFullYear() === new Date().getFullYear() ? "" : `${timestamp.getFullYear()}-`}${two(timestamp.getMonth() + 1)}-${two(timestamp.getDate())} ${two(timestamp.getHours())}:${two(timestamp.getMinutes())}`
     : timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
     {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}

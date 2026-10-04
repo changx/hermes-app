@@ -24,6 +24,8 @@ const messages = [
   message('u6','user','A very long message. '.repeat(120)),
   message('a2','assistant','The next response starts after the complete user message.',{displayKind:'direct'}),
   message('notice','system','Context compressed'),
+  message('current-year','user','Current year date',{createdAt:new Date(new Date().getFullYear(),9,3,18,4).getTime()/1000}),
+  message('previous-year','user','Previous year date',{createdAt:new Date(new Date().getFullYear()-1,9,3,18,4).getTime()/1000}),
 ];
 const snapshot = {revision:1,phase:'connected',connectionState:'online',channels:[{id:'c',name:'Project'}],threads:[{id:'t',channelId:'c',title:'Session display',lastMessageAt:Date.now()/1000,running:true}],selectedChannelId:'c',selectedThreadId:'t',messages,interactions:[],canLoadOlder:false};
 const bundle = await build({stdin:{resolveDir:new URL('..',import.meta.url).pathname,loader:'tsx',contents:`
@@ -53,15 +55,17 @@ test('content layout preserves real message order, process grouping and command 
   assert.equal((html.match(/message-final/g)||[]).length,1);
   assert.doesNotMatch(html, /class="message-role">(?:You|Hermes|Notice)/);
   assert.equal((html.match(/<time class="message-time"/g)||[]).length,messages.filter(m=>m.role!=='assistant').length);
+  let userIndex = 0;
   for(const article of html.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/g)) {
     const assistant=article[1].includes('message-assistant');
     assert.equal(article[2].includes('class="message-time"'),!assistant,'user/system keep time, assistant omits it');
     assert.equal(article[2].includes('class="message-role"'),!assistant,'no empty assistant header');
     if (article[1].includes('message-user')) {
       const two = value => String(value).padStart(2, '0');
-      const date = new Date(1700000000 * 1000);
-      const expected = `${date.getFullYear()}-${two(date.getMonth()+1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
-      assert.ok(article[2].includes(`>${expected}</time>`), 'user time includes local date and minute time');
+      const date = new Date(messages.filter(m=>m.role==='user')[userIndex++].createdAt * 1000);
+      const year = date.getFullYear() === new Date().getFullYear() ? '' : `${date.getFullYear()}-`;
+      const expected = `${year}${two(date.getMonth()+1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
+      assert.ok(article[2].includes(`>${expected}</time>`), 'local current year is omitted; other years retained');
     }
   }
   assert.ok(html.indexOf('Hi')<html.indexOf('I will align'));

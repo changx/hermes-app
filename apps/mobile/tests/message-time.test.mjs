@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
-import { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, absoluteMessageTime, accessibleMessageTime } from '../src/messageTime.ts';
+import { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, absoluteMessageTime, accessibleMessageTime, userMessageTime } from '../src/messageTime.ts';
 import { newSend, connection } from '../src/send.ts';
 import { OutboxStore } from '../src/outbox.ts';
 import { projectTimeline } from '../src/timeline.ts';
@@ -59,7 +59,7 @@ function mountClock(seconds, initialMs, absolute = false) {
   const output = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL('../src/MessageTime.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module: output, exports: output.exports, Date: date,
-    require: name => name === 'react' ? { ...react, default: react } : name === 'react-native' ? native : name === './FontSize' ? { Text: native.Text } : name === './messageTime' ? { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, accessibleMessageTime } : assert.fail(name),
+    require: name => name === 'react' ? { ...react, default: react } : name === 'react-native' ? native : name === './FontSize' ? { Text: native.Text } : name === './messageTime' ? { formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, accessibleMessageTime, userMessageTime } : assert.fail(name),
     setTimeout: (fn, delay) => { const key = ++nextId; timers.set(key, { fn, at: now + delay }); return key; },
     clearTimeout: key => timers.delete(key) });
   const Component = output.exports.MessageTime;
@@ -133,14 +133,14 @@ test('user dates stay absolute from new sends through eight hours and old histor
   for (const age of [0, 59, 60, 3600, 8 * 3600, 86400, 366 * 86400, -500]) {
     const seconds = now / 1000 - age;
     const mounted = mountClock(seconds, now, true);
-    assert.equal(mounted.tree.props.children[0], accessibleMessageTime(seconds));
-    assert.match(mounted.tree.props.children[0], /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.equal(mounted.tree.props.children[0], userMessageTime(seconds, now));
+    assert.match(mounted.tree.props.children[0], /^(?:\d{4}-)?\d{2}-\d{2} \d{2}:\d{2}$/);
     assert.equal(mounted.timers.size, 0);
     assert.equal(mounted.listeners.size, 0);
     mounted.advance(2 * 86400000);
-    assert.equal(mounted.render().props.children[0], accessibleMessageTime(seconds));
+    assert.equal(mounted.render().props.children[0], userMessageTime(seconds, mounted.time()));
     assert.equal(mounted.renders.length, 0);
-    assert.equal(mounted.updateSeconds(seconds + 60).props.children[0], accessibleMessageTime(seconds + 60));
+    assert.equal(mounted.updateSeconds(seconds + 60).props.children[0], userMessageTime(seconds + 60, mounted.time()));
   }
   assert.equal(mountClock(0, now, true).tree.props.children[0], accessibleMessageTime(0));
   for (const value of [undefined, null, NaN, Infinity, -1, '123']) {
@@ -148,6 +148,25 @@ test('user dates stay absolute from new sends through eight hours and old histor
     assert.equal(mounted.tree.props.children[0], '—');
     assert.equal(mounted.tree.props.accessibilityLabel, 'Time unavailable');
     assert.equal(mounted.timers.size, 0);
+  }
+});
+
+test('only the device-local current year is omitted, including New Year boundaries', () => {
+  const seconds = new Date(2026, 11, 31, 23, 59).getTime() / 1000;
+  assert.equal(userMessageTime(seconds, new Date(2026, 11, 31, 23, 59).getTime()), '12-31 23:59');
+  assert.equal(userMessageTime(seconds, new Date(2027, 0, 1, 0, 0).getTime()), '2026-12-31 23:59');
+  const same = mountClock(seconds, new Date(2026, 11, 31, 23, 59).getTime(), true);
+  assert.equal(same.tree.props.children[0], '12-31 23:59');
+  assert.equal(same.tree.props.accessibilityLabel, 'Sent 2026-12-31 23:59');
+  assert.equal(userMessageTime(new Date(2027, 0, 1).getTime()/1000, new Date(2026, 11, 31).getTime()), '2027-01-01 00:00');
+});
+
+test('current-year comparison uses the device timezone, not the UTC year', () => {
+  const script = "import {userMessageTime} from './src/messageTime.ts'; console.log(userMessageTime(Date.parse('2026-01-01T00:30:00Z')/1000,Date.parse('2026-06-01T12:00:00Z')))";
+  for (const [tz, expected] of [['UTC', '01-01 00:30'], ['America/Los_Angeles', '2025-12-31 16:30'], ['Asia/Kolkata', '01-01 06:00']]) {
+    const result = spawnSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script], { cwd: new URL('..', import.meta.url).pathname, env: { ...process.env, TZ: tz }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), expected);
   }
 });
 

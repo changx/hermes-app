@@ -15,6 +15,12 @@ export function accessibleMessageTime(seconds: number): string {
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
+/** Hide only the current local year; retain the full timestamp for accessibility. */
+export function userMessageTime(seconds: number, nowMs: number = Date.now()): string {
+  const full = accessibleMessageTime(seconds);
+  return new Date(seconds * 1000).getFullYear() === new Date(nowMs).getFullYear() ? full.slice(full.indexOf('-') + 1) : full;
+}
+
 export function formatMessageTime(seconds: unknown, nowMs: number): string {
   if (!validTimestampSeconds(seconds)) return '—';
   const age = Math.floor(Math.max(0, nowMs / 1000 - seconds));
