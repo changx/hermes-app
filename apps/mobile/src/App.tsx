@@ -303,7 +303,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
   const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
-  // Entry reads one recent page; a history gesture expands the full transcript.
+  // Entry loads the complete transcript; native virtualization limits rendered rows.
   const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: targetRef === undefined, startRef: null }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();

@@ -47,7 +47,7 @@ function fixture({ capability = true, request: intercept } = {}) {
   const sdk = new LivePageClient({ token: () => 'synthetic', livenessMs: 10000, backoffMs: [10], http: { async request(method, path, token, body, signal) {
     paths.push({ method, path, body });
     const reply = await intercept?.({ method, path, body, signal }); if (reply) return reply;
-    if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, open_session_live: true, multi_session_live: true, history_latest: true, session_labels: capability } };
+    if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, open_session_live: true, multi_session_live: true, history_latest: true, history_full: true, session_labels: capability } };
     if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items, next_after: null } };
     const id = decodeURIComponent(path.split('/')[3]), row = items.find(i => i.kind === 'session' && i.value.id === id)?.value;
     if (path.endsWith('/labels')) {
@@ -55,7 +55,7 @@ function fixture({ capability = true, request: intercept } = {}) {
       if (method === 'PUT' && body.markers_updated_at > row.markers_updated_at) Object.assign(row, body);
       return { status: 200, body: { thread_id: id, project_id: row.project_id, markers: row.markers, markers_updated_at: row.markers_updated_at } };
     }
-    if (path.includes('/messages')) return { status: 200, body: { messages: [{ id: 'm1', ref_seq: 1, role: 'assistant', text: 'Synthetic fixture' }], older_cursor: null, next_cursor: null, incomplete_turns: [], turn_outcomes: [] } };
+    if (path.includes('/messages')) return { status: 200, body: { messages: [{ id: 'm1', ref_seq: 1, role: 'assistant', text: 'Synthetic fixture' }], complete: true, older_cursor: null, next_cursor: null, incomplete_turns: [], turn_outcomes: [] } };
     if (path.endsWith('/live-state')) return { status: 200, body: { thread_id: id, active_receipts: [], pending_interactions: [] } };
     throw Error('Unexpected route');
   } }, socket: { async connect() {

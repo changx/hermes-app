@@ -13,7 +13,7 @@ function fixture(multi=true){
   const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>{},
     http:{async request(method,path,_token,body,signal){
       paths.push([method,path]);
-      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
+      if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_full:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
       if(path.startsWith('/v1/catalogue'))return {status:200,body:{items:[{kind:'channel',value:{id:'p',name:'P'}},...available.map(id=>({kind:'session',value:{id,project_id:'p',title:id,archived:false,running:false}}))],next_after:null}};
       const id=path.split('/')[3];
       if(path.includes('/messages')){
@@ -23,7 +23,7 @@ function fixture(multi=true){
         if(query.has('ref_seq'))result=result.filter(row=>row.ref_seq===Number(query.get('ref_seq')));
         else if(query.has('after_ref_seq'))result=result.filter(row=>row.ref_seq>Number(query.get('after_ref_seq')));
         if(query.has('ref_seq')&&!result.length||query.has('around_ref_seq')&&!result.some(row=>row.ref_seq===Number(query.get('around_ref_seq'))))return {status:404,body:{}};
-        return {status:200,body:{messages:result,older_cursor:'before:'+id,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}};
+        return {status:200,body:{messages:result,complete:true,older_cursor:null,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}};
       }
       if(path.endsWith('/live-state')){const gate=statusGates.get(id);if(gate){statusGates.delete(id);await gate.promise;}return {status:200,body:{thread_id:id,active_receipts:[],pending_interactions:[]}};}
       throw new Error('unexpected '+path);

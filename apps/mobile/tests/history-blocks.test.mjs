@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { build } from 'esbuild';
 import { HermesClient } from '../../../packages/client/dist/index.js';
 import { historyBlockStart, loadHistoryBlocks, HISTORY_BLOCK_COUNT } from '../src/historyBlocks.ts';
 
@@ -183,4 +184,38 @@ test('a late scoped entry cannot retain body or pagination in a closed view', as
     setPageCursor() {}, setHistoryBusy() {}, setLocated() {}, setStartRef: value => starts.push(value), setError: value => assert.fail(value) };
   const pending = callback('openThread', context)('t'); context.focusedRef.current = false; ++context.openingRef.current; finish(); await pending;
   assert.deepEqual(starts, [null]); assert.equal(h.requests.length, 0);
+});
+
+const liveBundle = await build({ entryPoints: [new URL('../../../packages/client/src/liveClient.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
+const liveModule = { exports: {} }; new Function('module', 'exports', liveBundle.outputFiles[0].text)(liveModule, liveModule.exports);
+for (const target of [undefined, 101]) test(`production mobile opening with real SDK publishes all 250 records once (${target ?? 'latest'})`, async () => {
+  const paths = [], rows = Array.from({ length: 250 }, (_, i) => m(i * 2 + 1));
+  let finish; const gate = new Promise(resolve => { finish = resolve; });
+  const client = new liveModule.exports.LiveSessionClient({ token: () => 'synthetic-only', livenessMs: 1000,
+    http: { async request(_method, path) {
+      paths.push(path);
+      if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, durable_sync: true, history_full: true, open_session_live: true } };
+      if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items: [{ kind: 'channel', value: { id: 'p', name: 'P' } }, { kind: 'session', value: { id: 't', project_id: 'p', title: 'T', archived: false, running: false } }], next_after: null } };
+      if (path === '/v1/threads/t/messages?full=true') { await gate; return { status: 200, body: { messages: rows, receipts: [], complete: true, older_cursor: null, next_cursor: null, incomplete_turns: [], turn_outcomes: [] } }; }
+      if (path.endsWith('/live-state')) return { status: 200, body: { thread_id: 't', active_receipts: [], pending_interactions: [] } };
+      throw Error('Unexpected path: ' + path);
+    } }, socket: { async connect() { let listener; return {
+      onMessage(fn) { listener = fn; queueMicrotask(() => listener(JSON.stringify({ type: 'hello', protocol: 1, open_session_live: true }))); }, onClose() {}, close() {},
+      send(value) { queueMicrotask(() => listener(value === 'ping' ? 'pong' : JSON.stringify({ ...JSON.parse(value), type: 'watching' }))); }
+    }; } }
+  });
+  const starts = [], context = { client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 0 }, ownedWatch: { current: null },
+    setPageCursor(value) { context.pageCursor = value; }, setHistoryBusy(value) { context.historyBusy = value; }, setLocated(value) { context.located = value; },
+    setStartRef(value) { starts.push(value); }, setError(value) { assert.fail(value); }
+  };
+  try {
+    const pending = callback('openThread', context)('t', target);
+    const end = Date.now() + 3000;
+    while (!paths.some(path => path.includes('/messages'))) { assert.ok(Date.now() < end); await new Promise(resolve => setImmediate(resolve)); }
+    assert.equal(context.historyBusy, true); assert.equal(context.located, false); assert.deepEqual(starts, [null]);
+    finish(); await pending;
+    assert.equal(context.located, true); assert.equal(context.historyBusy, false); assert.equal(context.pageCursor, null);
+    assert.deepEqual(starts, [null, 1]); assert.equal(client.messages.get('t').length, 250);
+    assert.deepEqual(paths.filter(path => path.includes('/messages')), ['/v1/threads/t/messages?full=true']);
+  } finally { finish(); client.close(); }
 });

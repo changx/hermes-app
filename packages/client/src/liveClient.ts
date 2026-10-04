@@ -44,7 +44,6 @@ export class LiveSessionClient extends HermesClient {
   private fullHistoryLoaded=false;
   private fullHistoryJob:Promise<void>|null=null;
 
-  private initialStartRef:number|undefined;
   get currentNewerCursor():string|null{return this.newer}
   private conversationKey:object={};
   private connectionSuspended=false;
@@ -150,7 +149,7 @@ export class LiveSessionClient extends HermesClient {
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
     this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
-    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.initialStartRef=undefined;this.releaseContent();this.sendWatch();this.changed();
+    this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.releaseContent();this.sendWatch();this.changed();
   }
   override async connect():Promise<void>{
     this.connectionSuspended=false;
@@ -321,27 +320,14 @@ export class LiveSessionClient extends HermesClient {
     const job=(async()=>{
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
-        // Downloaded older pages are not yet the published reading window.
-        const start=this.fullHistoryLoaded?this.messages.get(id)?.[0]?.ref_seq:this.initialStartRef;
         const initial=!this.initialHistoryComplete;
         const history=(async()=>{
-        if(!this.initialHistoryComplete){
-          this.observe({stage:'history-start'},timing);
-          const page=await super.historyWindow(id,undefined,this.anchor===undefined?30:31,linked.signal,this.anchor);
-          if(this.wanted===id&&this.watchId===watchId)this.observe({stage:'history-ready',rows:this.messages.get(id)?.length??0},timing);
-          if(this.wanted===id&&this.watchId===watchId){this.older=page.older_cursor;this.newer=page.next_cursor??null;this.initialStartRef=this.messages.get(id)?.[0]?.ref_seq}
-        }
-        else if(this.fullHistoryLoaded){
-          await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
-        }
-        else{
-          // References are sparse and owned. Refresh the first exact row,
-          // then read forward from that real anchor; never invent start-1.
-          if(start!==undefined)await super.history(id,undefined,1,linked.signal,undefined,start);
-          const end=this.anchor===undefined||this.fullHistoryLoaded?undefined:this.messages.get(id)?.at(-1)?.ref_seq;
-          let after:string|undefined;const pages=new Set<string>();
-          do{const page=await super.history(id,after,100,linked.signal,after?undefined:start,undefined,end);after=page.next_cursor??undefined;if(this.wanted===id&&this.watchId===watchId&&end!==undefined&&!this.fullHistoryLoaded&&this.messages.get(id)?.at(-1)?.ref_seq===end)this.newer=page.newer_cursor??null;if(after&&pages.has(after))throw new ProtocolError('conversation history did not advance');if(after)pages.add(after)}while(after);
-        }
+        if(initial)this.observe({stage:'history-start'},timing);
+        const page=await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
+        if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
+        if(initial&&this.anchor!==undefined&&!page.messages.some(row=>row.ref_seq===this.anchor))throw new HttpError(404);
+        this.fullHistoryLoaded=true;this.older=null;this.newer=null;
+        if(initial)this.observe({stage:'history-ready',rows:this.messages.get(id)?.length??0},timing);
         if(initial&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
           this.initialHistoryComplete=true;
           const ready=this.opened?.contentReady;if(this.opened)this.opened.contentReady=undefined;ready?.();

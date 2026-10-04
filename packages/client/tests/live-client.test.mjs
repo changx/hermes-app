@@ -9,14 +9,14 @@ const until=async fn=>{const end=Date.now()+2000;while(!fn()){assert.ok(Date.now
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve:value=>resolve(value)}};
 const message=(id,text=id)=>({id,ref_seq:Number(id.slice(1)),role:'assistant',text});
 const entry=id=>({kind:'session',value:{id,project_id:'p',title:id,archived:false,running:id==='B'}});
-function fixture({request,ack=true}={}){
+function fixture({request,ack=true,livenessMs=20}={}){
   const paths=[],sockets=[],errors=[],records={A:[message('m1','A')],B:[message('m2','B')]};
   let items=[{kind:'channel',value:{id:'p',name:'P'}},entry('A'),entry('B')];
   const defaultReply=path=>{
-    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,message_send_identity:true,open_session_live:true}};
+    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,history_full:true,message_send_identity:true,open_session_live:true}};
     if(path.startsWith('/v1/catalogue'))return {status:200,body:{items,next_after:null}};
     const id=path.split('/')[3];
-    if(path.includes('/messages')){const params=new URL('https://fixture.test'+path).searchParams,exact=params.get('ref_seq'),after=params.get('after_ref_seq');let rows=records[id]||[];if(exact)rows=rows.filter(m=>m.ref_seq===Number(exact));else if(after)rows=rows.filter(m=>m.ref_seq>Number(after));return {status:200,body:{messages:rows,older_cursor:null,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}}}
+    if(path.includes('/messages')){const params=new URL('https://fixture.test'+path).searchParams,exact=params.get('ref_seq'),after=params.get('after_ref_seq');let rows=records[id]||[];if(exact)rows=rows.filter(m=>m.ref_seq===Number(exact));else if(after)rows=rows.filter(m=>m.ref_seq>Number(after));return {status:200,body:{messages:rows,complete:true,older_cursor:null,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}}}
     if(path.endsWith('/live-state'))return {status:200,body:{thread_id:id,active_receipts:[],pending_interactions:[]}};
     if(path.startsWith('/v1/receipts/'))return {status:200,body:{receipt:{id:'rB',thread_id:'B',client_message_id:'inputB',state:'queued',durable:true,ref_seq:2}}};
     if(path==='/v1/threads/B/messages')return {status:202,body:{receipt:{id:'rB',thread_id:'B',client_message_id:'inputB',state:'queued',durable:true,ref_seq:2}}};
@@ -28,7 +28,7 @@ function fixture({request,ack=true}={}){
     send(value){this.sent.push(value);if(value==='ping'){queueMicrotask(()=>this.emit('pong'));return}const frame=JSON.parse(value);if(ack)queueMicrotask(()=>this.emit({...frame,type:'watching'}))},
     close(){if(closed)return;closed=true;this.closeCount++;closedListener?.()},get closed(){return closed}};
     sockets.push(socket);queueMicrotask(()=>socket.emit({type:'hello',protocol:1,open_session_live:true}));return socket;
-  }},onError:e=>errors.push(e),livenessMs:20,backoffMs:[5,10]});
+  }},onError:e=>errors.push(e),livenessMs,backoffMs:[5,10]});
   return {sdk,paths,sockets,records,errors,setItems(value){items=value}};
 }
 const watch=(socket,id)=>socket.sent.map(s=>s==='ping'?null:JSON.parse(s)).filter(s=>s?.thread_id===id).at(-1);
@@ -84,53 +84,24 @@ test('cancelled opening cannot transfer old request completions into the next ob
   } finally { gate.resolve(); f.sdk.close(); }
 });
 
-test('target opening reads a bounded window, reconciles only its loaded range and leaves later pages explicit',async()=>{
-  let remote=Array.from({length:100},(_,i)=>message('m'+(i*2+1)));
-  let rangeGate=null;
-  const f=fixture({request:async(_method,path,_body,_signal)=>{
-    if(path==='/v1/capabilities')return {status:200,body:{protocol:1,durable_sync:true,history_latest:true,open_session_live:true,attachment_origin:true,history_around:true}};
-    if(!path.includes('/A/messages'))return;
-    const query=new URL('https://fixture.test'+path).searchParams;
-    const around=Number(query.get('around_ref_seq')),exact=Number(query.get('ref_seq')),end=Number(query.get('through_ref_seq')),after=query.get('after'),start=Number(query.get('after_ref_seq'))||Number(after?.split(':')[1])||0;
-    if(end&&rangeGate){const pending=rangeGate;await pending.promise;if(rangeGate===pending)rangeGate=null;}
-    let rows;
-    if(around){const index=remote.findIndex(m=>m.ref_seq===around);rows=remote.slice(Math.max(0,index-15),index+16);}
-    else if(exact)rows=remote.filter(m=>m.ref_seq===exact);
-    else rows=remote.filter(m=>m.ref_seq>start&&(!end||m.ref_seq<=end)).slice(0,Number(query.get('limit')));
-    const tail=rows.at(-1)?.ref_seq;
-    return {status:200,body:{messages:rows,receipts:[],older_cursor:around?'before:'+rows[0].ref_seq:null,next_cursor:!exact&&tail&&remote.some(m=>m.ref_seq>tail&&(!end||m.ref_seq<=end))?'after:'+tail:null,...(end?{newer_cursor:remote.some(m=>m.ref_seq>end)?'after:'+end:null}:{}),incomplete_turns:[],turn_outcomes:[]}};
-  }});
+test('target opening loads the complete history and live refresh preserves row identity',async()=>{
+  const f=fixture();f.records.A=Array.from({length:100},(_,i)=>message('m'+(i*2+1)));
   try{
-    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,31);assert.equal(f.sdk.messages.get('A')[15].ref_seq,101);
-    assert.ok(f.sdk.currentOlderCursor);assert.ok(f.sdk.currentNewerCursor);
-    remote.push(message('m201'));const original=f.sdk.messages.get('A')[15];
-    const count=f.paths.length;f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
-    await until(()=>f.paths.length>=count+3);await tick();
-    assert.equal(f.sdk.messages.get('A').length,31);assert.equal(f.sdk.messages.get('A')[15],original);
-    const messagePaths=f.paths.filter(([,p])=>p.includes('/A/messages')).map(([,p])=>p);
-    assert.ok(messagePaths[0].includes('around_ref_seq=101'));
-    assert.ok(messagePaths.every(p=>!p.includes('latest=true')));
-    assert.ok(messagePaths.slice(1).every(p=>p.includes('ref_seq=71')||p.includes('through_ref_seq=131')));
-    rangeGate=deferred();const pendingRange=rangeGate,rangeCount=f.paths.length;
-    f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
-    await until(()=>f.paths.slice(rangeCount).some(([,p])=>p.includes('through_ref_seq=')));
-    await f.sdk.loadNewer('A');assert.equal(f.sdk.messages.get('A').length,61);assert.equal(f.sdk.currentNewerCursor,'after:191');
-    pendingRange.resolve();await until(()=>f.paths.slice(rangeCount).some(([,p])=>p.endsWith('/live-state')));await tick();
-    assert.equal(f.sdk.currentNewerCursor,'after:191','old range refresh cannot roll back the newly loaded page cursor');
-    f.sdk.suspendConnection();await f.sdk.connect();await until(()=>f.sdk.connectionState==='online');await tick();
-    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>!p.includes('latest=true')));
-    f.sdk.closeConversation();assert.equal(f.sdk.messages.size,0);assert.equal(f.sdk.currentNewerCursor,null);
+    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,100);
+    const original=f.sdk.messages.get('A')[50];assert.equal(original.ref_seq,101);
+    assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
+    f.records.A.push(message('m201'));f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await until(()=>f.sdk.messages.get('A').length===101);
+    assert.equal(f.sdk.messages.get('A')[50],original);
+    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>p.endsWith('?full=true')));
+    f.sdk.closeConversation();assert.equal(f.sdk.messages.size,0);
   }finally{f.sdk.close()}
 });
 
-test('target window fails explicitly without server capability and does not fall back to latest',async()=>{
-  let supported=false;
-  const f=fixture({request:async(_method,path,_body,_signal,reply)=>path==='/v1/capabilities'&&supported?{status:200,body:{...reply(path).body,attachment_origin:true,history_around:true}}:undefined});
-  try{
-    await assert.rejects(f.sdk.openConversation('A',1),/unavailable/);assert.ok(f.paths.every(([,p])=>!p.includes('/messages')));
-    supported=true;await f.sdk.openConversation('A',1);assert.equal(f.sdk.messages.get('A')[0].ref_seq,1);
-    assert.ok(f.paths.filter(([,p])=>p.includes('/messages')).every(([,p])=>!p.includes('latest=true')));
-  }finally{f.sdk.close()}
+test('missing source reference fails rather than silently displaying the latest message',async()=>{
+  const f=fixture();
+  try{await assert.rejects(f.sdk.openConversation('A',99),/404/);assert.ok(f.paths.some(([,p])=>p.endsWith('?full=true')))}
+  finally{f.sdk.close()}
 });
 
 test('completed-unread remains directory-only and only an opened loaded exact result can be acknowledged',async()=>{
@@ -205,7 +176,7 @@ test('change during initial read is reconciled after the ACK without a replay re
   const f=fixture({request:async(_m,p)=>{if(p.includes('/A/messages')&&first){first=false;return gate.promise}}});
   const opened=f.sdk.openConversation('A');await until(()=>f.paths.some(([,p])=>p.includes('/A/messages')));
   f.records.A=[message('m1','edited'),message('m3','new')];f.sockets[0].emit({type:'conversation_changed',thread_id:'A',request_id:watch(f.sockets[0],'A').request_id});
-  gate.resolve({status:200,body:{messages:[message('m1','old')],older_cursor:null}});await opened;await until(()=>f.sdk.messages.get('A')?.length===2);
+  gate.resolve({status:200,body:{messages:[message('m1','old')],complete:true,next_cursor:null,older_cursor:null,incomplete_turns:[],turn_outcomes:[]}});await opened;await until(()=>f.sdk.messages.get('A')?.length===2);
   assert.equal(f.sdk.messages.get('A')[0].text,'edited');assert.ok(f.paths.every(([,p])=>!p.startsWith('/v1/sync')));f.sdk.close();
 });
 
@@ -311,111 +282,96 @@ function fullHistoryFixture({gate,failOnce=false,target=false,loop=false}={}){
   return {...f,all};
 }
 
-test('entry reads one recent page; expansion is one complete request, with no repeat after completion',async()=>{
+test('entry reads all 250 records in one request; retained re-entry does not read again',async()=>{
   const f=fullHistoryFixture();
   try{
-    await f.sdk.openConversation('A');assert.equal(f.sdk.messages.get('A').length,30);
+    await f.sdk.openConversation('A');assert.deepEqual(f.sdk.messages.get('A').map(m=>m.ref_seq),f.all.map(m=>m.ref_seq));
     assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1);
-    await f.sdk.loadFullHistory('A');assert.deepEqual(f.sdk.messages.get('A').map(m=>m.ref_seq),f.all.map(m=>m.ref_seq));
-    assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
-    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,2);
     assert.equal(f.paths.filter(([,p])=>p.endsWith('/A/messages?full=true')).length,1);
-    const count=f.paths.length;await f.sdk.loadFullHistory('A');assert.equal(f.paths.length,count);
+    assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
+    const count=f.paths.length;await f.sdk.openConversation('A');await f.sdk.loadFullHistory('A');assert.equal(f.paths.length,count);
     assert.ok(f.paths.every(([,p])=>!p.includes('/B/messages')));
   }finally{f.sdk.close()}
 });
 
-test('concurrent history intents share one complete request and failure retains the current window',async()=>{
-  const gate=deferred(),f=fullHistoryFixture({gate,failOnce:true});
+test('concurrent opening intents share one complete request and publish no partial history',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});let ready=0;
   try{
-    await f.sdk.openConversation('A');const count=f.paths.length;
-    const a=f.sdk.loadFullHistory('A'),b=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.length===count+1);gate.resolve();
-    await assert.rejects(a,/503/);await assert.rejects(b,/503/);
-    assert.equal(f.sdk.currentOlderCursor,'older');
-    assert.equal(f.sdk.messages.get('A').length,30);
-    const retryStart=f.paths.length;
-    await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);assert.equal(f.sdk.currentOlderCursor,null);
-    const retryPaths=f.paths.slice(retryStart).filter(([,p])=>p.includes('/A/messages'));
-    assert.equal(retryPaths.length,1);
-    assert.ok(retryPaths[0][1].endsWith('?full=true'));
-  }finally{f.sdk.close()}
-});
-
-test('pending complete snapshot does not widen concurrent live refresh',async()=>{
-  const gate=deferred(),f=fullHistoryFixture({gate});
-  try{
-    await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
-    const count=f.paths.length;
-    f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
-    await until(()=>f.paths.slice(count).some(([,p])=>p.includes('after_ref_seq')));
-    const refresh=f.paths.slice(count).filter(([,p])=>p.includes('/A/messages'));
-    assert.equal(new URL(refresh[0][1],'https://fixture.test').searchParams.get('ref_seq'),'441');
-    assert.equal(new URL(refresh[1][1],'https://fixture.test').searchParams.get('after_ref_seq'),'441');
-    gate.resolve();await pending;
+    const a=f.sdk.openConversation('A',undefined,undefined,()=>ready++),b=f.sdk.openConversation('A');
+    assert.equal(a,b);await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
+    assert.equal(f.sdk.messages.get('A')?.length??0,0);assert.equal(ready,0);
+    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1);
+    gate.resolve();await a;await b;assert.equal(ready,1);assert.equal(f.sdk.messages.get('A').length,250);
   }finally{gate.resolve();f.sdk.close()}
 });
 
-test('full-history failure can reconnect and retry one complete request; a fresh opening remains bounded',async()=>{
-  const f=fullHistoryFixture({failOnce:true});
-  try{
-    await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/503/);
-    const reconnectStart=f.paths.length;
-    f.sockets[0].close();
-    await until(()=>f.sockets.length===2&&f.sdk.connectionState==='online'&&f.paths.slice(reconnectStart).some(([,p])=>p.includes('after_ref_seq=441')));
-    const count=f.paths.length;
-    await f.sdk.loadFullHistory('A');
-    assert.ok(f.paths.slice(count).find(([,p])=>p.includes('/A/messages'))[1].endsWith('?full=true'));
-    assert.equal(f.sdk.messages.get('A').length,250);
-    f.sdk.closeConversation();await f.sdk.openConversation('A');
-    const fresh=f.paths.length;await f.sdk.loadFullHistory('A');
-    assert.equal(new URL(f.paths[fresh][1],'https://fixture.test').searchParams.has('after_ref_seq'),false);
-    assert.equal(f.sdk.messages.get('A').length,250);
-  }finally{f.sdk.close()}
-});
-
-test('cancelled full response cannot revive a switched conversation',async()=>{
+test('pending opening coalesces live invalidation without pagination',async()=>{
   const gate=deferred(),f=fullHistoryFixture({gate});
   try{
-    await f.sdk.openConversation('A');const pending=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
-    await f.sdk.openConversation('B');await assert.rejects(pending,/aborted/);
-    const count=f.paths.length;gate.resolve();await tick();
-    assert.equal(f.paths.length,count);assert.deepEqual([...f.sdk.messages.keys()],['B']);
+    const pending=f.sdk.openConversation('A');await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
+    const count=f.paths.length;f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
+    await tick();assert.equal(f.paths.length,count);gate.resolve();await pending;await tick();
+    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>p.endsWith('?full=true')));
+  }finally{gate.resolve();f.sdk.close()}
+});
+
+test('initial failure reconnects automatically; fresh opening also loads all records',async()=>{
+  const f=fullHistoryFixture({failOnce:true});
+  try{
+    await f.sdk.openConversation('A');assert.equal(f.sockets.length,2);assert.equal(f.sdk.messages.get('A').length,250);
+    f.sdk.closeConversation();await f.sdk.openConversation('A');assert.equal(f.sdk.messages.get('A').length,250);
+    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>p.endsWith('?full=true')));
   }finally{f.sdk.close()}
 });
 
-test('source window stays bounded on entry but explicit history expansion includes both directions',async()=>{
+test('cancelled full opening cannot revive a switched conversation',async()=>{
+  const gate=deferred(),f=fullHistoryFixture({gate});
+  try{
+    const pending=f.sdk.openConversation('A'),rejected=assert.rejects(pending,/aborted/);
+    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
+    await f.sdk.openConversation('B');await rejected;
+    gate.resolve();await tick();assert.deepEqual([...f.sdk.messages.keys()],['B']);
+  }finally{gate.resolve();f.sdk.close()}
+});
+
+test('source entry loads all records in both directions and continues live updates',async()=>{
   const f=fullHistoryFixture({target:true});
   try{
-    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,31);
-    await f.sdk.loadFullHistory('A');assert.equal(f.sdk.messages.get('A').length,250);
+    await f.sdk.openConversation('A',101);assert.equal(f.sdk.messages.get('A').length,250);
     assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.sdk.currentNewerCursor,null);
     f.all.push(message('m501'));f.sockets[0].emit({...watch(f.sockets[0],'A'),type:'conversation_changed'});
     await until(()=>f.sdk.messages.get('A').length===251);
-    assert.equal(f.sdk.currentNewerCursor,null);
+    assert.ok(f.paths.filter(([,p])=>p.includes('/A/messages')).every(([,p])=>p.endsWith('?full=true')));
   }finally{f.sdk.close()}
 });
 
-test('full history has a finite deadline and no fallback pagination on an unsupported server',async(t)=>{
-  const gate=deferred(),f=fullHistoryFixture({gate});
-  try{
-    await f.sdk.openConversation('A');
-    f.sdk.supportsFullHistory=false;const count=f.paths.length;
-    await assert.rejects(f.sdk.loadFullHistory('A'),/does not support complete history/);
-    assert.equal(f.paths.length,count);
-    f.sdk.supportsFullHistory=true;t.mock.timers.enable({apis:['setTimeout']});
-    const pending=f.sdk.loadFullHistory('A');
-    await until(()=>f.paths.some(([,p])=>p.includes('full=true')));
-    t.mock.timers.tick(60000);await assert.rejects(pending,/timed out/);
-    assert.equal(f.sdk.messages.get('A').length,30);
-    assert.equal(f.sdk.currentOlderCursor,'older');
-  }finally{gate.resolve();f.sdk.close()}
+test('unsupported server fails opening without fallback pagination',async()=>{
+  const f=fixture({request:async(_m,path,_b,_s,reply)=>path==='/v1/capabilities'?{status:200,body:{...reply(path).body,history_full:false}}:undefined});
+  try{await assert.rejects(f.sdk.openConversation('A'),/does not support complete history/);assert.ok(f.paths.every(([,p])=>!p.includes('/messages')))}finally{f.sdk.close()}
 });
 
-test('full response rejects a continuation cursor without merging partial rows or paginating',async()=>{
+test('full response rejects continuation without merging partial rows or paginating',async()=>{
   const f=fullHistoryFixture({loop:true});
-  try{await f.sdk.openConversation('A');await assert.rejects(f.sdk.loadFullHistory('A'),/Incomplete full history/);assert.equal(f.sdk.currentOlderCursor,'older');assert.equal(f.sdk.messages.get('A').length,30);assert.equal(f.paths.filter(([,p])=>p.includes('full=true')).length,1)}
-  finally{f.sdk.close()}
+  try{await assert.rejects(f.sdk.openConversation('A'),/Incomplete full history/);assert.equal(f.sdk.messages.get('A')?.length??0,0);assert.equal(f.paths.filter(([,p])=>p.includes('full=true')).length,1)}finally{f.sdk.close()}
+});
+
+test('empty Session opens with one complete snapshot and no cursors',async()=>{
+  const f=fixture();f.records.A=[];
+  try{await f.sdk.openConversation('A');assert.deepEqual(f.sdk.messages.get('A'),[]);assert.equal(f.sdk.currentOlderCursor,null);assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1)}finally{f.sdk.close()}
+});
+
+test('initial complete request retains the 60-second deadline and never publishes timeout as success',async(t)=>{
+  const gate=deferred();let requestSignal;
+  const f=fixture({livenessMs:120000,request:async(_method,path,_body,signal,reply)=>{
+    if(path.includes('/A/messages')){requestSignal=signal;await gate.promise;return reply(path)}
+  }});
+  t.mock.timers.enable({apis:['setTimeout']});
+  try{
+    const pending=f.sdk.openConversation('A'),rejected=assert.rejects(pending,/aborted/);
+    await until(()=>requestSignal);t.mock.timers.tick(59999);assert.equal(requestSignal.aborted,false);
+    t.mock.timers.tick(1);await until(()=>f.errors.some(error=>/timed out/.test(error.message)));
+    assert.equal(requestSignal.aborted,true);assert.equal(f.sdk.messages.get('A')?.length??0,0);
+    assert.equal(f.paths.filter(([,p])=>p.includes('/A/messages')).length,1);
+    f.sdk.close();await rejected;gate.resolve();await tick();assert.equal(f.sdk.messages.size,0);
+  }finally{f.sdk.close();gate.resolve()}
 });
