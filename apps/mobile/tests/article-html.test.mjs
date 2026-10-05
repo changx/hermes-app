@@ -25,6 +25,6 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
 
 const { checkTableLayout, wideTables } = await import('../../../tests/markdown-table-layout.mjs');
-test('Chromium: full article table viewports fill containers and grids expand or scroll across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: full article tables fit containers and wrap across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   await checkTableLayout(render(wideTables).html, '.table-grid');
 });

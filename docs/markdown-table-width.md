@@ -1,6 +1,23 @@
 # Markdown table container width
 
-## Final confirmed rule
+## Current page-width wrapping rule
+
+The latest user requirement supersedes the horizontal-grid policy below. Desktop/mobile Session tables and mobile fullscreen reading must fit the local available content width. Wrap cell text, long tokens, links and inline code without changing the source. Preserve every row, cell, inline format and copy/selection behavior. Quotes, lists and user bubbles use their own available width, not the screen width.
+
+Candidate `fix/table-page-wrap` starts from main `56a6c1b`. Desktop and mobile article HTML use `width:100%; max-width:100%; table-layout:fixed`, zero cell minima and `overflow-wrap:anywhere`; inline code uses `white-space:pre-wrap`. Native Session, standalone table reader and article failure fallback share the production `MarkdownTable`. It uses a bounded View instead of a horizontal ScrollView, distributes columns within the measured local width and reduces cell padding for narrow columns. It has no fixed 156-point column minimum, line count limit or ellipsis. Code blocks and diagrams are unchanged.
+
+Verification:
+
+- Desktop TypeScript/build and 94 tests passed, 0 failed/skipped, including production Chromium and native Linux Electron/Xvfb with controlled transport.
+- Mobile TypeScript and 82 tests passed, 0 failed/skipped. Native component checks cover iOS/Android Session/fullscreen tables, 1/2/4/8 columns, local measurement, invalid widths, resize and retained text nodes. A WebView failure exercises the actual article-to-native-table fallback.
+- Chromium checks actual desktop Session, standalone embedding, user bubbles and mobile article HTML. Fixtures cover CJK, long words, links, inline code and nested tables. Grid/viewport widths match, cells and source text survive, horizontal offset stays zero and rows grow vertically when narrowed. General/HTML fixtures use 240–1024px; user bubbles use 320–1024px because the older 240px nested fixture leaves less space than one text glyph per column.
+- Pinned React Native Yoga passed 24 geometry cases using captured production component styles. The text measurement callback is a fixture, not iPhone/Android native typography.
+- iOS and Android Expo JS exports succeeded. Both exact bundles contain the article fixed-width/wrapping CSS and bounded native cell padding. Exports are not independently installable mobile packages.
+- Dependency versions and both lockfiles are unchanged. A fresh isolated mobile locked install reports 29 existing audit findings (10 moderate, 19 high); dependency remediation is outside this layout change.
+
+No main merge, runtime deployment, service restart, release or signing operation. Mac/iPhone visual layout, text selection and rotation remain physical-device acceptance gates. Kanban: `default / t_22892d12`.
+
+## Historical horizontal-grid policy (superseded)
 
 Jamie explicitly confirmed the distinction between **outer table viewport** and **inner column grid**:
 

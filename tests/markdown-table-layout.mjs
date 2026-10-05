@@ -6,13 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 // Execute production markup/CSS: full outer viewport, inner grid at least full.
-export async function checkTableLayout(html, selector) {
+export async function checkTableLayout(html, selector, widths = [240,320,390,768,1024,320]) {
   const dir = await mkdtemp(join(tmpdir(), 'markdown-table-layout-'));
   try {
     const nonce = /script-src 'nonce-([^']+)'/.exec(html)?.[1];
     const probe = `
       const results=[];
-      for (const width of [240,320,390,768,1024,320]) {
+      for (const width of ${JSON.stringify(widths)}) {
         document.body.style.cssText='width:'+width+'px;box-sizing:border-box;margin:0;padding:16px;min-width:0;height:auto;overflow:visible';
         const tables=[...document.querySelectorAll(${JSON.stringify(selector)})];
         results.push({width,bodyWidth:document.body.clientWidth,bodyScroll:document.body.scrollWidth,tables:tables.map(view=>{
@@ -22,6 +22,8 @@ export async function checkTableLayout(html, selector) {
           view.scrollLeft=0;
           const bounds=grid.getBoundingClientRect();
           const result={viewport:view.clientWidth,available,gridWidth:bounds.width,scrollWidth:view.scrollWidth,cells:cells.length,
+            rowHeight:grid.querySelector('tbody tr:last-child').getBoundingClientRect().height,
+            text:grid.textContent,
             cellOverflow:Math.max(...cells.map(c=>c.scrollWidth-c.clientWidth)),
             tableLayout:getComputedStyle(grid).tableLayout,wrap:getComputedStyle(cells[0]).overflowWrap,
             firstRowCellsWidth:[...grid.querySelector('tr').children].reduce((sum,c)=>sum+c.getBoundingClientRect().width,0)};
@@ -40,6 +42,7 @@ export async function checkTableLayout(html, selector) {
     const results = JSON.parse(/<pre id="layout-results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
     assert.ok(results, 'browser executed the geometry probe');
     for (const row of results) {
+      assert.deepEqual(row.tables.map(table=>table.text), results[0].tables.map(table=>table.text), 'resize preserves all text');
       assert.equal(row.tables.length, 9, 'wide, screenshot and short tables in prose, quote and list');
       assert.ok(row.bodyScroll <= row.bodyWidth + 1, `outer body overflow at ${row.width}: ${JSON.stringify(row)}`);
       for (const table of row.tables) {
@@ -47,15 +50,17 @@ export async function checkTableLayout(html, selector) {
         assert.ok(table.gridWidth >= table.viewport-1, 'inner grid cannot leave an unused strip: '+JSON.stringify(table));
         assert.ok([4,8,12].includes(table.cells), 'all original header/body cells survive');
         assert.ok(Math.abs(table.firstRowCellsWidth-table.gridWidth) <= 2, 'columns fill the entire grid');
-        assert.equal(table.tableLayout, 'auto', 'no fixed-layout squeezing');
-        assert.equal(table.wrap, 'normal', 'no forced anywhere wrapping');
-        assert.ok(table.lastVisible, 'last column reachable by internal scroll');
-        if (table.gridWidth > table.viewport+1) assert.ok(table.scrollLeft > 0, 'wide content scrolls inside table');
+        assert.equal(table.tableLayout, 'fixed', 'columns fit the local viewport');
+        assert.equal(table.wrap, 'anywhere', 'long tokens wrap without changing source');
+        assert.ok(Math.abs(table.gridWidth-table.viewport) <= 1, 'grid fits viewport: '+JSON.stringify(table));
+        assert.ok(table.cellOverflow <= 1, 'text stays inside cells: '+JSON.stringify(table));
+        assert.equal(table.scrollLeft, 0, 'table needs no horizontal scroll');
+        assert.ok(table.lastVisible, 'last column is visible without scrolling');
       }
     }
-    assert.ok(results[0].tables[0].gridWidth > results[0].tables[0].viewport, 'long content may exceed the bounded outer viewport');
+    assert.ok(results[0].tables[0].rowHeight > results[4].tables[0].rowHeight, 'narrow columns grow vertically instead of losing text');
     for (const table of results[4].tables.slice(6)) assert.ok(Math.abs(table.gridWidth-table.viewport) <= 1, 'short two-column grid expands to full viewport');
-    console.log('Table layout:', JSON.stringify(results));
+    console.log('Table layout:', JSON.stringify(results.map(row=>({...row,tables:row.tables.map(({text,...table})=>table)}))));
   } finally { await rm(dir, { recursive:true, force:true }); }
 }
 
