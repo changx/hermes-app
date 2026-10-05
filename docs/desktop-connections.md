@@ -1,6 +1,6 @@
 # Desktop Connections in Settings
 
-Task: `t_810a35d8`. Candidate: `feat/desktop-settings`, extending the Settings candidate at `a726d0e`. This is not a published release or a Mac installation.
+Task: `t_810a35d8`. Initial candidate: `feat/desktop-settings`, extending the Settings candidate at `a726d0e`. Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Mac installation remains unperformed.
 
 ## Confirmed product behavior
 
@@ -37,4 +37,4 @@ Evidence: Channel workspace `desktop-settings/`. The new tests use equal raw IDs
 - Pairing tests cover removal during pending credential save and a late successful capability response after removal.
 - Native Electron tests add a connection through Settings using a local HTTP pairing fixture. They check two live rows, explicit model target selection, direct combined sidebar visibility, retained DOM/drafts, peer-only background actions/New chat sends, independent status changes, confirmation/cancel, exact removal scope and fresh-manager storage restoration.
 - SDK connection streams are controlled fixtures. Linux secure-storage availability failed in the initial run; the native test replaces only the safeStorage provider with test AES-GCM. Production retains Electron safeStorage with no plaintext fallback. File envelopes, isolation and restoration are exercised, but this does not verify macOS Keychain or a cross-process Keychain restart.
-- Failure/retry logs are retained. No production credential, model default or server data was changed. Real multi-server pairing, macOS Keychain, Mac visual acceptance, signing and publication remain separate gates.
+- Failure/retry logs are retained. No production credential, model default or server data was changed. Desktop publication is verified in [v0.1.32](desktop-release-0.1.32.md). Real multi-server pairing, macOS Keychain, Mac visual acceptance and signing remain separate gates.

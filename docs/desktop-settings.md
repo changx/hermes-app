@@ -1,6 +1,6 @@
 # Desktop Settings
 
-Task: `t_810a35d8`. Candidate: `feat/desktop-settings`, based on `main` at `3a2b2fe` (desktop v0.1.31). This candidate is not published or installed on Jamie's Mac.
+Task: `t_810a35d8`. Initial candidate: `feat/desktop-settings`, based on `main` at `3a2b2fe` (desktop v0.1.31). Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Not installed on Jamie's Mac.
 
 ## Confirmed scope
 
@@ -34,4 +34,4 @@ Evidence directory (private Channel workspace): `/home/hermes/.hermes/profiles/h
 
 ## Remaining gates
 
-No real provider/default was changed during this work. Live backend model-switch acceptance and Mac visual/keyboard acceptance remain separate. No service, plugin, Hermes core, mobile app, production configuration, remote repository or published release was changed. Publishing and installation require authorization.
+No real provider/default was changed during this work. Live backend model-switch acceptance and Mac visual/keyboard acceptance remain separate. Candidate development did not change a service, plugin, Hermes core, mobile app or production configuration. Jamie subsequently authorized the main merge and desktop publication; verified release evidence is recorded in [Desktop v0.1.32](desktop-release-0.1.32.md). Mac installation remains unperformed.
