@@ -2,6 +2,21 @@
 
 ## Desktop clipboard attachment paste
 
+### Published: Desktop v0.1.30
+
+Jamie authorized main merge and publication. Candidate `9e8b9ca` was fast-forwarded into main with version commit/tag source `6bc013065daa2a10b3159659f8e99cc69f971af5`. Main retains the prior session-tail fix `0a617d4`. Only version metadata changed in the release source after candidate verification; the dependency graph is unchanged. No mobile deployment occurred.
+
+- [Desktop v0.1.30](https://github.com/changx/hermes-app/releases/tag/v0.1.30) is published, not a draft. Assets: `Hermes-0.1.30-macOS-arm64.zip` and `.sha256` sidecar.
+- Existing tag CI `37248833278` and main CI `37248832621` passed macOS arm64 toolchain, checks, audit, packaging and archive verification, then failed because Actions artifact storage quota was exhausted. No old artifacts were deleted and no billing setting was changed.
+- Additive manual workflow `.github/workflows/desktop-direct-release.yml` builds an existing version tag on macOS arm64, verifies an explicit source SHA, runs the same gates, then uploads directly to Release without Actions artifact transfer. It refuses an existing release and never moves a tag. Workflow commits `9f00435` and `66163d9` leave application sources unchanged. The first direct attempt failed on macOS Bash empty-array expansion under nounset; the fixed workflow uses a nonempty argument array.
+- [Direct release run 37249121112](https://github.com/changx/hermes-app/actions/runs/37249121112) passed all gates and publication. The tagged application source remains `6bc0130`; the workflow ran from main `66163d9` and checked out that exact tagged source.
+- Downloaded archive passed sidecar SHA-256, complete ZIP CRC, Mach-O arm64 and plist/ASAR version `0.1.30`. Packaged main, preload and renderer are byte-identical to the verified candidate build. Both paste handlers, File byte conversion, main validation, tab target checks and upload cleanup are present. SHA-256: `742d721eed09119ab45d035f1df057261d8983d4f44c01833695d1088a81184b`.
+- Runtime checkout/dirty AGENTS.md, Expo/Gateway PID/start-time readbacks, installed plugin code hashes and mobile lockfile hash are unchanged. No service restart, plugin/core/other-profile write, Mac installation, signing or notarization.
+
+Private evidence: Channel workspace `desktop-paste-attachments/release/`, including failed/successful CI logs, immutable downloaded assets, archive/code verification and before/after snapshots. Installed macOS Cmd+V, Finder copied files and keyboard review remain pending. The archive is an unsigned, non-notarized Apple Silicon development build. Rollback package is intact v0.1.29; source rollback requires an explicit scoped revert of `9e8b9ca`, not clearing drafts or chat data.
+
+The following paragraphs record candidate-stage behavior and checks, not an unpublished current state.
+
 Candidate `feat/desktop-paste-attachments` starts from main `0a617d4`. Card: `t_5b6da349`. This is a desktop-only implementation, not a published update.
 
 - Paste clipboard files or screenshots into the Message textarea or the New chat first-message textarea. Handle the native `paste` event, not a global Command-V key interceptor. Pure text keeps the browser default. File-bearing paste does not insert an accompanying filename/path into the message text.
