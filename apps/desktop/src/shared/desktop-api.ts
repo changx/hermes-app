@@ -92,6 +92,7 @@ export type DesktopSnapshot = Readonly<{
 
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
+export type ProjectCreationInput = ChannelInput & Readonly<{ connectionKey: string }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
@@ -131,7 +132,7 @@ export interface HermesDesktopApi {
   copySessionLink(): Promise<void>;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
-  createChannel(input: ChannelInput): Promise<void>;
+  createChannel(input: ProjectCreationInput): Promise<void>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   createThread(input: ThreadInput): Promise<string>;

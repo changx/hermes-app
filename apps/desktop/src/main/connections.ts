@@ -148,7 +148,12 @@ export class DesktopConnections {
   deactivateThread(connectionKey?: string): void { if (connectionKey) this.active = this.forIdentity(connectionKey).id; this.current().service.deactivateThread(); }
   closeSessionPage(id: string): void { const r = this.route(id); r.account.service.closeSessionPage(r.raw); }
   closeSessionPages(): void { for (const a of this.accounts.values()) a.service.closeSessionPages(); }
-  async createChannel(input: ChannelInput): Promise<void> { await this.current().service.createChannel(input); }
+  async createChannel(connectionKey: string, input: ChannelInput): Promise<void> {
+    const account = this.forIdentity(connectionKey);
+    if (account.service.snapshot().connectionState !== 'online') throw new Error('The selected connection is unavailable.');
+    await account.service.createChannel(input);
+    if (this.forIdentity(connectionKey) !== account) throw new Error('Project creation was not confirmed.');
+  }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: r.account.service.snapshot().connectionName }; }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }

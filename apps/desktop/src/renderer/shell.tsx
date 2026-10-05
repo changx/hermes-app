@@ -1,6 +1,7 @@
 import { AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
 import { SettingsButton, SettingsDialog, type SettingsPage } from './settings';
+import { NewProjectDialog } from './new-project-dialog';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
@@ -37,7 +38,7 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
 };
 
 type Editor = "new-channel" | "edit-channel" | "rename-thread" | "palette" | null;
-const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | "new-thread">; snapshot: DesktopSnapshot; close: () => void }) => {
+const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | "new-channel">; snapshot: DesktopSnapshot; close: () => void }) => {
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
   const [description, setDescription] = useState(kind === "edit-channel" ? channel?.description ?? "" : "");
@@ -55,15 +56,14 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | 
     event.preventDefault();
     if (!detailsReady) return;
     let task: Promise<void>;
-    if (kind === "new-channel") task = window.hermesDesktop.createChannel({ name, description });
-    else if (kind === "edit-channel" && channel) task = window.hermesDesktop.updateChannel(channel.id, { name, description });
+    if (kind === "edit-channel" && channel) task = window.hermesDesktop.updateChannel(channel.id, { name, description });
     else if (kind === "rename-thread" && snapshot.selectedThreadId) task = window.hermesDesktop.renameThread(snapshot.selectedThreadId, name);
     else return;
     safely(task.then(close));
   };
   if (kind === "palette") return <SessionPicker snapshot={snapshot} close={close} />;
-  const channelEditor = kind === "new-channel" || kind === "edit-channel";
-  const title = kind === "new-channel" ? "New channel" : kind === "edit-channel" ? "Edit channel" : "Rename topic";
+  const channelEditor = kind === "edit-channel";
+  const title = kind === "edit-channel" ? "Edit channel" : "Rename topic";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
     <h2>{title}</h2>{detailError ? <p role="alert">{detailError}</p> : null}<label>{channelEditor ? "Name" : "Title"}<input autoFocus required disabled={!detailsReady} maxLength={channelEditor ? 120 : 200} value={name} onChange={(event) => setName(event.target.value)} /></label>
     {channelEditor ? <label>Description<textarea disabled={!detailsReady} maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label> : null}
@@ -320,7 +320,7 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
 
 
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{editor === 'new-channel' ? <NewProjectDialog key="new-project" snapshot={snapshot} close={() => setEditor(null)} /> : editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setEditor('new-channel')} onProjectOptions={id => { safely(window.hermesDesktop.selectChannel(id).then(() => setEditor('edit-channel'))); }} onSettings={() => setSettingsOpen(true)} overlayOpen={!!editor || !!labelTarget || settingsOpen}>
     {overlays}
     {settings}

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
-import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -43,7 +43,7 @@ const api: HermesDesktopApi = Object.freeze({
   copySessionLink: (): Promise<void> => ipcRenderer.invoke("desktop:copy-session-link"),
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
-  createChannel: (input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
+  createChannel: (input: ProjectCreationInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
   updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),
   deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),
   createThread: (input: ThreadInput): Promise<string> => ipcRenderer.invoke("desktop:create-thread", input),

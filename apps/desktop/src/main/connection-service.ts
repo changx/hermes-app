@@ -642,9 +642,15 @@ export class DesktopConnectionService {
   async createChannel(input: ChannelInput): Promise<void> {
     const name = input.name.trim(), description = input.description.trim();
     if (!name || name.length > 120 || description.length > 4000) throw new Error("Enter a channel name and a shorter description.");
+    const client = this.requireClient(), connection = this.connection;
     let channel: Awaited<ReturnType<LiveSessionClient["createChannel"]>>;
-    try { channel = await this.requireClient().createChannel(name, description); }
-    catch { this.actionError("The channel could not be created. Check your permission and try again."); throw new Error("Channel creation was not confirmed."); }
+    try {
+      channel = await client.createChannel(name, description);
+      if (this.closed || this.client !== client || this.connection !== connection) throw new Error('Connection changed');
+      const confirmed = await client.getChannelInfo(channel.id);
+      if (this.closed || this.client !== client || this.connection !== connection || confirmed.id !== channel.id || confirmed.name !== name || (confirmed.description ?? '') !== description) throw new Error('Project readback mismatch');
+    }
+    catch { this.actionError("Project creation could not be confirmed. Check this connection’s project list before trying again."); throw new Error("Project creation was not confirmed."); }
     await this.selectChannel(channel.id).catch(() => this.actionError("The channel was created, but its topics could not be loaded yet."));
   }
 

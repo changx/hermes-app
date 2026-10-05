@@ -83,6 +83,34 @@ test('failed list write cannot start pairing or create an in-memory connection',
   await assert.rejects(f.workspace.addConnection({...request,baseUrl:'https://third.example.test'}));
   assert.equal(f.workspace.snapshot().connections.length,2);
 });
+test('New Project routes to explicit identity and reads back that same account, not the active account',async()=>{
+  const f=fixture();
+  f.b.client.createChannel=async(name,description)=>{f.b.calls.push(['project-create',name,description]);const value={id:'p_new',name,description};f.b.client.channels.set(value.id,value);return value;};
+  f.b.client.getChannelInfo=async id=>{f.b.calls.push(['project-read',id]);return f.b.client.channels.get(id);};
+  await f.workspace.createChannel('b'.repeat(24),{name:'Peer project',description:'Peer description'});
+  assert.deepEqual(f.a.calls,[]);assert.deepEqual(f.b.calls,[['project-create','Peer project','Peer description'],['project-read','p_new']]);
+  assert.equal(f.workspace.snapshot().channels.find(c=>c.id==='b'.repeat(24)+':p_new').name,'Peer project');
+});
+test('missing, removed and offline Project target identities never fall back to another account',async()=>{
+  const f=fixture();let created=0;f.a.client.createChannel=f.b.client.createChannel=async()=>{created++;};
+  await assert.rejects(f.workspace.createChannel('',{name:'Wrong',description:''}),/unavailable/);
+  f.b.service.connectionState='retrying';await assert.rejects(f.workspace.createChannel('b'.repeat(24),{name:'Offline',description:''}),/unavailable/);
+  await f.workspace.removeConnection('b'.repeat(24));await assert.rejects(f.workspace.createChannel('b'.repeat(24),{name:'Removed',description:''}),/unavailable/);
+  assert.equal(created,0);
+});
+test('active connection changes during creation do not retarget readback; mismatched readback rejects success',async()=>{
+  const f=fixture();f.b.client.createChannel=async(name,description)=>{await f.workspace.selectThread('th_same0000');const value={id:'p_new',name,description};f.b.client.channels.set(value.id,value);return value;};
+  f.b.client.getChannelInfo=async id=>({...f.b.client.channels.get(id),name:'Unexpected'});
+  await assert.rejects(f.workspace.createChannel('b'.repeat(24),{name:'Expected',description:''}),/not confirmed/);
+  assert.equal(f.a.calls.length,0);assert.equal(f.b.service.selectedChannelId,'p');
+});
+test('connection removal during creation rejects late success without reading another account',async()=>{
+  const f=fixture();let read=0;
+  f.b.client.createChannel=async(name,description)=>{await f.workspace.removeConnection('b'.repeat(24));return {id:'p_new',name,description};};
+  f.b.client.getChannelInfo=async()=>{read++;};
+  await assert.rejects(f.workspace.createChannel('b'.repeat(24),{name:'Expected',description:''}),/not confirmed/);
+  assert.equal(read,0);assert.equal(f.a.calls.length,0);
+});
 test('duplicate server address does not create another slot or exchange',async()=>{
   const f=fixture();await assert.rejects(f.workspace.addConnection(request),/already saved/);
   assert.equal(f.writes.length,0);assert.equal(f.workspace.snapshot().connections.length,2);

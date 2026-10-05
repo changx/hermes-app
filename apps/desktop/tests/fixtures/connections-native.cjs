@@ -26,6 +26,7 @@ app.commandLine.appendSwitch('password-store', 'basic');
 const { service: accounts, tabsForTest } = require('./dist/main/index.cjs');
 const thread = 'th_same0000', tokens = new Set(), requests = [], clients = new Map();
 let localAddress;
+let projectReadGate;
 const originalFetch = global.fetch;
 global.fetch = (url, init) => {
   const u = new URL(url);
@@ -62,6 +63,8 @@ function install(service) {
       },
       async getModelSettings() { calls.push(['model', owner]); return { scope: 'connected-default', provider: 'fixture', model: owner, providers: [{ id: 'fixture', name: 'Controlled provider', models: [owner] }] }; },
       async stop(id) { calls.push(['stop', id]); }, async markResultRead(id) { calls.push(['read', id]); },
+      async createChannel(name, description) { calls.push(['project-create', owner, name]); const value={id:'p_created',name,description};client.channels.set(value.id,value);service.changed();return value; },
+      async getChannelInfo(id) { calls.push(['project-read', owner, id]); if(projectReadGate)await projectReadGate;return client.channels.get(id); },
       async createThread(project, title, id) { assert.equal(project, 'p'); const t = { id, project_id: project, title, last_message_at: Date.now()/1000 }; client.threads.set(id,t); service.changed(); return t; },
       async send(id, messageId, text) { calls.push(['send', id, text]); return { id: 'fixture-receipt', thread_id: id, client_message_id: messageId, state: 'queued', durable: true, ref_seq: 2 }; },
       rememberAcceptedInput(id, messageId, text, files, time, receipt) { client.messages.set(id, [...client.messages.get(id) ?? [], { id: receipt.id, role:'user', text, client_message_id: messageId, receipt_id:receipt.id, ref_seq:2 }]); },
@@ -147,6 +150,24 @@ async function field(contents, label, value) {
   assert.ok(clients.get('second.example.test').client.calls.some(c=>c[0]==='send'&&c[1]==='th_newpeer0000'));
   assert.ok(!clients.get('first.example.test').client.calls.some(c=>c[0]==='send'));
   const existingPeerView=peerView;
+  await evaluate(shell,`window.hermesDesktop.activateTab('${primaryTab.id}')`);
+  await evaluate(shell,"[...document.querySelectorAll('.native-sidebar-footer button')].find(e=>e.textContent.includes('New project')).click()");
+  await until(()=>evaluate(shell,`!!document.querySelector('[aria-label="New project"]')`),'New Project dialog');
+  assert.equal(await evaluate(shell,`document.querySelector('[aria-label="Project connection"]').value`),'');
+  await field(shell,'Project name','Controlled peer Project');
+  await evaluate(shell,`(()=>{const e=document.querySelector('[aria-label="Project connection"]');e.value='${peerRow.connectionKey}';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await evaluate(shell,`window.hermesDesktop.activateTab('${peerTab.id}')`);
+  assert.equal(await evaluate(shell,`document.querySelector('[aria-label="Project name"]').value`),'Controlled peer Project');
+  assert.equal(await evaluate(shell,`document.querySelector('[aria-label="Project connection"]').value`),peerRow.connectionKey);
+  let releaseProject;projectReadGate=new Promise(resolve=>releaseProject=resolve);
+  await evaluate(shell,`document.querySelector('[aria-label="New project"]').requestSubmit()`);
+  await until(()=>clients.get('second.example.test').client.calls.some(c=>c[0]==='project-read'),'project reads exact selected connection');
+  await evaluate(shell,`window.hermesDesktop.activateTab('${primaryTab.id}')`);
+  releaseProject();projectReadGate=undefined;
+  await until(()=>evaluate(shell,`!document.querySelector('[aria-label="New project"]')`),'confirmed Project creation closes dialog');
+  assert.ok(!clients.get('first.example.test').client.calls.some(c=>c[0]==='project-create'||c[0]==='project-read'));
+  assert.equal(clients.get('second.example.test').client.channels.get('p_created').name,'Controlled peer Project');
+  await assert.rejects(evaluate(shell,"window.hermesDesktop.createChannel({name:'Missing target',description:''})"));
   await evaluate(shell,`window.hermesDesktop.activateTab('${primaryTab.id}')`);
   await evaluate(shell,"document.querySelector('[aria-label=Settings]').click()");
   await until(()=>evaluate(shell,'!!document.querySelector(".settings-dialog")'),'Settings reopened');
