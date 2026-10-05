@@ -1,0 +1,95 @@
+name: Desktop Direct Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
+      source_sha:
+        description: Exact tagged source commit
+        required: true
+        type: string
+
+concurrency:
+  group: desktop-direct-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-macos-arm64:
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.14.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Verify immutable source and release identity
+        env:
+          TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          test "$TAG" = "v$VERSION"
+          test "$(uname -m)" = "arm64"
+          test "$(node --version)" = "v24.14.1"
+          test "$(npm --version)" = "11.11.0"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to replace assets." >&2
+            exit 1
+          fi
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run desktop checks and audit
+        run: |
+          set -euo pipefail
+          node -p 'require("electron")'
+          npm run desktop:check
+          npm audit
+      - name: Package unsigned macOS app
+        run: npm run desktop:package:mac
+      - name: Verify and archive app
+        run: |
+          set -euo pipefail
+          APP="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
+          test -f "$APP/Contents/Resources/app.asar"
+          /usr/bin/file "$APP/Contents/MacOS/Hermes" | /usr/bin/grep -q "arm64"
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          mkdir -p release
+          ARCHIVE="Hermes-${VERSION}-macOS-arm64.zip"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ARCHIVE"
+          (cd release && /usr/bin/shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256" && /usr/bin/shasum -a 256 -c "$ARCHIVE.sha256")
+      - name: Publish directly to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to replace assets." >&2
+            exit 1
+          fi
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then prerelease+=(--prerelease); fi
+          gh release create "$TAG" release/*.zip release/*.sha256 \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "Hermes Desktop $TAG" \
+            --notes "Unsigned Apple Silicon macOS development build. This artifact is not notarized and is not an App Store distribution." \
+            "${prerelease[@]}"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
