@@ -1,5 +1,9 @@
 # macOS 桌面 App 第一版设计
 
+## 已发布：Desktop v0.1.31
+
+右侧附件/生成页面预览、标准 Chrome UA 网页浏览，以及消息/草稿/本地文件小缩略图已合入 main 并随 [v0.1.31](https://github.com/changx/hermes-app/releases/tag/v0.1.31) 发布。同次发布的 Session 代码背景色统一为 `rgb(245,245,250)`。源 tag 为 `13db56f513b5863d436038b34f27eda5423e4552`；桌面集成检查 62/62、共享客户端 16/16 通过，macOS arm64 构建/审计/打包通过，下载包 checksum、ZIP CRC、架构、版本和 ASAR 字节一致性已验证。发布与范围证据见 [集成记录](desktop-session-composer.md#desktop-v0131-integration)。安装包未签名、未公证；macOS 安装版视觉、键盘与 Finder 操作仍待验收。以下候选描述为历史实现和安全边界记录，不代表仍未发布。
+
 ## 当前候选：右侧附件预览与浏览器
 
 隔离分支 `feat/desktop-preview-sidebar`，卡 `t_7de73bfe`。附件卡、已上传草稿及 New chat 本地文件提供 **Preview**；tab 栏 **Browser** 打开地址输入。HTTP/HTTPS 消息链接和附件公开链接进入同一右侧浏览器；Session 链接仍沿用原路由。保留 Save 与 Open externally，不自动上传本地预览、不自动发送消息。
