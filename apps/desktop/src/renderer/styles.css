@@ -353,11 +353,12 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
 .sidebar-collapsed .desktop-tabs { padding-left: 42px; }
-.desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: 100px; max-width: 240px; border-radius: 8px; color: var(--app-muted); }
+/* Reserve six full-width characters plus padding, three status dots and the close control. */
+.desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: calc(6em + 90px); max-width: max(240px, calc(6em + 90px)); border-radius: 8px; color: var(--app-muted); }
 .desktop-tab.active { background: var(--app-background); color: var(--app-text); }
 .desktop-tab button { border: 0; background: transparent; color: inherit; padding: 8px; }
 .desktop-tab [role="tab"] { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }
-.desktop-tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.desktop-tab-title { flex: 1; min-width: 6em; overflow: hidden; text-overflow: ellipsis; }
 .desktop-tab-statuses { display: flex; align-items: center; gap: 4px; flex: none; }
 .desktop-tab-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
 .desktop-tab-dot-running { background: #16a34a; }

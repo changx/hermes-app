@@ -16,7 +16,7 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
     window.hermesDesktop={setContentBounds:async()=>{},activateTab:async id=>actions.push(['activate',id]),closeTab:async id=>actions.push(['close',id])};
     const actions=[],checks=[];
     const ensure=(name,value)=>{if(!value)throw Error(name);checks.push(name);};
-    const title='A very long session title '.repeat(30);
+    const title='六个汉字标题 A very long session title '.repeat(30);
     const threads=Array.from({length:8},(_,i)=>({id:'thread'+i,channelId:'p',title:title+i,running:!!(i&1),completedUnread:!!(i&4)}));
     const tabs=threads.map((t,i)=>({id:'tab'+i,threadId:t.id,title:t.title,kind:'session'}));
     tabs.push({id:'new',threadId:'thread7',title:'New chat',kind:'new'});
@@ -38,6 +38,24 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
       for(const width of [720,1280,1800]) for(const size of [12,16,24]) {
         document.getElementById('root').style.width=width+'px';
         document.documentElement.style.setProperty('--app-font-size',size+'px');
+        const strip=document.querySelector('.desktop-tabs');
+        ensure('horizontal overflow '+width+' '+size,strip.scrollWidth>strip.clientWidth&&getComputedStyle(strip).overflowX==='auto');
+        ensure('no page overflow '+width+' '+size,document.querySelector('.native-workspace-main').getBoundingClientRect().right<=document.getElementById('root').getBoundingClientRect().right);
+        for(let i=0;i<tabs.length;i++) {
+          const text=tab(i).querySelector('.desktop-tab-title');
+          ensure('six character title space '+i+' '+width+' '+size,text.getBoundingClientRect().width>=6*size);
+          ensure('full hover title '+i,tab(i).title.startsWith(tabs[i].title));
+          ensure('ellipsis '+i,getComputedStyle(text).textOverflow==='ellipsis');
+          const close=tab(i).parentElement.querySelector('.desktop-tab-close').getBoundingClientRect();
+          ensure('close outside title '+i,text.getBoundingClientRect().right<=close.left);
+        }
+        ensure('long title clipped',tab(7).querySelector('.desktop-tab-title').scrollWidth>tab(7).querySelector('.desktop-tab-title').clientWidth);
+        strip.scrollLeft=strip.scrollWidth;
+        const end=strip.getBoundingClientRect(),add=document.querySelector('.desktop-tab-add').getBoundingClientRect();
+        ensure('horizontal scroll moved '+width+' '+size,strip.scrollLeft>0);
+        ensure('last tab and add reachable '+width+' '+size,tab(8).getBoundingClientRect().left>=end.left&&add.right<=end.right);
+        strip.scrollLeft=0;
+        ensure('first tab reachable '+width+' '+size,tab(0).getBoundingClientRect().left>=end.left&&tab(0).getBoundingClientRect().right<=end.right);
         for(const dot of document.querySelectorAll('.desktop-tab-dot')) {
           const box=dot.getBoundingClientRect(),button=dot.closest('button').getBoundingClientRect();
           const text=dot.closest('button').querySelector('.desktop-tab-title').getBoundingClientRect();
