@@ -5,6 +5,7 @@ import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
+import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { SessionPicker } from './session-picker';
 import { NativeWorkspace } from './native-workspace';
@@ -80,12 +81,10 @@ const MessageRow = memo(({ message, continuation, hidden = false }: { message: D
   const toolsOnly = message.role === "assistant" && !message.text.trim() && message.toolCalls.length > 0;
   const timestamp = message.createdAt !== undefined ? new Date(message.createdAt * 1000) : undefined;
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
-  const two = (value: number) => String(value).padStart(2, "0");
-  const timeLabel = hasTime && (message.role === "user"
-    ? `${timestamp.getFullYear() === new Date().getFullYear() ? "" : `${timestamp.getFullYear()}-`}${two(timestamp.getMonth() + 1)}-${two(timestamp.getDate())} ${two(timestamp.getHours())}:${two(timestamp.getMinutes())}`
-    : timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  const timeLabel = hasTime && timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const warning = processingWarning(message.receiptState, message.processing);
   return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
-    {message.role !== "assistant" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
+    {message.role !== "assistant" && message.role !== "user" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
       const presentation = toolPresentation(tool.name);
@@ -95,13 +94,22 @@ const MessageRow = memo(({ message, continuation, hidden = false }: { message: D
       </section>;
     })}</div>
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
-    {message.receiptState ? <div className={`receipt receipt-${message.receiptState}`}>{message.processing === "running" ? "Running" : message.receiptState}{message.feedback ? ` · ${message.feedback}` : ""}{message.clientMessageId && ["failed", "interrupted", "unknown"].includes(message.receiptState) ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
+    {message.feedback && <div className="receipt">{message.feedback}</div>}
+    {warning || message.receiptState === "queued" && message.receiptId ? <div className="receipt message-warning">{warning}{message.clientMessageId && warning ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
+    {message.role === "user" && <div className="user-message-time"><time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
   </article>;
 });
 
 const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot; active?: boolean }) => {
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
-  const groups = workGroups(snapshot.messages.map(message => ({ key: message.id, role: message.role, kind: message.displayKind, seconds: message.createdAt })), !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running);
+  const workMessages = snapshot.messages.map(message => ({ key: message.id, role: message.role, kind: message.displayKind, seconds: message.createdAt,
+    waiting: message.role === 'user' && ['queued', 'running'].includes(message.receiptState ?? '') && (message.processing == null || message.processing === 'running') }));
+  const lastUser = [...snapshot.messages].reverse().find(message => message.role === 'user');
+  const callbackEnded = lastUser?.processing != null && lastUser.processing !== 'running';
+  const running = !snapshot.interactions.length && ((!callbackEnded && !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running) || hasWaitingRequest(workMessages));
+  const groups = workGroups(workMessages, running);
+  const dates = chatDateSeparators(workMessages);
+  const awaitingWork = !snapshot.loadingMessages && !snapshot.interactions.length && needsWorkPlaceholder(workMessages, groups, running);
   const choiceKey = (group: WorkGroup) => `${snapshot.selectedThreadId}:${group.key}`;
   const list = useRef<HTMLDivElement>(null);
   const previous = useRef({ threadId: "", first: "", height: 0, count: 0 });
@@ -132,7 +140,7 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
     else if (following) node.scrollTop = node.scrollHeight;
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
-  }, [active, first, following, snapshot.messages, snapshot.selectedThreadId]);
+  }, [active, first, following, snapshot.messages, snapshot.selectedThreadId, awaitingWork]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;
@@ -152,10 +160,12 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
         const group = groups.get(message.id);
         const expanded = group ? workIsExpanded(group, workChoices[choiceKey(group)]) : true;
         return <div className="timeline-entry" key={message.id}>
+          {dates.has(message.id) && <div className="chat-date-separator">{dates.get(message.id)}</div>}
           {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
           <MessageRow message={message} continuation={continuation} hidden={!expanded} />
         </div>;
       }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
+      {awaitingWork && <div className="work-heading awaiting-agent-work" role="status"><span className="work-toggle">Working<span className="work-chevron" aria-hidden="true">{'\ue001'}</span></span></div>}
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
