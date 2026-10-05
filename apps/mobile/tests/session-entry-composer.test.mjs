@@ -14,7 +14,7 @@ const flush = () => { const jobs = [...state.frames.values()]; state.frames.clea
 const mocks = {
   'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:()=>({remove(){}})}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
-  '@shopify/flash-list': `import React from 'react'; export const FlashList=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({getScrollResponder:()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o)}),scrollToOffset:o=>globalThis.__entryTest.commands.push(o)}));return React.createElement('FlashList',p);});`,
+  '@shopify/flash-list': `import React from 'react'; export const FlashList=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({getScrollResponder:()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o)}),scrollToOffset:o=>globalThis.__entryTest.commands.push(o)}));return React.createElement('FlashList',p, p.data.map((item,index)=>React.createElement(React.Fragment,{key:item.key},p.renderItem({item,index,target:'Cell'}))), p.ListFooterComponent);});`,
   'react-native-keyboard-controller': `export const KeyboardChatScrollView='KeyboardChatScrollView',KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
   'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade}; export const FadeIn=fade,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
   'react-native-safe-area-context': `export const useSafeAreaInsets=()=>({bottom:0});`,
@@ -31,6 +31,67 @@ const mod = {exports:{}}; new Function('module','exports','require',bundle.outpu
 const ChatTimeline = mod.exports.ChatTimeline;
 const defaults = { active:true,threadId:'t',rows:[],startRef:null,hasOlder:false,onOlder(){},onPosition(){},text:'',onText(){},onSend(){},receipts:[],interactions:[],answers:{},onAnswerText(){},onAnswer(){},onCancel(){},onStop(){},busy:false };
 const rows = [{key:'u1',role:'user',text:'Synthetic history',refSeq:1}];
+const labels = root => root.root.findAllByType('Text').map(node => node.props.children).filter(value => typeof value === 'string');
+test('Agent response Working is visible before output, merges once and disappears on final', async () => {
+  const user = {key:'u',role:'user',text:'Request',optimistic:true,status:'sending',timestamp:1700000000};
+  const root = await mount({rows:[user]});
+  try {
+    assert.equal(labels(root).filter(label=>label==='Working').length,1);
+    const receipt = {id:'r',thread_id:'t',client_message_id:'u',state:'running',processing:'running',durable:true};
+    const process = {key:'a',role:'assistant',text:'Public explanation',timestamp:1700000002};
+    await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows:[{...user,status:'accepted',receipt},process],receipts:[receipt]})));
+    assert.equal(labels(root).filter(label=>label==='Working').length,1);
+    const final = {key:'f',role:'assistant',displayKind:'final',text:'Result',timestamp:1700000010};
+    await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows:[user,process,final]})));
+    assert.equal(labels(root).filter(label=>label==='Working').length,0);
+    assert.ok(labels(root).some(label=>label.startsWith('Worked for ')));
+  } finally { await act(async()=>root.unmount()); }
+});
+test('user metadata moves below content, dates group days, and normal reaction is absent', async () => {
+  const timestamp = new Date(2026,9,5,22,11).getTime()/1000;
+  const user = {key:'u',role:'user',text:'Request',timestamp,reactionSlot:true,reaction:{emoji:'✅',label:'Completed'},receipt:{state:'completed',processing:'completed'}};
+  const root = await mount({rows:[user,{...user,key:'u2',timestamp:timestamp+60},{...user,key:'u3',timestamp:timestamp+86400}]});
+  try {
+    assert.ok(!labels(root).some(label=>label.includes('Completed')));
+    const dates=root.root.findAllByProps({testID:'chat-date-separator'});
+    assert.equal(dates.length,2);
+    const times=root.root.findAllByType('MessageTime');
+    assert.equal(times.length,3);assert.ok(times.every(node=>node.props.clockOnly===true));
+    const metadata=root.root.findAllByProps({testID:'user-message-time'});
+    assert.equal(metadata.length,3);
+    for (const node of metadata) {
+      const siblings=node.parent.children;
+      assert.ok(siblings.findIndex(x=>typeof x==='object'&&x.type==='MessageContent')<siblings.indexOf(node));
+      assert.equal(node.props.style.justifyContent,'flex-end');
+    }
+  } finally { await act(async()=>root.unmount()); }
+});
+test('failed send has no Working; abnormal processing remains a plain warning', async () => {
+  for(const row of [
+    {key:'u',role:'user',text:'Request',optimistic:true,status:'blocked',sendError:'Not sent.'},
+    {key:'u',role:'user',text:'Request',reactionSlot:true,reaction:{emoji:'⚠️',label:'Outcome unknown'},receipt:{state:'unknown',processing:'unknown'}},
+  ]) {
+    const root=await mount({rows:[row]});
+    try {assert.ok(!labels(root).includes('Working'));if(row.reaction)assert.ok(labels(root).includes('Outcome unknown'));}
+    finally {await act(async()=>root.unmount());}
+  }
+});
+test('receipt lifecycle, approvals and direct replies stop or retain the single response heading correctly', async () => {
+  const user={key:'u',role:'user',text:'Request',status:'accepted'};
+  for (const [state,processing,expected] of [['queued',null,1],['running','running',1],['running','completed',0],['running','failed',0],['unknown','unknown',0],['interrupted','interrupted',0],['received',null,0]]) {
+    const receipt={id:'r',thread_id:'t',client_message_id:'u',durable:true,state,processing};
+    const root=await mount({rows:[{...user,receipt}],receipts:[receipt]});
+    try {assert.equal(labels(root).filter(x=>x==='Working').length,expected,`${state}/${processing}`);}
+    finally {await act(async()=>root.unmount());}
+  }
+  const receipt={id:'r',thread_id:'t',client_message_id:'u',durable:true,state:'running',processing:'running'};
+  const root=await mount({rows:[{...user,receipt}],receipts:[receipt],interactions:[{id:'i',thread_id:'t',receipt_id:'r',state:'pending',kind:'approval',prompt:'Approve?',choices:['Approve']}]});
+  try {assert.ok(!labels(root).includes('Working'));}
+  finally {await act(async()=>root.unmount());}
+  const directRoot=await mount({rows:[{...user,receipt},{key:'d',role:'assistant',text:'Direct answer',displayKind:'direct'}],receipts:[receipt]});
+  try {assert.ok(!labels(directRoot).includes('Working'));assert.ok(!labels(directRoot).some(x=>x.startsWith('Worked')));}
+  finally {await act(async()=>directRoot.unmount());}
+});
 async function mount(extra={}) { state.commands=[];state.frames.clear();let root;await act(async()=>{root=create(React.createElement(ChatTimeline,{...defaults,...extra}));});return root; }
 const list = root => root.root.findByType('FlashList');
 test('empty loading page receives first user-only history and follows without a content-size event',async()=>{

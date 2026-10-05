@@ -1,12 +1,13 @@
 import React, { memo, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { Text } from './FontSize';
-import { accessibleMessageTime, formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, userMessageTime } from './messageTime';
+import { chatClock } from '../../../packages/client/src/chatPresentation';
+import { accessibleMessageTime, formatMessageTime, nextMessageTimeUpdate, validTimestampSeconds, userMessageTime } from './messageTime.ts';
 
 /** User message dates stay fixed; directory and notice times keep their existing behavior. */
-export const MessageTime = memo(function MessageTime({ seconds, absolute = false }: { seconds?: number; absolute?: boolean }) {
-  if (absolute) return <Text style={{ color: '#697b90', fontSize: 12 }} accessibilityLabel={validTimestampSeconds(seconds) ? `Sent ${accessibleMessageTime(seconds)}` : 'Time unavailable'}>
-    {validTimestampSeconds(seconds) ? userMessageTime(seconds, Date.now()) : '—'}
+export const MessageTime = memo(function MessageTime({ seconds, absolute = false, clockOnly = false }: { seconds?: number; absolute?: boolean; clockOnly?: boolean }) {
+  if (clockOnly || absolute) return <Text style={{ color: '#697b90', fontSize: 12 }} accessibilityLabel={validTimestampSeconds(seconds) ? `Sent ${accessibleMessageTime(seconds)}` : 'Time unavailable'}>
+    {clockOnly ? chatClock(seconds) : validTimestampSeconds(seconds) ? userMessageTime(seconds, Date.now()) : '—'}
   </Text>;
   return <RelativeMessageTime seconds={seconds} />;
 });

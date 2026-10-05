@@ -15,6 +15,7 @@ import { WorkChevron } from './WorkChevron';
 import { MessageTime } from './MessageTime';
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../../../packages/client/src/workPresentation';
 import { hasRunningReceipt } from './receiptState';
+import { chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from '../../../packages/client/src/chatPresentation';
 import { historyDrawDistance, historyItemType } from './historyLayout';
 import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
 
@@ -46,10 +47,11 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const toolsOnly = row.role === 'assistant' && !row.text.trim() && !!row.toolCalls?.length;
   const finalReply = row.role === 'assistant' && row.displayKind === 'final';
   const failedId = failedMessageId(row);
+  const warning = row.reaction && ['Awaiting approval', 'Awaiting your answer'].includes(row.reaction.label) ? row.reaction.label : processingWarning(row.receipt?.state, row.receipt?.processing);
   const messageStyle = own ? styles.userMessageBubble : row.role === 'assistant' ? [styles.agentMessage, toolsOnly && styles.toolMessage, finalReply && styles.finalReply] : styles.bubble;
   const contentStyle = work && !workExpanded ? [messageStyle, styles.workHidden] : messageStyle;
   const content = <Animated.View entering={own ? undefined : entering} accessibilityElementsHidden={!!work && !workExpanded} importantForAccessibility={work && !workExpanded ? 'no-hide-descendants' : 'auto'} style={highlighted ? [contentStyle, { backgroundColor: '#d9eaff' }] : contentStyle}>
-    {row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} absolute={row.role === 'user'} /></View>}
+    {!own && row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
     {revealed.current.value && <MessageContent key={row.key} resourceId={row.key} text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />}
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
@@ -59,13 +61,14 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       {!!onDeleteFailed && action('Delete', () => confirmFailedMessageDelete(row, onDeleteFailed, Alert.alert), busy)}
     </View>}
     {revealed.current.value && (renderAttachments ? renderAttachments(row) : row.attachments?.map(a => <Text key={a.id} style={styles.attachment}>Attachment: {a.name || 'Unnamed attachment'} ({a.state === 'available' ? 'Available' : 'Unavailable for now'})</Text>))}
-    {row.reactionSlot && <View style={styles.reactionSlot} accessibilityLabel={row.reaction?.label}>
-      {row.reaction && <Text style={styles.reactionText}>{row.reaction.emoji} {row.reaction.label}</Text>}
+    {(warning || row.receipt?.state === 'queued') && <View style={styles.messageWarning}>
+      {warning && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{warning}</Text>}
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
+    {own && <View testID="user-message-time" style={styles.messageTime}><MessageTime seconds={row.timestamp} clockOnly /></View>}
   </Animated.View>;
   return <>{boundary}{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <Animated.View entering={entering} style={styles.userMessageRow}>{content}</Animated.View> : content}</>;
-}, (prev, next) => prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.historyBoundary === next.historyBoundary && prev.animateHistory === next.animateHistory && prev.onHistoryShown === next.onHistoryShown && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; holdPosition(): void; pasteText(text: string): void }
 interface Props {
@@ -117,7 +120,13 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const [initialHistoryPosition] = useState(() => ({ ...historyPosition,
     startRenderingFromBottom: props.targetRef === undefined && (position?.following ?? true) }));
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
-  const groups = workGroups(rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp })), hasRunningReceipt(props.threadId, props.receipts));
+  const workMessages = rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp,
+    waiting: row.role === 'user' && (row.optimistic && ['queued', 'sending', 'ambiguous'].includes(row.status ?? '') || !!row.receipt && ['queued', 'running'].includes(row.receipt.state) && (row.receipt.processing == null || row.receipt.processing === 'running')) }));
+  const paused = props.interactions.some(interaction => interaction.thread_id === props.threadId && interaction.state === 'pending');
+  const running = !paused && (hasRunningReceipt(props.threadId, props.receipts) || hasWaitingRequest(workMessages));
+  const groups = workGroups(workMessages, running);
+  const dateSeparators = chatDateSeparators(workMessages);
+  const awaitingWork = !paused && !props.hasNewer && !props.locatingBusy && needsWorkPlaceholder(workMessages, groups, running);
   const onWorkToggle = useCallback((group: WorkGroup, expanded: boolean) => setWorkChoices(old => ({ ...old, [`${props.threadId}:${group.key}`]: { completion: group.completion, expanded } })), [props.threadId]);
   const [initialTargetIndex] = useState(() => { const index = rows.findIndex(row => row.refSeq === props.targetRef); return props.targetRef !== undefined && index >= 0 ? index : undefined; });
   const [highlightedRef, setHighlightedRef] = useState(props.targetRef);
@@ -363,15 +372,17 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     : rows.length && props.hasOlder && !props.locatingMessage && !props.locatingBusy ? 'Pull down for earlier messages' : '';
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
-      <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
+      <FlashList ref={list} style={styles.flex} data={rows} keyExtractor={item => item.key} renderItem={({ item, target }) => <>
+        {dateSeparators.has(item.key) && <View testID="chat-date-separator" style={styles.dateSeparator}><Text style={styles.dateLabel}>{dateSeparators.get(item.key)}</Text></View>}
+        <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
         work={groups.get(item.key)} workExpanded={!groups.has(item.key) || workIsExpanded(groups.get(item.key)!, workChoices[`${props.threadId}:${groups.get(item.key)!.key}`])} onWorkToggle={onWorkToggle}
         highlighted={highlightedRef !== undefined && item.refSeq === highlightedRef}
         animateHistory={props.active && target === 'Cell' && historyEnteringKeys.current.has(item.key)} onHistoryShown={onHistoryShown}
-        historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} />}
+        historyBoundary={target !== 'StickyHeader' && item.key === historyBoundaryKey.current} /></>}
         renderScrollComponent={renderScrollComponent}
         drawDistance={renderAhead} getItemType={historyItemType}
         initialScrollIndex={initialTargetIndex}
-        ListFooterComponent={props.hasNewer ? action('Load later messages', () => props.onNewer?.(), props.busy || !!props.locatingBusy, true) : null}
+        ListFooterComponent={props.hasNewer ? action('Load later messages', () => props.onNewer?.(), props.busy || !!props.locatingBusy, true) : awaitingWork ? <View testID="awaiting-agent-work" style={styles.workHeading} accessibilityLiveRegion="polite"><View style={styles.workToggle}><Text style={styles.workLabel}>Working</Text><WorkChevron expanded /></View></View> : null}
         contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         // List-owned position maintenance; no competing prepend scrolls.
         maintainVisibleContentPosition={initialHistoryPosition}
@@ -546,8 +557,11 @@ const styles = StyleSheet.create({
   workLabel: { color: '#727272', fontSize: 15 },
   workHidden: { display: 'none' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
+  messageTime: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 5 },
+  dateSeparator: { alignItems: 'center', marginVertical: 16, marginHorizontal: 14 },
+  dateLabel: { color: '#697b90', fontSize: 12 },
   failedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  reactionSlot: { height: 23, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, reactionText: { color: '#50647b', fontSize: 12, lineHeight: 18, alignSelf: 'flex-start', backgroundColor: '#edf2f8', borderWidth: 1, borderColor: '#d7e1ee', borderRadius: 11, paddingHorizontal: 7 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
+  messageWarning: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 5 }, cancelText: { color: '#294e7b', fontSize: 12 }, sendError: { color: '#9d1b32', fontSize: 12, marginTop: 5 },
   feedback: { color: '#415b76', fontSize: 12, lineHeight: 18, marginTop: 7, flexShrink: 1 },
   action: { backgroundColor: '#285ea5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: 'center', margin: 2 },
   muted: { backgroundColor: '#e7eef7' }, actionText: { color: '#fff', fontWeight: '600', fontSize: 13 }, mutedText: { color: '#294e7b' }, disabled: { opacity: 0.5 },

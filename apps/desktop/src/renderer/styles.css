@@ -521,6 +521,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .message-tools-only { margin-bottom: 6px; }
 .message .message-role { display: flex; align-items: baseline; gap: 9px; margin-top: 0; font-size: var(--app-font-size); letter-spacing: 0; text-transform: none; color: #50647b; }
 .message-time { color: var(--app-muted); font-size: var(--app-font-size); font-weight: 400; }
+.message .user-message-time { display: flex; justify-content: flex-end; margin-top: 5px; }
+.user-message-time .message-time { font-size: calc(var(--app-font-size) * .75); }
+.chat-date-separator { margin: 16px 14px; text-align: center; color: var(--app-muted); font-size: calc(var(--app-font-size) * .75); }
+.awaiting-agent-work .work-toggle { cursor: default; }
 .tool-records { display: grid; gap: 4px; }
 .tool-record { min-width: 0; color: #52657c; font-size: var(--app-font-size); line-height: 1.5; white-space: normal; }
 .tool-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
