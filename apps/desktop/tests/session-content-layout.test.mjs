@@ -73,7 +73,7 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
         if(row.user){assert.equal(row.style.background,'rgb(243, 243, 243)');assert.equal(row.style.radius,'22px');assert.equal(row.style.border,'0px');}
         if(row.final){assert.equal(row.style.background,'rgb(247, 245, 239)');assert.equal(row.style.border,'0px');assert.equal(row.style.marginTop,'32px');}
       }
-      assert.ok(result.tables.some(x=>x.scrollWidth>x.clientWidth),'wide table keeps horizontal scrolling');
+      assert.ok(result.tables.every(x=>x.scrollWidth<=x.clientWidth+1),'tables wrap within their local width');
       assert.ok(result.rows[0].box.width<(result.clientWidth-28)*.8-10,'short message stays narrower than the cap');
     }
     if(process.env.HERMES_SESSION_EVIDENCE){

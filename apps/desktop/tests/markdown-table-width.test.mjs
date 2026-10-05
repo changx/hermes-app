@@ -16,5 +16,5 @@ new Function('require','module','exports',bundle.outputFiles[0].text)(createRequ
 const html = out.exports.html;
 const css = await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
 for (const surface of ['session','standalone','user-bubble']) test(`Chromium: desktop ${surface} tables obey parent content widths and resize`, { skip:!process.env.HERMES_TEST_CHROME }, async () => {
-  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : surface==='user-bubble' ? 'message message-user' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table');
+  await checkTableLayout(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><main style="display:grid;grid-template-columns:minmax(0,1fr)"><article class="${surface==='session' ? 'message message-final' : surface==='user-bubble' ? 'message message-user' : ''}" style="min-width:0;padding:12px">${html}</article></main></body></html>`,'.markdown-table',surface==='user-bubble'?[320,390,480,768,1024,320]:undefined);
 });
