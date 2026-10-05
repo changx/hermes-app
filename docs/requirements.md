@@ -26,6 +26,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 ### R02 Channel / Thread 内容组织
 
+桌面标签标题区至少保留六个汉字的宽度（`6em`），随本机字号变化；内边距、状态点和关闭按钮另占空间。标签数量超过可见宽度时，标签栏横向滚动，不继续压窄标题。长标题显示省略号，鼠标悬停显示完整标题及已有状态提示。仅桌面客户端呈现变更，不改手机、服务端或标签页面生命周期。候选 `fix/desktop-tab-width`，卡 `t_3cf324ae`；实现与验证边界见 [桌面标签工作区](desktop-tabs.md#标签宽度与溢出)。
+
 桌面 Session tab 在标题右侧显示独立的 7px 状态点：运行中为绿点 `#16a34a`，本机未发送草稿为红点 `#dc2626`，已完成未读为蓝点 `#4DA3FF`。三种状态可以同时显示，不设覆盖优先级。状态点不随长标题截断；悬停提示和辅助功能名称说明对应状态。复用目录中的运行/完成未读状态及已有本地文字/附件草稿，不新增服务端字段，不因显示状态点确认已读，不改变 Session 列表。候选 `feat/desktop-tab-status`，卡 `t_31c1f3d4`；桌面类型检查与构建通过，Chromium 回归 35 通过（原生 Electron 项另测），Linux/Xvfb 原生 Electron 1 通过，覆盖隐藏 tab 三点并存与目录清除。传输使用受控测试数据；未发布，未做 macOS 真机视觉验收。
 
 最新确认的手机 Channel 布局与排序：第一行放 Context、Files、AGENTS.md 轻量入口及无常驻底色的更多菜单。第二行未筛选时显示 `Filters: All sessions` 与加号；筛选后显示可移除的标签及 Clear，沿用 OR/No labels 语义。Session 列表先排 `running === true`，其余状态合为第二组；各组按最后消息时间从新到旧，不为草稿或已完成未读增加优先级。窄屏/大字体及较长筛选行横向滚动，不自动换行。该规则取代下文手机仅按时间排序的旧记录；桌面不变。候选及验证边界见 [手机 Channel](mobile-channel-context.md#current-mobile-toolbar-and-sorting-candidate)。
