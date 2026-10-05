@@ -38,7 +38,7 @@ test('composer paste uploads into exact session draft, retains text and never se
     assert.equal(await paste(tree, 'Message', files), true);
     assert.deepEqual(calls, [[files, id]]);
     assert.equal(tree.root.findByProps({ 'aria-label': 'Message' }).props.value, 'Keep this draft');
-    assert.equal(tree.root.findAllByProps({ className: 'composer-attachments' })[0].findAllByType('span').length, 2);
+    assert.equal(tree.root.findAllByProps({ className: 'composer-attachments' })[0].findAllByProps({ className: 'composer-attachment' }).length, 2);
     assert.equal(await paste(tree, 'Message', Array.from({ length: 7 }, () => file())), true);
     assert.equal(calls.length, 1, 'reject remaining-capacity overflow before upload');
     assert.equal(await paste(tree, 'Message', [file('huge.png', MAX_ATTACHMENT_BYTES + 1)]), true);

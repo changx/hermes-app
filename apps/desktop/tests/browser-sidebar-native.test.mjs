@@ -41,6 +41,9 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await until(()=>evaluate(shell,'!!document.querySelector(".native-workspace")'),'workspace');
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(a)+')');const manager=tabsForTest(),tab=[...manager.tabs.values()][0],chat=tab.view.webContents,browser=sidebarForTest();
  await until(()=>evaluate(chat,'document.querySelectorAll(".attachment-row").length===4'),'attachment cards');
+ await until(()=>evaluate(chat,'document.querySelector(".attachment-row .attachment-thumbnail img")?.naturalWidth===1'),'message image has genuine small thumbnail');
+ assert.equal(await evaluate(chat,'document.querySelectorAll(".attachment-row .attachment-thumbnail").length'),4,'every message file has a thumbnail or type tile');
+ if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'message-thumbnails.png'),(await chat.capturePage()).toPNG());}
  await evaluate(chat,'(()=>{const row=[...document.querySelectorAll(".attachment-row")].find(e=>e.textContent.includes("generated.html"));[...row.querySelectorAll("button")].find(e=>e.textContent==="Preview").click()})()');
  await until(()=>browser.panes.has(tab.id),'pane created');const pane=browser.panes.get(tab.id),web=pane.view.webContents;
  await until(()=>evaluate(web,'document.documentElement.dataset.generated==="ready"'),'HTML script and relative JS');

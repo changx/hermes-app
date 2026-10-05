@@ -469,8 +469,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .tool-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .message .tool-command { margin: 2px 0 0 26px; padding: 6px 10px; border: 1px solid #d6e0ed; border-radius: 6px; background: #e8eef6; color: #20314a; font: var(--app-font-size)/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 72px; overflow: auto; white-space: pre-wrap; }
 .attachment-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; border: 1px solid var(--app-border); border-radius: 9px; padding: 8px 10px; background: #f1f5fa; white-space: normal; }
-.attachment-row span:first-child { flex: 1; font-weight: 650; }
-.attachment-row span:nth-child(2) { color: #50647b; font-size: var(--app-font-size); }
+.attachment-row > .attachment-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
+.attachment-row > .attachment-size { color: #50647b; font-size: var(--app-font-size); }
 .attachment-row button, .receipt button, .load-older { border: 1px solid var(--app-field-border); border-radius: 7px; padding: 4px 8px; color: var(--app-link); background: #fff; }
 .receipt { margin-top: 7px; color: #50647b; font-size: var(--app-font-size); text-transform: capitalize; }
 .receipt button { margin-left: 8px; }
@@ -491,7 +491,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (prefers-reduced-motion: reduce) { .running-dots span { animation: none; } }
 .running-row .stop-button { flex: 0 0 34px; height: 28px; padding: 0; border: 0; border-radius: 9px; color: #425874; background: #e6edf7; font-size: 17px; }
 .composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
-.composer-attachments span { border-radius: 999px; padding: 5px 8px 5px 10px; background: #f1f5fa; font-size: var(--app-font-size); }
+.composer-attachments > .composer-attachment { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 6px; border-radius: 8px; padding: 5px 8px; background: #f1f5fa; font-size: var(--app-font-size); overflow-wrap: anywhere; }
 .composer-attachments button { border: 0; margin-left: 5px; background: transparent; }
 .interaction-card { margin: 0 18px 10px; border: 1px solid #efdfb8; border-radius: 10px; padding: 12px; background: #fff7e6; }
 .interaction-card p { margin: 5px 0 10px; }
@@ -508,7 +508,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-attach { justify-self: start; border: 0; border-radius: 10px; padding: 8px 12px; color: #294e7b; background: #e7eef7; }
 .session-files { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .session-files li { display: flex; align-items: center; gap: 8px; border-radius: 8px; padding: 6px 10px; background: #edf2f8; }
-.session-files span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.session-files .session-file-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .session-files button { border: 0; padding: 4px; background: transparent; }
 .session-hint { color: #50647b; font-size: var(--app-font-size); line-height: 1.5; }
 .editor-dialog textarea { min-height: 100px; resize: vertical; }
@@ -523,5 +523,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .attachment-card { margin: 10px 0; max-width: 520px; }
 .attachment-image { display: block; width: 100%; height: 260px; overflow: hidden; padding: 0; border: 1px solid var(--app-border); border-radius: 10px; background: var(--app-background); cursor: pointer; }
 .attachment-image img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.attachment-thumbnail-host { display: inline-flex; flex: 0 0 40px; width: 40px; height: 40px; }
+.attachment-thumbnail { display: inline-flex; flex: 0 0 40px; position: relative; align-items: center; justify-content: center; width: 40px; height: 40px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 6px; background: white; color: var(--app-muted); vertical-align: middle; }
+.attachment-thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.attachment-thumbnail svg { width: 24px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .6; }
+.attachment-thumbnail small { position: absolute; left: 0; right: 0; bottom: 1px; padding: 0; text-align: center; background: white; color: inherit; font: calc(var(--app-font-size) * .625)/1.1 system-ui; }
 .attachment-image span { display: block; padding: 20px; color: var(--app-muted); }
 .attachment-row a { margin-left: 8px; font-size: var(--app-font-size); }

@@ -1,5 +1,18 @@
 # Desktop session composer and left user bubbles
 
+## Attachment small thumbnails (candidate)
+
+Candidate `feat/desktop-attachment-thumbnails` adds a fixed **40 × 40px** thumbnail to message attachment rows, uploaded Session composer drafts, and selected/pasted local New chat files. It builds on the isolated right sidebar candidate `e791529`; it does not publish or modify main. The separate code-background candidate remains unchanged.
+
+- PNG/JPEG/GIF/WebP show genuine images. PDF/HTML/text/archive/document/media/unknown files show labelled file-type tiles, not fabricated content previews. Unsupported images or failed image loads retain a type tile.
+- The existing large message image stays. Its small thumbnail shares the same image request/source; do not download the attachment twice. Existing Preview, Save, Open externally and Remove actions stay.
+- Remote raster images use existing tab-scoped authenticated IPC, lazy intersection loading and a maximum of three concurrent image downloads per renderer. Do not use public attachment URLs for automatic thumbnails. Reject non-image URL responses and ignore late responses after replacement/unmount.
+- Local File thumbnails use renderer-owned object URLs without session creation or upload. Release each URL on replacement/removal/unmount. File selection/paste limits and explicit-send semantics stay unchanged.
+- The application renderer CSP adds `blob:` only to `img-src`. Script and connection policies remain unchanged. The isolated browser sidebar keeps its separate policy.
+- File rows keep fixed thumbnail geometry, readable filenames and existing action labels. Type-tile lettering scales with the application text size.
+
+Verification uses production components and real Chromium/Electron. Native tests paste an actual PNG, check successful decode and 40px geometry, and sample the captured red pixel. They also verify local New chat thumbnails without uploads and all four controlled message attachment tiles. Transport/storage remain fixtures. Object-URL revocation, stale responses, fallback types, CSP and concurrency have separate component tests. Evidence includes `composer-thumbnail.png`, `new-chat-thumbnail.png` and `message-thumbnails.png` in the channel's `desktop-attachment-thumbnails` directory. macOS installed-build visual/keyboard acceptance remains pending; no release, installation or service restart is implied.
+
 ## Desktop clipboard attachment paste
 
 ### Published: Desktop v0.1.30

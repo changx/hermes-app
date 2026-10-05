@@ -22,6 +22,7 @@ const {app,BrowserWindow,clipboard,ClipboardItem,nativeImage}=require('electron'
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
 const {service,nativeTabsForTest}=require('./dist/main/index.cjs');
 const calls=[], pages=new Map(), local=new Map(), a='th_aaaaaaaa',b='th_bbbbbbbb';
+const previewPng=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1}).toPNG();
 const rows=id=>Array.from({length:id===a?200:8},(_,i)=>({id:id+'_'+i,ref_seq:i+1,role:'assistant',text:'Controlled fixture '+id+' row '+(i+1)}));
 const server=new Map([[a,rows(a)],[b,rows(b)]]);
 const client={channels:new Map([['p',{id:'p',name:'Project Alpha'}],['q',{id:'q',name:'Project Beta'}]]),threads:new Map([[a,{id:a,project_id:'p',title:'Session A',running:false,last_message_at:Date.now()/1000,markers:['work']}],[b,{id:b,project_id:'q',title:'Session B',running:true,last_message_at:1,markers:['bug']}]]),messages:new Map(),receipts:new Map(),interactions:new Map(),attachments:new Map(),supportsLatest:true,isCatalogueReady:true,supportsSessionLabels:true,
@@ -30,7 +31,8 @@ const client={channels:new Map([['p',{id:'p',name:'Project Alpha'}],['q',{id:'q'
  async openConversation(){calls.push(['open',id]);client.messages.set(id,server.get(id).slice(-50));this.currentOlderCursor=id===a?'older':undefined;service.changed();},
  async loadFullHistory(){calls.push(['history',id]);client.messages.set(id,server.get(id));this.currentOlderCursor=undefined;service.changed();}};pages.set(id,page);}return pages.get(id);},
  async createThread(project,title,id){calls.push(['create',project,id]); const t={id,project_id:project,title,archived:false,last_message_at:Date.now()/1000,running:false};this.threads.set(id,t);server.set(id,[]);service.changed();return t;},
- async upload(id,name,bytes){calls.push(['upload',id,name,bytes.length]);const f={id:'att_'+('c'.repeat(32)),thread_id:id,name,mime:'text/plain',size:bytes.length,state:'available'};this.attachments.set(f.id,f);service.changed();return f;},
+ async upload(id,name,bytes){calls.push(['upload',id,name,bytes.length]);const f={id:'att_'+('c'.repeat(32)),thread_id:id,name,mime:/\.png$/i.test(name)?'image/png':'text/plain',size:bytes.length,state:'available'};this.attachments.set(f.id,f);service.changed();return f;},
+ async download(id,f){calls.push(['thumbnail',id,f]);return new Uint8Array(previewPng);},
  async send(id,messageId,text,files){calls.push(['send',id,messageId,text,files]);return {id:'receipt-'+calls.length,thread_id:id,client_message_id:messageId,state:'queued',durable:true,ref_seq:1};},
  rememberAcceptedInput(id,messageId,text,files,time,receipt){client.messages.set(id,[...(client.messages.get(id)||[]),{id:'receipt:'+receipt.id,role:'user',text,client_message_id:messageId,receipt_id:receipt.id,attachments:files,created_at:time,ref_seq:receipt.ref_seq}]);},
  async deleteUnattached(id,f){this.attachments.delete(f);},async stop(id){calls.push(['stop',id]);},async markResultRead(id){calls.push(['read',id]);},close(){pages.clear();client.messages.clear();},async getAttachment(id,f){return this.attachments.get(f);}};
@@ -52,6 +54,13 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await evaluate(ac,'document.querySelector("[aria-label=Message]").focus()');ac.paste();
  await until(()=>calls.some(x=>x[0]==='upload'&&x[1]===a),'native clipboard image uploaded to A');
  await until(()=>local.get(a)?.attachments.length===1,'pasted attachment persisted in A draft');
+ await until(()=>evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail img")?.naturalWidth===1'),'uploaded clipboard image has genuine small thumbnail');
+ assert.equal(await evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail").getBoundingClientRect().width'),40);
+ assert.equal(calls.find(x=>x[0]==='thumbnail')[1],a,'thumbnail download targets exact session');
+ await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ const thumbnailRect=await evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail").getBoundingClientRect().toJSON()'),thumbnailShot=await ac.capturePage();
+ assert.deepEqual([...thumbnailShot.crop({x:Math.floor(thumbnailRect.x+thumbnailRect.width/2),y:Math.floor(thumbnailRect.y+thumbnailRect.height/2),width:1,height:1}).toBitmap()],[0,0,255,255],'thumbnail paints actual red clipboard pixel');
+ if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'composer-thumbnail.png'),thumbnailShot.toPNG());}
  assert.equal(await evaluate(ac,'document.querySelector("[aria-label=Message]").value'),'A retained draft');
  assert.equal(calls.filter(x=>x[0]==='send').length,0,'paste does not send');
  await until(()=>evaluate(ac,'!document.querySelector("[aria-label=Message]").disabled'),'composer ready after paste');
@@ -91,6 +100,9 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await clipboard.write([new ClipboardItem({'image/png':new Blob([image.toPNG()],{type:'image/png'})})]);
  await evaluate(dc,'document.querySelector("textarea").focus()');dc.paste();
  await until(()=>evaluate(dc,'document.querySelectorAll(".session-files li").length===1'),'new chat native image paste');
+ await until(()=>evaluate(dc,'document.querySelector(".session-files .attachment-thumbnail img")?.naturalWidth===1'),'local clipboard image has genuine small thumbnail');
+ await evaluate(dc,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+ if(process.env.HERMES_NATIVE_EVIDENCE)fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'new-chat-thumbnail.png'),(await dc.capturePage()).toPNG());
  assert.equal(calls.filter(x=>x[0]==='upload').length,uploadsBeforeNewPaste,'new-chat paste stays local');
  await evaluate(dc,'document.querySelector(".session-files button").click()');
  await until(()=>evaluate(dc,'document.querySelectorAll(".session-files li").length===0'),'remove new-chat pasted image');
