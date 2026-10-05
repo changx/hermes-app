@@ -3,6 +3,7 @@ import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
+export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>;
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string }>;
 export type DesktopThread = Readonly<{
@@ -51,6 +52,7 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  browser?: DesktopBrowserState;
   tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
   activeTabId?: string;
   tabId?: string;
@@ -96,6 +98,11 @@ export type DesktopRuntimeInfo = Readonly<{
 }>;
 
 export interface HermesDesktopApi {
+  openBrowser(url?: string): Promise<void>;
+  previewAttachment(attachmentId: string): Promise<void>;
+  previewLocalFile(file: File): Promise<void>;
+  browserAction(action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void>;
+  setBrowserBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   newTab(channelId?: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   closeTab(tabId: string): Promise<void>;

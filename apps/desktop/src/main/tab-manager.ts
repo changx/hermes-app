@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { DesktopSnapshot } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
 import type { DesktopConnectionService } from './connection-service';
+import type { DesktopBrowserSidebar } from './browser-sidebar';
 
 type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session'; busy: boolean; baseline?: DesktopSnapshot };
 export class DesktopTabManager {
@@ -16,8 +17,9 @@ export class DesktopTabManager {
   private closed = false;
   private connectionKey?: string;
   constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnectionService,
-    private readonly directory: string, private readonly secure: (contents: WebContents) => void) { this.shortcuts(window.webContents); }
+    private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar) { this.shortcuts(window.webContents); }
 
+  attachShortcuts(contents: WebContents): void { this.shortcuts(contents); }
   private shortcuts(contents: WebContents): void {
     contents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat || this.closed) return;
@@ -91,11 +93,12 @@ export class DesktopTabManager {
     if (this.activeTabId) this.activate(this.activeTabId); else { this.service.deactivateThread(); this.publish(); }
   }
   private destroy(tab: Tab): void {
+    this.browser?.remove(tab.id);
     this.tabs.delete(tab.id); if (this.activeTabId === tab.id) this.activeTabId = undefined;
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(tab.view);
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close({ waitForBeforeUnload: false });
   }
-  dispose(): void { this.closed = true; for (const tab of [...this.tabs.values()]) this.destroy(tab); this.baseline = undefined; }
+  dispose(): void { this.closed = true; for (const tab of [...this.tabs.values()]) this.destroy(tab); this.browser?.dispose(); this.baseline = undefined; }
   sender(contents: WebContents): Tab | undefined { return [...this.tabs.values()].find(tab => tab.view.webContents === contents); }
   authorize(contents: WebContents, frameUrl: string | undefined): Tab | undefined {
     if (frameUrl !== contents.getURL()) throw new Error('Untrusted desktop request');
@@ -124,6 +127,7 @@ export class DesktopTabManager {
     this.publish();
   }
   private layout(): void {
+    this.browser?.layout(this.activeTabId, this.bounds.visible);
     for (const tab of this.tabs.values()) {
       const visible = tab.id === this.activeTabId && this.bounds.visible;
       tab.view.setBounds(this.bounds); tab.view.setVisible(visible); tab.view.webContents.setAudioMuted(!visible);
@@ -140,7 +144,7 @@ export class DesktopTabManager {
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId };
     }
-    return { ...base, revision: this.revision, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, revision: this.revision, browser: this.browser?.state(this.activeTabId), messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, title: tab.kind === 'new' ? 'New chat' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }

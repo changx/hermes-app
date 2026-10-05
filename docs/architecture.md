@@ -55,6 +55,8 @@ Channel 工作空间已分别实现插件/手机候选，未因此宣称公开�
 
 ## 3. P0 后推荐路线（P1-01/02 局部实现；历史生命周期子集已验证）
 
+桌面右侧浏览器候选与可信 App renderer 分离：每个 tab 按需拥有无 preload/Node 的 sandboxed `WebContentsView` 和独立非持久 session。主进程保留认证附件下载权，按 Thread/身份与字节长度校验后，通过仅该 session 注册的随机 origin `hermes-preview:` 返回被明确选中的文件。网页不能调用桌面 IPC，不获得网关凭据；相对附件资源受类型/名称/数量/总量限制。UA 取 bundled Chromium 主版本生成标准 Chrome 格式，分别配置 session/web contents。视图 bounds、隐藏/静音、迟到响应取消和 close 生命周期归 tab/sidebar owner。实现、测试与未合入/真机边界见 [桌面候选](desktop-macos-v1.md#当前候选右侧附件预览与浏览器)。
+
 1. 使用正式 Hermes App platform plugin 接入真实 GatewayRunner，插件自有 HTTP/WS 提供 App 契约；可用核心接口及纯 TS 模块按边界复用。没有正式新增 TUI RPC method 扩展点时，不修改内部 method 表。
 2. 通过 Hermes plugin 补 Channel/Thread 的稳定映射、提示继承以及可见历史的统一读取，复用已有能力而不修改核心；模型 compaction 不改用户原文。
 3. 明确持久接收、可恢复同步游标、稳定消息 ID、多端通知和阅读状态。优先利用现有持久数据，必要时仅增加最小状态/变更日志；P0 后决定 schema。

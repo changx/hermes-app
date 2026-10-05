@@ -47,7 +47,7 @@ const allowedLink = (href: string | undefined): string | undefined => {
   if (parseSessionLink(href)) return href;
   try {
     const url = new URL(href);
-    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
   } catch { return undefined; }
 };
 

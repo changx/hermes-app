@@ -1,6 +1,23 @@
 # macOS 桌面 App 第一版设计
 
-状态：设计方向已确认，实施任务已拆分到 `docs/desktop-kanban.md`；仓库中已有未验证的 Electron main/preload/build 脚手架，但尚无完成的桌面功能卡。
+## 当前候选：右侧附件预览与浏览器
+
+隔离分支 `feat/desktop-preview-sidebar`，卡 `t_7de73bfe`。附件卡、已上传草稿及 New chat 本地文件提供 **Preview**；tab 栏 **Browser** 打开地址输入。HTTP/HTTPS 消息链接和附件公开链接进入同一右侧浏览器；Session 链接仍沿用原路由。保留 Save 与 Open externally，不自动上传本地预览、不自动发送消息。
+
+- 支持 PNG/JPEG/GIF/WebP、Chromium 内置 PDF 阅读器、文本/JSON/源码，以及可执行 JavaScript 的 HTML 页面。Markdown 当前显示源码，不宣称富文本预览；其他二进制格式明确提示保存或外部打开。
+- HTML 页面可使用网页依赖和 HTTP(S)/WebSocket。相对资源仅匹配同一 Session 中唯一同名的图片、CSS、JS、字体附件，最多八个。拒绝目录穿越、任意磁盘邻居和文本/文档附件资源。New chat 本地 HTML 不读取旁边文件；多目录页面需使用自包含 HTML 或网页 URL。单文件最多 10 MiB，单 HTML 上下文累计最多 30 MiB。只保留最近一次附件上下文；较早附件需从卡片重新打开。网页历史支持后退、前进、刷新、停止。
+- 每个 tab 按需建立独立 `WebContentsView` 和非持久 browser session。切换 tab 保留页面，隐藏/静音非活动视图；关闭 sidebar、tab、身份或窗口时释放。关闭或网页导航后，迟到的附件响应不能重建 sidebar 或覆盖网页。聊天 DOM、草稿和历史继续由原 tab 持有。
+- 右栏宽度为窗口的 42%，限制在 280–560px。窄窗口临时收起左栏；关闭右栏恢复左栏偏好。Workspace 对话框隐藏两侧原生视图；原生 bounds 保持分隔线和聊天/浏览器不重叠。
+- 网页没有 Hermes preload、Node、App API 或网关凭据。继续启用 context isolation、sandbox 配置和 web security；主进程下载附件并检查 Thread、身份、可用状态和实际字节长度。文本转义后显示。拒绝设备权限、特权协议导航及隐式下载；只对 Chromium 内置 PDF extension 放行阅读器资源。浏览器 cookie 不共享 App/default session。HTML 仅在用户点击 Preview 后运行，仍应视为不可信网页。
+- UA 使用标准 desktop Chrome reduced 格式，主版本取当前 `process.versions.chrome`，其余版本段为 `0.0.0`。macOS 平台段配置为 `Macintosh; Intel Mac OS X 10_15_7`，不包含 Hermes/Electron；session 和 web contents 设置相同 UA。此要求只涉及 UA，不把 Electron 引擎变成 Google Chrome，也不保证反机器人绕过或所有浏览器特性。
+
+验证：desktop 类型检查/构建通过；开启 Chromium headless-shell 和 Linux/Xvfb Electron 后 **54/54** 测试通过、零跳过。共享 client 类型检查/构建及 **16/16** 测试通过。原生测试核对 HTTP/WebSocket 请求 UA 与 `navigator.userAgent`，覆盖 HTML 脚本/相对资源、图片尺寸、PDF 原生插件/阅读器 frame、文本转义、本地草稿预览、真实地址栏、链接/弹窗/历史、cookie/API 隔离、权限/下载拒绝、窄窗口/对话框、迟到响应取消及生命周期。保留 tab 的剪贴板/历史/草稿回归也通过。另一次 opt-in 原生 smoke 实际打开 `https://example.com/` 并读回标题和正文；其余服务端传输/存储使用受控测试数据。
+
+环境边界：普通 Chrome-for-Testing 连最小 `--dump-dom` 都超时；使用 Chromium headless-shell 重跑原断言全部通过，失败与成功日志保留在 channel workspace。Linux 原生测试沿用 Xvfb/`--no-sandbox` 启动方式，不证明 macOS OS sandbox。macOS 已安装 App 的视觉、PDF 操作、焦点及键盘验收仍待进行。候选未合入 main、未发布/安装、未重启服务；不改手机、插件、核心、依赖或签名。
+
+已检查的官方参考：[WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)、[webContents](https://www.electronjs.org/docs/latest/api/web-contents)、[session](https://www.electronjs.org/docs/latest/api/session)、[protocol](https://www.electronjs.org/docs/latest/api/protocol)、[security](https://www.electronjs.org/docs/latest/tutorial/security)、[Chrome UA reduction](https://www.chromium.org/updates/ua-reduction/)。运行行为以原生测试结果为准，不由 API 名称推断。
+
+以下保留早期设计状态记录，不代表当前实现或发布状态：设计方向已确认，实施任务已拆分到 `docs/desktop-kanban.md`；当时仓库已有未验证的 Electron main/preload/build 脚手架，但尚无完成的桌面功能卡。
 
 ## 1. 已确认决策
 

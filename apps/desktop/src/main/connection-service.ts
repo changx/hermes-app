@@ -891,6 +891,22 @@ export class DesktopConnectionService {
     await this.client?.deleteUnattached(attachment.thread_id, attachment.id);
   }
 
+  async attachmentPreview(attachmentId: string, threadId: string): Promise<import('../shared/browser-policy').PreviewDocument> {
+    const client = this.requireClient();
+    const attachment = await client.getAttachment(threadId, attachmentId);
+    if (!attachment || attachment.id !== attachmentId || attachment.thread_id !== threadId || attachment.state !== 'available'
+      || !attachment.size || attachment.size > MAX_ATTACHMENT_BYTES || this.client !== client) throw new Error('The file is unavailable.');
+    const bytes = await client.download(threadId, attachmentId);
+    if (this.client !== client || !client.isThreadAvailable(threadId) || bytes.byteLength !== attachment.size) throw new Error('The file is unavailable.');
+    return { name: attachment.name ?? 'Attachment', mime: attachment.mime ?? 'application/octet-stream', bytes };
+  }
+
+  previewResources(threadId: string): Array<{ id: string; name: string }> {
+    const client = this.requireClient();
+    return [...client.attachments.values()].filter(item => item.thread_id === threadId && item.state === 'available'
+      && !!item.name && /\.(png|jpe?g|gif|webp|css|js|mjs|woff2?|ttf)$/i.test(item.name)).map(item => ({ id: item.id, name: item.name! }));
+  }
+
   async downloadAttachment(attachmentId: string, action: "save" | "open", targetThreadId = this.selectedThreadId): Promise<void> {
     const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);

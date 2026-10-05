@@ -1,4 +1,7 @@
-import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, protocol, shell } from "electron";
+import { DesktopBrowserSidebar } from './browser-sidebar';
+import { localPreview } from './local-preview';
+import { browserUrl } from '../shared/browser-policy';
 import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
 import { validateLabels, labelTimestamp } from '../../../../packages/client/src/sessionLabels';
 import { join } from "node:path";
@@ -14,6 +17,8 @@ const SNAPSHOT_EVENT = "desktop:snapshot";
 let mainWindow: BrowserWindow | null = null;
 let publishedSnapshot: DesktopSnapshot | undefined;
 let tabs: DesktopTabManager | undefined;
+let browser: DesktopBrowserSidebar | undefined;
+protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 const service = new DesktopConnectionService((snapshot) => {
   if (tabs) { tabs.sync(snapshot); return; }
@@ -47,6 +52,44 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 };
 
 const registerDesktopApi = (): void => {
+  const browserTab = (event: Electron.IpcMainInvokeEvent) => {
+    trustedSender(event);
+    const tab = tabs?.sender(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
+    if (!tab) throw new Error('Open a conversation or new chat first.');
+    return tab;
+  };
+  ipcMain.handle('desktop:open-browser', (event, url: unknown) => browser?.open(browserTab(event).id, url === undefined ? undefined : text(url, 4096)));
+  ipcMain.handle('desktop:browser-bounds', (event, value: unknown) => { shellSender(event); const b = object(value); browser?.setBounds({ x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true }); });
+  ipcMain.handle('desktop:browser-action', (event, action: unknown) => {
+    shellSender(event); const tab = browserTab(event);
+    if (!['back', 'forward', 'reload', 'stop', 'close'].includes(action as string)) throw new Error('Invalid browser action');
+    browser?.action(tab.id, action as 'back' | 'forward' | 'reload' | 'stop' | 'close');
+    if (action === 'close') tab.view.webContents.focus();
+  });
+  ipcMain.handle('desktop:preview-attachment', async (event, id: unknown) => {
+    const tab = browserTab(event), thread = target(event), key = service.snapshot().connectionKey;
+    const attachmentId = text(id, 200), request = browser?.startPreview(tab.id);
+    let file;
+    try { file = await service.attachmentPreview(attachmentId, thread); } catch (error) { request?.failed(); throw error; }
+    const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && service.snapshot().connectionKey === key;
+    if (!current() || !request?.current()) return;
+    const assets = service.previewResources(thread);
+    return browser?.document(tab.id, file, async name => {
+      const matches = assets.filter(item => item.name === name);
+      if (!current() || matches.length !== 1) return undefined;
+      const resource = await service.attachmentPreview(matches[0].id, thread);
+      return current() ? resource : undefined;
+    });
+  });
+  ipcMain.handle('desktop:preview-local-file', async (event, input: unknown) => {
+    const tab = browserTab(event);
+    if (tab.kind !== 'new') throw new Error('Local preview is for new chat only.');
+    const request = browser?.startPreview(tab.id);
+    let file;
+    try { file = await localPreview(input); } catch (error) { request?.failed(); throw error; }
+    if (tabs?.tabs.get(tab.id) !== tab || tab.kind !== 'new' || !request?.current()) return;
+    return browser?.document(tab.id, file);
+  });
   ipcMain.handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
   ipcMain.handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
   ipcMain.handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
@@ -121,21 +164,27 @@ const createMainWindow = (): BrowserWindow => {
   });
   mainWindow = window;
   publishedSnapshot = undefined;
+  browser = new DesktopBrowserSidebar(window, () => tabs?.publish(), contents => tabs?.attachShortcuts(contents));
+  const openWebLink = (contents: Electron.WebContents, url: string) => {
+    try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
+      if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+    } catch { /* Reject unsupported schemes and embedded credentials. */ }
+  };
   tabs = new DesktopTabManager(window, service, __dirname, contents => {
     contents.session.setPermissionCheckHandler(() => false);
     contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     contents.on('will-attach-webview', event => event.preventDefault());
-    contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else if (isAllowedExternalUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
+    contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url); return { action: 'deny' }; });
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
-  });
+  }, browser);
 
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (parseSessionLink(url)) service.openSessionLink(url);
-    else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+    else openWebLink(window.webContents, url);
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, url) => {
@@ -148,7 +197,7 @@ const createMainWindow = (): BrowserWindow => {
   window.on("closed", () => {
     if (mainWindow !== window) return;
     mainWindow = null;
-    tabs?.dispose(); tabs = undefined;
+    tabs?.dispose(); tabs = undefined; browser = undefined;
     publishedSnapshot = undefined;
     service.closeSessionPages();
   });

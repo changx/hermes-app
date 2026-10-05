@@ -249,7 +249,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const active = online && snapshot.interactions.length === 0;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
     {error && <p role="alert">{error}</p>}
-    {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span key={item.id}>{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button></span>)}</div> : null}
+    {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span key={item.id}>{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
     {running ? <div className="running-row">
       <div className="agent-running" role="status" aria-live="polite">
         {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}
