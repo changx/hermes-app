@@ -18,7 +18,8 @@ test('Electron: production right browser previews attachments and generated page
     await writeFile(join(folder,'harness.cjs'),String.raw`
 const {app,BrowserWindow,session,nativeImage}=require('electron');const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
-const {service,sidebarForTest,tabsForTest}=require('./dist/main/index.cjs');
+const {service:accounts,sidebarForTest,tabsForTest}=require('./dist/main/index.cjs');
+const service=accounts.primary;
 const requests=[],downloads=[],a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map();let base;
 const server=http.createServer((req,res)=>{requests.push({url:req.url,ua:req.headers['user-agent'],authorization:req.headers.authorization,cookie:req.headers.cookie});
  if(req.url==='/download'){res.writeHead(200,{'Content-Disposition':'attachment; filename=not-saved.txt','Content-Type':'application/octet-stream'});res.end('blocked download');return;}
@@ -78,7 +79,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(b)+')');await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');web.focus();web.sendInputEvent({type:'keyDown',keyCode:'Tab',modifiers:['control']});web.sendInputEvent({type:'keyUp',keyCode:'Tab',modifiers:['control']});await until(()=>!pane.view.getVisible(),'focused browser retains app tab shortcut');assert.equal(web.isDestroyed(),false);
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');await until(()=>pane.view.getVisible(),'browser retained with tab');assert.equal(web.getURL(),base+'/popup');
  await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>!pane.view.getVisible()&&!tab.view.getVisible(),'modal covers both native views');
- await evaluate(shell,'[...document.querySelectorAll(".editor-dialog button")].find(e=>e.textContent==="Close").click()');await until(()=>pane.view.getVisible()&&tab.view.getVisible(),'modal restores both views');
+ await evaluate(shell,'document.querySelector(".settings-close").click()');await until(()=>pane.view.getVisible()&&tab.view.getVisible(),'modal restores both views');
  window.setSize(720,820);await until(()=>tab.view.getBounds().x===0&&pane.view.getBounds().x+pane.view.getBounds().width===window.getContentSize()[0],'narrow sidebar layout');assert.ok(tab.view.getBounds().width>=400);
  window.setSize(1280,820);await until(()=>tab.view.getBounds().x>0,'wide sidebar restores left navigation');
  await evaluate(shell,'window.hermesDesktop.openBrowser("javascript:alert(1)").then(()=>false,()=>true)').then(result=>assert.equal(result,true));

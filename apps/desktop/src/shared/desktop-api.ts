@@ -1,12 +1,14 @@
-import type { ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
+import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>;
 
-export type DesktopChannel = Readonly<{ id: string; name: string; description?: string }>;
+export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string }>;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string }>;
 export type DesktopThread = Readonly<{
+  supportsSessionLabels?: boolean;
   id: string;
   channelId: string;
   title: string;
@@ -52,6 +54,8 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  connections?: readonly DesktopConnection[];
+  connectionsError?: string;
   browser?: DesktopBrowserState;
   tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
   activeTabId?: string;
@@ -88,6 +92,7 @@ export type DesktopSnapshot = Readonly<{
 
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
+export type ProjectCreationInput = ChannelInput & Readonly<{ connectionKey: string }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
@@ -98,6 +103,10 @@ export type DesktopRuntimeInfo = Readonly<{
 }>;
 
 export interface HermesDesktopApi {
+  addConnection(request: PairingRequest): Promise<void>;
+  removeConnection(connectionId: string): Promise<void>;
+  getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
+  setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   previewAttachment(attachmentId: string): Promise<void>;
   previewLocalFile(file: File): Promise<void>;
@@ -123,7 +132,7 @@ export interface HermesDesktopApi {
   copySessionLink(): Promise<void>;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
-  createChannel(input: ChannelInput): Promise<void>;
+  createChannel(input: ProjectCreationInput): Promise<void>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   createThread(input: ThreadInput): Promise<string>;

@@ -30,7 +30,7 @@ test('Chromium: real settings change text only, reset, retain pages, persist to 
     const open=()=>{document.querySelector('[aria-label="Settings"]').focus();flushSync(()=>document.querySelector('[aria-label="Settings"]').click());};
     const change=value=>{const select=document.querySelector('[aria-label="Text size"]');select.value=String(value);flushSync(()=>select.dispatchEvent(new Event('change',{bubbles:true})));};
     const geometry=()=>{const page=getComputedStyle(document.querySelector('.session-tab-page')),text=getComputedStyle(document.querySelector('.composer textarea')),icon=getComputedStyle(document.querySelector('.attach-button'));return [page.width,text.padding,icon.width,icon.height].join('|');};
-    const textSize=size=>['.conversation-header h2','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.font-settings select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
+    const textSize=size=>['.conversation-header h2','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.settings-dialog select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
     void(async()=>{try{
       if(stage==='first')localStorage.removeItem(FONT_SIZE_KEY);
       initializeFontSize();check('font initialized before mount',getComputedStyle(document.documentElement).fontSize===(stage==='first'?'16px':'20px'));

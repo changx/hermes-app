@@ -62,7 +62,7 @@ test('failed paste keeps draft and offers error; duplicate paste while busy star
 });
 test('new chat paste stays local until submit, then uploads and sends using returned session', async () => {
   const calls = [];
-  environment({ createThread: async () => { calls.push('create'); return 'created-paste'; }, uploadDroppedFiles: async (files, id) => { calls.push(['upload', files, id]); return [attachment('new-paste')]; }, sendMessage: async input => calls.push(['send', input]), completeNewTab: async () => calls.push('complete') });
+  environment({ getSnapshot: async () => snapshot, createThread: async () => { calls.push('create'); return 'created-paste'; }, uploadDroppedFiles: async (files, id) => { calls.push(['upload', files, id]); return [attachment('new-paste')]; }, sendMessage: async input => calls.push(['send', input]), completeNewTab: async () => calls.push('complete') });
   const tree = await mount(NewSessionPage, { snapshot });
   try {
     assert.equal(await paste(tree, 'First message', []), false);

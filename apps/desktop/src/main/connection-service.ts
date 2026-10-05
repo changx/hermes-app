@@ -23,13 +23,13 @@ const stateLabel: Record<ConnectionState, string> = {
   blocked: "Connection needs attention",
 };
 
-const normalizeCode = (value: string): string => {
+export const normalizeCode = (value: string): string => {
   const code = value.replace(/[\s-]/g, "").toUpperCase();
   if (!/^[A-Z2-7]{16}$/.test(code)) throw new Error("Enter the complete one-time pairing code.");
   return code.match(/.{4}/g)!.join("-");
 };
 
-const deviceName = (value: string): string => {
+export const deviceName = (value: string): string => {
   const name = value.trim();
   if (!name || name.length > 64 || /[\x00-\x1f\x7f]/.test(name)) throw new Error("Enter a device name up to 64 characters.");
   return name;
@@ -76,9 +76,12 @@ const pairingRequest = async (baseUrl: string, path: string, init: RequestInit, 
 };
 
 export class DesktopConnectionService {
-  private readonly store = new CredentialStore();
-  private readonly outboxStore = new OutboxStore();
-  private readonly localDraftStore = new LocalDraftStore();
+  private readonly store: CredentialStore;
+  private readonly outboxStore: OutboxStore;
+  private readonly localDraftStore: LocalDraftStore;
+  private pairingGeneration = 0;
+  private readonly cleanupLegacy: boolean;
+  private forgettingId?: string;
   private client: LivePageClient | null = null;
   private connection: StoredConnection | null = null;
   private pairingController: AbortController | null = null;
@@ -165,7 +168,14 @@ export class DesktopConnectionService {
     this.cancelRecovery();
   }
 
-  constructor(private readonly publish: (snapshot: DesktopSnapshot) => void) {}
+  constructor(private readonly publish: (snapshot: DesktopSnapshot) => void, stores: { credentials?: CredentialStore; outbox?: OutboxStore; drafts?: LocalDraftStore; cleanupLegacy?: boolean } = {}) {
+    this.store = stores.credentials ?? new CredentialStore();
+    this.outboxStore = stores.outbox ?? new OutboxStore();
+    this.localDraftStore = stores.drafts ?? new LocalDraftStore();
+    this.cleanupLegacy = stores.cleanupLegacy ?? true;
+  }
+
+  serverAddress(): string | undefined { return this.connection?.baseUrl; }
 
   snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;
@@ -313,12 +323,16 @@ export class DesktopConnectionService {
   }
 
   async initialize(): Promise<void> {
+    const generation = this.pairingGeneration;
     try {
       // Retire only the former server-history projection directory. Credentials
       // and encrypted unsent originals are separate stores and remain intact.
-      await rm(join(app.getPath("userData"), "conversation-cache"), { recursive: true, force: true }).catch(() => { throw new Error("legacy-history-cleanup"); });
-      await rm(join(app.getPath("temp"), "Hermes"), { recursive: true, force: true }).catch(() => {});
+      if (this.cleanupLegacy) {
+        await rm(join(app.getPath("userData"), "conversation-cache"), { recursive: true, force: true }).catch(() => { throw new Error("legacy-history-cleanup"); });
+        await rm(join(app.getPath("temp"), "Hermes"), { recursive: true, force: true }).catch(() => {});
+      }
       const state = await this.store.load();
+      if (this.closed || generation !== this.pairingGeneration) return;
       if (!state) { this.phase = "unpaired"; this.changed(); return; }
       if (state.connection) { await this.startClient(state.connection); return; }
       if (state.pairing) {
@@ -352,6 +366,7 @@ export class DesktopConnectionService {
     this.statusMessage = undefined;
     this.phase = "connected";
     this.outbox = (await this.outboxStore.list(connection.id)).map((item) => item.state === "sending" ? { ...item, state: "pending" as const } : item);
+    if (this.closed || this.connection !== connection) return;
     const transport = mainTransport(connection.baseUrl);
     this.outboxStorageFault = false; this.checkedReceipts.clear();
     let client: LivePageClient;
@@ -406,6 +421,8 @@ export class DesktopConnectionService {
   async pair(request: PairingRequest): Promise<void> {
     if (this.pairingController || this.pairingStarting) return;
     this.pairingStarting = true;
+    const generation = ++this.pairingGeneration;
+    this.closed = false;
     try {
       const pairing: StoredPairing = {
         version: 1,
@@ -413,9 +430,12 @@ export class DesktopConnectionService {
         code: normalizeCode(request.code),
         deviceName: deviceName(request.deviceName),
       };
+      this.phase = 'pairing'; this.errorMessage = undefined; this.statusMessage = 'Saving secure pairing…'; this.changed();
       await this.store.savePairing(pairing);
+      if (generation !== this.pairingGeneration || this.closed) return;
       await this.completePairing(pairing);
     } catch (error) {
+      if (generation !== this.pairingGeneration || this.closed) return;
       this.phase = "unpaired";
       const message = error instanceof Error ? error.message : "";
       this.errorMessage = message.startsWith("Enter ") ? message : "This device could not save the connection securely. Check that macOS Keychain is available.";
@@ -441,10 +461,12 @@ export class DesktopConnectionService {
           const check = await pairingRequest(pairing.connection.baseUrl, "/v1/capabilities", {
             headers: { Authorization: `Bearer ${pairing.connection.token}` },
           }, controller.signal);
+          if (controller.signal.aborted || this.closed) return;
           if (check.status === 200) {
             const body = check.body;
             if (body?.protocol !== 1) throw new Error("unsupported");
             await this.store.saveConnection(pairing.connection);
+            if (controller.signal.aborted || this.closed) return;
             await this.startClient(pairing.connection);
             return;
           }
@@ -488,6 +510,7 @@ export class DesktopConnectionService {
   }
 
   async cancelPairing(): Promise<void> {
+    this.pairingGeneration++;
     this.pairingController?.abort();
     this.pairingController = null;
     await this.store.delete();
@@ -498,6 +521,7 @@ export class DesktopConnectionService {
   }
 
   async forgetConnection(): Promise<void> {
+    this.pairingGeneration++;
     this.closed = true;
     this.cancelRecovery();
     this.connectionIssue = undefined;
@@ -507,16 +531,24 @@ export class DesktopConnectionService {
     this.client = null;
     this.pageStates.clear(); this.openPages.length = 0;
     this.pendingSessionLink = undefined;
-    const connectionId = this.connection?.id;
+    const connectionId = this.connection?.id ?? this.forgettingId;
+    this.forgettingId = connectionId;
     this.connection = null;
     this.outbox = [];
     this.listedThreads.clear();
     this.selectedChannelId = undefined;
     this.selectedThreadId = undefined;
     this.olderCursor = undefined;
-    await this.store.delete();
-    if (connectionId) await this.outboxStore.clear(connectionId);
-    if (connectionId) await this.localDraftStore.clear(connectionId);
+    try {
+      await this.store.delete();
+      if (connectionId) await this.outboxStore.clear(connectionId);
+      if (connectionId) await this.localDraftStore.clear(connectionId);
+      this.forgettingId = undefined;
+    } catch {
+      this.phase = 'unpaired'; this.connectionState = 'blocked'; this.statusMessage = undefined;
+      this.errorMessage = 'Local connection removal could not be completed. Try removing it again. Server conversations are unchanged.';
+      this.changed(); throw new Error('Local connection removal could not be completed.');
+    }
     this.phase = "unpaired";
     this.connectionState = "suspended";
     this.statusMessage = undefined;
@@ -610,10 +642,45 @@ export class DesktopConnectionService {
   async createChannel(input: ChannelInput): Promise<void> {
     const name = input.name.trim(), description = input.description.trim();
     if (!name || name.length > 120 || description.length > 4000) throw new Error("Enter a channel name and a shorter description.");
+    const client = this.requireClient(), connection = this.connection;
     let channel: Awaited<ReturnType<LiveSessionClient["createChannel"]>>;
-    try { channel = await this.requireClient().createChannel(name, description); }
-    catch { this.actionError("The channel could not be created. Check your permission and try again."); throw new Error("Channel creation was not confirmed."); }
+    try {
+      channel = await client.createChannel(name, description);
+      if (this.closed || this.client !== client || this.connection !== connection) throw new Error('Connection changed');
+      const confirmed = await client.getChannelInfo(channel.id);
+      if (this.closed || this.client !== client || this.connection !== connection || confirmed.id !== channel.id || confirmed.name !== name || (confirmed.description ?? '') !== description) throw new Error('Project readback mismatch');
+    }
+    catch { this.actionError("Project creation could not be confirmed. Check this connection’s project list before trying again."); throw new Error("Project creation was not confirmed."); }
     await this.selectChannel(channel.id).catch(() => this.actionError("The channel was created, but its topics could not be loaded yet."));
+  }
+
+  private modelClient(connectionKey: string): LivePageClient {
+    const client = this.requireClient();
+    if (connectionKey !== this.connection?.id) throw new Error('Connection changed. Reopen Settings.');
+    return client;
+  }
+
+  async getModelSettings(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    try {
+      const settings = await client.getModelSettings();
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      return settings;
+    } catch { throw new Error('Could not load model settings. Try again.'); }
+  }
+
+  async setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean) {
+    const client = this.modelClient(connectionKey);
+    if (!provider.trim() || !model.trim() || provider.length > 256 || model.length > 256 || /[\x00-\x1f\x7f]/.test(provider + model)) throw new Error('Enter a provider and model name.');
+    try {
+      const result = await client.setModelSettings(provider, model, undefined, confirmSelection);
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      if ('confirmation_required' in result) return result;
+      const settings = await client.getModelSettings();
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      if (settings.provider !== result.provider || settings.model !== result.model) throw new Error('Model changed during save');
+      return settings;
+    } catch { throw new Error('Could not confirm the change. Reload settings before trying again.'); }
   }
 
   async getChannelInfo(channelId: string): Promise<DesktopSnapshot["channels"][number]> {
@@ -960,6 +1027,7 @@ export class DesktopConnectionService {
   }
 
   close(): void {
+    this.pairingGeneration++;
     this.closed = true;
     this.cancelRecovery();
     this.pairingController?.abort();

@@ -6,7 +6,7 @@ import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
 import { validateLabels, labelTimestamp } from '../../../../packages/client/src/sessionLabels';
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
-import { DesktopConnectionService } from "./connection-service";
+import { DesktopConnections } from "./connections";
 import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
 import type { DesktopSnapshot } from "../shared/desktop-api";
@@ -20,7 +20,7 @@ let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
 protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
-const service = new DesktopConnectionService((snapshot) => {
+const service = new DesktopConnections((snapshot) => {
   if (tabs) { tabs.sync(snapshot); return; }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(SNAPSHOT_EVENT, publishedSnapshot ? snapshotDelta(publishedSnapshot,snapshot) : snapshot);
@@ -52,6 +52,21 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 };
 
 const registerDesktopApi = (): void => {
+  ipcMain.handle('desktop:add-connection', async (event, value: unknown) => {
+    shellSender(event); const request = object(value);
+    await service.addConnection({ baseUrl: text(request.baseUrl, 300), code: text(request.code, 32), deviceName: text(request.deviceName, 64) });
+  });
+  ipcMain.handle('desktop:remove-connection', async (event, id: unknown) => {
+    shellSender(event); const selected = text(id, 40), key = service.snapshot().connections?.find(row => row.id === selected)?.connectionKey;
+    if (key && [...tabs?.tabs.values() ?? []].some(tab => tab.connectionKey === key && tab.busy)) throw new Error('Wait for the current action before removing this connection.');
+    await service.removeConnection(selected);
+  });
+  ipcMain.handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
+  ipcMain.handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
+    trustedSender(event);
+    if (typeof confirm !== 'boolean') throw new Error('Invalid desktop request');
+    return service.setModelSettings(text(key, 200), text(provider, 256), text(model, 256), confirm);
+  });
   const browserTab = (event: Electron.IpcMainInvokeEvent) => {
     trustedSender(event);
     const tab = tabs?.sender(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
@@ -67,11 +82,11 @@ const registerDesktopApi = (): void => {
     if (action === 'close') tab.view.webContents.focus();
   });
   ipcMain.handle('desktop:preview-attachment', async (event, id: unknown) => {
-    const tab = browserTab(event), thread = target(event), key = service.snapshot().connectionKey;
+    const tab = browserTab(event), thread = target(event), key = tab.connectionKey;
     const attachmentId = text(id, 200), request = browser?.startPreview(tab.id);
     let file;
     try { file = await service.attachmentPreview(attachmentId, thread); } catch (error) { request?.failed(); throw error; }
-    const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && service.snapshot().connectionKey === key;
+    const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && tab.connectionKey === key && service.hasConnection(key);
     if (!current() || !request?.current()) return;
     const assets = service.previewResources(thread);
     return browser?.document(tab.id, file, async name => {
@@ -106,24 +121,26 @@ const registerDesktopApi = (): void => {
   });
   ipcMain.handle("desktop:cancel-pairing", async (event) => { trustedSender(event); await service.cancelPairing(); });
   ipcMain.handle("desktop:forget-connection", async (event) => { shellSender(event); await service.forgetConnection(); });
-  ipcMain.handle("desktop:load-local-drafts", async (event, id: unknown) => { trustedSender(event); const identity = text(id, 24), manager = tabs, tab = manager?.sender(event.sender), saved = await service.loadLocalDrafts(identity); if (manager !== tabs || identity !== service.snapshot().draftIdentity) throw new Error('Draft identity changed'); if (!tab) { manager?.draftThreads.clear(); for (const [threadId, draft] of Object.entries(saved)) if (draft.text.trim() || draft.attachments.length) manager?.draftThreads.add(threadId); manager?.publish(); return saved; } return tab.threadId && saved[tab.threadId] ? { [tab.threadId]: saved[tab.threadId] } : {}; });
+  ipcMain.handle("desktop:load-local-drafts", async (event, id: unknown) => { trustedSender(event); const identity = text(id, 24), manager = tabs, tab = manager?.sender(event.sender), saved = tab ? await service.loadLocalDrafts(identity) : await service.loadWorkspaceDrafts(); if (manager !== tabs || !service.hasConnection(identity) || tab && identity !== tab.connectionKey) throw new Error('Draft identity changed'); if (!tab) { manager?.draftThreads.clear(); for (const [threadId, draft] of Object.entries(saved)) if (draft.text.trim() || draft.attachments.length) manager?.draftThreads.add(threadId); manager?.publish(); return saved; } return tab.threadId && saved[tab.threadId] ? { [tab.threadId]: saved[tab.threadId] } : {}; });
   ipcMain.handle("desktop:save-local-draft", async (event, id: unknown, threadId: unknown, value: unknown) => { trustedSender(event); const targetId = text(threadId, 200), manager = tabs; if (manager?.sender(event.sender) && targetId !== target(event)) throw new Error('Draft target mismatch'); await service.saveLocalDraft(text(id, 24), targetId, value); if (manager !== tabs) return; const draft = object(value); if (typeof draft.text === 'string' && (draft.text.trim() || Array.isArray(draft.attachments) && draft.attachments.length)) manager?.draftThreads.add(targetId); else manager?.draftThreads.delete(targetId); manager?.publish(); });
   ipcMain.handle("desktop:select-channel", async (event, id: unknown) => { shellSender(event); await service.selectChannel(text(id, 200)); });
   ipcMain.handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
   ipcMain.handle("desktop:close-session-page", (event, id: unknown) => { shellSender(event); const tab = [...tabs?.tabs.values() ?? []].find(item => item.threadId === text(id, 200)); if (tab) tabs?.close(tab.id); });
   ipcMain.handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && (tab.id !== tabs?.activeTabId || !tabs?.snapshot(event.sender).tabActive) || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
   ipcMain.handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
-  ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { trustedSender(event); const input = object(value); await service.createChannel({ name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
+  ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); await service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
   ipcMain.handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
   ipcMain.handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
   ipcMain.handle("desktop:create-thread", async (event, value: unknown) => {
     trustedSender(event); const input = object(value), tab = tabs?.sender(event.sender);
     const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput;
     if (!tab) return service.createThread(request);
-    if (tab.kind !== 'new' || tab.threadId && tab.threadId !== request.clientThreadId) throw new Error('Tab target mismatch');
+    const qualifiedId = service.threadIdentity(request.clientThreadId, request.channelId);
+    if (tab.kind !== 'new' || tab.threadId && tab.threadId !== qualifiedId) throw new Error('Tab target mismatch');
     if (tab.busy) throw new Error('Action already in progress');
-    tab.threadId = request.clientThreadId; tab.busy = true;
-    try { const id = await service.createThread(request, false); if (!tabs?.tabs.has(tab.id) || tab.connectionKey !== service.snapshot().connectionKey || id !== request.clientThreadId) throw new Error('Session creation not confirmed'); return id; }
+    tab.connectionKey = service.connectionForChannel(request.channelId); tab.initialChannelId = request.channelId;
+    tab.threadId = qualifiedId; tab.busy = true;
+    try { const id = await service.createThread(request, false); if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id; }
     finally { tab.busy = false; tabs?.publish(); }
   });
   ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.renameThread(text(id, 200), text(title, 200)); });

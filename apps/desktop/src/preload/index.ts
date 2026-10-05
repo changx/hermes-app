@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
-import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -10,6 +10,10 @@ const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
 });
 
 const api: HermesDesktopApi = Object.freeze({
+  addConnection: (request: PairingRequest) => ipcRenderer.invoke('desktop:add-connection', request),
+  removeConnection: (id: string) => ipcRenderer.invoke('desktop:remove-connection', id),
+  getModelSettings: (connectionKey: string) => ipcRenderer.invoke('desktop:get-model-settings', connectionKey),
+  setModelSettings: (connectionKey: string, provider: string, model: string, confirmSelection: boolean) => ipcRenderer.invoke('desktop:set-model-settings', connectionKey, provider, model, confirmSelection),
   openBrowser: (url?: string): Promise<void> => ipcRenderer.invoke('desktop:open-browser', url),
   previewAttachment: (id: string): Promise<void> => ipcRenderer.invoke('desktop:preview-attachment', id),
   previewLocalFile: async (file: File): Promise<void> => ipcRenderer.invoke('desktop:preview-local-file', (await filesForUpload([file], item => webUtils.getPathForFile(item)))[0]),
@@ -39,7 +43,7 @@ const api: HermesDesktopApi = Object.freeze({
   copySessionLink: (): Promise<void> => ipcRenderer.invoke("desktop:copy-session-link"),
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
-  createChannel: (input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
+  createChannel: (input: ProjectCreationInput): Promise<void> => ipcRenderer.invoke("desktop:create-channel", input),
   updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),
   deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),
   createThread: (input: ThreadInput): Promise<string> => ipcRenderer.invoke("desktop:create-thread", input),

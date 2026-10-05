@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DesktopSnapshot } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
-import type { DesktopConnectionService } from './connection-service';
+import type { DesktopConnections } from './connections';
 import type { DesktopBrowserSidebar } from './browser-sidebar';
 
 type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session'; busy: boolean; baseline?: DesktopSnapshot };
@@ -16,7 +16,7 @@ export class DesktopTabManager {
   private bounds = { x: 280, y: 48, width: 800, height: 600, visible: true };
   private closed = false;
   private connectionKey?: string;
-  constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnectionService,
+  constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnections,
     private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar) { this.shortcuts(window.webContents); }
 
   attachShortcuts(contents: WebContents): void { this.shortcuts(contents); }
@@ -42,7 +42,7 @@ export class DesktopTabManager {
     const view = new WebContentsView({ webPreferences: { preload: join(this.directory, '../preload/index.cjs'),
       additionalArguments: ['--hermes-tab-view'], nodeIntegration: false, contextIsolation: true, sandbox: true,
       webSecurity: true, webviewTag: false, allowRunningInsecureContent: false } });
-    const tab: Tab = { id: randomUUID(), view, kind, threadId, initialChannelId, connectionKey: this.service.snapshot().connectionKey, busy: false };
+    const tab: Tab = { id: randomUUID(), view, kind, threadId, initialChannelId, connectionKey: threadId ? this.service.snapshot(threadId, false).connectionKey : this.service.connectionForChannel(initialChannelId), busy: false };
     this.tabs.set(tab.id, tab); this.window.contentView.addChildView(view); view.setVisible(false);
     this.secure(view.webContents);
     this.shortcuts(view.webContents);
@@ -58,13 +58,13 @@ export class DesktopTabManager {
     const snapshot = this.service.snapshot();
     if (snapshot.phase !== 'connected' || channelId && !snapshot.channels.some(c => c.id === channelId)) throw new Error('Choose a project');
     const tab = this.create('new', undefined, channelId ?? snapshot.selectedChannelId);
-    this.activeTabId = tab.id; this.service.deactivateThread(); this.publish();
+    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish();
   }
   sync(snapshot: DesktopSnapshot): void {
     if (this.closed) return;
-    if (this.connectionKey !== snapshot.connectionKey) { this.draftThreads.clear(); this.connectionKey = snapshot.connectionKey; }
+    this.connectionKey = snapshot.connectionKey;
     for (const tab of [...this.tabs.values()]) {
-      if (tab.connectionKey !== snapshot.connectionKey || snapshot.phase !== 'connected' ||
+      if (!this.service.hasConnection(tab.connectionKey) ||
           tab.kind === 'session' && !snapshot.loadingConversations && !snapshot.threads.some(t => t.id === tab.threadId)) this.destroy(tab);
     }
     if (snapshot.selectedThreadId && snapshot.threads.some(thread => thread.id === snapshot.selectedThreadId)) {
@@ -78,7 +78,7 @@ export class DesktopTabManager {
     const tab = this.tabs.get(id); if (!tab) throw new Error('Tab unavailable');
     this.activeTabId = id;
     if (tab.kind === 'session' && tab.threadId) void this.service.selectThread(tab.threadId);
-    else this.service.deactivateThread();
+    else this.service.deactivateThread(tab.connectionKey);
     if (tab.view.webContents.isCrashed()) { tab.baseline = undefined; tab.view.webContents.reload(); }
     this.publish(); tab.view.webContents.focus();
   }
@@ -104,12 +104,12 @@ export class DesktopTabManager {
     if (frameUrl !== contents.getURL()) throw new Error('Untrusted desktop request');
     if (contents === this.window.webContents) return undefined;
     const tab = this.sender(contents);
-    if (!tab || tab.connectionKey !== this.service.snapshot().connectionKey) throw new Error('Untrusted desktop request');
+    if (!tab || !this.service.hasConnection(tab.connectionKey)) throw new Error('Untrusted desktop request');
     return tab;
   }
   target(contents: WebContents): string {
     const tab = this.sender(contents), id = tab ? tab.threadId : this.service.snapshot().selectedThreadId;
-    if (!id || tab && (!this.tabs.has(tab.id) || tab.connectionKey !== this.service.snapshot().connectionKey)) throw new Error('Session unavailable');
+    if (!id || tab && (!this.tabs.has(tab.id) || !this.service.hasConnection(tab.connectionKey))) throw new Error('Session unavailable');
     return id;
   }
   complete(contents: WebContents): void {
@@ -135,7 +135,7 @@ export class DesktopTabManager {
   }
   snapshot(contents?: WebContents): DesktopSnapshot {
     const tab = contents && this.sender(contents);
-    const base = this.service.snapshot(tab?.threadId, false);
+    const base = this.service.snapshot(tab?.threadId, false, tab?.connectionKey);
     if (tab) {
       const session = tab.kind === 'session';
       return { ...base, revision: this.revision, selectedThreadId: session ? tab.threadId : undefined,
@@ -144,7 +144,7 @@ export class DesktopTabManager {
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId };
     }
-    return { ...base, revision: this.revision, browser: this.browser?.state(this.activeTabId), messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, title: tab.kind === 'new' ? 'New chat' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }

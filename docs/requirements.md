@@ -6,6 +6,8 @@
 
 ### R01 独立多端客户端
 
+桌面 Settings 采用左侧导航、右侧内容。关键页面为 Default agent model、Font size、Shortcuts 和 Connections。Connections 展示已保存连接列表，支持添加配对、确认删除和查看真实连接状态。添加不替换现有连接；删除只清理目标连接的本机凭据、tab、草稿和待发队列，不删除服务端对话。Sidebar 直接展示各连接的 Project 和近期 Session，以连接名作为次要归属说明，不要求先切连接。每个 tab 固定绑定连接身份和 Thread ID，切换连接的 tab 不重建其他页面。新建 Project 必须明确显示并绑定目标连接；多连接时要求主动选择，不能跟随 tab 切换改变归属。删除后重新配对按新连接处理，清除原连接本机草稿与待发队列是预期行为，不保留原地恢复流程。默认模型使用明确选定 Agent 的真实配置接口，不存本机假选择。字号复用设备偏好。Shortcuts 首版列出已支持的固定按键，不宣称支持自定义绑定。Find a session 保留快捷键入口；Delete project 移到 Project 编辑页并保留确认。候选实现、自动验证和未发布边界见 [桌面 Settings](desktop-settings.md) 和 [桌面多连接管理](desktop-connections.md)。
+
 
 桌面所有添加的附件都有小缩略图，覆盖已发送消息、Session 附件草稿及 New chat 本地选择/粘贴的文件。受支持的图片显示真实缩略图；PDF、HTML、文本及其他文件显示文件类型图标，不能伪造内容预览。保留大图、预览、移除、保存及外部打开行为；本地缩略图不得提前创建会话或上传。候选与验收边界见 [附件小缩略图](desktop-session-composer.md#attachment-small-thumbnails-candidate)。
 
