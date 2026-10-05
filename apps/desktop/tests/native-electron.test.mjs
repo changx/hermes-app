@@ -18,7 +18,7 @@ test('Electron: independent production tabs retain DOM, drafts, history and scop
     await writeFile(join(folder,'dist/main/index.cjs'),candidate.outputFiles[0].text);
     await writeFile(join(folder,'fixture.txt'),'Controlled native attachment fixture');
     const harness=String.raw`
-const {app,BrowserWindow}=require('electron'); const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
+const {app,BrowserWindow,clipboard,ClipboardItem,nativeImage}=require('electron'); const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
 const {service,nativeTabsForTest}=require('./dist/main/index.cjs');
 const calls=[], pages=new Map(), local=new Map(), a='th_aaaaaaaa',b='th_bbbbbbbb';
@@ -33,7 +33,7 @@ const client={channels:new Map([['p',{id:'p',name:'Project Alpha'}],['q',{id:'q'
  async upload(id,name,bytes){calls.push(['upload',id,name,bytes.length]);const f={id:'att_'+('c'.repeat(32)),thread_id:id,name,mime:'text/plain',size:bytes.length,state:'available'};this.attachments.set(f.id,f);service.changed();return f;},
  async send(id,messageId,text,files){calls.push(['send',id,messageId,text,files]);return {id:'receipt-'+calls.length,thread_id:id,client_message_id:messageId,state:'queued',durable:true,ref_seq:1};},
  rememberAcceptedInput(id,messageId,text,files,time,receipt){client.messages.set(id,[...(client.messages.get(id)||[]),{id:'receipt:'+receipt.id,role:'user',text,client_message_id:messageId,receipt_id:receipt.id,attachments:files,created_at:time,ref_seq:receipt.ref_seq}]);},
- async stop(id){calls.push(['stop',id]);},async markResultRead(id){calls.push(['read',id]);},close(){pages.clear();client.messages.clear();},async getAttachment(id,f){return this.attachments.get(f);}};
+ async deleteUnattached(id,f){this.attachments.delete(f);},async stop(id){calls.push(['stop',id]);},async markResultRead(id){calls.push(['read',id]);},close(){pages.clear();client.messages.clear();},async getAttachment(id,f){return this.attachments.get(f);}};
 service.initialize=async()=>{service.phase='connected';service.connectionState='online';service.connection={id:'a'.repeat(24),baseUrl:'https://controlled.example.test',token:'controlled-test-only'};service.client=client;service.selectedChannelId='p';service.outboxStore={async put(){},async remove(){},async clear(){}};service.localDraftStore={async list(){return Object.fromEntries(local)},async put(_identity,id,draft){local.set(id,structuredClone(draft));},async clear(){}};service.changed();};
 const evaluate=(contents,code)=>Promise.race([contents.executeJavaScript(code,true).catch(error=>{throw Error('Renderer script failed: '+code.slice(0,180)+' '+error.message)}),new Promise((_,reject)=>setTimeout(()=>reject(Error('Renderer timeout: '+code.slice(0,120))),8000))]);
 async function until(check,label){console.log('CHECK '+label);const end=Date.now()+15000;while(Date.now()<end){if(await check())return;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}
@@ -46,6 +46,22 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await until(()=>evaluate(ac,'!!document.querySelector(".message-list")'),'session A');
  await evaluate(ac,'window.hermesDesktop.loadOlder()');await until(()=>evaluate(ac,'document.querySelectorAll(".message-assistant").length===200'),'full history');
  await input(ac,'Message','A retained draft');await until(()=>local.get(a)?.text==='A retained draft','durable draft update');
+ // OS clipboard paste exercises a real File across the sandboxed contextBridge, not a fake File adapter.
+ const image=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1});
+ assert.equal(image.isEmpty(),false);await clipboard.write([new ClipboardItem({'image/png':new Blob([image.toPNG()],{type:'image/png'})})]);
+ await evaluate(ac,'document.querySelector("[aria-label=Message]").focus()');ac.paste();
+ await until(()=>calls.some(x=>x[0]==='upload'&&x[1]===a),'native clipboard image uploaded to A');
+ await until(()=>local.get(a)?.attachments.length===1,'pasted attachment persisted in A draft');
+ assert.equal(await evaluate(ac,'document.querySelector("[aria-label=Message]").value'),'A retained draft');
+ assert.equal(calls.filter(x=>x[0]==='send').length,0,'paste does not send');
+ await until(()=>evaluate(ac,'!document.querySelector("[aria-label=Message]").disabled'),'composer ready after paste');
+ await evaluate(ac,'(()=>{const e=document.querySelector("[aria-label=Message]");e.focus();e.setSelectionRange(e.value.length,e.value.length)})()');
+ await clipboard.writeText(' pasted text');ac.paste();
+ await until(()=>local.get(a)?.text==='A retained draft pasted text','plain text paste preserved');
+ await input(ac,'Message','A retained draft');
+ await evaluate(ac,'document.querySelector(".composer-attachments button").click()');
+ await until(()=>local.get(a)?.attachments.length===0,'pasted attachment removed');
+ await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  const anchor=await evaluate(ac,'(()=>{window.retainedRow=document.querySelector(".message-assistant");const e=document.querySelector(".message-list");e.scrollTop=250;e.dispatchEvent(new Event("scroll",{bubbles:true}));return e.scrollTop;})()');
  await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  await evaluate(shell,'window.hermesDesktop.selectThread("'+b+'")');const second=[...manager.tabs.values()][1],bc=second.view.webContents;
@@ -71,11 +87,18 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(await evaluate(dc,'document.querySelector("[aria-label=Project]").value'),'q');
  const area=await evaluate(dc,'document.querySelector("textarea").getBoundingClientRect().height');assert.ok(area>=260);
  await input(dc,'First message','First line\nA long body with multiple paragraphs.\nFinal paragraph.');
+ const uploadsBeforeNewPaste=calls.filter(x=>x[0]==='upload').length;
+ await clipboard.write([new ClipboardItem({'image/png':new Blob([image.toPNG()],{type:'image/png'})})]);
+ await evaluate(dc,'document.querySelector("textarea").focus()');dc.paste();
+ await until(()=>evaluate(dc,'document.querySelectorAll(".session-files li").length===1'),'new chat native image paste');
+ assert.equal(calls.filter(x=>x[0]==='upload').length,uploadsBeforeNewPaste,'new-chat paste stays local');
+ await evaluate(dc,'document.querySelector(".session-files button").click()');
+ await until(()=>evaluate(dc,'document.querySelectorAll(".session-files li").length===0'),'remove new-chat pasted image');
  dc.debugger.attach('1.3');const doc=await dc.debugger.sendCommand('DOM.getDocument');const node=await dc.debugger.sendCommand('DOM.querySelector',{nodeId:doc.root.nodeId,selector:'input[type=file]'});await dc.debugger.sendCommand('DOM.setFileInputFiles',{nodeId:node.nodeId,files:[path.join(__dirname,'fixture.txt')]});dc.debugger.detach();
  await until(()=>evaluate(dc,'document.querySelectorAll(".session-files li").length===1'),'selected file');
  await evaluate(dc,'document.querySelector("form").requestSubmit()');await until(()=>draft.kind==='session','same tab promoted');
  assert.equal(draft.view.webContents.id,originalView);assert.equal(manager.tabs.size,3);assert.equal(manager.activeTabId,draft.id);
- const create=calls.find(x=>x[0]==='create'),upload=calls.find(x=>x[0]==='upload'),send=calls.filter(x=>x[0]==='send').at(-1);
+ const create=calls.find(x=>x[0]==='create'),upload=calls.filter(x=>x[0]==='upload').at(-1),send=calls.filter(x=>x[0]==='send').at(-1);
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
  await evaluate(shell,'document.querySelector(".sidebar-filter-icon").click()');await until(()=>evaluate(shell,'!!document.querySelector(".labels-filter-popover input")'),'label popover');

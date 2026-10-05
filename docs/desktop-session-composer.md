@@ -1,5 +1,21 @@
 # Desktop session composer and left user bubbles
 
+## Desktop clipboard attachment paste
+
+Candidate `feat/desktop-paste-attachments` starts from main `0a617d4`. Card: `t_5b6da349`. This is a desktop-only implementation, not a published update.
+
+- Paste clipboard files or screenshots into the Message textarea or the New chat first-message textarea. Handle the native `paste` event, not a global Command-V key interceptor. Pure text keeps the browser default. File-bearing paste does not insert an accompanying filename/path into the message text.
+- Existing conversations upload to the requesting tab's exact Thread and retain attachments in the existing persistent draft. Paste does not send. New chat retains files locally until explicit submit, then uses the authoritative created Thread for upload and send. Existing text remains unchanged.
+- Keep eight files per message and 1 byte–10 MiB per file. Reject known draft capacity/size overflow before upload. Keep existing busy protection, failure feedback, partial-upload cleanup, tab target authorization and authenticated transport.
+- Preload keeps disk-backed files as validated paths. For a pathless clipboard File, preload reads its bytes and sends only its filename and bounded Uint8Array through the existing attachment IPC. Main validates the complete request and actual disk-read bytes before any upload. No global clipboard access, new renderer filesystem access, generic IPC, external clipboard service or temporary screenshot file.
+- Root/desktop dependency graph and lockfile remain unchanged. Isolated locked dependencies were installed because the existing dependency link lacked Node/React type declarations. No mobile, plugin, Hermes core, main merge, version bump, signing, service restart or publication.
+
+Verification: desktop TypeScript and main/preload/renderer build pass. `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop:check` passes all **48 tests**, with zero failures/skips. Six new production-component/preload/main-service regressions cover pure-text fallback, exact target, draft preservation, explicit send, remaining capacity/size rejection, duplicate busy paste, error recovery, New chat deferred upload, mixed disk/byte files, invalid IPC payloads and partial cleanup. The native Electron/Xvfb test writes a real OS clipboard image and uses WebContents paste in both production textareas. It verifies contextBridge File handling, draft persistence, no automatic send, removal and real plain-text paste. Transport/storage remain controlled fixtures; this is not live backend or macOS device acceptance.
+
+Test corrections: replace invalid PNG fixture with a native bitmap, use the pinned Electron ClipboardItem API, wait for the disabled composer to become ready before refocusing for text paste, and wait for attachment-removal layout before the existing reading-anchor assertion. Add bounded retries for the sidebar Chromium profile cleanup race; do not weaken its UI assertions. Earlier failed runs remain in private evidence.
+
+Local artifact: isolated worktree `apps/desktop/dist`. Private evidence: Channel workspace `desktop-paste-attachments/`. macOS screenshot Cmd+V, Finder copied files, native menu paste, multiple-file paste and installed-app keyboard behavior remain device review items. No new macOS installer or Release is claimed.
+
 ## Desktop default font size candidate
 
 ### Simple desktop text-size settings (published in v0.1.23)

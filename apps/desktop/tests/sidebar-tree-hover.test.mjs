@@ -91,6 +91,6 @@ test('Chromium: native sidebar tree indentation, pointer hover, selection and co
   } finally {
     socket?.close();
     if (chrome && chrome.exitCode === null) { const exited = new Promise(resolve=>chrome.once('exit',resolve)); chrome.kill(); await exited; }
-    await rm(folder,{recursive:true,force:true});
+    await rm(folder,{recursive:true,force:true,maxRetries:5,retryDelay:100});
   }
 });

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
@@ -48,7 +49,7 @@ const api: HermesDesktopApi = Object.freeze({
   cancelQueued: (receiptId: string): Promise<void> => ipcRenderer.invoke("desktop:cancel-queued", receiptId),
   answerInteraction: (interactionId: string, choice: string): Promise<void> => ipcRenderer.invoke("desktop:answer-interaction", interactionId, choice),
   pickAndUploadAttachments: (threadId?: string): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:pick-attachments", threadId),
-  uploadDroppedFiles: (files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:drop-attachments", files.map((file) => webUtils.getPathForFile(file)), threadId),
+  uploadDroppedFiles: async (files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:drop-attachments", await filesForUpload(files, file => webUtils.getPathForFile(file)), threadId),
   deleteUnattachedAttachment: (attachmentId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-attachment", attachmentId),
   previewAttachmentImage: (attachmentId: string): Promise<string> => ipcRenderer.invoke("desktop:preview-image", attachmentId),
   downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),

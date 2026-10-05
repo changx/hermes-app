@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { attachmentInputs, MAX_ATTACHMENT_BYTES, type AttachmentInput } from '../shared/attachment-input';
 import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
@@ -854,17 +855,23 @@ export class DesktopConnectionService {
   }
 
   async uploadAttachmentPaths(filePaths: readonly string[], targetThreadId?: string): Promise<readonly DesktopAttachment[]> {
+    return this.uploadAttachmentInputs(filePaths, targetThreadId);
+  }
+
+  async uploadAttachmentInputs(inputs: readonly AttachmentInput[], targetThreadId?: string): Promise<readonly DesktopAttachment[]> {
     const client = this.requireClient(), threadId = targetThreadId ?? this.selectedThreadId;
     if (!threadId) return [];
     if (!client.isThreadAvailable(threadId)) throw new Error("This conversation is unavailable.");
-    if (filePaths.length > 8) throw new Error("Choose no more than eight files.");
-    const files: Array<{ path: string; name: string; bytes: Uint8Array }> = [];
-    for (const filePath of filePaths) {
+    const files: Array<{ name: string; bytes: Uint8Array }> = [];
+    for (const input of attachmentInputs(inputs)) {
+      if (typeof input !== 'string') { files.push(input); continue; }
+      const filePath = input;
       if (!filePath || !isAbsolute(filePath)) throw new Error("The attachment path is invalid.");
       const info = await stat(filePath);
-      if (!info.isFile() || info.size < 1 || info.size > 10 * 1024 * 1024) throw new Error("Each attachment must be a file between 1 byte and 10 MiB.");
-      files.push({ path: filePath, name: basename(filePath), bytes: new Uint8Array(await readFile(filePath)) });
+      if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) throw new Error("Each attachment must be a file between 1 byte and 10 MiB.");
+      files.push({ name: basename(filePath), bytes: new Uint8Array(await readFile(filePath)) });
     }
+    attachmentInputs(files); // Recheck actual bytes after a potentially racing disk read.
     const uploaded: DesktopAttachment[] = [];
     try {
       if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
