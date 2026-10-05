@@ -6,9 +6,13 @@
 
 ### R01 独立多端客户端
 
+
 桌面所有添加的附件都有小缩略图，覆盖已发送消息、Session 附件草稿及 New chat 本地选择/粘贴的文件。受支持的图片显示真实缩略图；PDF、HTML、文本及其他文件显示文件类型图标，不能伪造内容预览。保留大图、预览、移除、保存及外部打开行为；本地缩略图不得提前创建会话或上传。候选与验收边界见 [附件小缩略图](desktop-session-composer.md#attachment-small-thumbnails-candidate)。
 
 桌面增加可收起的右侧 sidebar，用于附件预览、查看生成的 HTML 页面及浏览网页。右侧浏览器 UA 必须使用当前 Chromium 主版本对应的标准 Chrome 格式，不含 Hermes/Electron 标记；HTTP 请求与页面 `navigator.userAgent` 一致。候选能力、文件类型/资源限制及真机边界见 [桌面右侧预览与浏览器](desktop-macos-v1.md#当前候选右侧附件预览与浏览器)。
+
+桌面 Session 内容的行内代码、单行/多行 fenced 或缩进代码块，以及已有安全命令块，统一使用 `rgb(245,245,250)` 背景色；不改变文字颜色、字号、间距或行为。此要求覆盖此前蓝灰代码背景，仅限桌面。候选及验证边界见 [代码背景色](desktop-session-composer.md#desktop-session-code-background-correction)。
+
 
 桌面版提供简单的本机字号设置，**默认 16px**。Settings 中通过 Text size 选择 12–24px，立即生效并在 App 重启后恢复；可一键恢复 16。同时覆盖界面与内容，包括输入框、导航、表单、状态、标签、时间、草稿标注、正文、代码和工具命令。不做整页缩放；只修正已固定的文字行高及对应标签裁切容器。间距、栏宽、图标、按钮尺寸及手机版不变，不增加字号快捷键或服务端字段。此要求取代此前 18.4px 固定候选、14px 默认值和旧桌面草稿 11px 的字号要求，不改变草稿位置、红色和行为。候选验证与未发布/真机边界见 [桌面 Session 内容](desktop-session-composer.md#desktop-default-font-size-candidate)。
 

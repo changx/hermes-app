@@ -1,5 +1,12 @@
 # Desktop session composer and left user bubbles
 
+## Desktop v0.1.31 integration
+
+Jamie authorized main merge and desktop publication of right-side attachment/page/browser preview, all attachment-list thumbnails, and the `rgb(245,245,250)` Session code background correction. Release source combines `e791529`, `b9a4f97` and `d6d4f18`. Desktop **62/62** checks pass with real Chromium and Linux/Xvfb Electron, zero skips, including a real `https://example.com/` browser load and standard Chrome UA verification. Shared-client checks/build/tests and dependency audit also pass. Version metadata is `0.1.31`; dependencies stay locked.
+
+Publication is pending macOS arm64 packaging and downloaded-asset verification. Installed macOS visual/keyboard acceptance, signing and notarization remain pending. Mobile, installed plugin, Hermes core, runtime checkout and services are outside this desktop-only publication. The following candidate-stage sections are historical verification records; this integration supersedes their unmerged/independent status.
+
+
 ## Attachment small thumbnails (candidate)
 
 Candidate `feat/desktop-attachment-thumbnails` adds a fixed **40 × 40px** thumbnail to message attachment rows, uploaded Session composer drafts, and selected/pasted local New chat files. It builds on the isolated right sidebar candidate `e791529`; it does not publish or modify main. The separate code-background candidate remains unchanged.
@@ -12,6 +19,13 @@ Candidate `feat/desktop-attachment-thumbnails` adds a fixed **40 × 40px** thumb
 - File rows keep fixed thumbnail geometry, readable filenames and existing action labels. Type-tile lettering scales with the application text size.
 
 Verification uses production components and real Chromium/Electron. Native tests paste an actual PNG, check successful decode and 40px geometry, and sample the captured red pixel. They also verify local New chat thumbnails without uploads and all four controlled message attachment tiles. Transport/storage remain fixtures. Object-URL revocation, stale responses, fallback types, CSP and concurrency have separate component tests. Evidence includes `composer-thumbnail.png`, `new-chat-thumbnail.png` and `message-thumbnails.png` in the channel's `desktop-attachment-thumbnails` directory. macOS installed-build visual/keyboard acceptance remains pending; no release, installation or service restart is implied.
+
+## Desktop Session code background correction
+
+The latest desktop request sets Session code backgrounds to `rgb(245,245,250)`. This supersedes the earlier blue-tinted inline/fenced code colors. Inline code, single-line/multiline fenced and indented code, and existing safe tool command blocks use the same background. Nested fenced `code` remains transparent so the enclosing `pre` supplies one surface. Foreground colors, fonts, padding, radii, wrapping, message content and behavior stay unchanged. Mobile and browser-side HTML rendering are outside this correction.
+
+Candidate `fix/desktop-code-background`, card `t_a3d4c44b`, starts from main `142381c` independently of the pending browser-sidebar candidate. The production-DOM regression fails on the baseline's inline `rgb(220, 229, 240)` and passes after correction. Chromium checks user/direct/final messages, inline/table code, single-line/multiline fences, indented blocks and safe commands at 720/1280/1800px, including forced dark mode. Desktop typecheck/build and **49/49** tests pass with Chromium headless-shell and Linux/Xvfb Electron enabled, zero skips. An initial parallel Electron extraction caused `Text file busy`; completing the locked binary installation and rerunning the same checks passed. Evidence: channel workspace `desktop-code-background/`, including computed colors and failed/successful logs. No main merge, release, mobile/plugin/core change or service restart. Installed macOS visual acceptance remains pending.
+
 
 ## Desktop clipboard attachment paste
 
