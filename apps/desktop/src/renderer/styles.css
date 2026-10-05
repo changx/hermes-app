@@ -41,6 +41,24 @@
 .settings-danger button { color: #9d1b32; background: #fff; border-color: #e7b8c1; }
 @media (max-width: 650px) { .settings-dialog { width: calc(100vw - 24px); height: calc(100dvh - 24px); } .settings-layout { grid-template-columns: 150px minmax(0, 1fr); } .settings-content { padding: 20px 16px; } .settings-nav { padding: 12px 8px; } .settings-shortcuts > div { flex-wrap: wrap; } }
 
+/* Connection management shares Settings' scrollable right panel. */
+.settings-connection-list { width: 100%; margin: 0; padding: 0; list-style: none; border: 1px solid var(--app-border); border-radius: 10px; }
+.settings-connection-list > li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px; }
+.settings-connection-list > li + li { border-top: 1px solid var(--app-border); }
+.settings-connection-info { display: grid; gap: 6px; min-width: 0; }
+.settings-connection-address { overflow-wrap: anywhere; color: var(--app-muted); font-size: 0.85em; }
+.settings-connection-state { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: var(--app-muted); }
+.settings-connection-state::before { content: ''; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #9ca3af; }
+.settings-connection-state.state-online::before { background: #16a34a; }
+.settings-connection-state.state-blocked::before { background: #dc2626; }
+.settings-connection-state:is(.state-pairing,.state-retrying,.state-connecting,.state-syncing)::before { background: #d97706; }
+.settings-connections > form { display: grid; gap: 16px; }
+.settings-connections > form h4 { margin: 0; }
+.channel-name { display: grid; gap: 3px; min-width: 0; text-align: left; }
+.channel-name strong { overflow: hidden; text-overflow: ellipsis; }
+.channel-connection-name { color: var(--app-muted); font-size: 0.75em; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 650px) { .settings-connection-list > li { flex-wrap: wrap; padding: 12px; } }
+
 @font-face {
   font-family: "HermesWorkIcons";
   src: url("./work-icons.ttf") format("truetype");

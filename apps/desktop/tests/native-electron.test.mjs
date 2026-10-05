@@ -20,7 +20,8 @@ test('Electron: independent production tabs retain DOM, drafts, history and scop
     const harness=String.raw`
 const {app,BrowserWindow,clipboard,ClipboardItem,nativeImage}=require('electron'); const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
-const {service,nativeTabsForTest}=require('./dist/main/index.cjs');
+const {service:accounts,nativeTabsForTest}=require('./dist/main/index.cjs');
+const service=accounts.primary;
 const calls=[], pages=new Map(), local=new Map(), a='th_aaaaaaaa',b='th_bbbbbbbb';
 const previewPng=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1}).toPNG();
 const rows=id=>Array.from({length:id===a?200:8},(_,i)=>({id:id+'_'+i,ref_seq:i+1,role:'assistant',text:'Controlled fixture '+id+' row '+(i+1)}));

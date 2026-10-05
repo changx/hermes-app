@@ -22,7 +22,8 @@ function fixture() {
   const window = { webContents: new Contents(), contentView: { addChildView(v){views.push(v);}, removeChildView(v){views.splice(views.indexOf(v),1);} }, isDestroyed:()=>false, getContentSize:()=>[1280,820] };
   const service = { snapshot(id){return {...snapshot, selectedThreadId:id ?? snapshot.selectedThreadId, messages:id ? [{id:`${id}-message`,role:'assistant',text:id,toolCalls:[],attachments:[]}] : []};},
     selectThread(id){snapshot.selectedThreadId=id; manager.sync(snapshot); return Promise.resolve();}, deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);},
-    closeSessionPage(id){closed.push(id);manager.sync(snapshot);} };
+    closeSessionPage(id){closed.push(id);manager.sync(snapshot);},
+    hasConnection(key){return !!key && key===snapshot.connectionKey;}, connectionForChannel(){return snapshot.connectionKey;} };
   const manager = new DesktopTabManager(window, service, '/app/main', ()=>{});
   return {manager,service,snapshot,views,closed,window};
 }

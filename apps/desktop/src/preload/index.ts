@@ -10,6 +10,8 @@ const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
 });
 
 const api: HermesDesktopApi = Object.freeze({
+  addConnection: (request: PairingRequest) => ipcRenderer.invoke('desktop:add-connection', request),
+  removeConnection: (id: string) => ipcRenderer.invoke('desktop:remove-connection', id),
   getModelSettings: (connectionKey: string) => ipcRenderer.invoke('desktop:get-model-settings', connectionKey),
   setModelSettings: (connectionKey: string, provider: string, model: string, confirmSelection: boolean) => ipcRenderer.invoke('desktop:set-model-settings', connectionKey, provider, model, confirmSelection),
   openBrowser: (url?: string): Promise<void> => ipcRenderer.invoke('desktop:open-browser', url),

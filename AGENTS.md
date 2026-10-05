@@ -96,6 +96,7 @@
 - [docs/desktop-macos-v1.md](docs/desktop-macos-v1.md)
 - [docs/desktop-release-0.1.6.md](docs/desktop-release-0.1.6.md)
 - [docs/desktop-settings.md](docs/desktop-settings.md)
+- [docs/desktop-connections.md](docs/desktop-connections.md)
 - [docs/desktop-session-composer.md](docs/desktop-session-composer.md)
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)

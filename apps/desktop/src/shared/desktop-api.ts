@@ -5,8 +5,10 @@ import type { LabelDetail } from '../../../../packages/client/src/sessionLabels'
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>;
 
-export type DesktopChannel = Readonly<{ id: string; name: string; description?: string }>;
+export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string }>;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string }>;
 export type DesktopThread = Readonly<{
+  supportsSessionLabels?: boolean;
   id: string;
   channelId: string;
   title: string;
@@ -52,6 +54,8 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  connections?: readonly DesktopConnection[];
+  connectionsError?: string;
   browser?: DesktopBrowserState;
   tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
   activeTabId?: string;
@@ -98,6 +102,8 @@ export type DesktopRuntimeInfo = Readonly<{
 }>;
 
 export interface HermesDesktopApi {
+  addConnection(request: PairingRequest): Promise<void>;
+  removeConnection(connectionId: string): Promise<void>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;

@@ -80,6 +80,20 @@ test("successful pairing verifies capabilities before promoting the credential",
   assert.equal(JSON.stringify(service.snapshot()).includes(writes.connection[0].token), false);
 });
 
+test('removing while the pending credential is being saved cannot start a late pairing exchange',async(t)=>{
+  const {service,writes}=fixture();let release;
+  service.store.savePairing=async value=>{writes.pairing.push(value);await new Promise(resolve=>release=resolve);};
+  let fetched=0;t.mock.method(globalThis,'fetch',async()=>{fetched++;return response(200,{protocol:1});});
+  const pairing=service.pair(request);await Promise.resolve();await service.forgetConnection();release();await pairing;
+  assert.equal(fetched,0);assert.equal(writes.connection.length,0);assert.equal(service.snapshot().phase,'unpaired');
+});
+test('late successful capability response after removal cannot promote or reopen a credential',async(t)=>{
+  const {service,writes}=fixture();let release;
+  t.mock.method(globalThis,'fetch',()=>new Promise(resolve=>release=resolve));
+  const pairing=service.pair(request);while(!release)await new Promise(resolve=>setImmediate(resolve));
+  await service.forgetConnection();release(response(200,{protocol:1}));await pairing;
+  assert.equal(writes.connection.length,0);assert.equal(service.snapshot().connectionKey,undefined);assert.equal(service.snapshot().phase,'unpaired');
+});
 test("duplicate pairing requests do not create concurrent exchanges and cancellation clears pending state", async (t) => {
   const { service, writes } = fixture();
   let releaseSave;

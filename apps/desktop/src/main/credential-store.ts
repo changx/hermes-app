@@ -27,7 +27,7 @@ interface Envelope {
   encrypted: string;
 }
 
-const storagePath = () => join(app.getPath("userData"), "connection.secure.json");
+
 
 const assertConnection = (value: unknown): StoredConnection => {
   if (!value || typeof value !== "object") throw new Error("invalid connection");
@@ -70,10 +70,16 @@ const assertState = (value: unknown): SecureState => {
 };
 
 export class CredentialStore {
+  private mutation: Promise<void> = Promise.resolve();
+  constructor(private readonly filename = 'connection.secure.json') {
+    if (!/^connection(?:-[0-9a-f]{24})?\.secure\.json$/.test(filename)) throw new Error('invalid credential path');
+  }
+  private path(): string { return join(app.getPath('userData'), this.filename); }
   async load(): Promise<SecureState | null> {
+    await this.mutation;
     let raw: string;
     try {
-      raw = await readFile(storagePath(), "utf8");
+      raw = await readFile(this.path(), "utf8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw new Error("secure storage unavailable");
@@ -97,10 +103,14 @@ export class CredentialStore {
     await this.save({ version: 1, pairing });
   }
 
-  private async save(state: SecureState): Promise<void> {
+  private change(operation: () => Promise<void>): Promise<void> {
+    const result = this.mutation.then(operation); this.mutation = result.catch(() => {}); return result;
+  }
+  private save(state: SecureState): Promise<void> { return this.change(() => this.write(state)); }
+  private async write(state: SecureState): Promise<void> {
     const verified = assertState(state);
     if (!safeStorage.isEncryptionAvailable()) throw new Error("secure storage unavailable");
-    const destination = storagePath();
+    const destination = this.path();
     const temporary = `${destination}.new`;
     const encrypted = safeStorage.encryptString(JSON.stringify(verified)).toString("base64");
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
@@ -112,6 +122,6 @@ export class CredentialStore {
   }
 
   async delete(): Promise<void> {
-    await rm(storagePath(), { force: true });
+    await this.change(() => rm(this.path(), { force: true }));
   }
 }

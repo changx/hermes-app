@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { AgentModelSettings, ModelSelectionConfirmation } from '@hermes-app/client';
 import type { DesktopSnapshot } from '../shared/desktop-api';
+import { ConnectionSettings } from './connection-settings';
 import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize } from './font-preference';
 
-type Page = 'model' | 'font' | 'shortcuts' | 'connection';
+export type SettingsPage = 'model' | 'font' | 'shortcuts' | 'connection';
+type Page = SettingsPage;
 const pages: { id: Page; label: string }[] = [
   { id: 'model', label: 'Default agent model' }, { id: 'font', label: 'Font size' },
-  { id: 'shortcuts', label: 'Shortcuts' }, { id: 'connection', label: 'Connection' },
+  { id: 'shortcuts', label: 'Shortcuts' }, { id: 'connection', label: 'Connections' },
 ];
 
 function ModelSettings({ connectionKey }: { connectionKey?: string }) {
@@ -99,13 +101,19 @@ function Shortcuts() {
   return <div className="settings-section"><p className="settings-description">Keyboard shortcuts work while Hermes is focused. These shortcuts are fixed in this version.</p><dl className="settings-shortcuts">{rows.map(([label, keys]) => <div key={label}><dt>{label}</dt><dd>{keys.map(key => <kbd key={key}>{key}</kbd>)}</dd></div>)}</dl></div>;
 }
 
-export function SettingsDialog({ snapshot, close, onForget }: { snapshot: DesktopSnapshot; close: () => void; onForget?: () => void }) {
+export function SettingsDialog({ snapshot, close, initialPage, onPageChange }: { snapshot: DesktopSnapshot; close: () => void; initialPage?: Page; onPageChange?: (page: Page) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<Element | null>(document.activeElement);
-  const [page, setPage] = useState<Page>(snapshot.connectionKey ? 'model' : 'font');
+  const [page, updatePage] = useState<Page>(initialPage ?? (snapshot.connectionKey ? 'model' : 'font'));
+  const setPage = (value: Page) => { updatePage(value); onPageChange?.(value); };
+  const [modelKey, setModelKey] = useState(snapshot.connectionKey);
+  const modelConnections = (snapshot.connections ?? []).filter(row => row.connectionKey);
+  useEffect(() => {
+    if (snapshot.connections && !modelConnections.some(row => row.connectionKey === modelKey)) setModelKey(modelConnections[0]?.connectionKey);
+  }, [snapshot.connections, modelKey]);
   useEffect(() => {
     dialog.current?.showModal();
-    dialog.current?.querySelector<HTMLElement>(snapshot.connectionKey ? '[role="tab"][aria-selected="true"]' : '[aria-label="Text size"]')?.focus();
+    dialog.current?.querySelector<HTMLElement>(page === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
     return () => { if (returnFocus.current instanceof HTMLElement && returnFocus.current.isConnected) returnFocus.current.focus(); };
   }, []);
   const navigationKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -124,10 +132,10 @@ export function SettingsDialog({ snapshot, close, onForget }: { snapshot: Deskto
     <div className="settings-layout"><nav className="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">{pages.map((item, index) => <button key={item.id} id={`settings-tab-${item.id}`} type="button" role="tab" aria-selected={page === item.id} aria-controls={`settings-panel-${item.id}`} tabIndex={page === item.id ? 0 : -1} onClick={() => setPage(item.id)} onKeyDown={event => navigationKey(event, index)}>{item.label}</button>)}</nav>
       <section className="settings-content" id={`settings-panel-${page}`} role="tabpanel" aria-labelledby={`settings-tab-${page}`} tabIndex={0}>
         <h3>{pages.find(item => item.id === page)?.label}</h3>
-        <div hidden={page !== 'model'}><ModelSettings key={snapshot.connectionKey ?? 'unpaired'} connectionKey={snapshot.connectionKey} /></div>
+        <div hidden={page !== 'model'}>{modelConnections.length > 1 && <label className="settings-field">Agent connection<select aria-label="Agent connection" value={modelKey ?? ''} onChange={event => setModelKey(event.target.value)}>{modelConnections.map(row => <option key={row.id} value={row.connectionKey}>{row.name} — {row.server}</option>)}</select></label>}<ModelSettings key={modelKey ?? 'unpaired'} connectionKey={modelKey} /></div>
         {page === 'font' && <FontSettings />}
         {page === 'shortcuts' && <Shortcuts />}
-        {page === 'connection' && <div className="settings-section"><p className="settings-description">{snapshot.connectionName ? `Connected to ${snapshot.connectionName}.` : 'No saved connection.'}</p>{onForget && <><div className="settings-danger"><h4>Forget connection</h4><p>This removes the saved connection, local drafts and queued messages from this device. It does not delete server conversations.</p><button type="button" onClick={onForget}>Forget connection</button></div></>}</div>}
+        {page === 'connection' && <ConnectionSettings snapshot={snapshot} />}
       </section>
     </div>
   </dialog>, document.body);
@@ -135,5 +143,5 @@ export function SettingsDialog({ snapshot, close, onForget }: { snapshot: Deskto
 
 export function SettingsButton({ snapshot, className }: { snapshot: DesktopSnapshot; className?: string }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className={className} title="Settings" aria-label="Settings" aria-haspopup="dialog" onClick={() => setOpen(true)}>⚙</button>{open && <SettingsDialog key={snapshot.connectionKey ?? 'unpaired'} snapshot={snapshot} close={() => setOpen(false)} />}</>;
+  return <><button type="button" className={className} title="Settings" aria-label="Settings" aria-haspopup="dialog" onClick={() => setOpen(true)}>⚙</button>{open && <SettingsDialog snapshot={snapshot} close={() => setOpen(false)} />}</>;
 }

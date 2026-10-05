@@ -1,6 +1,6 @@
 import { AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
-import { SettingsButton, SettingsDialog } from './settings';
+import { SettingsButton, SettingsDialog, type SettingsPage } from './settings';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
@@ -267,12 +267,13 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
   const [draftReady, setDraftReady] = useState<string | undefined>();
   const [draftError, setDraftError] = useState('');
   const [draftRetry, setDraftRetry] = useState(0);
+  const draftScope = viewRole === 'workspace' && snapshot.connections ? snapshot.connections.flatMap(row => row.connectionKey ? [row.connectionKey] : []).join('|') : snapshot.draftIdentity;
   useEffect(() => {
     const identity = snapshot.draftIdentity;
     if (!identity) return;
     let active = true;
     let stopText: (() => void) | undefined, stopAttachments: (() => void) | undefined;
-    setDraftReady(undefined);
+    if (viewRole !== 'workspace') setDraftReady(undefined);
     setDraftError('');
     void window.hermesDesktop.loadLocalDrafts(identity).then(saved => {
       if (!active) return;
@@ -284,19 +285,21 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
           if (active) setDraftError('Your draft could not be saved on this device. Keep the app open and copy your text before closing it.');
         });
       };
-      stopText = drafts.observeMutations(persist); stopAttachments = draftAttachments.observeMutations(persist);
+      if (viewRole !== 'workspace') { stopText = drafts.observeMutations(persist); stopAttachments = draftAttachments.observeMutations(persist); }
       setDraftReady(identity);
     }, () => { if (active) setDraftError("Your local drafts could not be loaded. Don't clear this app's data. Try again."); });
     return () => { active = false; stopText?.(); stopAttachments?.(); };
-  }, [snapshot.draftIdentity, draftRetry]);
+  }, [snapshot.draftIdentity, draftScope, draftRetry, viewRole]);
   const textVersion = useSyncExternalStore(drafts.subscribe, drafts.getSnapshot, drafts.getSnapshot);
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
   const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined } | null>(null);
-  const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.connectionKey }), [snapshot.connectionKey]);
-  useEffect(() => { setLabelTarget(null); }, [snapshot.connectionKey]);
+  const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey }), [snapshot.channels, snapshot.connectionKey]);
+  useEffect(() => { if (labelTarget && (snapshot.connections ? !snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey !== snapshot.connectionKey)) setLabelTarget(null); }, [snapshot.connections, snapshot.connectionKey, labelTarget]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage | undefined>(undefined);
+  const settings = settingsOpen && <SettingsDialog snapshot={snapshot} initialPage={settingsPage} onPageChange={setSettingsPage} close={() => setSettingsOpen(false)} />;
   const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
@@ -312,15 +315,15 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
   if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
-  if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside><SettingsButton snapshot={snapshot} className="text-button" /></main>;
-  if (snapshot.draftIdentity && draftReady !== snapshot.draftIdentity) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}</main>;
-  const forget = () => { if (window.confirm("Forget this connection and remove its local drafts and queued messages?")) { drafts.clear(); draftAttachments.clear(); safely(window.hermesDesktop.forgetConnection()); } };
+  if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside><SettingsButton snapshot={snapshot} className="text-button" />{settings}</main>;
+  if (snapshot.draftIdentity && (viewRole === 'workspace' ? draftReady === undefined : draftReady !== snapshot.draftIdentity)) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}{settings}</main>;
+
 
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  const overlays = <>{labelTarget && labelTarget.connectionKey === snapshot.connectionKey && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={snapshot} close={() => setLabelTarget(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setEditor('new-channel')} onProjectOptions={id => { safely(window.hermesDesktop.selectChannel(id).then(() => setEditor('edit-channel'))); }} onSettings={() => setSettingsOpen(true)} overlayOpen={!!editor || !!labelTarget || settingsOpen}>
     {overlays}
-    {settingsOpen && <SettingsDialog key={snapshot.connectionKey ?? 'unpaired'} snapshot={snapshot} close={() => setSettingsOpen(false)} onForget={forget} />}
+    {settings}
   </NativeWorkspace>;
   if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;
   return <main className="session-tab-page" aria-label="Hermes session">

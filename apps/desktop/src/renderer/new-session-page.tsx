@@ -25,7 +25,8 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
       }
       if (files.length && !uploads.current.length) uploads.current = await window.hermesDesktop.uploadDroppedFiles(files, thread.current);
       if (!saved.current) {
-        if (snapshot.draftIdentity) await window.hermesDesktop.saveLocalDraft(snapshot.draftIdentity, thread.current, { text: message, attachments: uploads.current });
+        const owner = await window.hermesDesktop.getSnapshot();
+        if (owner.draftIdentity) await window.hermesDesktop.saveLocalDraft(owner.draftIdentity, thread.current, { text: message, attachments: uploads.current });
         await window.hermesDesktop.sendMessage({ text: message, attachmentIds: uploads.current.map(a => a.id), clientMessageId: messageId.current });
         saved.current = true;
       }
@@ -39,7 +40,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   return <main className="new-chat-page" aria-label="New chat" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose([...event.dataTransfer.files]); }}>
     <form className="new-chat-form" onSubmit={event => { event.preventDefault(); void submit(); }}>
       <h1>New chat</h1>
-      <label className="new-chat-project">Project<select aria-label="Project" value={project} disabled={busy || attempted} onChange={event => setProject(event.target.value)}>{snapshot.channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label className="new-chat-project">Project<select aria-label="Project" value={project} disabled={busy || attempted} onChange={event => setProject(event.target.value)}>{snapshot.channels.map(c => <option key={c.id} value={c.id}>{c.name}{(snapshot.connections?.length ?? 0) > 1 ? ` — ${c.connectionName}` : ''}</option>)}</select></label>
       <textarea autoFocus aria-label="First message" placeholder="What would you like to work on?" rows={12} maxLength={100_000} value={message} disabled={busy || attempted} onChange={event => setMessage(event.target.value)} onPaste={event => { const items = [...event.clipboardData.files]; if (items.length) { event.preventDefault(); choose(items); } }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
       <input ref={picker} type="file" hidden multiple onChange={event => { choose([...event.target.files ?? []]); event.target.value = ''; }} />
       {!!files.length && <ul className="session-files">{files.map((file, index) => <li key={index}><AttachmentThumbnail file={file} /><span className="session-file-name">{file.name}</span><button type="button" disabled={busy || attempted} aria-label={`Remove ${file.name}`} onClick={() => setFiles(old => old.filter((_, i) => i !== index))}>×</button><button type="button" aria-label={`Preview ${file.name}`} disabled={busy || attempted} onClick={() => { setError(''); void window.hermesDesktop.previewLocalFile(file).catch(() => setError('The file could not be previewed.')); }}>Preview</button></li>)}</ul>}
