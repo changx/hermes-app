@@ -230,6 +230,9 @@
 
 - Jamie 已授权 P0/P1 本地实现、隔离开发环境及真实 Codex 联调，并授权继续当前 M1 手机开发与测试。沿用已有 Expo 开发入口；本地实现授权不扩大为生产发布、其他 profile 变更、签名账户操作或 Hermes 核心修改。开发后端安装/重启依具体授权范围执行，不因客户端改动顺带进行。
 - 本地开发不等于授权生产配置修改、gateway 重启、公开仓库、推送、签名账户操作或应用商店发布。
+- 当前开发 profile `hermes-app-dev` 的插件更新默认由 Agent 自动安装：相关测试与产物校验通过后，主动安装到 `/home/hermes/.hermes/profiles/hermes-app-dev/plugins/hermes-app`，不再等待 Jamie 手动安装或重复确认安装授权。此授权不涵盖其他 profile、Hermes 核心或生产配置；纯客户端改动不安装插件。
+- 插件安装与 Gateway 重启分开执行。Agent 保留旧插件代码作为回滚基线，安全替换已验证的插件文件，并回读版本与哈希。Jamie 负责重启 `hermes-gateway-hermes-app-dev.service`；Agent 不自动停止或重启该服务，不用脱离当前进程的子进程绕过限制。
+- 安装阶段不主动修改数据库或执行数据迁移。需要迁移时先说明影响与备份要求；代码备份不能冒充一致的数据备份。安装后明确报告“已安装，待 Jamie 重启”，不得称运行中的后端已启用新功能。重启后再验证实际加载版本与相关 HTTP/WS 行为。
 - .env、凭据、真实聊天数据与私有诊断放在 /home/hermes/.hermes/profiles/jamie/workspace/hermes-app/，不提交。
 - 多端认证与 Channel 编辑权限以服务端校验；公共说明不能覆盖 Hermes 的安全和授权边界。
 - 不为实现离线执行全局关闭超时/回收；持久任务生命周期和资源上限必须明确。
