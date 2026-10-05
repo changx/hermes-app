@@ -52,6 +52,12 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 };
 
 const registerDesktopApi = (): void => {
+  ipcMain.handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
+  ipcMain.handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
+    trustedSender(event);
+    if (typeof confirm !== 'boolean') throw new Error('Invalid desktop request');
+    return service.setModelSettings(text(key, 200), text(provider, 256), text(model, 256), confirm);
+  });
   const browserTab = (event: Electron.IpcMainInvokeEvent) => {
     trustedSender(event);
     const tab = tabs?.sender(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);

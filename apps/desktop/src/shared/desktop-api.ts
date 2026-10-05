@@ -1,4 +1,4 @@
-import type { ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
+import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
@@ -98,6 +98,8 @@ export type DesktopRuntimeInfo = Readonly<{
 }>;
 
 export interface HermesDesktopApi {
+  getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
+  setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   previewAttachment(attachmentId: string): Promise<void>;
   previewLocalFile(file: File): Promise<void>;

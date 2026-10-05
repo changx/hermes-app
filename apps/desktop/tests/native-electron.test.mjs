@@ -25,7 +25,10 @@ const calls=[], pages=new Map(), local=new Map(), a='th_aaaaaaaa',b='th_bbbbbbbb
 const previewPng=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1}).toPNG();
 const rows=id=>Array.from({length:id===a?200:8},(_,i)=>({id:id+'_'+i,ref_seq:i+1,role:'assistant',text:'Controlled fixture '+id+' row '+(i+1)}));
 const server=new Map([[a,rows(a)],[b,rows(b)]]);
+let modelSettings={scope:'connected-default',provider:'codex',model:'fixture-current',providers:[{id:'codex',name:'Codex',models:['fixture-current','fixture-next']}]};
 const client={channels:new Map([['p',{id:'p',name:'Project Alpha'}],['q',{id:'q',name:'Project Beta'}]]),threads:new Map([[a,{id:a,project_id:'p',title:'Session A',running:false,last_message_at:Date.now()/1000,markers:['work']}],[b,{id:b,project_id:'q',title:'Session B',running:true,last_message_at:1,markers:['bug']}]]),messages:new Map(),receipts:new Map(),interactions:new Map(),attachments:new Map(),supportsLatest:true,isCatalogueReady:true,supportsSessionLabels:true,
+ async getModelSettings(){calls.push(['model-read']);return structuredClone(modelSettings);},
+ async setModelSettings(provider,model,_signal,confirm){calls.push(['model-write',provider,model,confirm]);if(!confirm)return {confirmation_required:true,provider,model,warning:'Controlled fixture cost warning.'};modelSettings={...modelSettings,provider,model};return structuredClone(modelSettings);},
  isThreadAvailable(id){return this.threads.has(id);},page:id=>pages.get(id),releasePage(id){pages.delete(id);this.messages.delete(id);},
  acquirePage(id){if(!pages.has(id)){const page={messages:client.messages,currentOlderCursor:undefined,
  async openConversation(){calls.push(['open',id]);client.messages.set(id,server.get(id).slice(-50));this.currentOlderCursor=id===a?'older':undefined;service.changed();},
@@ -58,7 +61,11 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(await evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail").getBoundingClientRect().width'),40);
  assert.equal(calls.find(x=>x[0]==='thumbnail')[1],a,'thumbnail download targets exact session');
  await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
- const thumbnailRect=await evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail").getBoundingClientRect().toJSON()'),thumbnailShot=await ac.capturePage();
+ const thumbnailRect=await evaluate(ac,'document.querySelector(".composer-attachments .attachment-thumbnail").getBoundingClientRect().toJSON()');
+ // Image decoding/naturalWidth and animation frames do not guarantee compositor paint.
+ // Wait for the exact asserted pixel rather than weakening the visual assertion.
+ await until(async()=>{const shot=await ac.capturePage();const pixel=shot.crop({x:Math.floor(thumbnailRect.x+thumbnailRect.width/2),y:Math.floor(thumbnailRect.y+thumbnailRect.height/2),width:1,height:1}).toBitmap();return pixel.equals(Buffer.from([0,0,255,255]));},'decoded clipboard thumbnail actually painted');
+ const thumbnailShot=await ac.capturePage();
  assert.deepEqual([...thumbnailShot.crop({x:Math.floor(thumbnailRect.x+thumbnailRect.width/2),y:Math.floor(thumbnailRect.y+thumbnailRect.height/2),width:1,height:1}).toBitmap()],[0,0,255,255],'thumbnail paints actual red clipboard pixel');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'composer-thumbnail.png'),thumbnailShot.toPNG());}
  assert.equal(await evaluate(ac,'document.querySelector("[aria-label=Message]").value'),'A retained draft');
@@ -148,11 +155,18 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(await evaluate(shell,'document.querySelector(".native-tab-error").textContent.includes("could not be saved")'),true);
  await evaluate(shell,'Storage.prototype.setItem=window.originalSidebarSave;document.querySelector(".native-tab-error button").click();document.querySelector(".sidebar-resize-handle").dispatchEvent(new MouseEvent("dblclick",{bubbles:true}))');await until(()=>draft.view.getBounds().x===280,'restore default before existing checks');
  await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>!draft.view.getVisible(),'modal hides native view');assert.equal(manager.snapshot(dc).tabActive,false);
- await evaluate(shell,'[...document.querySelectorAll(".editor-dialog button")].find(e=>e.textContent==="Close").click()');await until(()=>draft.view.getVisible(),'modal restores native view');
- await evaluate(dc,'document.querySelector("[aria-label=Settings]").click()');await until(()=>evaluate(dc,'!!document.querySelector(".font-settings select")'),'font dialog');
- await evaluate(dc,'(()=>{const e=document.querySelector(".font-settings select");e.value="18";e.dispatchEvent(new Event("change",{bubbles:true}));})()');
+ await until(()=>evaluate(shell,'document.querySelector("[aria-label=Model]")?.value==="fixture-current"'),'model default loaded through real preload and IPC');
+ await evaluate(shell,'(()=>{const e=document.querySelector("[aria-label=Model]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"fixture-next");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
+ await until(()=>evaluate(shell,'!document.querySelector("button[type=submit]").disabled'),'edited model ready');await evaluate(shell,'document.querySelector("form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
+ await until(()=>evaluate(shell,'!!document.querySelector(".settings-warning")'),'model warning through native IPC');assert.equal(calls.filter(x=>x[0]==='model-write').length,1);
+ await evaluate(shell,'document.querySelector(".settings-warning button").click()');await until(()=>evaluate(shell,'!!document.querySelector(".settings-success")'),'confirmed model save read back');assert.equal(modelSettings.model,'fixture-next');assert.equal(calls.filter(x=>x[0]==='model-write').at(-1)[3],true);assert.equal(calls.at(-1)[0],'model-read');
+ if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-settings.png'),(await window.capturePage()).toPNG());}
+ shell.focus();shell.sendInputEvent({type:'keyDown',keyCode:'Escape'});shell.sendInputEvent({type:'keyUp',keyCode:'Escape'});await until(()=>draft.view.getVisible(),'native Escape closes Settings and restores view');
+ await evaluate(dc,'document.querySelector("[aria-label=Settings]").click()');await until(()=>evaluate(dc,'!!document.querySelector("#settings-tab-font")'),'settings dialog');
+ await evaluate(dc,'document.querySelector("#settings-tab-font").click()');await until(()=>evaluate(dc,'!!document.querySelector("[aria-label=\\"Text size\\"]")'),'font page');
+ await evaluate(dc,'(()=>{const e=document.querySelector("[aria-label=\\"Text size\\"]");e.value="18";e.dispatchEvent(new Event("change",{bubbles:true}));})()');
  await until(()=>evaluate(shell,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font shared across views');
- await evaluate(dc,'[...document.querySelectorAll(".font-settings button")].find(e=>e.textContent==="Done").click()');
+ await evaluate(dc,'document.querySelector(".settings-close").click()');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-native-tabs.png'),(await window.capturePage()).toPNG());}
  await evaluate(shell,'window.hermesDesktop.closeTab('+JSON.stringify(second.id)+')');await until(()=>bc.isDestroyed(),'closed view released');assert.equal(ac.isDestroyed(),false);assert.equal(dc.isDestroyed(),false);
  manager.dispose();await until(()=>ac.isDestroyed()&&dc.isDestroyed(),'all views released');

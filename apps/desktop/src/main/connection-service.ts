@@ -616,6 +616,35 @@ export class DesktopConnectionService {
     await this.selectChannel(channel.id).catch(() => this.actionError("The channel was created, but its topics could not be loaded yet."));
   }
 
+  private modelClient(connectionKey: string): LivePageClient {
+    const client = this.requireClient();
+    if (connectionKey !== this.connection?.id) throw new Error('Connection changed. Reopen Settings.');
+    return client;
+  }
+
+  async getModelSettings(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    try {
+      const settings = await client.getModelSettings();
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      return settings;
+    } catch { throw new Error('Could not load model settings. Try again.'); }
+  }
+
+  async setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean) {
+    const client = this.modelClient(connectionKey);
+    if (!provider.trim() || !model.trim() || provider.length > 256 || model.length > 256 || /[\x00-\x1f\x7f]/.test(provider + model)) throw new Error('Enter a provider and model name.');
+    try {
+      const result = await client.setModelSettings(provider, model, undefined, confirmSelection);
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      if ('confirmation_required' in result) return result;
+      const settings = await client.getModelSettings();
+      if (this.modelClient(connectionKey) !== client) throw new Error('Connection changed');
+      if (settings.provider !== result.provider || settings.model !== result.model) throw new Error('Model changed during save');
+      return settings;
+    } catch { throw new Error('Could not confirm the change. Reload settings before trying again.'); }
+  }
+
   async getChannelInfo(channelId: string): Promise<DesktopSnapshot["channels"][number]> {
     const channel = await this.requireClient().getChannelInfo(channelId);
     return { id: channel.id, name: channel.name, ...(channel.description ? { description: channel.description } : {}) };

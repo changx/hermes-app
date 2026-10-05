@@ -10,6 +10,8 @@ const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
 });
 
 const api: HermesDesktopApi = Object.freeze({
+  getModelSettings: (connectionKey: string) => ipcRenderer.invoke('desktop:get-model-settings', connectionKey),
+  setModelSettings: (connectionKey: string, provider: string, model: string, confirmSelection: boolean) => ipcRenderer.invoke('desktop:set-model-settings', connectionKey, provider, model, confirmSelection),
   openBrowser: (url?: string): Promise<void> => ipcRenderer.invoke('desktop:open-browser', url),
   previewAttachment: (id: string): Promise<void> => ipcRenderer.invoke('desktop:preview-attachment', id),
   previewLocalFile: async (file: File): Promise<void> => ipcRenderer.invoke('desktop:preview-local-file', (await filesForUpload([file], item => webUtils.getPathForFile(item)))[0]),

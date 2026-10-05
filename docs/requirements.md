@@ -6,6 +6,8 @@
 
 ### R01 独立多端客户端
 
+桌面 Settings 采用左侧导航、右侧内容。关键页面为 Default agent model、Font size 和 Shortcuts；Connection 单列。默认模型使用已连接 Agent 的真实配置接口，不存本机假选择。字号复用设备偏好。Shortcuts 首版列出已支持的固定按键，不宣称支持自定义绑定。Find a session 保留快捷键入口；Delete project 移到 Project 编辑页并保留确认。候选实现、自动验证和未发布边界见 [桌面 Settings](desktop-settings.md)。
+
 
 桌面所有添加的附件都有小缩略图，覆盖已发送消息、Session 附件草稿及 New chat 本地选择/粘贴的文件。受支持的图片显示真实缩略图；PDF、HTML、文本及其他文件显示文件类型图标，不能伪造内容预览。保留大图、预览、移除、保存及外部打开行为；本地缩略图不得提前创建会话或上传。候选与验收边界见 [附件小缩略图](desktop-session-composer.md#attachment-small-thumbnails-candidate)。
 
