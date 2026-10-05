@@ -41,7 +41,7 @@ test('Chromium: production screens resolve neutral chrome and mobile content col
         const checks = [
           ['body','color','1f2937'],['.desktop-tabs','backgroundColor','f3f4f6'],['.native-sidebar','backgroundColor','f3f4f6'],['.session-tab-page','backgroundColor','f9fafb'],
           ['.tree-thread.selected','backgroundColor','e6edf7'],['.conversation-header','borderBottomColor','e5e7eb'],['.message-user','backgroundColor','f3f3f3'],['.message-final','backgroundColor','f7f5ef'],['.message-assistant','color','172a40'],
-          ['.message a','color','215ca7'],['.message code','backgroundColor','dce5f0'],['.code-block','backgroundColor','e8eef6'],['.code-block code','color','20314a'],['.tool-command','backgroundColor','e8eef6'],['.tool-command','color','20314a'],['.message-markdown th','backgroundColor','e5ecf5'],
+          ['.message a','color','215ca7'],['.message code','backgroundColor','f5f5fa'],['.code-block','backgroundColor','f5f5fa'],['.code-block code','color','20314a'],['.tool-command','backgroundColor','f5f5fa'],['.tool-command','color','20314a'],['.message-markdown th','backgroundColor','e5ecf5'],
           ['.composer textarea','backgroundColor','ffffff'],['.composer textarea','color','172a40'],['.composer-row > button:last-child','backgroundColor','285ea5'],['.composer-row .attach-button','backgroundColor','e7eef7'],['.running-row .stop-button','color','425874'],
           ['.error-banner','backgroundColor','fff0f2'],['.error-banner','color','9d1b32'],['.thread-status','color','237a35'],
           ['.pairing-card','backgroundColor','ffffff'],['.connection-screen','backgroundColor','f9fafb'],['.pairing-actions button','backgroundColor','2960ad'],['.pairing-card input','borderTopColor','d1d5db'],

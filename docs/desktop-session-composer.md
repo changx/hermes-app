@@ -1,5 +1,11 @@
 # Desktop session composer and left user bubbles
 
+## Desktop Session code background correction
+
+The latest desktop request sets Session code backgrounds to `rgb(245,245,250)`. This supersedes the earlier blue-tinted inline/fenced code colors. Inline code, single-line/multiline fenced and indented code, and existing safe tool command blocks use the same background. Nested fenced `code` remains transparent so the enclosing `pre` supplies one surface. Foreground colors, fonts, padding, radii, wrapping, message content and behavior stay unchanged. Mobile and browser-side HTML rendering are outside this correction.
+
+Candidate `fix/desktop-code-background`, card `t_a3d4c44b`, starts from main `142381c` independently of the pending browser-sidebar candidate. The production-DOM regression fails on the baseline's inline `rgb(220, 229, 240)` and passes after correction. Chromium checks user/direct/final messages, inline/table code, single-line/multiline fences, indented blocks and safe commands at 720/1280/1800px, including forced dark mode. Desktop typecheck/build and **49/49** tests pass with Chromium headless-shell and Linux/Xvfb Electron enabled, zero skips. An initial parallel Electron extraction caused `Text file busy`; completing the locked binary installation and rerunning the same checks passed. Evidence: channel workspace `desktop-code-background/`, including computed colors and failed/successful logs. No main merge, release, mobile/plugin/core change or service restart. Installed macOS visual acceptance remains pending.
+
 ## Desktop clipboard attachment paste
 
 ### Published: Desktop v0.1.30
