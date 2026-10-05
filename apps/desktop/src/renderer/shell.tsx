@@ -99,16 +99,38 @@ const MessageRow = memo(({ message, continuation, hidden = false }: { message: D
   </article>;
 });
 
-const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot; active?: boolean }) => {
+const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot: DesktopSnapshot; active?: boolean; sendVersion?: number }) => {
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
   const groups = workGroups(snapshot.messages.map(message => ({ key: message.id, role: message.role, kind: message.displayKind, seconds: message.createdAt })), !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running);
   const choiceKey = (group: WorkGroup) => `${snapshot.selectedThreadId}:${group.key}`;
   const list = useRef<HTMLDivElement>(null);
+  const contents = useRef<HTMLDivElement>(null);
   const previous = useRef({ threadId: "", first: "", height: 0, count: 0 });
   const [following, setFollowing] = useState(true);
+  const followingRef = useRef(true);
+  const geometry = useRef({ height: 0, viewport: 0 });
+  const previousSend = useRef(sendVersion);
   const [newCount, setNewCount] = useState(0);
   const first = snapshot.messages[0]?.id ?? "";
   const result = snapshot.threads.find(t => t.id === snapshot.selectedThreadId);
+  useLayoutEffect(() => {
+    if (previousSend.current === sendVersion) return;
+    previousSend.current = sendVersion;
+    followingRef.current = true; setFollowing(true); setNewCount(0);
+    if (active && list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [sendVersion, active]);
+  useEffect(() => {
+    const node = list.current, body = contents.current;
+    if (!active || !node || !body) return;
+    const reconcile = () => {
+      // Rich content can finish layout without changing the message snapshot.
+      if (followingRef.current) node.scrollTop = node.scrollHeight;
+      geometry.current = { height: node.scrollHeight, viewport: node.clientHeight };
+    };
+    const observer = new ResizeObserver(reconcile);
+    observer.observe(body); observer.observe(node); reconcile();
+    return () => observer.disconnect();
+  }, [active]);
   useEffect(() => {
     const root = list.current, id = snapshot.selectedThreadId;
     if (!active || !root || !id || !result?.completedUnread || !result.resultVersion || !result.resultRef || snapshot.loadingMessages) return;
@@ -129,20 +151,26 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
     const old = previous.current;
     if (old.threadId !== snapshot.selectedThreadId) node.scrollTop = node.scrollHeight;
     else if (old.first && first !== old.first && old.count > 0) node.scrollTop += node.scrollHeight - old.height;
-    else if (following) node.scrollTop = node.scrollHeight;
+    else if (followingRef.current) node.scrollTop = node.scrollHeight;
     else if (snapshot.messages.length > old.count) setNewCount((value) => value + snapshot.messages.length - old.count);
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
+    geometry.current = { height: node.scrollHeight, viewport: node.clientHeight };
   }, [active, first, following, snapshot.messages, snapshot.selectedThreadId]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+    // A size correction is not a reader gesture. Keep follow until its resize
+    // observer has reconciled the new content/viewport extent.
+    if (followingRef.current && (geometry.current.height !== node.scrollHeight || geometry.current.viewport !== node.clientHeight)) return;
+    followingRef.current = atBottom;
     setFollowing(atBottom);
     if (atBottom) setNewCount(0);
   };
-  const latest = () => { const node = list.current; if (node) node.scrollTop = node.scrollHeight; setFollowing(true); setNewCount(0); };
+  const latest = () => { followingRef.current = true; const node = list.current; if (node) node.scrollTop = node.scrollHeight; setFollowing(true); setNewCount(0); };
   return <div className="timeline-wrap">
     <div className="message-list" aria-live="polite" ref={list} onScroll={scroll}>
+      <div className="timeline-content" ref={contents}>
       {snapshot.canLoadOlder || snapshot.loadingHistory ? <div className="history-loading-slot">
         {snapshot.loadingHistory ? <div className="history-loading-status" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" />Loading messages…</div> : <button className="load-older" type="button" onClick={() => safely(window.hermesDesktop.loadOlder())}>Load all earlier messages</button>}
       </div> : null}
@@ -156,12 +184,13 @@ const Timeline = memo(({ snapshot, active = true }: { snapshot: DesktopSnapshot;
           <MessageRow message={message} continuation={continuation} hidden={!expanded} />
         </div>;
       }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
+      </div>
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-}, (before,after) => before.active === after.active && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
+}, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
-const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
+const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(): void }) => {
   const threadId = snapshot.selectedThreadId;
   const [text, setText] = useState(threadId ? drafts.get(threadId) ?? "" : "");
   const [attachments, setAttachments] = useState<readonly DesktopAttachment[]>(threadId ? draftAttachments.get(threadId) ?? [] : []);
@@ -183,6 +212,7 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
     working.current = true; setBusy(true); setError("");
     try {
       await window.hermesDesktop.sendMessage({ text, attachmentIds: attachments.map(({ id }) => id) });
+      if (mounted.current) onQueued();
       drafts.delete(threadId); draftAttachments.delete(threadId);
       if (mounted.current) { setText(""); setAttachments([]); }
     } catch { if (mounted.current) setError("Your message could not be saved. Your draft is still here."); }
@@ -229,6 +259,7 @@ const Composer = ({ snapshot }: { snapshot: DesktopSnapshot }) => {
 };
 
 export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' }) => {
+  const [sendVersion, setSendVersion] = useState(0);
   const [draftReady, setDraftReady] = useState<string | undefined>();
   const [draftError, setDraftError] = useState('');
   const [draftRetry, setDraftRetry] = useState(0);
@@ -291,9 +322,9 @@ export const DesktopShellView = ({ snapshot, viewRole = typeof window !== 'undef
   return <main className="session-tab-page" aria-label="Hermes session">
     <header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? 'Conversation'}</p><h2>{snapshot.selectedThreadTitle ?? 'Conversation'}</h2>{snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}</div><div className="conversation-actions"><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy link</button>{snapshot.supportsSessionLabels && <button type="button" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}>Edit labels</button>}<button type="button" onClick={() => setEditor('rename-thread')}>Rename</button><button type="button" onClick={archive}>Archive</button><FontSettingsButton className="text-button" /></div></header>
     {snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{draftError && <div className="error-banner" role="alert">{draftError}</div>}
-    <Timeline snapshot={snapshot} active={snapshot.tabActive === true} />
+    <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-    <Composer snapshot={snapshot} />{overlays}
+    <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />{overlays}
   </main>;
 };
 

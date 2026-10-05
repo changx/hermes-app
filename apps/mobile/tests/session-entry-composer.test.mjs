@@ -15,7 +15,7 @@ const mocks = {
   'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:()=>({remove(){}})}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
   '@shopify/flash-list': `import React from 'react'; export const FlashList=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({getScrollResponder:()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o)}),scrollToOffset:o=>globalThis.__entryTest.commands.push(o)}));return React.createElement('FlashList',p);});`,
-  'react-native-keyboard-controller': `export const KeyboardChatScrollView='KeyboardChatScrollView',KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=()=>{};`,
+  'react-native-keyboard-controller': `export const KeyboardChatScrollView='KeyboardChatScrollView',KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
   'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade}; export const FadeIn=fade,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
   'react-native-safe-area-context': `export const useSafeAreaInsets=()=>({bottom:0});`,
   'expo-blur': `export const BlurTargetView='BlurTargetView',BlurView='BlurView';`,
@@ -58,6 +58,44 @@ test('attachment entry and restored reading positions never initialize at bottom
     if(extra.targetRef)assert.equal(list(root).props.initialScrollIndex,0);
     list(root).props.onLoad();flush();assert.deepEqual(state.commands,[]);await act(async()=>root.unmount());
   }
+});
+const geometry = (y, height=2000, viewport=500) => ({nativeEvent:{contentOffset:{y},contentSize:{height},layoutMeasurement:{height:viewport}}});
+const measure = async root => { await act(async()=>{list(root).props.onLayout({nativeEvent:{layout:{height:500}}});list(root).props.onContentSizeChange(300,2000);list(root).props.onScroll(geometry(1500));});flush();state.commands=[]; };
+const readOlder = async root => { await act(async()=>{list(root).props.onScrollBeginDrag();list(root).props.onScroll(geometry(900));list(root).props.onScrollEndDrag(geometry(900));});flush();state.commands=[]; };
+test('delayed rich-content growth still follows when onScroll reports the new height first',async()=>{
+  const root=await mount({rows});await measure(root);
+  list(root).props.onScroll(geometry(1500,2300));
+  list(root).props.onContentSizeChange(300,2300);flush();
+  assert.deepEqual(state.commands,[{animated:false}]);state.commands=[];
+  list(root).props.onScroll(geometry(1800,2600));flush();
+  assert.deepEqual(state.commands,[{animated:false}],'geometry event alone also reconciles');
+  await act(async()=>root.unmount());
+});
+test('viewport and controller inset changes follow; keyboard motion defers the correction',async()=>{
+  const root=await mount({rows});await measure(root);
+  await act(async()=>list(root).props.onLayout({nativeEvent:{layout:{height:400}}}));flush();
+  assert.deepEqual(state.commands,[{animated:false}]);state.commands=[];
+  const scroll=list(root).props.renderScrollComponent({});
+  state.keyboard.onStart();scroll.props.onContentInsetChange({bottom:300});flush();
+  assert.deepEqual(state.commands,[]);
+  state.keyboard.onEnd();flush();assert.deepEqual(state.commands,[{animated:false}]);
+  await act(async()=>root.unmount());
+});
+test('send while reading resumes follow after optimistic row commit, even with unchanged extent',async()=>{
+  const ref=React.createRef();const root=await mount({rows,ref});await measure(root);await readOlder(root);
+  await act(async()=>ref.current.followLatest());assert.deepEqual(state.commands,[{animated:true}]);flush();state.commands=[];
+  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,ref,rows:[...rows,{key:'u2',role:'user',text:'New local input'}]})));
+  flush();assert.deepEqual(state.commands,[{animated:false}]);
+  await act(async()=>root.unmount());
+});
+test('reading, new drag and inactive routes suppress pending content and geometry corrections',async()=>{
+  const root=await mount({rows});await measure(root);
+  list(root).props.onContentSizeChange(300,2300);list(root).props.onScrollBeginDrag();flush();assert.deepEqual(state.commands,[]);
+  await act(async()=>list(root).props.onScrollEndDrag(geometry(1500,2300)));
+  await readOlder(root);list(root).props.onContentSizeChange(300,2500);flush();assert.deepEqual(state.commands,[]);
+  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows,active:false})));
+  list(root).props.onContentSizeChange(300,3000);list(root).props.onLayout({nativeEvent:{layout:{height:400}}});flush();assert.deepEqual(state.commands,[]);
+  await act(async()=>root.unmount());
 });
 test('six visible lines scale with app and system fonts; overflow keeps complete editable text',async()=>{
   const text=Array.from({length:9},(_,i)=>`Line ${i}`).join('\n');

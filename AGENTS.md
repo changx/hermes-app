@@ -102,6 +102,7 @@
 ### 共享行为、内容呈现与发布
 
 - [docs/session-links.md](docs/session-links.md)
+- [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
 - [docs/session-labels.md](docs/session-labels.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)

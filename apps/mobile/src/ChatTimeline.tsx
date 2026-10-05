@@ -8,7 +8,7 @@ import Animated, { FadeIn, ReduceMotion, runOnJS, useSharedValue } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import type { Interaction, Receipt } from '../../../packages/client/src/index';
-import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, shouldFollowContentChange, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
+import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, scrollToExactEnd, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 
 import { MessageContent, copyMessageText } from './MessageContent';
 import { WorkChevron } from './WorkChevron';
@@ -133,13 +133,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
-  const onContentInsetChange = useCallback((insets: { bottom: number }) => { reportedInset.current = insets.bottom; }, []);
-  const renderScrollComponent = useCallback((scrollProps: ScrollViewProps) =>
-    <KeyboardChatScrollView {...scrollProps} automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
-      // RN 0.81+ otherwise loses drag touches in the contentInset/blank area.
-      applyWorkaroundForContentInsetHitTestBug
-      offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
-  [bottom, onContentInsetChange]);
+
   const list = useRef<FlashListRef<TimelineRow>>(null);
   const visibleCallback = useRef(props.onVisibleRefs);
   visibleCallback.current = props.onVisibleRefs;
@@ -233,6 +227,17 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     keyboardMoving.current = moving;
     if (!moving && pendingFollow.current) scheduleFollow();
   }, [scheduleFollow]);
+  const onContentInsetChange = useCallback((insets: { bottom: number }) => {
+    if (reportedInset.current === insets.bottom) return;
+    reportedInset.current = insets.bottom;
+    if (following.current) scheduleFollow();
+  }, [scheduleFollow]);
+  const renderScrollComponent = useCallback((scrollProps: ScrollViewProps) =>
+    <KeyboardChatScrollView {...scrollProps} automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
+      // RN 0.81+ otherwise loses drag touches in the contentInset/blank area.
+      applyWorkaroundForContentInsetHitTestBug
+      offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange} />,
+  [bottom, onContentInsetChange]);
   useKeyboardHandler({
     onStart: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
     onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
@@ -313,11 +318,12 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     // An explicit send/latest action overrides any older gesture momentum.
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
     if (!animate) followAnimation.current = false;
-    if (keyboardMoving.current) scheduleFollow(animate);
-    else {
+    if (!keyboardMoving.current) {
       const animated = animate && !reducedMotion.current;
       scrollToExactEnd(list.current, content.current, viewport.current, animated, scrollGeometry.current?.inset ?? reportedInset.current);
     }
+    // The optimistic row and cleared composer can commit after this call.
+    scheduleFollow(keyboardMoving.current && animate);
     savePosition();
   }, [savePosition, scheduleFollow]);
   useImperativeHandle(ref, () => ({ followLatest, pasteText(text: string) {
@@ -341,7 +347,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     // Content-size may be unchanged (or onScroll may have observed it already).
     // New output should appear at the tail without visibly scrolling the whole
     // conversation. Explicit send/latest actions remain animated.
-    if ((newOutput || firstHistory && sourceTarget.current === undefined) && following.current) scheduleFollow();
+    if ((newOutput || appended.current || firstHistory && sourceTarget.current === undefined) && following.current) scheduleFollow();
   }, [rows, scheduleFollow]);
 
   const composerControls = <><Pressable accessible={false} focusable={false} style={styles.composeField} onPress={() => composerInput.current?.focus()}>
@@ -401,18 +407,20 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
             if (following.current) scheduleFollow();
             else if (!historyReading.current) list.current?.scrollToOffset({ offset: offset.current, animated: false });
           }
+          else if (restored.current && following.current) scheduleFollow();
         }}
         onContentSizeChange={(_, height) => {
           if (!active.current) return;
-          const previous = content.current;
           content.current = height;
           if (!restored.current && viewport.current) {
             restored.current = true;
             if (following.current) scheduleFollow();
             else if (!historyReading.current) list.current?.scrollToOffset({ offset: offset.current, animated: false });
-          } else if (!dragging.current && !gestureMomentum.current && !momentumEligible.current
-            && (shouldFollowContentChange(following.current, false, previous, height) || following.current && appended.current && height > 0)
-            && (!keyboardMoving.current || appended.current)) scheduleFollow();
+          } else if (following.current && height > 0) {
+            // onScroll may already have reported this height. Always reconcile
+            // the measured extent; scheduleFollow owns gesture/keyboard guards.
+            scheduleFollow();
+          }
           appended.current = false;
         }}
         onScrollBeginDrag={() => {
@@ -437,6 +445,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         onMomentumScrollEnd={() => { gestureMomentum.current = false; momentumEligible.current = false; savePosition(); }}
         onScroll={e => {
           if (!active.current) return;
+          const previousGeometry = scrollGeometry.current;
           const state = scrollStateFromEvent(following.current, offset.current, scrollGeometry.current, e.nativeEvent,
             (dragging.current || gestureMomentum.current) && !keyboardMoving.current && !historyPullPending.current && !historyReading.current && e.nativeEvent.contentOffset.y >= 0, reportedInset.current);
           offset.current = state.offset;
@@ -444,6 +453,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           scrollGeometry.current = state.geometry;
           const follow = props.onLatest ? false : state.following;
           if (follow !== following.current) { following.current = follow; setShowLatest(!follow); }
+          if (following.current && previousGeometry && (previousGeometry.height !== state.geometry.height
+            || previousGeometry.viewport !== state.geometry.viewport || previousGeometry.inset !== state.geometry.inset)) scheduleFollow();
           savePosition();
         }} scrollEventThrottle={16} />
 
