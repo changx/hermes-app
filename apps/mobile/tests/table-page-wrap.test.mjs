@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const copiedTexts = [];
 const native = { Platform: { OS: 'ios' }, StyleSheet: { create: x => x }, View: 'View', ScrollView: 'ScrollView', Pressable: 'Pressable', Image: 'Image', Animated: { Text: 'Text' } };
 const modules = {
   react: React, 'react-native': native,
@@ -16,7 +17,7 @@ const modules = {
   '../../../packages/client/src/sessionLinks': {}, 'expo-video': {},
   'react-native-webview': 'WebView', './messageMarkdown': {}, './markdownWeb': {}, './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article>Fixture</article>', links: [], expansions: [] }) },
   '../../../packages/client/src/toolPresentation': {}, './Viewers': {}, './RenderResources': { useRenderResources: () => null }, './reducedMotion': {},
-  './CopyToast': { copyWithToast: async () => true },
+  './CopyToast': { copyWithToast: async text => { copiedTexts.push(text); return true; } },
 };
 const output = { exports: {} };
 // Test-only exports exercise the exact internal production components, not a replica.
@@ -80,5 +81,27 @@ test('full article WebView failure uses the same bounded native table, without d
     assert.ok(cells.every(node => flatten(node.props.style).width === 279));
     assert.ok(root.root.findAllByType('Text').some(node => node.props.children?.props?.nodes?.[0]?.text === 'Full source stays visible'));
     assert.ok(root.root.findAllByType('ScrollView').every(node => !node.props.horizontal));
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('inline code in a cell copies on tap; inline code inside a link keeps the link', async () => {
+  copiedTexts.length = 0;
+  let interactions = 0;
+  const cell = children => ({ children, align: null });
+  const block = { kind: 'table', header: [cell([{ kind: 'text', text: 'Run ' }, { kind: 'code', text: 'npm test' }])],
+    rows: [[cell([{ kind: 'link', href: 'https://example.com', children: [{ kind: 'code', text: 'linked' }] }])]] };
+  let root;
+  await act(async () => { root = create(React.createElement(output.exports.MarkdownTable, {
+    block, fullscreen: true, tone: color => ({ color }), allowed: new WeakSet(), onExpand() {}, onInteraction() { interactions++; },
+  })); });
+  try {
+    const code = root.root.findAllByType('Text').find(node => node.props.children === 'npm test');
+    assert.equal(code.props.accessibilityRole, 'button');
+    await act(async () => code.props.onPress());
+    assert.deepEqual(copiedTexts, ['npm test']);
+    assert.ok(interactions > 0, 'tap cancels the double-tap expand gesture');
+    const linked = root.root.findAllByType('Text').find(node => node.props.children === 'linked');
+    assert.equal(linked.props.onPress, undefined);
+    assert.equal(linked.parent.parent.props.accessibilityRole, 'link');
   } finally { await act(async () => root.unmount()); }
 });

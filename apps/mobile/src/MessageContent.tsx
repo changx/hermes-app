@@ -34,7 +34,7 @@ type ExpandTarget = { kind: 'message' } | { kind: 'table' | 'diagram'; block: Bl
 type OpenExpand = (target: ExpandTarget) => void;
 const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
 
-function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Tone; onInteraction: () => void }) {
+function InlineText({ nodes, tone, onInteraction, inLink = false }: { nodes: Inline[]; tone: Tone; onInteraction: () => void; inLink?: boolean }) {
   const router = useSessionNavigation();
   const openLink = (href: string) => {
     const route = sessionLinkRoute(href);
@@ -46,19 +46,23 @@ function InlineText({ nodes, tone, onInteraction }: { nodes: Inline[]; tone: Ton
     switch (node.kind) {
       case 'text': return <React.Fragment key={key}>{node.text}</React.Fragment>;
       case 'break': return <React.Fragment key={key}>{'\n'}</React.Fragment>;
-      case 'code': return <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</AnimatedText>;
+      // Inline code copies on tap, like code blocks. Inside a link, the link wins.
+      case 'code': return inLink
+        ? <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]}>{node.text}</AnimatedText>
+        : <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]} accessibilityRole="button" accessibilityHint="Copies the code to the clipboard"
+            onPressIn={onInteraction} onPress={() => { onInteraction(); void copyWithToast(node.text); }}>{node.text}</AnimatedText>;
       case 'math': return <AnimatedText key={key} style={[styles.inlineCode, tone('#20314a')]}>{`$${node.text}$`}</AnimatedText>;
       case 'image': case 'video': return null; // Media is split out before Text.
-      case 'em': return <AnimatedText key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
-      case 'strong': return <AnimatedText key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
-      case 'strike': return <AnimatedText key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
+      case 'em': return <AnimatedText key={key} style={styles.em}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink={inLink} /></AnimatedText>;
+      case 'strong': return <AnimatedText key={key} style={styles.strong}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink={inLink} /></AnimatedText>;
+      case 'strike': return <AnimatedText key={key} style={styles.strike}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink={inLink} /></AnimatedText>;
       case 'link': return node.href
         ? <AnimatedText key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPressIn={onInteraction}
             onPress={() => { onInteraction(); openLink(node.href!); }}>
-            <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} />
+            <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink />
           </AnimatedText>
-        : <AnimatedText key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} /></AnimatedText>;
+        : <AnimatedText key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink={inLink} /></AnimatedText>;
     }
   })}</>;
 }

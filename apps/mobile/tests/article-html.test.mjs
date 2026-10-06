@@ -40,3 +40,11 @@ test('article code blocks carry an indexed copy target with the exact original t
   assert.match(page.html, /'copy:'/);
   assert.doesNotMatch(page.html, /<b>&<\/b>/);
 });
+
+test('article inline code copies by index; inline code inside a link stays a link', () => {
+  const page = render('Run `npm test` or [`docs`](https://example.com).\n\n```\nblock\n```');
+  assert.deepEqual([...page.copies], ['npm test', 'block']);
+  assert.match(page.html, /<code class="copyable" data-copy="0" role="button">npm test<\/code>/);
+  assert.match(page.html, /<a href="https:\/\/example.com\/" data-link="0"><code>docs<\/code><\/a>/);
+  assert.match(page.html, /closest\('\[data-copy\]'\)/);
+});
