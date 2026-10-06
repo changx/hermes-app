@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from './FontSize';
-import { useLayoutState } from '@shopify/flash-list';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -319,7 +318,7 @@ async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
 
 /** Authenticated SDK bytes only; no token-bearing image URLs, external viewers, or eager non-image downloads. */
 export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
-  const [loaded, setLoaded] = useLayoutState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
+  const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
   const { openViewer } = useViewer();
   const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, AbortController>()), generation = useRef(0);
   const load = async (attachment: Attachment) => {

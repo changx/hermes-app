@@ -26,19 +26,19 @@ for (const target of [undefined, 101]) test(`production mobile opening publishes
       send(value) { queueMicrotask(() => listener(value === 'ping' ? 'pong' : JSON.stringify({ ...JSON.parse(value), type: 'watching' }))); }
     }; } }
   });
-  const starts = [], context = { client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 0 }, ownedWatch: { current: null },
-    setPageCursor(value) { context.pageCursor = value; }, setHistoryBusy(value) { context.historyBusy = value; }, setLocated(value) { context.located = value; },
-    setStartRef(value) { starts.push(value); }, setError(value) { assert.fail(value); }
+  const located = [], context = { client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 0 }, ownedWatch: { current: null },
+    setHistoryBusy(value) { context.historyBusy = value; }, setLocated(value) { context.located = value; if (value) located.push(client.messages.get('t')?.length ?? 0); },
+    setError(value) { assert.fail(value); }
   };
   runInNewContext(ts.transpileModule(`globalThis.openThread = ${opener};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   try {
     const pending = context.openThread('t', target);
     const end = Date.now() + 3000;
     while (!paths.some(path => path.includes('/messages'))) { assert.ok(Date.now() < end); await new Promise(resolve => setImmediate(resolve)); }
-    assert.equal(context.historyBusy, true); assert.equal(context.located, false); assert.deepEqual(starts, [null]);
+    assert.equal(context.historyBusy, true); assert.equal(context.located, false); assert.deepEqual(located, []);
     finish(); await pending;
-    assert.equal(context.located, true); assert.equal(context.historyBusy, false); assert.equal(context.pageCursor, null);
-    assert.deepEqual(starts, [null, 1]); assert.equal(client.messages.get('t').length, 250);
+    assert.equal(context.located, true); assert.equal(context.historyBusy, false);
+    assert.deepEqual(located, [250]); assert.equal(client.messages.get('t').length, 250);
     assert.deepEqual(paths.filter(path => path.includes('/messages')), ['/v1/threads/t/messages?full=true']);
   } finally { finish(); client.close(); }
 });

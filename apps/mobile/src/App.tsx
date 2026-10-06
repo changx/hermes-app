@@ -26,7 +26,7 @@ import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { LabelPills, LabelsEditor } from './SessionLabels';
-import { projectTimeline, windowStart, type TimelinePosition } from './timeline';
+import { projectTimeline } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
 
@@ -279,7 +279,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   focusedRef.current = focused;
   const [editingLabels, setEditingLabels] = useState(false);
   const draftKey = `${config?.id ?? ''}:${threadId}`;
-  const [text, setText] = useState(() => textDrafts.current.get(draftKey) || ''), [pageCursor, setPageCursor] = useState<string | null>(null), [historyBusy, setHistoryBusy] = useState(false);
+  const [text, setText] = useState(() => textDrafts.current.get(draftKey) || ''), [historyBusy, setHistoryBusy] = useState(false);
   useEffect(() => {
     if (text) textDrafts.current.set(draftKey, text);
     else textDrafts.current.delete(draftKey);
@@ -300,11 +300,11 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const attachmentsBusy = attachmentDraft.scope === composerScope && attachmentDraft.busy;
   const renderAttachments = useCallback((row: TimelineRow) => client && row.attachments?.length
     ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
-  const [located, setLocated] = useState(false), [startRef, setStartRef] = useState<number | null>(null);
+  const [located, setLocated] = useState(false);
   const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
-  // Entry loads the complete transcript; native virtualization limits rendered rows.
-  const [entryPosition] = useState<TimelinePosition>(() => ({ offset: 0, following: targetRef === undefined, startRef: null }));
+  // Entry loads the complete transcript once; the timeline renders every row.
+  const [entryPosition] = useState(() => ({ following: targetRef === undefined }));
   const receiptHydrator = useRef<VisibleReceiptHydrator | null>(null);
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -338,12 +338,12 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const openThread = async (id: string, requestedRef: number | undefined) => {
     if (!client || !focusedRef.current || !appActive.current) return;
     const opening = ++openingRef.current;
-    setPageCursor(null); setHistoryBusy(true); setLocated(false); setStartRef(null);
+    setHistoryBusy(true); setLocated(false);
     let contentShown = false;
     const releaseContent = () => {
       if (contentShown || !focusedRef.current || !appActive.current || opening !== openingRef.current || client.currentThreadId !== id) return;
       contentShown = true;
-      setPageCursor(client.currentOlderCursor); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null); setLocated(true); setHistoryBusy(false);
+      setLocated(true); setHistoryBusy(false);
     };
     try {
       const openingTask = client.openConversation(id, requestedRef, undefined, releaseContent); ownedWatch.current = client.currentConversationKey;
@@ -353,18 +353,6 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     finally { if (!contentShown && focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
   };
   const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
-  const loadOlder = async () => {
-    if (!client || !focusedRef.current || !appActive.current || historyBusy || !pageCursor) return;
-    timelineRef.current?.holdPosition();
-    const opening = openingRef.current, id = threadId;
-    setHistoryBusy(true);
-    try {
-      await client.loadFullHistory(id);
-      if (!focusedRef.current || opening !== openingRef.current) return;
-      setPageCursor(null); setStartRef(client.messages.get(id)?.[0]?.ref_seq ?? null);
-    } catch { if (appActive.current && focusedRef.current && opening === openingRef.current) setError('Could not load earlier messages. Your current conversation is still available.'); }
-    finally { if (focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
-  };
   const send = () => run(async () => {
     const box = outboxRef.current;
     if (!config || !focusedRef.current || !box || box.storage.connectionId !== config.id) return;
@@ -394,8 +382,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   });
 
   const messages = client.messages.get(threadId) ?? EMPTY_MESSAGES;
-  const first = useMemo(() => windowStart(messages, startRef), [messages, startRef]);
-  const visibleMessages = useMemo(() => located ? messages.slice(first) : EMPTY_MESSAGES, [located, messages, first]);
+  const visibleMessages = located ? messages : EMPTY_MESSAGES;
   // Scoped receipt/interaction maps mutate in place. Their small signatures are
   // dependencies, while transcript objects never enter a serialized signature.
   const receiptSignature = JSON.stringify([...client.receipts.values()]);
@@ -425,8 +412,8 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     const task = { controller: new AbortController() }, opening = openingRef.current;
     tailRepairRef.current = task;
     try {
-      // Data repair is not navigation: retain located/startRef/older cursor and
-      // the generation of an ongoing pull. SDK continues the saved forward page.
+      // Data repair is not navigation: retain located state and
+      // any ongoing open. SDK continues the saved forward page.
       await client.recoverHistoryTail(threadId, task.controller.signal);
       if (!task.controller.signal.aborted && focusedRef.current && opening === openingRef.current)
         setError((previous: string) => previous === 'Could not update recent messages. Your current conversation is still available.' ? '' : previous);
@@ -442,7 +429,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   }, [focused, revision, client, threadId, located, connectionEpoch, status]);
   useEffect(() => {
     const lostOwnership = client && (client.currentThreadId !== threadId || client.currentConversationKey !== ownedWatch.current);
-    if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (lostOwnership || !pageCursor) && (anchor === undefined || !error)) void openThread(threadId, anchor);
+    if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (anchor === undefined || !error)) void openThread(threadId, anchor);
   }, [focused, client, threadId, revision, connectionEpoch]);
   useEffect(() => {
     return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
@@ -467,12 +454,9 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
-      hasNewer={anchor !== undefined && !!client.currentNewerCursor} onNewer={() => run(async () => { await client.loadNewer(threadId); })}
-      startRef={visibleMessages[0]?.ref_seq ?? null} hasOlder={located && !!pageCursor}
-      locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : pageCursor ? 'More messages to load before the latest conversation.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
+      locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}
-      onOlder={loadOlder}
-      position={entryPosition} onPosition={() => {}}
+      position={entryPosition}
       onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}

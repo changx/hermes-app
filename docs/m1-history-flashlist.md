@@ -1,5 +1,7 @@
 # 历史 prepend：改用 FlashList v2
 
+> 已被 [m1-history-scrollview.md](m1-history-scrollview.md) 取代：手机时间线不再使用 FlashList。
+
 ## 本轮用户确认
 
 前面发布的自制位置补偿在真机仍会跳位。Jamie 明确要求采用成熟方案，允许松手位置轻微变化，只要能自然继续阅读；随后明确去掉松手后一秒加载的限制。

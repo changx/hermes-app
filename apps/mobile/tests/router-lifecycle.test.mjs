@@ -8,7 +8,6 @@ import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
 import { loadRenderResources } from './render-resource-fixture.mjs';
 import { build } from 'esbuild';
-import * as historyBlocks from '../src/historyBlocks.ts';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
@@ -126,11 +125,10 @@ async function harness({ multiple = false, list = false, strict = false, product
     './ChatTimeline': { ChatTimeline: React.forwardRef((props, ref) => {
       const scene = React.useRef({ offset: 0, following: true, media: {}, selection: null }); scenes.set(props.threadId, scene.current);
       React.useEffect(() => () => { scene.current.disposed = true; }, []);
-      timelines.set(props.threadId, props); React.useImperativeHandle(ref, () => ({ followLatest() {}, holdPosition() {} }));
+      timelines.set(props.threadId, props); React.useImperativeHandle(ref, () => ({ followLatest() {} }));
       return React.createElement('Chat', { threadId: props.threadId, text: props.text });
     }) },
     './SessionLabels': { LabelPills: 'LabelPills', LabelsEditor: 'LabelsEditor' }, './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
-    './historyBlocks': historyBlocks,
     './timeline': timeline,
     './sendNotice': sendNotice,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
@@ -400,14 +398,14 @@ test('background and foreground retain timeline instance, older reading boundary
   const h = await harness();
   try {
     h.api.client.messages.set('t_one', Array.from({length:20},(_,index)=>({id:'m'+index,ref_seq:index+1,role:index%2===0?'user':'assistant',text:'synthetic '+index})));
-    await h.revision(); await act(async()=>h.timelines.get('t_one').onOlder());
-    assert.equal(h.timelines.get('t_one').startRef,1);
+    await h.revision();
+    assert.equal(h.timelines.get('t_one').rows.length,20,'complete transcript is rendered without a window');
     await act(async()=>h.timelines.get('t_one').onText('keep selected draft'));
     const scene=h.scenes.get('t_one');scene.offset=234;scene.following=false;scene.selection={start:3,end:6};const media=scene.media;
     const messages=h.api.client.messages.get('t_one'),owner=h.api.client.currentConversationKey;
     await h.appState('inactive');await h.appState('background');
     assert.equal(h.scenes.get('t_one'),scene);assert.notEqual(scene.disposed,true);assert.equal(h.api.client.messages.get('t_one'),messages);assert.equal(h.api.client.currentConversationKey,owner);assert.equal(h.counts.closed,0);
-    await h.appState('active');assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,234);assert.equal(scene.following,false);assert.equal(scene.media,media);assert.deepEqual(scene.selection,{start:3,end:6});assert.equal(h.timelines.get('t_one').startRef,1);assert.equal(h.timelines.get('t_one').text,'keep selected draft');
+    await h.appState('active');assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,234);assert.equal(scene.following,false);assert.equal(scene.media,media);assert.deepEqual(scene.selection,{start:3,end:6});assert.equal(h.timelines.get('t_one').rows.length,20);assert.equal(h.timelines.get('t_one').text,'keep selected draft');
     await h.render('t_one',true);assert.notEqual(scene.disposed,true);await h.render(null);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
   } finally { await h.close(); }
 });
@@ -416,7 +414,7 @@ test('tool detail and nested readers preserve the current session scene without 
   const h = await harness();
   try {
     h.api.client.messages.set('t_one', Array.from({length:20},(_,index)=>({id:'m'+index,ref_seq:index+1,role:index%2===0?'user':'assistant',text:'synthetic '+index})));
-    await h.revision(); await act(async()=>h.timelines.get('t_one').onOlder());
+    await h.revision();
     await act(async()=>h.timelines.get('t_one').onText('reader draft'));
     const scene=h.scenes.get('t_one'),messages=h.api.client.messages.get('t_one'),opens=h.opens;
     scene.offset=456;scene.following=false;const media=scene.media;
@@ -425,7 +423,7 @@ test('tool detail and nested readers preserve the current session scene without 
     await h.render('t_one','nested-detail');await h.appState('background');await h.appState('active');
     await h.render('t_one','tool-detail');await h.render('t_one',false);
     assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,456);assert.equal(scene.following,false);assert.equal(scene.media,media);
-    assert.equal(h.timelines.get('t_one').startRef,1);assert.equal(h.timelines.get('t_one').text,'reader draft');assert.equal(h.opens,opens);
+    assert.equal(h.timelines.get('t_one').rows.length,20);assert.equal(h.timelines.get('t_one').text,'reader draft');assert.equal(h.opens,opens);
     await h.render(null);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
     await h.render('t_one','standalone');assert.equal(h.api.client.currentThreadId,null);assert.equal(h.opens,opens);
   } finally { await h.close(); }

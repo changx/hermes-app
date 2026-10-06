@@ -14,8 +14,7 @@ const flush = () => { const jobs = [...state.frames.values()]; state.frames.clea
 const mocks = {
   'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:()=>({remove(){}})}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
-  '@shopify/flash-list': `import React from 'react'; export const FlashList=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({getScrollResponder:()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o)}),scrollToOffset:o=>globalThis.__entryTest.commands.push(o)}));return React.createElement('FlashList',p, p.data.map((item,index)=>React.createElement(React.Fragment,{key:item.key},p.renderItem({item,index,target:'Cell'}))), p.ListFooterComponent);});`,
-  'react-native-keyboard-controller': `export const KeyboardChatScrollView='KeyboardChatScrollView',KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
+  'react-native-keyboard-controller': `import React from 'react'; export const KeyboardChatScrollView=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o),scrollTo:o=>globalThis.__entryTest.commands.push({to:o.y,animated:o.animated})}));return React.createElement('ChatScroll',p,p.children);}); export const KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
   'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade}; export const FadeIn=fade,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
   'react-native-safe-area-context': `export const useSafeAreaInsets=()=>({bottom:0});`,
   'expo-blur': `export const BlurTargetView='BlurTargetView',BlurView='BlurView';`,
@@ -29,7 +28,7 @@ const bundle = await build({ entryPoints: [new URL('../src/ChatTimeline.tsx', im
 }}] });
 const mod = {exports:{}}; new Function('module','exports','require',bundle.outputFiles[0].text)(mod,mod.exports,require);
 const ChatTimeline = mod.exports.ChatTimeline;
-const defaults = { active:true,threadId:'t',rows:[],startRef:null,hasOlder:false,onOlder(){},onPosition(){},text:'',onText(){},onSend(){},receipts:[],interactions:[],answers:{},onAnswerText(){},onAnswer(){},onCancel(){},onStop(){},busy:false };
+const defaults = { active:true,threadId:'t',rows:[],text:'',onText(){},onSend(){},receipts:[],interactions:[],answers:{},onAnswerText(){},onAnswer(){},onCancel(){},onStop(){},busy:false };
 const rows = [{key:'u1',role:'user',text:'Synthetic history',refSeq:1}];
 const labels = root => root.root.findAllByType('Text').map(node => node.props.children).filter(value => typeof value === 'string');
 test('Agent response Working is visible before output, merges once and disappears on final', async () => {
@@ -93,36 +92,43 @@ test('receipt lifecycle, approvals and direct replies stop or retain the single 
   finally {await act(async()=>directRoot.unmount());}
 });
 async function mount(extra={}) { state.commands=[];state.frames.clear();let root;await act(async()=>{root=create(React.createElement(ChatTimeline,{...defaults,...extra}));});return root; }
-const list = root => root.root.findByType('FlashList');
-test('empty loading page receives first user-only history and follows without a content-size event',async()=>{
-  const root=await mount({position:{offset:0,following:true,startRef:null}});
-  assert.equal(list(root).props.maintainVisibleContentPosition.startRenderingFromBottom,true);
-  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows,position:{offset:0,following:true,startRef:null}})));
-  flush();assert.deepEqual(state.commands,[{animated:false}]);
-  await act(async()=>root.unmount());
-});
-test('onLoad follows final native extent; user reading and covered-page return do not reset',async()=>{
-  const root=await mount({rows});
-  flush();state.commands=[];
-  list(root).props.onLoad();flush();assert.deepEqual(state.commands,[{animated:false}]);
-  const geometry=y=>({nativeEvent:{contentOffset:{y},contentSize:{height:2000},layoutMeasurement:{height:500}}});
-  await act(async()=>{list(root).props.onScroll(geometry(1500));list(root).props.onScrollBeginDrag();list(root).props.onScroll(geometry(900));
-    list(root).props.onScrollEndDrag(geometry(900));});state.commands=[];
-  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows,active:false})));
-  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows,active:true})));
-  list(root).props.onLoad();flush();assert.deepEqual(state.commands,[]);
-  await act(async()=>root.unmount());
-});
-test('attachment entry and restored reading positions never initialize at bottom',async()=>{
-  for(const extra of [{targetRef:1,rows,position:{offset:0,following:false,startRef:1}},{rows,position:{offset:250,following:false,startRef:1}}]){
-    const root=await mount(extra);assert.equal(list(root).props.maintainVisibleContentPosition.startRenderingFromBottom,false);
-    if(extra.targetRef)assert.equal(list(root).props.initialScrollIndex,0);
-    list(root).props.onLoad();flush();assert.deepEqual(state.commands,[]);await act(async()=>root.unmount());
-  }
-});
+const list = root => root.root.findByType('ChatScroll');
 const geometry = (y, height=2000, viewport=500) => ({nativeEvent:{contentOffset:{y},contentSize:{height},layoutMeasurement:{height:viewport}}});
 const measure = async root => { await act(async()=>{list(root).props.onLayout({nativeEvent:{layout:{height:500}}});list(root).props.onContentSizeChange(300,2000);list(root).props.onScroll(geometry(1500));});flush();state.commands=[]; };
 const readOlder = async root => { await act(async()=>{list(root).props.onScrollBeginDrag();list(root).props.onScroll(geometry(900));list(root).props.onScrollEndDrag(geometry(900));});flush();state.commands=[]; };
+test('plain scroll view renders every row with no pull-to-load control',async()=>{
+  const many=Array.from({length:300},(_,i)=>({key:'m'+i,role:i%2?'assistant':'user',text:'Row '+i,refSeq:i+1}));
+  const root=await mount({rows:many});
+  try {
+    assert.equal(root.root.findAllByType('MessageContent').length,300);
+    assert.equal(list(root).props.refreshControl,undefined);
+    assert.ok(!labels(root).some(x=>/earlier messages|Release to load|Loading history/.test(x)));
+  } finally { await act(async()=>root.unmount()); }
+});
+test('empty loading page receives first history and follows without a content-size event',async()=>{
+  const root=await mount({position:{following:true}});
+  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows,position:{following:true}})));
+  flush();assert.deepEqual(state.commands,[{animated:false}]);
+  await act(async()=>root.unmount());
+});
+test('source target scrolls to its measured row and never to the bottom',async()=>{
+  const many=[{key:'a',role:'user',text:'A',refSeq:1},{key:'b',role:'assistant',text:'B',refSeq:2},{key:'c',role:'user',text:'C',refSeq:3}];
+  const root=await mount({rows:many,targetRef:2,position:{following:false}});
+  const cells=list(root).findAll(n=>n.type==='View'&&typeof n.props.onLayout==='function'&&n.parent===list(root));
+  await act(async()=>{list(root).props.onLayout({nativeEvent:{layout:{height:500}}});cells.forEach((c,i)=>c.props.onLayout({nativeEvent:{layout:{y:i*400,height:400}}}));});
+  flush();assert.deepEqual(state.commands,[{to:388,animated:false}]);
+  await act(async()=>root.unmount());
+});
+test('visible refs come from measured row frames and scroll offset',async()=>{
+  const seen=[];const many=Array.from({length:6},(_,i)=>({key:'m'+i,role:'user',text:'Row '+i,refSeq:i+1}));
+  const root=await mount({rows:many,onVisibleRefs:refs=>seen.push(refs)});
+  const cells=list(root).findAll(n=>n.type==='View'&&typeof n.props.onLayout==='function'&&n.parent===list(root));
+  await act(async()=>{list(root).props.onLayout({nativeEvent:{layout:{height:500}}});cells.forEach((c,i)=>c.props.onLayout({nativeEvent:{layout:{y:i*300,height:300}}}));});
+  assert.deepEqual(seen.at(-1),[1,2]);
+  await act(async()=>list(root).props.onScroll(geometry(700,1800)));
+  assert.deepEqual(seen.at(-1),[3,4]);
+  await act(async()=>root.unmount());
+});
 test('delayed rich-content growth still follows when onScroll reports the new height first',async()=>{
   const root=await mount({rows});await measure(root);
   list(root).props.onScroll(geometry(1500,2300));
@@ -136,8 +142,7 @@ test('viewport and controller inset changes follow; keyboard motion defers the c
   const root=await mount({rows});await measure(root);
   await act(async()=>list(root).props.onLayout({nativeEvent:{layout:{height:400}}}));flush();
   assert.deepEqual(state.commands,[{animated:false}]);state.commands=[];
-  const scroll=list(root).props.renderScrollComponent({});
-  state.keyboard.onStart();scroll.props.onContentInsetChange({bottom:300});flush();
+  state.keyboard.onStart();list(root).props.onContentInsetChange({bottom:300});flush();
   assert.deepEqual(state.commands,[]);
   state.keyboard.onEnd();flush();assert.deepEqual(state.commands,[{animated:false}]);
   await act(async()=>root.unmount());

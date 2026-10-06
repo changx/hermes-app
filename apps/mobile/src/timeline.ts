@@ -89,20 +89,6 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
   return rows;
 }
 
-export function windowStart(messages: readonly Message[], startRef: number | null, count = 30): number {
-  if (!messages.length) return 0;
-  if (startRef !== null) {
-    const index = messages.findIndex(m => m.ref_seq === startRef);
-    if (index >= 0) return index;
-  }
-  return Math.max(0, messages.length - count);
-}
-
-export function olderStart(messages: readonly Message[], startRef: number | null, count = 30): number | null {
-  const index = windowStart(messages, startRef);
-  return messages[Math.max(0, index - count)]?.ref_seq ?? null;
-}
-
 export interface TimelinePosition { offset: number; following: boolean; startRef: number | null }
 export const nearLatest = (offset: number, contentHeight: number, viewportHeight: number, inset = 0): boolean =>
   latestOffset(contentHeight, viewportHeight, inset) - offset <= 80;
@@ -140,27 +126,8 @@ export function scrollStateFromEvent(
     : following };
 }
 
-export interface NativeScrollEnd { scrollToEnd(options: { animated: boolean }): void }
-export interface ExactScrollList {
-  getScrollResponder(): unknown;
-  scrollToOffset(options: { offset: number; animated: boolean }): void;
-}
-
 export const latestOffset = (contentHeight: number, viewportHeight: number, inset = 0): number =>
   Math.max(0, contentHeight + inset - viewportHeight);
-
-// FlatList.scrollToEnd uses an estimated last-cell frame on heterogeneous rows.
-// The underlying ScrollView dispatches the native scrollToEnd command against its
-// actual content extent (including its keyboard-controlled native contentInset).
-// Fallback only to measured content geometry, never to last-cell estimates.
-export function scrollToExactEnd(list: ExactScrollList | null, contentHeight: number, viewportHeight: number, animated: boolean, inset = 0): boolean {
-  if (!list) return false;
-  const scroll = list.getScrollResponder() as NativeScrollEnd | null | undefined;
-  if (scroll?.scrollToEnd) { scroll.scrollToEnd({ animated }); return true; }
-  if (!contentHeight || !viewportHeight) return false;
-  list.scrollToOffset({ offset: latestOffset(contentHeight, viewportHeight, inset), animated });
-  return true;
-}
 
 export const shouldFollowContentChange = (following: boolean, dragging: boolean, previous: number, next: number): boolean =>
   following && !dragging && next > 0 && previous !== next;
