@@ -26,7 +26,9 @@ Desktop (published):
 - The normal tag run passed checks, audit, packaging and archive validation, then failed only at artifact upload because the Actions storage quota is exhausted (same blocker as v0.1.32). The source-pinned Desktop Direct Release run `37454930846` succeeded.
 - Release `v0.1.36` is not a draft or prerelease. Downloaded ZIP checksum passed: `3b82d19f875a3f0f078d4795752cd3c40e675f3a94b1b1b094218753b036e5bd`. Info.plist and ASAR report `0.1.36`; executable is Mach-O arm64; the renderer contains the Project count code.
 
-Mobile (not yet published):
-- The Expo service runs Metro in CI mode, so it does not watch files. After the runtime checkout moved to `7e16e5b`, Metro could not resolve the new `connections.tsx`; the Android bundle returned HTTP 500. The runtime checkout was rolled back to `e6c2d57` at once; both platform bundles returned HTTP 200 again.
-- Publication needs the runtime checkout at `7e16e5b` and an Expo service restart. The restart is blocked from inside the agent process and must be run from a separate shell.
-- No Gateway or plugin change was made. The Expo service was not restarted.
+Mobile (published):
+- First attempt: the Expo service runs Metro in CI mode, so it does not watch files. Moving the runtime checkout to `7e16e5b` without a restart made the Android bundle return HTTP 500 (new `connections.tsx` not resolved). The checkout was rolled back to `e6c2d57` at once; both bundles returned HTTP 200 again.
+- With Jamie's authorization, the runtime checkout was moved to `7e16e5b` and only `hermes-app-expo` was restarted (new PID 4016948, 2026-10-06 04:20:54 PDT). Rule: a runtime checkout change needs an Expo restart in the same step.
+- Public `https://agent.tuly.space` manifests and bundles: iOS 200 (12,345,871 bytes), Android 200 (12,678,273 bytes). Both bundles contain the connection index key, `Add connection`, `Pair connection`, `Create in` and the Project count description.
+- Both Gateways kept their PIDs and start times (dev 3461455, Jamie 3469840). No plugin or core change. Runtime checkout is clean.
+- iPhone acceptance (migration of the existing pairing, Project list, adding a second Hermes, removal) is still pending.
