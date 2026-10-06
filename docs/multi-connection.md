@@ -37,7 +37,7 @@ Jamie asked to move connections into Settings and organize Settings into levels.
 - **Level 2 — Add connection:** pairing form; on success it opens the new connection's page, where pairing progress appears.
 - **Level 2 — Font size:** device preference.
 - First run with no connection uses `/welcome`, a full-screen pairing form outside Settings.
-- The gear on a channel or conversation opens that connection's page directly. The gear on the home screen opens level 1.
+- The gear on a channel or conversation opens that connection's page directly. The gear on the home screen opens level 1. *(Superseded: every gear now opens level 1, and sections are grouped by scope; see [Unified Settings](unified-settings.md).)*
 - Routes: `/settings`, `/settings/connection?connection=<slot>`, `/settings/add-connection`, `/settings/font-size`, `/welcome`. The old `/connection` and single `/settings` pages are removed.
 
 No plugin, Hermes core or protocol change.

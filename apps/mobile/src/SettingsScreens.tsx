@@ -11,7 +11,10 @@ import { useApp, useConnections } from './connections';
 
 import { connectionSettingsRoute } from './settingsRoutes';
 
-/** Level 1: every saved connection, then device preferences. */
+/**
+ * Level 1, the single Settings entry. Sections follow where a setting takes effect:
+ * each connection (its own page), then this device for every connection.
+ */
 export function SettingsHome() {
   const router = useRouter();
   const { connections, listError } = useConnections();
@@ -19,19 +22,22 @@ export function SettingsHome() {
   const full = connections.length >= MAX_CONNECTIONS;
   return <SettingsPage>
     {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
-    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen.">
+    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen. Open a connection for its status, Agent, default model and removal.">
       {connections.map((row, index) => <SettingsRow key={row.slot} first={index === 0} title={row.name} detail={row.server ?? undefined}
         value={connectionStateLabel(row)} issue={connectionNeedsAttention(row)} onPress={() => router.push(connectionSettingsRoute(row.slot))} />)}
       <SettingsRow first={!connections.length} title="Add connection" value={full ? 'Limit reached' : undefined}
         onPress={() => router.push('/settings/add-connection')} />
     </SettingsSection>
-    <SettingsSection title="Appearance">
+    <SettingsSection title="This device" footer="Applies on this device to every connection.">
       <SettingsRow first title="Font size" value={choice} onPress={() => router.push('/settings/font-size')} />
     </SettingsSection>
   </SettingsPage>;
 }
 
-/** Level 2: one connection — status, its Agent, its default model, removal. */
+/**
+ * Level 2: one connection, grouped by where each setting takes effect:
+ * status, on this Hermes (every device), on this device (this connection only).
+ */
 export function ConnectionSettings() {
   const { removeConnection, connections } = useConnections();
   const { slot, config, client, agentName } = useApp();
@@ -57,16 +63,18 @@ export function ConnectionSettings() {
         {!!detail && <Text style={styles.hint}>{detail}</Text>}
       </SettingsBlock>
     </SettingsSection>
-    {config && <SettingsSection title="Agent">
+    {config && client && <SettingsSection title="On this Hermes · all your devices"
+      footer="Conversations with their own model selection keep it. Running replies are not interrupted.">
+      <SettingsBlock first>
+        <Text style={styles.subhead}>Default model</Text>
+        {row.status === 'online' || client.connectionState === 'online' ? <ModelSettings key={config.id} client={client} />
+          : <Text style={styles.hint}>Model settings are available when this connection is online.</Text>}
+      </SettingsBlock>
+    </SettingsSection>}
+    {config && <SettingsSection title="On this device">
       <SettingsBlock first>
         <AgentNameSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
           saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} />
-      </SettingsBlock>
-    </SettingsSection>}
-    {config && client && <SettingsSection title="Default model">
-      <SettingsBlock first>
-        {row.status === 'online' || client.connectionState === 'online' ? <ModelSettings key={config.id} client={client} />
-          : <Text style={styles.hint}>Model settings are available when this connection is online.</Text>}
       </SettingsBlock>
     </SettingsSection>}
     <SettingsSection footer="Removing does not delete conversations on the server or stop running tasks.">
@@ -93,7 +101,7 @@ export function AddConnectionSettings() {
 /** Level 2: device font size. */
 export function FontSizePage() {
   return <SettingsPage>
-    <SettingsSection footer="Applies to this device: interface text and conversation reading.">
+    <SettingsSection footer="Applies on this device to every connection: interface text and conversation reading.">
       <SettingsBlock first><FontSizeSettings /></SettingsBlock>
     </SettingsSection>
   </SettingsPage>;
@@ -103,6 +111,7 @@ const styles = StyleSheet.create({
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, borderRadius: 8 },
   key: { fontSize: 13, color: '#607187' }, value: { fontSize: 16, color: '#172a40' }, issue: { color: '#8a5300' },
   hint: { fontSize: 13, lineHeight: 19, color: '#607187' },
+  subhead: { fontSize: 16, fontWeight: '600', color: '#172a40' },
   danger: { minHeight: 50, borderRadius: 12, backgroundColor: '#fff', borderWidth: StyleSheet.hairlineWidth, borderColor: '#d5dde8', alignItems: 'center', justifyContent: 'center' },
   pressed: { backgroundColor: '#fff0f2' },
   dangerText: { fontSize: 16, color: '#b42335', fontWeight: '600' },

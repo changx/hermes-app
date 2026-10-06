@@ -32,12 +32,13 @@ const buttons = root => root.root.findAll(node => node.type === 'Pressable');
 const press = async (root, label) => { const node = buttons(root).find(b => b.props.accessibilityLabel === label); assert.ok(node, 'missing ' + label + ' in ' + buttons(root).map(b => b.props.accessibilityLabel)); await act(async () => node.props.onPress()); };
 const reset = () => Object.assign(state, { pushed: [], replaced: [], back: 0, alerts: [], removed: [], added: [] });
 
-test('Settings level 1 lists every connection, Add connection and Appearance', async () => {
+test('Settings level 1 groups connections, then This device', async () => {
   reset(); state.font = 'Large';
   state.connections = [runtime('primary', 'personal.example'), runtime('b'.repeat(24), 'work.example', { status: 'blocked' })];
   let root; await act(async () => { root = create(React.createElement(SettingsHome)); });
   const all = texts(root);
-  for (const heading of ['Connections', 'Appearance']) assert.ok(all.includes(heading), heading);
+  assert.ok(all.indexOf('Connections') >= 0 && all.indexOf('Connections') < all.indexOf('This device'), 'scope sections in order');
+  assert.ok(!all.includes('Appearance'), 'old feature-named section removed');
   assert.ok(all.includes('Needs attention'), 'state shown at level 1');
   assert.ok(all.includes('Large'), 'font size value shown at level 1');
   await press(root, 'work.example, Needs attention, https://work.example');
@@ -49,13 +50,18 @@ test('Settings level 1 lists every connection, Add connection and Appearance', a
   root.unmount();
 });
 
-test('Connection level 2 groups status, Agent, default model and confirmed removal', async () => {
+test('Connection level 2 groups status, this Hermes (model), this device (name) and confirmed removal', async () => {
   reset();
   state.connections = [runtime('primary', 'personal.example')];
   state.app = { slot: 'primary', config: { id: 'primary-id' }, client: { connectionState: 'online' }, agentName: { name: 'Tuly', ready: true, error: '', saving: false, save: async () => true, reload() {} } };
   let root; await act(async () => { root = create(React.createElement(ConnectionSettings)); });
   const all = texts(root);
-  for (const heading of ['Status', 'Agent', 'Default model']) assert.ok(all.includes(heading), heading);
+  const order = ['Status', 'On this Hermes · all your devices', 'Default model', 'On this device'].map(heading => all.indexOf(heading));
+  assert.ok(order.every(i => i >= 0) && order.every((v, i) => !i || v > order[i - 1]), 'scope groups in order: ' + order);
+  // Server-wide model sits above the device-only name; each control sits inside its own scope.
+  const tree = JSON.stringify(root.toJSON());
+  assert.ok(tree.indexOf('"Default model"') < tree.indexOf('ModelSettings') && tree.indexOf('ModelSettings') < tree.indexOf('"On this device"'));
+  assert.ok(tree.indexOf('"On this device"') < tree.indexOf('AgentNameSettings'));
   assert.equal(root.root.findAllByType('AgentNameSettings').length, 1);
   assert.equal(root.root.findAllByType('ModelSettings').length, 1);
   await press(root, 'Remove connection personal.example');
@@ -66,6 +72,21 @@ test('Connection level 2 groups status, Agent, default model and confirmed remov
   assert.deepEqual(state.removed, ['primary']);
   assert.equal(state.back, 0, 'route ownership, not this page, pops the removed connection');
   root.unmount();
+});
+
+test('every Settings gear opens Settings home; only Settings itself opens a connection page', async () => {
+  const { readdir, readFile } = await import('node:fs/promises');
+  const src = new URL('../src/', import.meta.url);
+  const files = (await readdir(src, { recursive: true })).filter(name => /\.tsx?$/.test(name));
+  const direct = [], gears = [];
+  for (const name of files) {
+    const text = await readFile(new URL(name, src), 'utf8');
+    if (text.includes('connectionSettingsRoute(') && !['SettingsScreens.tsx', 'settingsRoutes.ts'].includes(name)) direct.push(name);
+    for (const match of text.matchAll(/onSettings=\{\(\) => ([^}]*)\}/g)) gears.push([name, match[1]]);
+  }
+  assert.deepEqual(direct, [], 'connection Settings is reached only through Settings home');
+  assert.ok(gears.length >= 3, 'home, Channel and Thread gears found: ' + JSON.stringify(gears));
+  for (const [name, target] of gears) assert.equal(target, "router.push('/settings')", name);
 });
 
 test('offline connection explains model settings instead of failing', async () => {

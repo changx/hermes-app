@@ -4,6 +4,8 @@ Task: `t_810a35d8`. Initial candidate: `feat/desktop-settings`, based on `main` 
 
 ## Confirmed scope
 
+> Superseded structure: Settings is now grouped by where a setting takes effect, and the model moved to each connection's page. See [Unified Settings](unified-settings.md).
+
 The desktop Settings dialog uses left navigation and right content. The first three sections are Default agent model, Font size and Shortcuts. Connection is a separate section. Find a session remains available through the existing picker shortcut. Delete project moves to the Project editor, with the existing confirmation.
 
 All desktop Settings entry points use the same dialog. The old font-only dialog is removed. Paired devices initially show Default agent model. Unpaired devices initially show Font size and explain why model settings are unavailable.

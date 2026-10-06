@@ -56,6 +56,17 @@
 /* Darker than the session dot so white digits stay readable (about 5:1). */
 .project-unread-count { flex: 0 0 auto; margin-left: auto; min-width: 18px; padding: 1px 6px; border-radius: 999px; background: #1a66c9; color: #fff; font-size: 0.72em; font-weight: 600; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
 @media (max-width: 650px) { .settings-connection-list > li { flex-wrap: wrap; padding: 12px; } }
+/* Settings navigation and pages are grouped by where a setting takes effect. */
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-group + .settings-nav-group { margin-top: 14px; }
+.settings-nav-title { padding: 4px 12px; color: var(--app-muted); font-size: 0.78em; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.settings-nav button.settings-nav-connection { padding-left: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-nav-issue { color: #9a5b00; font-size: 0.85em; }
+.settings-group { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; width: 100%; padding-bottom: 22px; border-bottom: 1px solid var(--app-border); }
+.settings-group:last-child { border-bottom: 0; }
+.settings-group > h4 { margin: 0; font-size: 0.85em; font-weight: 600; color: var(--app-muted); text-transform: uppercase; letter-spacing: .04em; }
+.settings-group > h5 { margin: 4px 0 0; font-size: var(--app-font-size); font-weight: 600; }
+.settings-group .settings-model { width: 100%; }
 
 @font-face {
   font-family: "HermesWorkIcons";

@@ -24,7 +24,6 @@ import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
 import { useApp, useConnections } from './connections';
-import { connectionSettingsRoute } from './settingsRoutes';
 
 export { AppProvider, ConnectionScope, routeConnection, useApp, useConnections } from './connections';
 
@@ -247,7 +246,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
-      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onSettings={() => router.push(connectionSettingsRoute(slot))} /> }} />
+      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onSettings={() => router.push('/settings')} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
     {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}

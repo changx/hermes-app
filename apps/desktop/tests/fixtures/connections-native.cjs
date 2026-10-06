@@ -121,11 +121,10 @@ async function field(contents, label, value) {
     await fs.mkdir(process.env.HERMES_CONNECTIONS_EVIDENCE,{recursive:true});
     await fs.writeFile(path.join(process.env.HERMES_CONNECTIONS_EVIDENCE,'connections-fixture.png'),(await sw.capturePage()).toPNG());
   }
-  // Model target is explicit, not inferred from the active tab.
-  await evaluate(sw,"document.querySelector('#settings-tab-model').click()");
-  await until(()=>evaluate(sw,'!!document.querySelector("[aria-label=\\"Agent connection\\"]")'),'model connection selector');
-  await evaluate(sw,`(()=>{const e=document.querySelector('[aria-label="Agent connection"]');e.value='${peerRow.connectionKey}';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-  await until(()=>evaluate(sw,"document.querySelector('[aria-label=Model]')?.value==='second.example.test'"),'model read reaches second connection');
+  // Model target is the opened connection page, not inferred from the active tab.
+  await evaluate(sw,`document.querySelector('[data-connection-id="${peerRow.id}"] .settings-connection-open').click()`);
+  await until(()=>evaluate(sw,`document.querySelector('[role=tab][aria-selected=true]')?.textContent.startsWith(${JSON.stringify(peerRow.name)})`),'peer connection page selected');
+  await until(()=>evaluate(sw,"[...document.querySelectorAll('[aria-label=Model]')].find(e=>!e.closest('[hidden]'))?.value==='second.example.test'"),'model read reaches second connection');
   BrowserWindow.fromWebContents(sw).close(); await until(()=>!settingsForTest().isOpen,'Settings window closed');
   await until(()=>evaluate(shell,'document.querySelectorAll(".tree-thread").length===2'),'both connections sessions directly in sidebar');
   await evaluate(shell,`window.hermesDesktop.selectThread('${peerThread}')`);
@@ -181,13 +180,15 @@ async function field(contents, label, value) {
   peerAccount.service.connectionState='retrying';peerAccount.service.connectionIssue=undefined;peerAccount.service.changed();
   await until(()=>evaluate(sw,`document.querySelector(${peerStatus}).textContent==='Reconnecting'`),'per-connection reconnecting status');
   peerAccount.service.connectionState='online';peerAccount.service.changed();
-  await evaluate(sw,"document.querySelector('[data-connection-id=primary] button').click()");
+  await evaluate(sw,"document.querySelector('#settings-tab-connection-primary').click()");
+  await evaluate(sw,"document.querySelector('.settings-connection-page[data-connection-id=primary] .settings-remove').click()");
   assert.equal(manager.tabs.size,3,'confirmation must not remove anything');
   await evaluate(sw,"[...document.querySelectorAll('.settings-danger button')].find(e=>e.textContent==='Keep connection').click()");
   assert.equal(manager.tabs.size,3);
-  await evaluate(sw,"document.querySelector('[data-connection-id=primary] button').click()");
+  await evaluate(sw,"document.querySelector('.settings-connection-page[data-connection-id=primary] .settings-remove').click()");
   await evaluate(sw,"document.querySelector('.settings-danger button').click()");
   await until(()=>accounts.snapshot().connections.length===1,'exact primary connection removed');
+  await until(()=>evaluate(sw,"document.querySelector('[role=tab][aria-selected=true]')?.id==='settings-tab-connection'"),'removed page returns to Connections overview');
   await until(()=>primaryView.isDestroyed() && manager.tabs.size===2,'only primary tab released');
   assert.equal(primaryView.isDestroyed(),true); assert.equal(existingPeerView.isDestroyed(),false); assert.equal(manager.tabs.size,2);
   assert.equal(await evaluate(existingPeerView,"document.querySelector('.message-list').dataset.retained"),'peer-retained');

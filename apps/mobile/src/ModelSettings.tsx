@@ -61,7 +61,6 @@ export function ModelSettings({ client }: { client: ModelSettingsApi }) {
       <Text style={styles.buttonText}>{label}</Text>
     </Pressable>;
   return <View style={styles.section}>
-    <Text style={styles.hint}>Default for this Agent. Conversations with their own model selection keep it. Running replies are not interrupted.</Text>
     {!current && busy && <Text accessibilityLiveRegion="polite">Loading model settings…</Text>}
     {current && <>
       <Text style={styles.label}>Provider</Text>

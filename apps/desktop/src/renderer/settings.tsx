@@ -1,75 +1,17 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { AgentModelSettings, ModelSelectionConfirmation } from '@hermes-app/client';
 import type { DesktopSnapshot } from '../shared/desktop-api';
-import { ConnectionSettings } from './connection-settings';
+import { ConnectionPage, ConnectionSettings } from './connection-settings';
 import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize } from './font-preference';
 
-export type SettingsPage = 'model' | 'font' | 'shortcuts' | 'connection';
+/**
+ * Settings are grouped by where they take effect:
+ * - Connections: each saved Hermes. Its page separates settings on that Hermes
+ *   (every device) from settings kept on this device.
+ * - This device: preferences stored only in this app on this computer, for every connection.
+ */
+export type SettingsPage = 'connection' | `connection:${string}` | 'font' | 'shortcuts';
 type Page = SettingsPage;
-const pages: { id: Page; label: string }[] = [
-  { id: 'model', label: 'Default agent model' }, { id: 'font', label: 'Font size' },
-  { id: 'shortcuts', label: 'Shortcuts' }, { id: 'connection', label: 'Connections' },
-];
-
-function ModelSettings({ connectionKey }: { connectionKey?: string }) {
-  const [current, setCurrent] = useState<AgentModelSettings | null>(null);
-  const [provider, setProvider] = useState('');
-  const [model, setModel] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [confirmation, setConfirmation] = useState<ModelSelectionConfirmation | null>(null);
-  const [reload, setReload] = useState(0);
-  const alive = useRef(false);
-  const working = useRef(false);
-  useEffect(() => {
-    let active = true;
-    alive.current = true;
-    if (!connectionKey) return () => { alive.current = false; };
-    setBusy(true); setError(''); setNotice(''); setConfirmation(null); setCurrent(null);
-    void window.hermesDesktop.getModelSettings(connectionKey).then(value => {
-      if (active) { setCurrent(value); setProvider(value.provider); setModel(value.model); }
-    }, () => { if (active) setError('Could not load model settings. Try again.'); })
-      .finally(() => { if (active) setBusy(false); });
-    return () => { active = false; alive.current = false; };
-  }, [connectionKey, reload]);
-  const save = async (confirm = false) => {
-    if (!connectionKey || !current || busy || working.current || error || !provider || !model.trim()) return;
-    if (confirm && (!confirmation || confirmation.provider !== provider || confirmation.model !== model.trim())) return;
-    working.current = true; setBusy(true); setError(''); setNotice('');
-    try {
-      const result = await window.hermesDesktop.setModelSettings(connectionKey, provider, model.trim(), confirm);
-      if (!alive.current) return;
-      if ('confirmation_required' in result) { setConfirmation(result); return; }
-      setCurrent(result); setProvider(result.provider); setModel(result.model); setConfirmation(null);
-      setNotice('Default model saved.');
-    } catch { if (alive.current) setError('Could not confirm the change. Reload settings before trying again.'); }
-    finally { working.current = false; if (alive.current) setBusy(false); }
-  };
-  const edited = () => { setConfirmation(null); setNotice(''); };
-  const selected = current?.providers.find(item => item.id === provider);
-  return <div className="settings-section">
-    <p className="settings-description">Default for the connected Agent, across devices. Conversations with their own model selection keep it. Running replies are not interrupted.</p>
-    {!connectionKey ? <p>Connect to Hermes to choose a default model.</p> : <>
-      {busy && !current && <p role="status">Loading model settings…</p>}
-      {current && <form onSubmit={event => { event.preventDefault(); void save(); }}>
-        <label className="settings-field">Provider<select aria-label="Provider" value={provider} disabled={busy} onChange={event => {
-          const value = event.target.value; setProvider(value); setModel(value === current.provider ? current.model : ''); edited();
-        }}>
-          {!current.providers.some(item => item.id === provider) && <option value={provider}>{provider}</option>}
-          {current.providers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select></label>
-        <label className="settings-field">Model<input aria-label="Model" list="settings-model-options" value={model} maxLength={256} disabled={busy} autoComplete="off" spellCheck={false} placeholder="Choose or enter a model name" onChange={event => { setModel(event.target.value); edited(); }} /></label>
-        <datalist id="settings-model-options">{selected?.models.map(id => <option key={id} value={id} />)}</datalist>
-        <p className="settings-description">Choose a suggested model or enter its name.</p>
-        {confirmation ? <div className="settings-warning" role="status"><p>{confirmation.warning}</p><div className="settings-actions"><button type="button" disabled={busy || !!error} onClick={() => void save(true)}>Confirm model selection</button><button type="button" className="secondary" disabled={busy} onClick={() => setConfirmation(null)}>Cancel model selection</button></div></div> :
-          <button type="submit" disabled={busy || !!error || !provider || !model.trim() || (provider === current.provider && model.trim() === current.model)}>{busy ? 'Saving model…' : 'Save model'}</button>}
-      </form>}
-      {error && <><p role="alert">{error}</p><button type="button" className="secondary" disabled={busy} onClick={() => setReload(value => value + 1)}>Reload model settings</button></>}
-      {notice && <p role="status" className="settings-success">{notice}</p>}
-    </>}
-  </div>;
-}
+type NavItem = { id: Page; label: string; detail?: string; issue?: boolean };
 
 function FontSettings() {
   const [size, setSize] = useState(getFontSize);
@@ -79,7 +21,7 @@ function FontSettings() {
     setError(saved ? '' : 'This text size applies now, but could not be saved. It may reset when you reopen the app.');
   };
   return <div className="settings-section">
-    <p className="settings-description">Applies to interface and message text on this device. Changes apply immediately and remain after you reopen the app.</p>
+    <p className="settings-description">Applies to interface and message text on this device, for every connection. Changes apply immediately and remain after you reopen the app.</p>
     <label className="settings-field">Text size<select autoFocus aria-label="Text size" value={size} onChange={event => change(Number(event.target.value))}>{FONT_SIZES.map(value => <option key={value} value={value}>{value} px{value === DEFAULT_FONT_SIZE ? ' (default)' : ''}</option>)}</select></label>
     <div className="settings-preview"><span className="settings-description">Preview</span><p>The quick brown fox jumps over the lazy dog.</p><code>const message = 'Hello, Hermes';</code></div>
     {error && <p role="alert">{error}</p>}
@@ -101,39 +43,58 @@ function Shortcuts() {
 }
 
 const PAGE_KEY = 'hermes.desktop.settings-page';
-const savedPage = (): Page | undefined => {
-  try { const value = window.localStorage.getItem(PAGE_KEY); return pages.some(item => item.id === value) ? value as Page : undefined; } catch { return undefined; }
+const savedPage = (): string | undefined => {
+  try { return window.localStorage.getItem(PAGE_KEY) ?? undefined; } catch { return undefined; }
 };
+/** DOM-safe element id; connection ids are stored data, not trusted selector text. */
+export const settingsTabId = (page: string) => `settings-tab-${page.startsWith('connection:')
+  ? 'connection-' + Array.from(page.slice(11), c => /[A-Za-z0-9_-]/.test(c) ? c : `_${c.charCodeAt(0).toString(16)}`).join('') : page}`;
 
-/** Full content of the native Settings window: left navigation, right content. */
+/** Full content of the native Settings window: grouped left navigation, right content. */
 export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const root = useRef<HTMLElement>(null);
-  const [page, updatePage] = useState<Page>(() => savedPage() ?? (snapshot.connectionKey ? 'model' : 'font'));
+  const rows = snapshot.connections ?? [];
+  const groups: { title: string; items: NavItem[] }[] = [
+    { title: 'Connections', items: [{ id: 'connection', label: 'All connections' },
+      ...rows.map(row => ({ id: `connection:${row.id}` as Page, label: row.name, detail: row.server, issue: row.state === 'blocked' }))] },
+    { title: 'This device', items: [{ id: 'font', label: 'Font size' }, { id: 'shortcuts', label: 'Shortcuts' }] },
+  ];
+  const items = groups.flatMap(group => group.items);
+  const known = (value?: string): value is Page => !!value && items.some(item => item.id === value);
+  // The window's first snapshot can be empty; until the user chooses, the default
+  // follows the current connection once the real snapshot arrives.
+  const [chosen, updatePage] = useState<string | undefined>(savedPage);
+  const fallback = rows.find(row => row.connectionKey && row.connectionKey === snapshot.connectionKey) ?? rows.find(row => row.connectionKey);
+  // Unknown, removed or former ("model") pages resolve to the current connection, else the overview.
+  const page: Page = known(chosen) ? chosen : fallback && (chosen === undefined || chosen === 'model') ? `connection:${fallback.id}` : 'connection';
   const setPage = (value: Page) => { updatePage(value); try { window.localStorage.setItem(PAGE_KEY, value); } catch { /* Navigation still works for this window. */ } };
-  const [modelKey, setModelKey] = useState(snapshot.connectionKey);
-  const modelConnections = (snapshot.connections ?? []).filter(row => row.connectionKey);
+  const shown = page;
   useEffect(() => {
-    if (snapshot.connections && !modelConnections.some(row => row.connectionKey === modelKey)) setModelKey(modelConnections[0]?.connectionKey);
-  }, [snapshot.connections, modelKey]);
-  useEffect(() => { if (!modelKey && snapshot.connectionKey) setModelKey(snapshot.connectionKey); }, [snapshot.connectionKey, modelKey]);
-  useEffect(() => {
-    root.current?.querySelector<HTMLElement>(page === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
+    root.current?.querySelector<HTMLElement>(shown === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
   }, []);
   const navigationKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
     if (!delta && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? pages.length - 1 : (index + delta + pages.length) % pages.length;
-    setPage(pages[next].id); root.current?.querySelector<HTMLButtonElement>(`#settings-tab-${pages[next].id}`)?.focus();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + delta + items.length) % items.length;
+    setPage(items[next].id); root.current?.querySelector<HTMLButtonElement>(`#${settingsTabId(items[next].id)}`)?.focus();
   };
+  const current = items.find(item => item.id === shown);
+  // Mount a connection page on first visit, then keep it until Settings closes.
+  const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set());
+  if (shown.startsWith('connection:') && !visited.has(shown)) setVisited(new Set(visited).add(shown));
   return <main ref={root} className="settings-window" aria-label="Settings">
-    <div className="settings-layout"><nav className="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">{pages.map((item, index) => <button key={item.id} id={`settings-tab-${item.id}`} type="button" role="tab" aria-selected={page === item.id} aria-controls={`settings-panel-${item.id}`} tabIndex={page === item.id ? 0 : -1} onClick={() => setPage(item.id)} onKeyDown={event => navigationKey(event, index)}>{item.label}</button>)}</nav>
-      <section className="settings-content" id={`settings-panel-${page}`} role="tabpanel" aria-labelledby={`settings-tab-${page}`} tabIndex={0}>
-        <h3>{pages.find(item => item.id === page)?.label}</h3>
-        <div hidden={page !== 'model'}>{modelConnections.length > 1 && <label className="settings-field">Agent connection<select aria-label="Agent connection" value={modelKey ?? ''} onChange={event => setModelKey(event.target.value)}>{modelConnections.map(row => <option key={row.id} value={row.connectionKey}>{row.name} — {row.server}</option>)}</select></label>}<ModelSettings key={modelKey ?? 'unpaired'} connectionKey={modelKey} /></div>
-        {page === 'font' && <FontSettings />}
-        {page === 'shortcuts' && <Shortcuts />}
-        {page === 'connection' && <ConnectionSettings snapshot={snapshot} />}
+    <div className="settings-layout"><nav className="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">{groups.map(group => <div key={group.title} className="settings-nav-group" role="presentation">
+      <div className="settings-nav-title" role="presentation">{group.title}</div>
+      {group.items.map(item => <button key={item.id} id={settingsTabId(item.id)} type="button" role="tab" className={item.id.startsWith('connection:') ? 'settings-nav-connection' : undefined} aria-selected={shown === item.id} aria-controls="settings-panel" tabIndex={shown === item.id ? 0 : -1} title={item.detail} onClick={() => setPage(item.id)} onKeyDown={event => navigationKey(event, items.indexOf(item))}>{item.label}{item.issue && <span className="settings-nav-issue"> · Needs attention</span>}</button>)}
+    </div>)}</nav>
+      <section className="settings-content" id="settings-panel" role="tabpanel" aria-labelledby={settingsTabId(shown)} tabIndex={0}>
+        <h3>{shown === 'connection' ? 'Connections' : current?.label}</h3>
+        {shown === 'connection' && <ConnectionSettings snapshot={snapshot} onOpen={id => setPage(`connection:${id}`)} />}
+        {/* Connection pages stay mounted so model drafts and warnings survive page switches. */}
+        {rows.filter(row => visited.has(`connection:${row.id}`) || shown === `connection:${row.id}`).map(row => <div key={row.id} hidden={shown !== `connection:${row.id}`}><ConnectionPage row={row} disabled={!!snapshot.connectionsError} /></div>)}
+        {shown === 'font' && <FontSettings />}
+        {shown === 'shortcuts' && <Shortcuts />}
       </section>
     </div>
   </main>;

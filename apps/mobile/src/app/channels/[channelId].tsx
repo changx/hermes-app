@@ -2,16 +2,15 @@ import React from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChannelsScreen, ConnectionScope, HeaderActions, HeaderTitle, Notice, routeConnection, useApp } from '../../App';
-import { connectionSettingsRoute } from '../../settingsRoutes';
 import { routeId } from '../../routeId';
 
 function ChannelPage({ id }: { id: string }) {
   const router = useRouter();
-  const { client, slot, name, multiple } = useApp();
+  const { client, name, multiple } = useApp();
   const title = client?.channels.get(id)?.name || 'Channel';
   return <>
     <Stack.Screen options={{ title, ...(multiple ? { headerTitle: () => <HeaderTitle title={title} subtitle={name} /> } : {}),
-      headerRight: () => <HeaderActions onSettings={() => router.push(connectionSettingsRoute(slot))} /> }} />
+      headerRight: () => <HeaderActions onSettings={() => router.push('/settings')} /> }} />
     <ChannelsScreen channelId={id} />
   </>;
 }
