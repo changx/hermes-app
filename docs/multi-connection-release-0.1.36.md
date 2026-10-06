@@ -18,3 +18,15 @@ Not included: plugin installation, Gateway restart, Hermes core change, signing,
 - On the first mobile start, the existing paired connection becomes the `primary` slot with its existing SecureStore keys. Rolling back keeps that connection working. Connections added after the update are not visible to the old version.
 
 Verification and publication results are in the section below.
+
+## Results
+
+Desktop (published):
+- `main` fast-forwarded to `7e16e5b` and pushed atomically with annotated tag `v0.1.36`.
+- The normal tag run passed checks, audit, packaging and archive validation, then failed only at artifact upload because the Actions storage quota is exhausted (same blocker as v0.1.32). The source-pinned Desktop Direct Release run `37454930846` succeeded.
+- Release `v0.1.36` is not a draft or prerelease. Downloaded ZIP checksum passed: `3b82d19f875a3f0f078d4795752cd3c40e675f3a94b1b1b094218753b036e5bd`. Info.plist and ASAR report `0.1.36`; executable is Mach-O arm64; the renderer contains the Project count code.
+
+Mobile (not yet published):
+- The Expo service runs Metro in CI mode, so it does not watch files. After the runtime checkout moved to `7e16e5b`, Metro could not resolve the new `connections.tsx`; the Android bundle returned HTTP 500. The runtime checkout was rolled back to `e6c2d57` at once; both platform bundles returned HTTP 200 again.
+- Publication needs the runtime checkout at `7e16e5b` and an Expo service restart. The restart is blocked from inside the agent process and must be run from a separate shell.
+- No Gateway or plugin change was made. The Expo service was not restarted.
