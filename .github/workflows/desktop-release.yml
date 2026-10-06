@@ -85,7 +85,8 @@ jobs:
           name: Hermes-macOS-arm64-${{ github.sha }}
           path: release/
           if-no-files-found: error
-          retention-days: 14
+          # Short retention: the release job consumes this in the same run; 3 days leaves room to rerun it.
+          retention-days: 3
 
   release:
     name: Publish GitHub Release
