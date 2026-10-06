@@ -28,9 +28,19 @@ test('focused peer page stays focused; no change returns null', () => {
 });
 
 test('an emptied stack falls back to the home route', () => {
-  const next = removedConnectionRoutes({ index: 0, routes: [{ key: 'x', name: 'settings', params: { connection: 'primary' } }] }, new Set(['primary']));
+  const next = removedConnectionRoutes({ index: 0, routes: [{ key: 'x', name: 'settings/connection', params: { connection: 'primary' } }] }, new Set(['primary']));
   assert.deepEqual(next.routes, [{ name: 'index' }]);
   assert.equal(next.index, 0);
+});
+
+test('removing a connection pops its settings page but keeps the shared settings pages', () => {
+  const b = 'b'.repeat(24);
+  const state = { index: 2, routes: [{ key: 'home', name: 'index' }, { key: 'settings', name: 'settings/index' }, { key: 'conn', name: 'settings/connection', params: { connection: b } }] };
+  const next = removedConnectionRoutes(state, new Set([b]));
+  assert.deepEqual(next.routes.map(route => route.key), ['home', 'settings']);
+  assert.equal(next.index, 1, 'the user lands on the Settings list');
+  assert.equal(routeSlot({ name: 'settings/font-size' }), null);
+  assert.equal(routeSlot({ name: 'settings/add-connection' }), null);
 });
 
 import { projectRows } from '../src/projectRows.ts';

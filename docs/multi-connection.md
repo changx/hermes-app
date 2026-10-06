@@ -28,6 +28,18 @@ Mobile:
 - Home is the flat Project list with counts and connection hints. Connections that have no directory yet are listed below as pending rows, never as fake Projects.
 - Connections screen lists, adds and removes connections with the desktop wording. New channel requires an explicit target Hermes when several exist.
 
+### Leveled Settings (2026-10-06)
+
+Jamie asked to move connections into Settings and organize Settings into levels. The mobile header now has one **Settings** icon (gear); the separate antenna icon is removed.
+
+- **Level 1 — Settings:** section *Connections* lists each saved Hermes with its server and state, then *Add connection*. Section *Appearance* has *Font size* with the current value.
+- **Level 2 — a connection:** *Status* (server, state, safe detail), *Agent* (display name on this device), *Default model* (only when online), then *Remove connection* with confirmation. Removing the connection pops its page through route ownership.
+- **Level 2 — Add connection:** pairing form; on success it opens the new connection's page, where pairing progress appears.
+- **Level 2 — Font size:** device preference.
+- First run with no connection uses `/welcome`, a full-screen pairing form outside Settings.
+- The gear on a channel or conversation opens that connection's page directly. The gear on the home screen opens level 1.
+- Routes: `/settings`, `/settings/connection?connection=<slot>`, `/settings/add-connection`, `/settings/font-size`, `/welcome`. The old `/connection` and single `/settings` pages are removed.
+
 No plugin, Hermes core or protocol change.
 
 ## Verification (Linux, synthetic fixtures)

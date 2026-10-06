@@ -39,7 +39,7 @@ function NativeRoutes() {
     <Stack screenOptions={{ keyboardHandlingEnabled: true, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
       headerTitleStyle: { fontSize: 17 * scale }, headerBackTitleStyle: { fontSize: 17 * scale } }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="connection" options={{ title: 'Connections' }} />
+      <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Protected guard={!ready || connections.length > 0}>
         <Stack.Screen name="new-channel" options={{ title: 'New channel' }} />
         <Stack.Screen name="channels/[channelId]" getId={({ params }) => `${params?.connection ?? 'primary'}:${params?.channelId}`} options={{ title: 'Channel' }} />
@@ -48,7 +48,10 @@ function NativeRoutes() {
         <Stack.Screen name="channels/[channelId]/agents" options={{ title: 'AGENTS.md' }} />
         <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
         <Stack.Screen name="threads/[threadId]" getId={({ params }) => `${params?.connection ?? (params?.server ? 'link:' + params.server : 'primary')}:${params?.threadId}`} options={{ title: 'Conversation' }} />
-        <Stack.Screen name="settings" options={{ title: 'Agent settings' }} />
+        <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
+        <Stack.Screen name="settings/connection" options={{ title: 'Connection' }} />
+        <Stack.Screen name="settings/add-connection" options={{ title: 'Add connection' }} />
+        <Stack.Screen name="settings/font-size" options={{ title: 'Font size' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />
       </Stack.Protected>
     </Stack>

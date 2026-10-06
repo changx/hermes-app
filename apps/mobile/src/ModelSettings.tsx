@@ -61,7 +61,6 @@ export function ModelSettings({ client }: { client: ModelSettingsApi }) {
       <Text style={styles.buttonText}>{label}</Text>
     </Pressable>;
   return <View style={styles.section}>
-    <Text style={styles.heading}>Model</Text>
     <Text style={styles.hint}>Default for this Agent. Conversations with their own model selection keep it. Running replies are not interrupted.</Text>
     {!current && busy && <Text accessibilityLiveRegion="polite">Loading model settings…</Text>}
     {current && <>
@@ -91,7 +90,7 @@ export function ModelSettings({ client }: { client: ModelSettingsApi }) {
   </View>;
 }
 const styles = StyleSheet.create({
-  section: { gap: 10, borderTopWidth: 1, borderTopColor: '#cdd7e3', paddingTop: 18 },
+  section: { gap: 10 },
   heading: { fontSize: 18, fontWeight: '600', color: '#172a40' }, label: { fontSize: 14, color: '#172a40' },
   hint: { fontSize: 13, lineHeight: 20, color: '#607187' },
   input: { fontSize: 16, minHeight: 44, padding: 12, borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, color: '#172a40', backgroundColor: '#fff' },

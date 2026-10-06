@@ -113,7 +113,6 @@ export const AnimatedText = Animated.createAnimatedComponent(Text);
 export function FontSizeSettings() {
   const { choice, loading, saving, error, select } = useFontSize();
   return <View style={styles.container}>
-    <Text style={styles.label}>Interface font size</Text>
     <Text style={styles.preview}>Preview: Read your conversations comfortably.</Text>
     <View style={styles.options}>{(Object.keys(FONT_SIZES) as FontSizeChoice[]).map(option =>
       <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: choice === option, disabled: loading }}
@@ -128,7 +127,7 @@ export function FontSizeSettings() {
 
 const styles = StyleSheet.create({
   restore: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  container: { gap: 8, paddingVertical: 12 },
+  container: { gap: 8 },
   label: { color: '#172a40', fontWeight: '700', fontSize: 15 },
   preview: { color: '#42566f', fontSize: 15, lineHeight: 23 },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },

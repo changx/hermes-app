@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, AppState, KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
-import { FontSizeSettings, Text } from './FontSize';
+import { Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,11 +21,10 @@ import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
-import { AgentSettings } from './AgentSettings';
-import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
 import { useApp, useConnections } from './connections';
+import { connectionSettingsRoute } from './settingsRoutes';
 
 export { AppProvider, ConnectionScope, routeConnection, useApp, useConnections } from './connections';
 
@@ -34,16 +33,14 @@ function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSy
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
-/** Settings belong to the connection of the current page. */
-export const settingsRoute = (connection: string) => ({ pathname: '/settings' as const, params: { connection } });
 export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' = '', extra: Record<string, string> = {}) =>
   ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
 
-export function HeaderActions({ onConnection, onSettings, onCopyLink, onSessionMenu }: { onConnection: () => void; onSettings: () => void; onCopyLink?: () => void; onSessionMenu?: () => void }) {
+/** One Settings entry; connections, Agents, models and appearance live inside it. */
+export function HeaderActions({ onSettings, onCopyLink, onSessionMenu }: { onSettings: () => void; onCopyLink?: () => void; onSessionMenu?: () => void }) {
   return <View style={styles.headerActions}>
     {onSessionMenu ? <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onSessionMenu} /> : onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
-    <HeaderIcon label="Connections" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
-    <HeaderIcon label="Agent settings" ios="gearshape" android="settings" onPress={onSettings} />
+    <HeaderIcon label="Settings" ios="gearshape" android="settings" onPress={onSettings} />
   </View>;
 }
 const EMPTY_MESSAGES: Message[] = [];
@@ -250,7 +247,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
-      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push(settingsRoute(slot))} /> }} />
+      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onSettings={() => router.push(connectionSettingsRoute(slot))} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
     {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}
@@ -338,21 +335,6 @@ export function useDraftThreads(identity: string | undefined): ReadonlySet<strin
     }
     return ids;
   }, [identity, textVersion, attachmentVersion, textDrafts, composerDrafts]);
-}
-
-/** Agent settings of one connection; font size is a device preference. */
-export function SettingsRoute() {
-  const { config, client, agentName, multiple, name } = useApp();
-  const router = useRouter();
-  if (!config || !client) return <Notice text="Opening settings…" />;
-  return <FormKeyboardAvoidingView>
-    {multiple && <Stack.Screen options={{ headerTitle: () => <HeaderTitle title="Agent settings" subtitle={name} /> }} />}
-    <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
-      saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => router.back()}>
-      <ModelSettings key={config.id} client={client} />
-      <FontSizeSettings />
-    </AgentSettings>
-  </FormKeyboardAvoidingView>;
 }
 
 /** Native header title with the Hermes name as a second line. */

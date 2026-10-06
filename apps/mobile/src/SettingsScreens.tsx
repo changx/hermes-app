@@ -1,0 +1,109 @@
+import React from 'react';
+import { Alert, Pressable, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { FontSizeSettings, Text, useFontSize } from './FontSize';
+import { AgentNameSettings } from './AgentSettings';
+import { ModelSettings } from './ModelSettings';
+import { AddConnectionForm, connectionDetail, connectionNeedsAttention, connectionStateLabel } from './ConnectionScreen';
+import { SettingsBlock, SettingsPage, SettingsRow, SettingsSection } from './SettingsUI';
+import { MAX_CONNECTIONS } from './connectionSlots';
+import { useApp, useConnections } from './connections';
+
+import { connectionSettingsRoute } from './settingsRoutes';
+
+/** Level 1: every saved connection, then device preferences. */
+export function SettingsHome() {
+  const router = useRouter();
+  const { connections, listError } = useConnections();
+  const { choice } = useFontSize();
+  const full = connections.length >= MAX_CONNECTIONS;
+  return <SettingsPage>
+    {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
+    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen.">
+      {connections.map((row, index) => <SettingsRow key={row.slot} first={index === 0} title={row.name} detail={row.server ?? undefined}
+        value={connectionStateLabel(row)} issue={connectionNeedsAttention(row)} onPress={() => router.push(connectionSettingsRoute(row.slot))} />)}
+      <SettingsRow first={!connections.length} title="Add connection" value={full ? 'Limit reached' : undefined}
+        onPress={() => router.push('/settings/add-connection')} />
+    </SettingsSection>
+    <SettingsSection title="Appearance">
+      <SettingsRow first title="Font size" value={choice} onPress={() => router.push('/settings/font-size')} />
+    </SettingsSection>
+  </SettingsPage>;
+}
+
+/** Level 2: one connection — status, its Agent, its default model, removal. */
+export function ConnectionSettings() {
+  const { removeConnection, connections } = useConnections();
+  const { slot, config, client, agentName } = useApp();
+  const row = connections.find(item => item.slot === slot);
+  if (!row) return null;
+  const detail = connectionDetail(row);
+  const remove = () => Alert.alert(`Remove ${row.name}?`,
+    'This removes this connection, its local drafts and queued messages from this device. Other connections and server conversations are unchanged.', [
+      { text: 'Keep connection', style: 'cancel' },
+      { text: row.status === 'pairing' ? 'Cancel pairing' : 'Remove connection', style: 'destructive', onPress: () => {
+        // Route ownership pops this page once the connection is gone; do not navigate here too.
+        removeConnection(slot).catch(() => Alert.alert('Could not confirm removal.', 'Check the connection list before trying again.'));
+      } },
+    ]);
+  return <SettingsPage>
+    <SettingsSection title="Status">
+      <SettingsBlock first>
+        <Text style={styles.key}>Server</Text><Text selectable style={styles.value}>{row.server ?? 'Saved server address unavailable'}</Text>
+      </SettingsBlock>
+      <SettingsBlock>
+        <Text style={styles.key}>State</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.value, connectionNeedsAttention(row) && styles.issue]}>{connectionStateLabel(row)}</Text>
+        {!!detail && <Text style={styles.hint}>{detail}</Text>}
+      </SettingsBlock>
+    </SettingsSection>
+    {config && <SettingsSection title="Agent">
+      <SettingsBlock first>
+        <AgentNameSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
+          saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} />
+      </SettingsBlock>
+    </SettingsSection>}
+    {config && client && <SettingsSection title="Default model">
+      <SettingsBlock first>
+        {row.status === 'online' || client.connectionState === 'online' ? <ModelSettings key={config.id} client={client} />
+          : <Text style={styles.hint}>Model settings are available when this connection is online.</Text>}
+      </SettingsBlock>
+    </SettingsSection>}
+    <SettingsSection footer="Removing does not delete conversations on the server or stop running tasks.">
+      <Pressable accessibilityRole="button" accessibilityLabel={`${row.status === 'pairing' ? 'Cancel pairing' : 'Remove connection'} ${row.name}`}
+        onPress={remove} style={({ pressed }) => [styles.danger, pressed && styles.pressed]}>
+        <Text style={styles.dangerText}>{row.status === 'pairing' ? 'Cancel pairing' : 'Remove connection'}</Text>
+      </Pressable>
+    </SettingsSection>
+  </SettingsPage>;
+}
+
+/** Level 2: pair one more Hermes. */
+export function AddConnectionSettings() {
+  const router = useRouter();
+  const { connections, addConnection } = useConnections();
+  return <AddConnectionForm first={false} limitReached={connections.length >= MAX_CONNECTIONS}
+    onAdd={async (server, code) => {
+      const slot = await addConnection(server, code);
+      // Show the new connection's own page, where pairing progress appears.
+      router.replace(connectionSettingsRoute(slot));
+    }} />;
+}
+
+/** Level 2: device font size. */
+export function FontSizePage() {
+  return <SettingsPage>
+    <SettingsSection footer="Applies to this device: interface text and conversation reading.">
+      <SettingsBlock first><FontSizeSettings /></SettingsBlock>
+    </SettingsSection>
+  </SettingsPage>;
+}
+
+const styles = StyleSheet.create({
+  error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, borderRadius: 8 },
+  key: { fontSize: 13, color: '#607187' }, value: { fontSize: 16, color: '#172a40' }, issue: { color: '#8a5300' },
+  hint: { fontSize: 13, lineHeight: 19, color: '#607187' },
+  danger: { minHeight: 50, borderRadius: 12, backgroundColor: '#fff', borderWidth: StyleSheet.hairlineWidth, borderColor: '#d5dde8', alignItems: 'center', justifyContent: 'center' },
+  pressed: { backgroundColor: '#fff0f2' },
+  dangerText: { fontSize: 16, color: '#b42335', fontWeight: '600' },
+});

@@ -117,7 +117,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     'react-native': { Keyboard: { dismiss() {} }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: appState, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => router, useIsFocused: () => React.useContext(Focus),
       useFocusEffect: cb => { const focused = React.useContext(Focus); React.useEffect(() => focused ? cb() : undefined, [focused, cb]); } },
-    './FontSize': { Text: 'Text', FontSizeSettings: 'FontSizeSettings' },
+    './FontSize': { Text: 'Text' },
     'react-native-keyboard-controller': { useKeyboardState: selector => selector({ isVisible: false }) },
     'expo-router/react-navigation': { useHeaderHeight: () => 100 },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
@@ -145,8 +145,8 @@ async function harness({ multiple = false, list = false, strict = false, product
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
-    './AgentSettings': { AgentSettings: 'AgentSettings', useAgentName: () => name },
-    './ModelSettings': { ModelSettings: 'ModelSettings' },
+    './AgentSettings': { useAgentName: () => name },
+    './settingsRoutes': { connectionSettingsRoute: connection => ({ pathname: '/settings/connection', params: { connection } }) },
     'expo-symbols': { SymbolView: 'SymbolView' },
   };
   const require = id => { if (!(id in mocks)) throw Error(id); return mocks[id]; };
@@ -165,7 +165,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     return React.createElement(React.Fragment, {},
       list && React.createElement(exports.ChannelsScreen, { channelId: 'p_one' }),
       thread && (Array.isArray(thread) ? thread : [thread]).map((id,index,ids) => React.createElement(Focus.Provider, { key: id, value: !settings && index === ids.length - 1 }, React.createElement(exports.ThreadScreen, { threadId: id }))),
-      settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement(exports.SettingsRoute)),
+      settings && (typeof settings === 'string' ? React.createElement('Viewer', { id: settings }) : React.createElement('SettingsPage')),
       suspend && React.createElement(Suspender));
   }
   let root;

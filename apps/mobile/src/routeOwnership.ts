@@ -6,7 +6,7 @@
 type RouteLike = { key?: string; name: string; params?: object; state?: StateLike };
 type StateLike = { index?: number; routes: RouteLike[]; [field: string]: unknown };
 
-const CONNECTION_ROUTES = /^(channels\/|threads\/|settings$)/;
+const CONNECTION_ROUTES = /^(channels\/|threads\/|settings\/connection$)/;
 
 /** Connection slot of a route; routes without the parameter belong to the primary slot. */
 export function routeSlot(route: RouteLike): string | null {

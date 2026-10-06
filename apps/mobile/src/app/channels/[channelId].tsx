@@ -1,7 +1,8 @@
 import React from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChannelsScreen, ConnectionScope, HeaderActions, HeaderTitle, Notice, routeConnection, settingsRoute, useApp } from '../../App';
+import { ChannelsScreen, ConnectionScope, HeaderActions, HeaderTitle, Notice, routeConnection, useApp } from '../../App';
+import { connectionSettingsRoute } from '../../settingsRoutes';
 import { routeId } from '../../routeId';
 
 function ChannelPage({ id }: { id: string }) {
@@ -10,7 +11,7 @@ function ChannelPage({ id }: { id: string }) {
   const title = client?.channels.get(id)?.name || 'Channel';
   return <>
     <Stack.Screen options={{ title, ...(multiple ? { headerTitle: () => <HeaderTitle title={title} subtitle={name} /> } : {}),
-      headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push(settingsRoute(slot))} /> }} />
+      headerRight: () => <HeaderActions onSettings={() => router.push(connectionSettingsRoute(slot))} /> }} />
     <ChannelsScreen channelId={id} />
   </>;
 }

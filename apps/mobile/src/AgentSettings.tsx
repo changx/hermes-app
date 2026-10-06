@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from './FontSize';
 import * as SecureStore from 'expo-secure-store';
 
@@ -107,13 +107,13 @@ export function useAgentName(connectionId: string | null): {
 
 type Props = {
   name: string; ready: boolean; error: string; saving: boolean;
-  onSave(value: string): Promise<boolean>; onClose(): void; onRetry?(): void;
-  children?: React.ReactNode;
+  onSave(value: string): Promise<boolean>; onRetry?(): void;
 };
 
-/** The settings route owns its native header and safe area. */
-export function AgentSettings({ name, ready, error, saving, onSave, onClose, onRetry, children }: Props) {
+/** Display name of one connection's Agent; a section inside that connection's settings. */
+export function AgentNameSettings({ name, ready, error, saving, onSave, onRetry }: Props) {
   const [draft, setDraft] = useState(name === DEFAULT_NAME ? '' : name);
+  const [saved, setSaved] = useState(false);
   const edited = useRef(false);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -123,39 +123,36 @@ export function AgentSettings({ name, ready, error, saving, onSave, onClose, onR
   }, [name, ready]);
   const submit = async () => {
     if (inFlight.current || saving || (!ready && !error) || (!ready && !edited.current)) return;
-    inFlight.current = true;
+    inFlight.current = true; setSaved(false);
     try {
-      if (await onSave(draft) && mounted.current) onClose();
+      if (await onSave(draft) && mounted.current) { edited.current = false; setSaved(true); }
     } finally { inFlight.current = false; }
   };
-  return <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-    <Text style={styles.heading}>Agent settings</Text>
+  const unchanged = ready && draft.trim() === (name === DEFAULT_NAME ? '' : name);
+  const blocked = saving || unchanged || (!ready && (!error || !edited.current));
+  return <View style={styles.section}>
     <Text style={styles.label}>Display name</Text>
-    <TextInput accessibilityLabel="Display name" value={draft} onChangeText={value => { edited.current = true; setDraft(value); }}
+    <TextInput accessibilityLabel="Display name" value={draft} onChangeText={value => { edited.current = true; setSaved(false); setDraft(value); }}
       placeholder="Agent" maxLength={80} autoCorrect={false} style={styles.input} editable={!saving} />
     <Text style={styles.hint}>Only changes how the Agent appears on this device for this connection. Leave blank to use Agent.</Text>
     {!!error && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
     {!!error && !ready && onRetry && <Pressable accessibilityRole="button" accessibilityLabel="Retry loading" disabled={saving}
       onPress={onRetry} style={[styles.button, styles.secondary]}><Text style={styles.secondaryText}>Retry loading</Text></Pressable>}
-    <Pressable accessibilityRole="button" accessibilityLabel="Save" accessibilityState={{ disabled: saving || (!ready && (!error || !edited.current)) }}
-      disabled={saving || (!ready && (!error || !edited.current))} onPress={() => { void submit(); }} style={[styles.button, saving && styles.disabled]}>
-      <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save'}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Save display name" accessibilityState={{ disabled: blocked }}
+      disabled={blocked} onPress={() => { void submit(); }} style={[styles.button, blocked && styles.disabled]}>
+      <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save name'}</Text>
     </Pressable>
-    {children}
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={[styles.button, styles.secondary]}>
-      <Text style={styles.secondaryText}>Close</Text>
-    </Pressable>
-  </ScrollView>;
+    {saved && <Text accessibilityLiveRegion="polite" style={styles.hint}>Saved.</Text>}
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  form: { flexGrow: 1, padding: 24, gap: 14, backgroundColor: '#f8fafc' },
-  heading: { fontSize: 20, fontWeight: '700', color: '#172a40' },
+  section: { gap: 10 },
   label: { fontSize: 14, color: '#172a40' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 10, minHeight: 44, padding: 12, color: '#172a40' },
   hint: { color: '#607187', fontSize: 13, lineHeight: 20 },
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10 },
-  button: { backgroundColor: '#2960ad', borderRadius: 9, padding: 13, alignItems: 'center' },
+  button: { backgroundColor: '#2960ad', borderRadius: 9, padding: 13, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
   secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 },
   buttonText: { color: '#fff', fontWeight: '600' }, secondaryText: { color: '#2b4e81', fontWeight: '600' }
 });

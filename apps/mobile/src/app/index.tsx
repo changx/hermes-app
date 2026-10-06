@@ -11,19 +11,17 @@ export default function Projects() {
   const { ready, connections, revision, listError } = useConnections();
   const router = useRouter();
   const empty = ready && !listError && !connections.length;
-  useEffect(() => { if (empty) router.replace('/connection'); }, [empty, router]);
+  useEffect(() => { if (empty) router.replace('/welcome'); }, [empty, router]);
   if (!ready || empty) return <Notice text="" />;
-  const settingsTarget = connections.find(c => c.config)?.slot;
   return <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom', 'left', 'right']}>
     <View style={styles.header}><View style={{ flex: 1 }}><Text style={styles.brand}>Hermes App</Text></View>
-      <HeaderActions onConnection={() => router.push('/connection')}
-        onSettings={() => { if (settingsTarget) router.push({ pathname: '/settings', params: { connection: settingsTarget } }); }} />
+      <HeaderActions onSettings={() => router.push('/settings')} />
     </View>
     {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
     <ProjectList connections={connections} revision={revision}
       onProject={(slot, id) => router.push(channelRoute(slot, id))}
       onNewChannel={() => router.push('/new-channel')}
-      onConnections={() => router.push('/connection')} />
+      onConnections={() => router.push('/settings')} />
   </SafeAreaView>;
 }
 
