@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar } from './browser-sidebar';
 import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
@@ -132,6 +132,16 @@ const registerDesktopApi = (): void => {
   handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
   handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
   handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
+  handle('desktop:tab-menu', (event, id: unknown, x: unknown, y: unknown) => {
+    shellSender(event); const manager = tabs, tabId = text(id, 200);
+    if (!manager || !mainWindow || mainWindow.isDestroyed()) return;
+    const items = manager.menu(tabId);
+    const position = Number.isFinite(x) && Number.isFinite(y) ? { x: Math.max(0, Math.round(x as number)), y: Math.max(0, Math.round(y as number)) } : {};
+    Menu.buildFromTemplate(items.map(item => ({ label: item.label, enabled: item.enabled, click: () => {
+      if (manager !== tabs || !manager.tabs.has(tabId)) return;
+      try { manager.menuAction(tabId, item.action); } catch { /* A busy tab stays open. */ }
+    } }))).popup({ window: mainWindow, ...position });
+  });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
   handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
   handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });

@@ -115,6 +115,8 @@ export interface HermesDesktopApi {
   newTab(channelId?: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   closeTab(tabId: string): Promise<void>;
+  /** Show the native Close Tab / Close Tabs to the Right / Close Other Tabs menu at window coordinates. */
+  showTabMenu(tabId: string, x: number, y: number): Promise<void>;
   completeNewTab(): Promise<void>;
   setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;

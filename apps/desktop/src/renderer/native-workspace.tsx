@@ -44,7 +44,21 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
     window.addEventListener('blur', stop);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release, true); window.removeEventListener('pointercancel', release, true); window.removeEventListener('blur', stop); };
   }, []);
-  const content = useRef<HTMLElement>(null), tabs = snapshot.tabs ?? [];
+  const content = useRef<HTMLElement>(null), strip = useRef<HTMLDivElement>(null), tabs = snapshot.tabs ?? [];
+  // The tab strip has no scrollbar: keep the active tab visible and let a vertical wheel scroll it sideways.
+  useEffect(() => {
+    const active = strip.current?.querySelector<HTMLElement>('.desktop-tab.active');
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [snapshot.activeTabId, tabs.length]);
+  useEffect(() => {
+    const element = strip.current; if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || element.scrollWidth <= element.clientWidth) return;
+      event.preventDefault(); element.scrollLeft += event.deltaY;
+    };
+    element.addEventListener('wheel', wheel, { passive: false });
+    return () => element.removeEventListener('wheel', wheel);
+  }, []);
   const threadsById = new Map(snapshot.threads.map(thread => [thread.id, thread]));
   const invoke = (operation: Promise<void>) => { setError(''); void operation.catch(() => setError('The tab action could not be completed. Try again.')); };
   useEffect(() => {
@@ -87,13 +101,15 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
         if (next === undefined) return; event.preventDefault(); const width = clampSidebarWidth(next, availableWidth - browserWidth); setPreferredWidth(width); persistWidth(width);
       }} />}
     <section className="native-workspace-main">
-      <div className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => {
+      <div ref={strip} className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => {
         const thread = tab.kind === 'session' && tab.threadId ? threadsById.get(tab.threadId) : undefined;
         const running = thread?.running === true;
         const draft = tab.kind === 'session' && !!tab.threadId && draftThreads.has(tab.threadId);
         const unread = thread?.completedUnread === true;
         const statuses = [running && 'Running', draft && 'Draft', unread && 'Completed, unread'].filter(Boolean);
-        return <div className={`desktop-tab ${tab.id === snapshot.activeTabId ? 'active' : ''}`} key={tab.id}>
+        return <div className={`desktop-tab ${tab.id === snapshot.activeTabId ? 'active' : ''}`} key={tab.id}
+          onContextMenu={event => { event.preventDefault(); invoke(window.hermesDesktop.showTabMenu(tab.id, event.clientX, event.clientY)); }}
+          onKeyDown={event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); invoke(window.hermesDesktop.showTabMenu(tab.id, Math.max(0, box.left), Math.max(0, box.bottom))); } }}>
           <button type="button" role="tab" aria-selected={tab.id === snapshot.activeTabId} aria-label={[tab.title, ...statuses].join(', ')} title={[tab.title, ...statuses].join(' — ')} onClick={() => invoke(window.hermesDesktop.activateTab(tab.id))}>
             <span className="desktop-tab-title">{tab.kind === 'new' ? '✎ ' : ''}{tab.title}</span>
             {statuses.length > 0 && <span className="desktop-tab-statuses" aria-hidden="true">

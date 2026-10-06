@@ -22,6 +22,7 @@ const api: HermesDesktopApi = Object.freeze({
   newTab: (channelId?: string): Promise<void> => ipcRenderer.invoke('desktop:new-tab', channelId),
   activateTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:activate-tab', id),
   closeTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:close-tab', id),
+  showTabMenu: (id: string, x: number, y: number): Promise<void> => ipcRenderer.invoke('desktop:tab-menu', id, x, y),
   completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
   setContentBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:content-bounds', bounds),
   getRuntimeInfo: (): DesktopRuntimeInfo => runtimeInfo,

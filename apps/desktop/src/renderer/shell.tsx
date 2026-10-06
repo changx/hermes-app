@@ -20,6 +20,16 @@ const draftAttachments = new LocalDraftMap<readonly DesktopAttachment[]>(value =
 const EmptyState = ({ children }: { children: string }) => <p className="empty-state">{children}</p>;
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
 
+/**
+ * Composer Enter rule. Single-line text: Enter sends. Multiline text: Enter adds a
+ * line and Cmd/Ctrl+Enter sends. Shift+Enter always adds a line.
+ */
+export const composerEnterAction = (value: string, keys: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): "send" | "newline" => {
+  if (keys.shiftKey || keys.altKey) return "newline";
+  if (keys.metaKey || keys.ctrlKey) return "send";
+  return value.includes("\n") ? "newline" : "send";
+};
+
 const PairingPanel = ({ busy }: { busy: boolean }) => {
   const [baseUrl, setBaseUrl] = useState("");
   const [code, setCode] = useState("");
@@ -210,7 +220,17 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const input = useRef<HTMLTextAreaElement>(null);
   const working = useRef(false);
   const mounted = useRef(true);
+  const restoreFocus = useRef(false);
+  const tabActive = snapshot.tabActive === true;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // Entering a Session page puts the cursor in the composer. Hidden tabs never take focus.
+  useEffect(() => { if (tabActive && threadId) input.current?.focus({ preventScroll: true }); }, [tabActive, threadId]);
+  // The textarea is disabled while a send/upload runs, which drops focus. Restore it afterwards.
+  useEffect(() => {
+    if (busy || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    if (tabActive) input.current?.focus({ preventScroll: true });
+  }, [busy, tabActive]);
   useLayoutEffect(() => {
     if (!input.current) return;
     input.current.style.height = "0px";
@@ -220,6 +240,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const finish = () => { working.current = false; if (mounted.current) setBusy(false); };
   const submit = async () => {
     if (!threadId || working.current || (!text.trim() && !attachments.length)) return;
+    restoreFocus.current = document.activeElement === input.current;
     working.current = true; setBusy(true); setError("");
     try {
       await window.hermesDesktop.sendMessage({ text, attachmentIds: attachments.map(({ id }) => id) });
@@ -230,7 +251,9 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     finally { finish(); }
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); safely(submit()); }
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    const action = composerEnterAction(text, event);
+    if (action === "send") { event.preventDefault(); safely(submit()); }
   };
   const rememberAttachments = (items: readonly DesktopAttachment[]) => {
     const next = [...attachments, ...items];
@@ -247,6 +270,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     if (files && (attachments.length + files.length > 8 || files.some(file => file.size < 1 || file.size > 10 * 1024 * 1024))) {
       setError('Choose up to eight files, each between 1 byte and 10 MiB.'); return;
     }
+    restoreFocus.current = document.activeElement === input.current;
     working.current = true; setBusy(true); setError("");
     try { rememberAttachments(files ? await window.hermesDesktop.uploadDroppedFiles(files, threadId) : await window.hermesDesktop.pickAndUploadAttachments(threadId)); }
     catch { if (mounted.current) setError("The files could not be uploaded. Check their size and try again."); }

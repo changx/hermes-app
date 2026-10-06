@@ -20,7 +20,26 @@
 
 标签栏沿用 `overflow-x: auto`。超过可见空间时横向滚动，不压缩到六个字以下，不撑宽正文区域。未改变 tab 身份、激活、关闭、内容 View 或页面状态。
 
+后续要求：标签栏不显示滚动条（`scrollbar-width: none` 与 `::-webkit-scrollbar`），仍可用触控板横向滚动。没有滚动条后，鼠标纵向滚轮在标签栏上转为横向滚动；激活的 tab 自动滚入可见范围。
+
 候选 `fix/desktop-tab-width`，卡 `t_3cf324ae`。生产 React/CSS 的 Chromium 回归覆盖 720/1280/1800px 窗口及 12/16/24px 字号、八种状态组合、新建标签、六字下限、标题截断及完整悬停属性、状态点和关闭按钮不重叠、横向滚动两端可达。桌面 TypeScript、构建及全部 41 项测试通过，0 失败、0 跳过；包括受控传输的 Linux Electron/Xvfb 原生工作区测试。未合入、未发布；macOS 真机悬停提示、触控板及视觉验收仍待完成。
+
+## 标签右键菜单
+
+每个 tab 支持右键菜单，键盘 ContextMenu 或 Shift+F10 也可打开。菜单由主进程使用原生 `Menu` 显示，因为 HTML 浮层会被原生内容 View 遮住。只有主窗口 renderer 可以请求此菜单。
+
+- Close Tab：与关闭按钮相同。
+- Close Tabs to the Right：关闭标签栏中此 tab 右侧的全部 tab。没有右侧 tab 时禁用。
+- Close Other Tabs：只保留此 tab。只有一个 tab 时禁用。
+
+批量关闭沿用单个关闭的规则：释放 View 与已提交内容页，不停止服务端任务。当前激活的 tab 被关闭时，激活菜单所属的 tab。正在执行操作（busy）的 tab 保留，其余 tab 照常关闭，并提示稍后再试。
+
+## Session 内容宽度与输入框
+
+- Session 消息、审批卡片和输入控件使用居中列，最大宽度 768px。滚动区域和输入区背景仍铺满整页。New chat 表单的最大宽度同为 768px。
+- 打开或切换到 Session 页面时，焦点进入输入框。隐藏的 tab 不获取焦点。主进程在激活、新建和侧边栏打开 tab 时聚焦对应 View；后台同步不抢焦点。
+- 发送期间输入框暂时禁用。发送或粘贴上传完成后，如果之前焦点在输入框，焦点回到输入框。
+- 发送键：内容为单行时，Enter 发送。内容含换行时，Enter 换行，Cmd+Enter（其他平台 Ctrl+Enter）发送。Shift+Enter 始终换行。输入法组字时不发送。
 
 ## New chat
 
