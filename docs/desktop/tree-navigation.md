@@ -56,3 +56,20 @@ Verification:
 - Not merged or published. Full installed-app restart and macOS pointer/visual acceptance remain separate from Linux renderer restoration checks.
 
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side 24-hour query; the current list API exposes cursor/limit, not an activity cutoff.
+
+## Multi-connection sidebar redesign
+
+Branch: `feat/desktop-sidebar`. Requested by Jamie (2026-10-06): the sidebar still looked like a single-connection design, the footer showed one server, the Settings entry was an emoji, and text sizes should follow the ChatGPT desktop reference screenshot.
+
+Layout, top to bottom:
+- **Actions:** *New chat* and *New project* as icon rows. *New project* moved from the footer and is enabled while any connection is online.
+- **Projects** section title, with the label filter icon on the right of the title. Then the flat Project tree across all connections; the Hermes name appears under a Project only when several connections are saved.
+- **Footer:** one *Settings* row with a gear icon. The single server name is removed; connections are listed and managed in Settings.
+
+Typography and spacing, measured from the reference (2x screenshot): rows about 31px high, section titles the same size as rows in a muted colour, no uppercase or bold, regular-weight Project names. In this app the sidebar text follows the user's text-size setting (default 16px); rows are 2× the text size.
+
+Icons use the bundled icon font (`assets/work-icons.ttf`, built by `scripts/build-work-icons.py`). New original glyphs: chevron left, gear, compose, plus, more, filter. Existing chevron code points E001/E002 keep their exact outlines, so mobile is unchanged. Icons are hidden from assistive technology; each button keeps its accessible name.
+
+Verification (Linux): desktop TypeScript, build and full suite with Chromium and Electron/Xvfb **101/101**. New Chromium test `sidebar-redesign` renders the production `NativeWorkspace` with two connections and checks: no server in the footer, one Settings action, icon font loaded and used, no emoji/text glyph icons, action order, section title size/colour/weight, row height, connection names under Projects, filter placement, and text-size scaling. Existing tests updated for the moved *New project* button, the renamed font-size selector and the child indentation (Session titles stay 17px right of Project names). The first full run failed two Electron tests on a corrupt Electron download (`resources.pak`); reinstalling Electron fixed both. Mobile tests 106 pass / 1 existing skip and iOS export pass with the rebuilt font. Evidence: Channel workspace `desktop-sidebar/` (`desktop-check.log`, `sidebar-redesign.png`, `sidebar-redesign.json`).
+
+Not verified: Mac window appearance. The reference screenshot and the rendered screenshot were measured by pixel analysis, not reviewed visually in this session.

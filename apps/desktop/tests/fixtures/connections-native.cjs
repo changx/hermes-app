@@ -151,7 +151,7 @@ async function field(contents, label, value) {
   assert.ok(!clients.get('first.example.test').client.calls.some(c=>c[0]==='send'));
   const existingPeerView=peerView;
   await evaluate(shell,`window.hermesDesktop.activateTab('${primaryTab.id}')`);
-  await evaluate(shell,"[...document.querySelectorAll('.native-sidebar-footer button')].find(e=>e.textContent.includes('New project')).click()");
+  await evaluate(shell,"[...document.querySelectorAll('.sidebar-actions button')].find(e=>e.textContent.includes('New project')).click()");
   await until(()=>evaluate(shell,`!!document.querySelector('[aria-label="New project"]')`),'New Project dialog');
   assert.equal(await evaluate(shell,`document.querySelector('[aria-label="Project connection"]').value`),'');
   await field(shell,'Project name','Controlled peer Project');

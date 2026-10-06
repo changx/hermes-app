@@ -28,7 +28,7 @@ test('Chromium: production UI and content use 16px at narrow and wide widths', {
   const folder = await mkdtemp(join(tmpdir(),'desktop-font-'));
   try {
     const file = join(folder,'check.html');
-    const selectors = ['html','body','.channel-toggle strong','.thread-title','.thread-status','.sidebar-new-chat','.conversation-header h2','.conversation-actions button','.message-user p','.message-assistant p','.message-final p','.message li','.message th','.message td','.message code','.code-block code','.tool-record','.tool-command','.work-toggle','.composer textarea','.agent-running','.error-banner','.pairing-card label','.pairing-card input','.pairing-actions button','.new-chat-project','.new-chat-form textarea','.new-chat-project select','.new-chat-actions span','.new-chat-send'];
+    const selectors = ['html','body','.channel-toggle strong','.thread-title','.thread-status','.sidebar-action','.sidebar-section-title','.conversation-header h2','.conversation-actions button','.message-user p','.message-assistant p','.message-final p','.message li','.message th','.message td','.message code','.code-block code','.tool-record','.tool-command','.work-toggle','.composer textarea','.agent-running','.error-banner','.pairing-card label','.pairing-card input','.pairing-actions button','.new-chat-project','.new-chat-form textarea','.new-chat-project select','.new-chat-actions span','.new-chat-send'];
     await writeFile(file, `<!doctype html><style>${css}</style><div id="root">${mod.exports.html}</div><div hidden>${mod.exports.extra}</div><pre id="results"></pre><script>
       const results=[];for(const width of [720,1280,1800]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';

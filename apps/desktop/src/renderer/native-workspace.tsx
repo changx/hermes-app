@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { NavigationPanel } from './navigation-panel';
 import { BrowserSidebar } from './browser-sidebar';
+import { Icon } from './icons';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
 
 export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreateProject, onProjectOptions, onSettings, overlayOpen, children }: {
@@ -67,10 +68,11 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
     window.addEventListener('keydown', keyboard); return () => window.removeEventListener('keydown', keyboard);
   }, [snapshot.activeTabId, snapshot.phase, snapshot.selectedChannelId]);
   return <div ref={shell} style={{ '--sidebar-width': `${sidebarWidth}px`, '--browser-width': `${browserWidth}px` } as CSSProperties} className={`desktop-shell native-workspace ${sidebarHidden ? 'sidebar-collapsed' : ''} ${browserOpen ? 'browser-open' : ''} ${dragging ? 'sidebar-resizing' : ''}`}>
-    <button type="button" className="sidebar-edge-toggle" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} onClick={() => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); }}>{sidebarHidden ? '›' : '‹'}</button>
+    <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} onClick={() => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); }}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
-      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onChannelOptions={onProjectOptions} />
-      <div className="native-sidebar-footer"><button type="button" onClick={onCreateProject} disabled={snapshot.phase !== 'connected'}>＋ New project</button><div><span title={snapshot.connectionName}>{snapshot.connectionName ?? 'Hermes'}</span><button type="button" aria-label="Settings" onClick={onSettings}>⚙</button></div></div>
+      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} />
+      {/* Connections are managed in Settings; the footer no longer names one server. */}
+      <div className="native-sidebar-footer"><button type="button" className="sidebar-action" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /><span>Settings</span></button></div>
     </aside>}
     {!sidebarHidden && <div className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
       onPointerDown={event => {

@@ -390,33 +390,56 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-resize-handle:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
 .sidebar-resizing, .sidebar-resizing * { cursor: col-resize !important; user-select: none; }
 .native-workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
-.native-sidebar { display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
-.native-sidebar .channel-tree { flex: 1; overflow-y: auto; padding: 0 6px; }
-.native-sidebar .thread-children { margin: 0 4px 12px 24px; padding-left: 10px; border-left: 1px solid var(--app-field-border); }
-.native-sidebar .tree-thread { border-radius: 8px; }
-.native-sidebar .channel-toolbar { border-radius: 8px; }
+/* Native sidebar, after the ChatGPT desktop reference: quiet grey rail,
+   compact rows, section titles at the row size in a muted colour (not
+   uppercase or bold), icon-font controls. Text follows the user's text-size
+   setting; row height scales with it. */
+.native-sidebar { --sidebar-text: var(--app-font-size); --sidebar-small: calc(var(--app-font-size) * .8125); --sidebar-row: calc(var(--app-font-size) * 2); display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
+.native-sidebar .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 12px; }
+.app-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; font-family: "HermesWorkIcons"; font-size: 17px; font-style: normal; font-weight: 400; line-height: 18px; speak: never; }
+.sidebar-actions { display: grid; gap: 1px; padding: 4px 0 6px; }
+.sidebar-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--sidebar-row); padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--app-text); font: inherit; font-size: var(--sidebar-text); text-align: left; cursor: pointer; }
+.sidebar-action .app-icon { color: var(--app-label); }
+.sidebar-action:disabled { opacity: .5; cursor: default; }
+.sidebar-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
+.sidebar-section-header { position: relative; display: flex; align-items: center; gap: 4px; min-height: var(--sidebar-row); margin-top: 12px; padding: 0 2px 0 10px; }
+.sidebar-section-title { flex: 1; margin: 0; color: var(--app-muted); font-size: var(--sidebar-text); font-weight: 400; }
+.native-sidebar .labels-filter { position: static; display: contents; margin: 0; }
+.native-sidebar .labels-filter .sidebar-filter-chips { order: 3; flex-basis: 100%; }
+.native-sidebar .sidebar-section-header:has(.sidebar-filter-chips) { flex-wrap: wrap; }
+.native-sidebar .labels-filter-popover { top: 100%; left: 8px; right: 8px; font-size: var(--sidebar-text); }
+.native-sidebar .sidebar-filter-icon[aria-pressed="true"] { color: var(--app-accent); background: var(--app-selected); }
+.native-sidebar .channel-tree { padding: 0; }
+.native-sidebar .channel-toolbar { display: flex; align-items: center; min-height: var(--sidebar-row); border-radius: 8px; }
+.native-sidebar .channel-toggle { gap: 6px; min-height: var(--sidebar-row); padding: 4px 6px 4px 4px; color: var(--app-text); font-size: var(--sidebar-text); }
+.native-sidebar .channel-toggle strong { font-weight: 400; }
+.native-sidebar .channel-chevron { width: 16px; height: 16px; font-size: 13px; color: var(--app-muted); }
+.native-sidebar .channel-name { gap: 1px; }
+.native-sidebar .channel-connection-name { font-size: var(--sidebar-small); }
+.native-sidebar .project-unread-count { font-size: 11px; }
+.native-sidebar .channel-new-session, .native-sidebar .channel-options { opacity: 0; }
+.native-sidebar .channel-new-session { margin-right: 2px; }
+.native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session,
+.native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
+/* Guide line under the chevron centre; Session titles sit at least 16px right of the Project name. */
+.native-sidebar .thread-children { margin: 0 0 6px 12px; padding-left: 22px; border-left: 1px solid var(--app-field-border); }
+.native-sidebar .tree-thread { min-height: var(--sidebar-row); padding: 6px 8px; border-radius: 8px; font-size: var(--sidebar-text); }
+.native-sidebar .tree-more, .native-sidebar .tree-empty { padding: 6px 8px; border-radius: 8px; color: var(--app-muted); font-size: var(--sidebar-text); }
+.native-sidebar .empty-state { padding: 8px 10px; color: var(--app-muted); font-size: var(--sidebar-text); }
+.native-sidebar .sidebar-action:hover, .native-sidebar .sidebar-icon-button:hover,
 .native-sidebar .channel-toolbar:hover, .native-sidebar .channel-toolbar:focus-within,
-.native-sidebar .tree-thread:hover, .native-sidebar .tree-thread:focus-visible,
-.native-sidebar .tree-more:hover, .native-sidebar .sidebar-new-chat:hover, .native-sidebar .sidebar-filter-icon:hover { background: var(--app-border); }
+.native-sidebar .tree-thread:hover, .native-sidebar .tree-thread:focus-visible, .native-sidebar .tree-more:hover { background: var(--app-border); }
+.native-sidebar .channel-toolbar:hover .sidebar-icon-button:hover { background: var(--app-field-border); }
 .native-sidebar .tree-thread.selected { background: var(--app-selected); }
-.native-sidebar .tree-more { border-radius: 8px; }
-.native-sidebar .channel-toggle { color: var(--app-muted); font-size: var(--app-font-size); }
-.native-sidebar .channel-new-session, .native-sidebar .channel-options { width: 26px; height: 28px; border: 0; padding: 0; border-radius: 6px; background: transparent; color: var(--app-muted); opacity: 0; }
-.native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session, .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
-.native-sidebar-footer { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--app-border); }
-.native-sidebar-footer > div { display: flex; align-items: center; gap: 6px; color: var(--app-muted); }
-.native-sidebar-footer > div > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.native-sidebar-footer button, .sidebar-new-chat, .sidebar-filter-icon { border: 0; background: transparent; color: var(--app-text); padding: 8px; border-radius: 8px; text-align: left; }
-.sidebar-new-chat-row { display: flex; align-items: center; gap: 8px; }
-.sidebar-new-chat { flex: 1; font-weight: 500; }
-.sidebar-filter-icon { display: flex; }
-.sidebar-filter-icon[aria-pressed="true"] { background: var(--app-selected); }
+.native-sidebar-footer { padding: 6px 8px 10px; }
+.native-sidebar-footer .sidebar-action { color: var(--app-label); }
 .sidebar-filter-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
 .sidebar-filter-chip { display: flex; align-items: center; min-width: 0; max-width: 170px; border-radius: 6px; background: var(--app-selected); }
 .sidebar-filter-chip button { border: 0; background: transparent; padding: 4px 6px; color: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-filter-chip button:first-child { flex: 1; }
 .labels-filter-popover { box-shadow: 0 8px 24px #0002; }
-.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 32px); top: 10px; width: 26px; height: 28px; border: 0; border-radius: 6px; background: var(--app-rail); color: var(--app-muted); }
+.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 36px); top: 10px; background: var(--app-rail); }
+.sidebar-edge-toggle:hover { background: var(--app-border); }
 .sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
