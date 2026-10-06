@@ -15,7 +15,7 @@
 
 `packages/client/src/livePages.ts` 的 `LivePageClient` 管理账户连接和目录。各页面的 `LiveSessionClient` 保留自己的 watch、游标、取消范围和消息对象，共享账户的目录 Map 和连接。聚合映射只引用页面所有的数据，供 outbox 和桌面 IPC 使用。
 
-本次 `perf/account-network` 候选每个账户只建立一条 WebSocket。新页面发送 `watch` 的 `mode:add`，移除页面发送 `mode:remove`；未打开的 session 不读正文。插件 hello 必须包含 `multi_session_live:true`。旧 watch 命令仍保留单话题替换语义，旧客户端可以连接新插件；新客户端需要配套插件，不增加旧服务器回退路径。候选尚未部署。
+本次 `perf/account-network` 候选每个账户只建立一条 WebSocket。新页面发送 `watch` 的 `mode:add`，移除页面发送 `mode:remove`；未打开的 session 不读正文。插件 hello 必须包含 `multi_session_live:true`。旧 watch 命令仍保留单话题替换语义，旧客户端可以连接新插件；新客户端需要配套插件，不增加旧服务器回退路径。该候选已合入并随插件 v0.2.3 及以后版本在开发 Gateway 中运行。
 
 移动端由 Native Stack 管理页面销毁。`sessionNavigation.tsx` 对已有页面使用 `dismissTo`，对新页面使用 `navigate`。内联链接、全文阅读器、频道列表和文件来源入口共用此规则。连接身份变化由原有 Stack key 清理页面。
 

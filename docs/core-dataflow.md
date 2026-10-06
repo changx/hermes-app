@@ -12,11 +12,11 @@
   → Hermes：历史与执行权威
 ```
 
-旧的 `/v1/events`、`/v1/sync`、`/v1/snapshot` 已从清理候选删除。没有旧客户端，不保留第二套事件回放传输。共享客户端不再提供 checkpoint、catchUp、resync 或通用消息已读位置 API。
+旧的 `/v1/events`、`/v1/sync`、`/v1/snapshot` 已在插件 `a43f311` 删除，开发 Gateway 当前对这些路径返回 404。没有旧客户端，不保留第二套事件回放传输。共享客户端不再提供 checkpoint、catchUp、resync 或通用消息已读位置 API。
 
 插件内部持久事件仍供 `/v1/live` publisher 消费。不能把内部提交通知和事件记录当作废弃对外接口删除。历史分页游标、消息 `ref_seq`、本地请求代次也不是事件回放 checkpoint。
 
-清理在独立 App/plugin worktree 中完成；本文不代表已提交、合并、部署或重启。
+清理已合入两个仓库 main，并在开发 Gateway 中运行（插件 v0.2.5）。
 
 ## 目录与页面恢复
 
@@ -65,7 +65,7 @@ processing 仅由正式处理开始/结束回调驱动。接收、入队或交�
 
 精简时的基线为 1,066 个单元测试，保留 107 个（10.04%）：共享客户端 10、桌面 14、手机 55、插件 28。删除测试定义或文件，不通过 skip 隐藏数量。保留的单元测试全部通过；103 个原有集成测试保留，本次不重跑插件全量集成测试。上述数量属于精简时的快照；合并时同时保留主分支后续新增的历史读取、独立标签页和网络提示改动及检查，不据旧数量声称当前总数。测试通过不代表服务已经部署。
 
-`npm run client:check` 验证共享 SDK 和故障测试。桌面与手机分别运行现行测试、类型检查和构建。插件运行隔离的 `tests/p1` HTTP/WS 与真实 Gateway 测试。
+`npm run client:check` 验证共享 SDK 和故障测试。桌面与手机分别运行现行测试、类型检查和构建。插件在独立仓库 `/opt/projects/jamie/hermes-app-plugin` 运行隔离的 `tests/p1` HTTP/WS 与真实 Gateway 测试。
 
 重复的 `tests/client/unit.test.mjs`、`reliability.test.mjs` 和大型 `real-gateway.mjs` 已删除。共享 SDK 保留 `packages/client/tests` 中的功能检查；现有插件 HTTP/WS 联调入口不变。不再为纯客户端检查要求 Hermes 基线目录。
 

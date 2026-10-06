@@ -1,5 +1,8 @@
 # P1-05 shared client contract (03-backed)
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 Status: local integrated test clients, not a product UI or installed app. The pinned Hermes baseline is `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`; protocol version is 1. Source of truth: [P1 protocol](protocol.md) and `plugins/hermes_app/adapter.py` in this worktree.
 
 `packages/client/src/index.ts` is pure TypeScript with injected `HttpTransport`, `SocketFactory`, and a token provider. It imports no Node, Electron, DOM, React, or React Native modules. The caller owns secure credential storage and supplies the token at connection/request time; the client does not persist it. Every HTTP request and WS upgrade uses `Authorization: Bearer`; URL and logs never carry it. A browser native WebSocket cannot set the required header. `tests/client/desktop/transport.mjs` uses Node `ws` to prove the desktop JS target. `tests/client/mobile/transport.js` uses the React Native WebSocket options header; its Node execution uses a deliberate `ws` shim, not a phone runtime.

@@ -1,5 +1,8 @@
 # Deployment gate
 
+<!-- status-refresh-2026-10-06 -->
+> **Current status (verified 2026-10-06):** statements below that backend activation is pending, awaits a restart, or was blocked by the Gateway restart guard are outdated. The development Gateway restarted at 2026-10-05 20:43 PDT and runs plugin v0.2.5 (plugin repository main `6abdaa4`); the related capabilities are live. Physical-device acceptance status is unchanged. See [development environment](dev-environment.md).
+
 Candidate implementation and tests are complete; runtime activation is pending.
 
 - Plugin source installed in `hermes-app-dev` only, with backup and metadata snapshot in the private workspace. Files were read back and hashed.

@@ -6,7 +6,7 @@
 
 - P0 与 P1 本地交付已完成。历史验收记录保留在 `docs/p1/`；当前仓库只维护客户端与共享客户端代码，Hermes App plugin 在独立仓库维护。
 - 产品核心：Channel 公共上下文、Thread 连续对话、独立于客户端在线状态的异步同步。
-- 当前同步只使用 `/v1/live`、轻量目录和存活页面的 HTTP 状态/历史读取。清理候选删除旧事件回放接口和客户端 checkpoint，不保留旧客户端兼容。实现与隔离验证边界见 [核心数据流](docs/core-dataflow.md)。
+- 当前同步只使用 `/v1/live`、轻量目录和存活页面的 HTTP 状态/历史读取。旧事件回放接口（`/v1/events`、`/v1/sync`、`/v1/snapshot`）和客户端 checkpoint 已删除，不保留旧客户端兼容。见 [核心数据流](docs/core-dataflow.md)。
 - Hermes 是数据与执行的权威服务端；客户端与通信 adapter 不维护第二套权威业务数据。
 - 最终必须交付可安装的独立桌面 App 和手机 App；Web/PWA 只可用于中间验证，不能替代最终交付。
 
@@ -39,7 +39,7 @@
 
 GitHub Actions 工作流 `.github/workflows/desktop-release.yml` 在 `main`、Pull Request 和手动触发时使用 Apple Silicon macOS runner 执行锁定依赖安装、桌面完整检查、依赖审计和 arm64 打包，并保留 14 天构建产物。
 
-推送与 `apps/desktop/package.json` 版本一致的 tag（例如当前版本 `v0.1.0`）会在相同门禁通过后自动创建 GitHub Release，上传：
+推送与 `apps/desktop/package.json` 版本一致的 tag（例如 `v0.1.36`）会在相同门禁通过后自动创建 GitHub Release，上传：
 
 - `Hermes-<version>-macOS-arm64.zip`
 - 对应的 `.sha256` 校验文件
@@ -47,12 +47,12 @@ GitHub Actions 工作流 `.github/workflows/desktop-release.yml` 在 `main`、Pu
 发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。创建 release 的示例：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.36
+git push origin v0.1.36
 ```
 
 同名 Release 已存在时，工作流会拒绝替换已发布资产。
 
 ## 下一步
 
-P1 已验收；P2 已实现首个 Expo 原生手机开发界面，公开测试入口已启动，尚待真实设备与模型联调完成；不代表独立安装包或 P2 全量功能完成。Description 仅全新逻辑会话注入一次、压缩后不补入。桌面 UI、设备安装包与完整真实设备验收仍是后续工作。
+P1 已验收。手机端通过 Expo Go 入口 `exps://agent.tuly.space` 测试，真实模型联调已通过；macOS 桌面已发布未签名的 arm64 开发构建（当前 v0.1.36）。Description 仅全新逻辑会话注入一次、压缩后不补入。独立手机安装包、签名/notarization 与完整真实设备验收仍是后续工作。开发环境当前状态见 [开发环境](docs/dev-environment.md)。

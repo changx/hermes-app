@@ -1,5 +1,8 @@
 # P1-04 本地实现与第三 gate 候选
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 状态：已完成主控独立复核与 P1 集成验收，当前结论见 [最终验收](final.md)。以下保留分阶段证据。固定只读 Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`，插件未改核心，也未安装活动 profile、调用付费模型、部署或发布。P1-03 原有 Description 只在全新逻辑 Session 注入一次，压缩/续接/冷恢复均不补入。
 
 ## 实现范围

@@ -2,9 +2,9 @@
 
 ## 1. 责任划分
 
-Session labels 作为稳定 Thread 的窄范围插件元数据持久保存，使用严格递增的客户端保存时间戳整组替换，不写 Hermes 核心或模型/展示历史。鉴权详情/写入接口返回精确目标身份，committed save 沿用 `directory_changed`，不触发正文提示。共享 SDK 保存后按精确目标回读并采用权威 catalogue；账号目录同步所有存活页面的标题区，不新增时间戳合并、正文预取、标签字典、离线编辑队列或本地持久权威。能力门控、Unicode 一致校验及连接/Thread 隔离见 [Session labels](session-labels.md)。当前为隔离、未部署候选。
+Session labels 作为稳定 Thread 的窄范围插件元数据持久保存，使用严格递增的客户端保存时间戳整组替换，不写 Hermes 核心或模型/展示历史。鉴权详情/写入接口返回精确目标身份，committed save 沿用 `directory_changed`，不触发正文提示。共享 SDK 保存后按精确目标回读并采用权威 catalogue；账号目录同步所有存活页面的标题区，不新增时间戳合并、正文预取、标签字典、离线编辑队列或本地持久权威。能力门控、Unicode 一致校验及连接/Thread 隔离见 [Session labels](session-labels.md)。已在开发 Gateway 中运行（`session_labels` capability 为 true）。
 
-Channel workspace 与仓库分开；AGENTS 专用入口通过本地 ProjectDB 显式源登记读取仓库根文件，普通 Files 不因此开放仓库。插件/共享 SDK/手机候选已移除 12 KB 专用限制，保留通用文件保护、条件保存和受限新会话提示。实现与未部署边界见 [仓库 AGENTS 独立绑定](channel-repository-agents.md)。下文 workspace 根文件描述保留为未绑定频道的兼容行为。
+Channel workspace 与仓库分开；AGENTS 专用入口通过本地 ProjectDB 显式源登记读取仓库根文件，普通 Files 不因此开放仓库。插件、共享 SDK 与客户端已移除 12 KB 专用限制，保留通用文件保护、条件保存和受限新会话提示，并已在开发 Gateway 中运行。详见 [仓库 AGENTS 独立绑定](channel-repository-agents.md)。下文 workspace 根文件描述保留为未绑定频道的兼容行为。
 
 2026-10-02 窄范围更新：目录增加共享完成结果/已读元数据，具体见 [已完成未读目录状态](completed-unread-directory.md)。下文“无未读/已读”仍指通用消息计数和位置回传，不再排除此标志；仍不读取未打开会话正文，不加同步版本链或历史库。
 

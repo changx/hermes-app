@@ -1,8 +1,23 @@
 # 开发环境
 
-## 当前状态补充
+## 当前运行状态（2026-10-06 只读核实）
 
-LCM 修复已回移并安装到开发 profile，提交 `19845a7`；当前 Gateway 尚未激活，需外部终端仅重启开发服务后核验。相关隔离回归 1235 项通过，现有历史指纹不变；没有升级固定核心或重启 Jamie/Expo。配置、证据、恢复与待验收见 [开发实例 LCM 修复](dev-lcm-fix.md)。
+本节以实际服务和文件为准，替代下方各条发布记录中的“待激活”“待重启”结论。下方条目均为历史记录。
+
+- 开发 Gateway：`hermes-gateway-hermes-app-dev.service`，PID `3461455`，启动于 2026-10-05 20:43:35 PDT。
+- App 插件：已安装文件与独立插件仓库 main `6abdaa4`（v0.2.5）逐文件哈希一致。安装时间 2026-10-04 17:31 PDT，早于本次 Gateway 启动，所以 v0.2.5 已在运行。
+- 运行中的 capabilities 包括 `open_session_live`、`shared_result_read`、`session_labels`、`title_alphabet`、`channel_workspace`、`channel_files`、`channel_agents`、`outbound_media`、`permanent_media_links`、`history_full`。历史响应包含 `receipts`。因此下列记录中的“后端待激活”均已过时：[历史执行状态](history-execution-state-release.md)、[完成未读](completed-unread-release.md)、[Session labels](session-labels.md)、[外发媒体](outbound-media-deployment.md)、[仓库 AGENTS 绑定](channel-repository-agents.md)、[OPEN-SESSION-LIVE](open-session-live.md)。
+- 旧接口 `/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，本机请求返回 404。当前实时连接只有 `/v1/live`。
+- LCM 插件：运行 `hermes-lcm` 分支 `jamie/app-dev-threshold-only`，提交 `17ac4ea`（v1.0.0-rc.1 之后两个提交）。它替代了 [LCM 修复记录](dev-lcm-fix.md) 中的 `19845a7`。
+- 主模型：`anthropic / claude-opus-5-5`。辅助任务（压缩、提取等）使用 `openai-codex / gpt-6.1-sol`，标题生成使用 `openai-codex / gpt-6-luna`。下方 `gpt-6-luna` 主模型的说法是历史配置。
+- 插件源码不在本仓库。插件、打包脚本 `scripts/pack-plugin.sh` 和 `tests/p1` 在 `/opt/projects/jamie/hermes-app-plugin`（远端 `changx/hermes-app-plugin`）。
+- Expo：`hermes-app-expo.service` 在 `/opt/projects/jamie/hermes-app/apps/mobile` 运行，只监听 `localhost:8081`。
+
+插件部署顺序：在插件仓库打包 → 校验 artifact → 备份旧插件目录 → 停止开发 Gateway → 原子替换 `plugins/hermes-app` → 回读哈希 → 启动 Gateway → 验证认证 capabilities、`/v1/live`、历史冷读、同 ID 幂等和一条真实模型消息。开发 Gateway 是 App 会话的父进程，必须在独立终端停止和启动它。
+
+## 当前状态补充（历史）
+
+LCM 修复曾以提交 `19845a7` 安装并等待激活；当前运行版本见上节。相关隔离回归 1235 项通过，现有历史指纹不变；没有升级固定核心或重启 Jamie/Expo。配置、证据、恢复见 [开发实例 LCM 修复](dev-lcm-fix.md)。
 
 2026-09-28 已为隔离 `hermes-app-dev` profile 接入现有 Mac mini MCP。配置只引用开发 profile 私有环境变量，不在仓库、聊天或验证结果中保存凭据。`hermes -p hermes-app-dev mcp test macmini` 实际连接成功并发现 21 个工具；随后经 `https://agent.tuly.space` 新建自动验收 Thread，真实模型完成一次只读 `mcp__macmini__calendar_list_calendars` 调用，收据为 `completed`、结果无错误，Thread 已归档。运行中的开发 Gateway 会为新会话动态发现该 MCP，因此无需重启；开发 Gateway 与 Jamie 主 Gateway 的 PID/启动时间均保持不变。回滚备份与脱敏证据保存在私有 `workspace/hermes-app/macmini-mcp-test/`，跟踪卡 `default / t_53fe1740`。
 
@@ -42,18 +57,18 @@ M1 已获授权部署，当前开发插件归档 SHA-256 为 `1c726ac8177ee7eadb
 
 - Profile：`/home/hermes/.hermes/profiles/hermes-app-dev`。
 - 核心：`/opt/projects/jamie/_worktrees/hermes-agent/hermes-app-p0-baseline`，提交 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`。此工作树为活动服务依赖，不能作为临时工作树清理。
-- Provider / model：`openai-codex / gpt-6-luna`，未配置其他 provider fallback。
+- Provider / model：初次搭建为 `openai-codex / gpt-6-luna`。当前主模型为 `anthropic / claude-opus-5-5`，见“当前运行状态”。
 - OAuth：独立登录，不复制 Jamie 或 Codex CLI 的旋转 refresh token。未授权前不能声称模型可用。
 - 插件目录：`/home/hermes/.hermes/profiles/hermes-app-dev/plugins/hermes-app`。
-- 安装归档 SHA-256：`62c51298537eeb47647e9963a04309b4eccbaebcffe13c008b93b660313377e1`，安装前已验证，与 P1 验收包一致。
+- 初次安装归档 SHA-256：`62c51298537eeb47647e9963a04309b4eccbaebcffe13c008b93b660313377e1`（P1 验收包，已被后续版本替换）。
 - 归档、DNS 回读证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/dev/`，长期保留供恢复。
-- API 实际监听：`127.0.0.1:9790`。
-- 私有 socket bridge：`172.31.0.1:9790` → `127.0.0.1:9790`。
+- API 实际监听：`127.0.0.1:9790`。插件代码只允许 loopback 地址（`HERMES_APP_HOST` 为 `127.0.0.1` 或 `::1`）。
+- 私有 socket bridge：`172.31.0.1:9790`（Docker 网桥地址）→ `127.0.0.1:9790`，供 Traefik 容器访问。
 - 域名：Cloudflare A → `147.135.37.153`，`proxied=true`，TTL auto。DNS record ID：`728fe6b2b695e0b02c3dec3a9e0a0f84`，写入后已 API 回读验证。
 - Traefik 热加载文件：`/opt/projects/jamie/ovh01-ingress/dynamic/hermes-app-dev.yaml`。复用既有 TLS 入口，不重启 Traefik。
-- HTTP：`https://agent.tuly.space/v1/...`；WS：`wss://agent.tuly.space/v1/events`。
+- HTTP：`https://agent.tuly.space/v1/...`；WS：`wss://agent.tuly.space/v1/live`（旧 `/v1/events` 已删除）。
 - 所有 HTTP/WS 均要求 `Authorization: Bearer <HERMES_APP_TOKEN>`；凭据位于开发 profile `.env`，权限 0600，profile 根目录 0700。不得提交或放进 URL、聊天及日志。
-- `/v1` 为 API 后端；根路径现供 Expo Go 获取开发包，手机界面见 `apps/mobile`。普通浏览器原生 WebSocket 不支持该认证请求头，不能替代 React Native transport。
+- `/v1` 和 `/media/` 为插件 API 后端；Traefik 以更高优先级把 `/`、`/status`、`*.bundle` 和 `/assets/` 交给 Expo（`hermes-app-expo.yaml`），手机界面见 `apps/mobile`。普通浏览器原生 WebSocket 不支持该认证请求头，不能替代 React Native transport。
 
 ## 服务管理
 
@@ -64,7 +79,7 @@ systemd 用户服务位于 `/home/hermes/.config/systemd/user/`：
 - `hermes-app-dev-bridge.socket`：私有网桥 listener，已 enable / active。
 - `hermes-app-dev-bridge.service`：systemd-socket-proxyd 按需启动。
 
-在服务器独立终端执行，**仅操作新开发 profile**：
+在服务器独立终端执行，**仅操作新开发 profile**。不要在 App 会话中执行，因为开发 Gateway 是 App 会话的父进程，会拒绝自我重启。只有 unit 或 drop-in 改变时才需要 `daemon-reload`：
 
 ```bash
 systemctl --user daemon-reload

@@ -1,5 +1,8 @@
 # 历史消息与执行状态同次读取
 
+<!-- status-refresh-2026-10-06 -->
+> **当前状态（2026-10-06 核实）：** 本文中的“后端待激活/待重启/Gateway 重启被拦截”已过时。开发 Gateway 已于 2026-10-05 20:43 PDT 重启，运行插件 v0.2.5（插件仓库 main `6abdaa4`），相关 capability 已在运行中返回 true。真实设备验收结论不受此更新影响。当前状态见 [开发环境](dev-environment.md)。
+
 ## 范围与关联
 
 客户端与独立 `hermes-app-plugin` 仓库已合入并推送主分支。手机 bundle 已发布，插件文件已安装，但开发 Gateway 会话内重启被 guard 拦截，服务端新路径尚待外部激活；见 [开发发布记录](history-execution-state-release.md)。不改 Hermes Core、真实聊天数据或其他 profile。

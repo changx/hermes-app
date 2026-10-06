@@ -1,5 +1,8 @@
 # Session labels
 
+<!-- status-refresh-2026-10-06 -->
+> **Current status (verified 2026-10-06):** statements below that backend activation is pending, awaits a restart, or was blocked by the Gateway restart guard are outdated. The development Gateway restarted at 2026-10-05 20:43 PDT and runs plugin v0.2.5 (plugin repository main `6abdaa4`); the related capabilities are live. Physical-device acceptance status is unchanged. See [development environment](dev-environment.md).
+
 ## Publication: App v0.1.20 and Plugin v0.2.2
 
 Jamie authorized publishing all current integrated updates. App source/tag is `0de8ffa4c43c923171363082f573f2352dcceea5`; Plugin source/tag is `7e2bffb9b57d87d48e9dd061e5f5fa549f462a25`. Both remote main branches and release tags were read back. App releases include labels, committed-page/memory-release fixes, persistent local drafts and original-position red draft text.

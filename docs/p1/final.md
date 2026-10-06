@@ -1,5 +1,8 @@
 # P1 本地交付与主控验收
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 状态：P1 本地插件、共享 TypeScript 协议模块和双端测试客户端已通过主控独立验收。正式桌面/手机 UI、签名安装包、真实设备及生产部署不属于本次交付；进入 P2/P3。
 
 ## 交付物

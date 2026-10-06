@@ -1,5 +1,8 @@
 # P1-05 fourth gate: shared client and package lane
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 Status: controller-accepted in the integrated P1 delivery; see [final acceptance](final.md) for the authoritative result. Earlier sections below retain historical stage evidence, not current pending status.
 
 - Shared pure TS module: `packages/client/src/index.ts`; desktop and Expo/RN target transport adapters: `tests/client/desktop/transport.mjs`, `tests/client/mobile/transport.js`.

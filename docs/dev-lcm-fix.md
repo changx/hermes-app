@@ -1,6 +1,10 @@
 # 开发实例 LCM 修复
 
-## 当前状态：已安装，等待外部激活
+## LCM 运行版本更新（2026-10-06 核实）
+
+`19845a7` 的激活状态已过时。开发 Gateway 已于 2026-10-05 20:43 PDT 重启，当前运行 `hermes-lcm` 分支 `jamie/app-dev-threshold-only`、提交 `17ac4ea`（v1.0.0-rc.1 之后的 `6a688ba` threshold-only 摘要与 `17ac4ea` recall policy skill）。它不包含下文的 `19845a7` 回移提交。下文只作为历史记录；当前配置以 `lcm_status` 实际返回为准。
+
+## 历史状态：已安装，等待外部激活
 
 按 Jamie 请求，将主实例验证过的 LCM 修复回移到 `hermes-app-dev`。只修改开发 profile 的 LCM 插件与相关压缩配置；不升级固定 Hermes 核心、不修改 App 插件/客户端、不重启 Expo 或 Jamie 主实例。
 

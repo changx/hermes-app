@@ -1,5 +1,8 @@
 # P1-03 第二 gate：持久接收、恢复与同步
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 ## Controller 审查修复（2026-09-25）
 
 在原第二 gate 后修复四处边界：空队列 claim 与新接收交错时的漏唤醒，以及旧任务回调误删新 owner；同轮压缩复制用户锚点后、最终行已持久但 post hook 尚未发布时的崩溃恢复；Channel 创建、名称/Description 编辑与删除的持久失效事件；Thread 归档后已接收请求的幂等重试和新请求的事务内拒绝。恢复只查询当前 Thread 已关联的 session，保留旧引用序号，缺失 final 才补引用和事件。执行结束未证实时收据继续保持 `unknown`，不会重新执行模型或工具。Channel 正文由 ProjectDB 提供，插件只保存摘要、版本及事件；两库之间的崩溃窗口由启动及读取时对账修复，短暂断线仍需按游标追增量。

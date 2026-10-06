@@ -1,5 +1,8 @@
 # P1-01/02 第一 gate：插件原始行引用历史
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 日期：2026-09-25。**P1-01/02 本地历史 gate 已经主控验收**；代码基线 `bafe9db52d4e988575fa48441712eb4d8245ab77` 独立复跑为 `24 passed in 91.00s`，严格 gate 为 `passed: true`。可进入 P1-03，但不代表持久接收、同步或执行恢复已完成。验证只使用隔离 profile、只读 Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`、真实 GatewayRunner/AIAgent/plugin loader、loopback 合成模型和合成工具。未修改核心、安装活动 profile、调用付费模型或部署。
 
 ## 实现与边界

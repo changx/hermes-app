@@ -18,6 +18,7 @@
 - [docs/p2-p3-kanban.md](docs/p2-p3-kanban.md)
 - [apps/mobile/README.md](apps/mobile/README.md)
 - [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
+- [docs/channel-repository-agents.md](docs/channel-repository-agents.md)
 
 ### M1 手机聊天、交互与验收
 
@@ -90,6 +91,7 @@
 - [docs/mobile-startup-receipt-warning.md](docs/mobile-startup-receipt-warning.md)
 - [docs/mobile-user-message-block.md](docs/mobile-user-message-block.md)
 - [docs/mobile-workspace-entry.md](docs/mobile-workspace-entry.md)
+- [docs/mobile-workspace-entry-release.md](docs/mobile-workspace-entry-release.md)
 
 ### 桌面应用
 
@@ -101,11 +103,16 @@
 - [docs/desktop-connections.md](docs/desktop-connections.md)
 - [docs/desktop-session-composer.md](docs/desktop-session-composer.md)
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
+- [docs/desktop-tabs.md](docs/desktop-tabs.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布
 
 - [docs/session-links.md](docs/session-links.md)
+- [docs/multi-connection.md](docs/multi-connection.md)
+- [docs/multi-connection-release-0.1.36.md](docs/multi-connection-release-0.1.36.md)
+- [docs/full-history-loading.md](docs/full-history-loading.md)
+- [docs/generated-titles-search.md](docs/generated-titles-search.md)
 - [docs/unified-settings.md](docs/unified-settings.md)
 - [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
@@ -186,7 +193,7 @@
 - 通信恢复默认自动完成，尽量不打扰用户：重连、确认核对、安全重试、历史补齐不要求用户做技术判断；临时故障只给轻量状态，不弹“重试/放弃”或要求手动重建同步。仅确实需要用户动作时给明确下一步；执行结果不明自动核对但不得盲目重跑，不能以静默掩盖失败。
 - 用户不负责查找、复制或修复令牌；初次接入通过管理员授权的一次性设备配对，App安全保存设备凭据，正常断线/重启自动恢复。既有开发连接继续兼容；设备撤销不得靠自动重新授权绕过。
 - 运行中的 Expo 根目录也是发布来源。未经相应部署授权，候选变更保留在隔离分支，不直接合入运行目录触发热更新。更新手机测试入口时，只发布已验证的客户端与必要开发插件，保留回滚；不顺带升级固定 Hermes 核心或重启 Jamie 主实例。公网资源验证和 iPhone 故障实测分别记录。
-- 当前手机采用 Expo/React Native SDK 57 与共享 HermesClient，使用隔离 hermes-app-dev / gpt-6-luna 开发环境。Expo Go 是当前测试入口，不等于独立安装包交付。
+- 当前手机采用 Expo/React Native SDK 57 与共享 HermesClient，使用隔离 hermes-app-dev 开发环境（主模型以该 profile 的 config.yaml 为准，见 docs/dev-environment.md）。Expo Go 是当前测试入口，不等于独立安装包交付。
 - 桌面、独立签名包、系统推送、复杂搜索/管理和完整附件平台保留后续，不作为本轮聊天体验的前置条件。
 - 默认滚屏：新建话题页面定位到最新消息；返回仍存活页面保留原阅读位置和历史窗口。底部跟随；用户上翻停止跟随；新消息提供回到最新入口；主动发送或点击回到最新恢复跟随；加载旧历史保持阅读锚点。频道详情页首帧显示列表底部，话题按最后消息时间从旧到新排列。正常加载不显示“Opening…”一类过程文字，只在确有问题时提示。
 - 页面头部入口用紧凑图标（连接、Agent 设置），返回按钮只显示箭头，不显示上一级标题。键盘和动态内容高度变化不得抢走阅读位置。
@@ -222,10 +229,10 @@
 - 已确认需求与建议/待决项分开记录。架构、接口、平台范围变更同时更新相关文档。
 - 开始实质开发前创建有 scope 和 acceptance 的 Kanban 卡；有并行工作时单独跟踪，不重复启动 worker。
 - 项目仓库在 /opt/projects/jamie/hermes-app；隔离 worktree 在 /opt/projects/jamie/_worktrees/hermes-app/<task>。
-- 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。当前入口仍读取 workspace 根文件，仓库 AGENTS.md 的独立绑定及大小限制调整尚待插件实现与部署验证，不能宣称已生效。该绑定不意味着客户端可访问整个仓库。
+- 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。仓库 AGENTS.md 独立绑定已由插件实现并在开发 Gateway 中运行（`channel_agents` capability 为 true），见 docs/channel-repository-agents.md。该绑定不意味着客户端可访问整个仓库。
 - 仓库内的项目临时文件使用 tmp/，由根 .gitignore 的 /tmp/ 排除；权威文档留在 docs/，不放入临时目录。运行时工具 scratch 仍遵守 Hermes 提供的 TMPDIR，不擅自修改全局临时目录或其他 profile。
 - 不为客户端修改 Hermes 核心源码；新增服务端能力必须通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch、复制修改核心模块或维护客户端专用 fork 绕过此约束。
-- Hermes 源码 worktree 仅用于只读检查和隔离验证；插件代码独立维护。扩展点不足时先报告限制和替代方案，不擅自修改核心。
+- Hermes 源码 worktree 仅用于只读检查和隔离验证；插件代码在独立仓库 /opt/projects/jamie/hermes-app-plugin（远端 changx/hermes-app-plugin）维护，本仓库不再包含 plugins/hermes_app、scripts/pack-plugin.sh 或 tests/p1。扩展点不足时先报告限制和替代方案，不擅自修改核心。
 - 检查其他会话/任务正在进行的修改；不得覆盖、回退或干扰它们。
 
 ## 授权与安全

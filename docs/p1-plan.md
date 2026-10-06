@@ -1,5 +1,8 @@
 # P1 规划：Hermes App 插件与共享客户端契约
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](core-dataflow.md)。
+
 > 状态：Jamie 已授权 P1 本地实现，按 01/02 → 03 → 04/05 验收推进；未授权安装到活动 profile 或部署。最新纠正：Description 仅全新会话注入一次，时间/长度压缩后不补入。P0 证据中的旧“压缩后补回初始快照”要求已被此规则替代。
 
 2026-09-25 执行授权与验收：Jamie 授权 P1 隔离本地实施。P1-01～05 已完成主控独立复核与集成回归：43 项 Python、17 项 TS、严格历史 gate、解包插件与双端真实 Gateway 联调、Metro Android JS 导出通过，见 [最终验收](p1/final.md)。不包含活动 profile 安装、gateway 重启、推送、付费模型或部署；正式 UI 与设备安装验收属于 P2/P3。

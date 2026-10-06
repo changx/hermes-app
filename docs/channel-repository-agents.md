@@ -1,5 +1,8 @@
 # Channel repository AGENTS.md binding
 
+<!-- status-refresh-2026-10-06 -->
+> **Current status (verified 2026-10-06):** statements below that backend activation is pending, awaits a restart, or was blocked by the Gateway restart guard are outdated. The development Gateway restarted at 2026-10-05 20:43 PDT and runs plugin v0.2.5 (plugin repository main `6abdaa4`); the related capabilities are live. Physical-device acceptance status is unchanged. See [development environment](dev-environment.md).
+
 Task: `t_b28f2c2d`. Client branch: `feat/channel-repository-agents`; plugin branch: `feat/plugin-repository-agents` (standalone plugin repository history). Both were merged/pushed to main after explicit authorization. Client resources are deployed; backend source/binding are staged, but Gateway activation is still blocked from this active Gateway process. This is not a complete backend release.
 
 ## Confirmed behavior

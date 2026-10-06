@@ -1,5 +1,8 @@
 # P1-03 本地接收与同步协议
 
+<!-- status-refresh-2026-10-06 -->
+> **历史文档说明（2026-10-06）：** 本文记录 P0/P1 当时的协议与证据。插件源码、`scripts/pack-plugin.sh` 与 `tests/p1` 已移到独立仓库 `/opt/projects/jamie/hermes-app-plugin`；`/v1/events`、`/v1/sync`、`/v1/snapshot` 已删除，当前只使用 `/v1/live`、`/v1/catalogue` 与页面 HTTP 读取，见 [核心数据流](../core-dataflow.md)。
+
 > 历史记录，不是当前同步契约。清理候选已删除 `/v1/events`、`/v1/sync`、`/v1/snapshot` 和通用 read 路由；没有旧客户端，不保留旧回放兼容。当前通信、历史和页面状态见 [核心数据流](../core-dataflow.md)与 [OPEN-SESSION-LIVE](../open-session-live.md)。本文保留原阶段证据，不能按旧接口开发。
 
 状态：P1 本地集成候选，固定单 owner/profile。Hermes 基线 `2f16a1aa5a35feec496949abdef7ad51aea0e7ef`；未安装活动 profile。普通 HTTP 请求和 WebSocket 升级请求都须带 `Authorization: Bearer <管理员或已配对设备凭据>` 请求头；唯独配对 exchange 不带 Authorization，配对码只在 JSON 正文。凭据不进入 URL。服务端从当前 profile 选择数据库，不接受客户端的 profile/owner 参数。浏览器原生 WebSocket 不能设置任意请求头；共享客户端由支持请求头的桌面/手机 socket 工厂提供连接。
