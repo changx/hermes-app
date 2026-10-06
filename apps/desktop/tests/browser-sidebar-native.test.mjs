@@ -12,13 +12,13 @@ test('Electron: production right browser previews attachments and generated page
   const root=new URL('..',import.meta.url).pathname,folder=await mkdtemp(join(tmpdir(),'hermes-browser-sidebar-'));
   try {
     await cp(join(root,'dist'),join(folder,'dist'),{recursive:true});
-    const bundle=await build({entryPoints:[join(root,'src/main/index.ts')],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false,plugins:[{name:'test-exports',setup(b){b.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const sidebarForTest=()=>browser; export const tabsForTest=()=>tabs;\n',loader:'ts'}));}}]});
+    const bundle=await build({entryPoints:[join(root,'src/main/index.ts')],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false,plugins:[{name:'test-exports',setup(b){b.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const sidebarForTest=()=>browser; export const tabsForTest=()=>tabs; export const settingsForTest=()=>settingsWindow;\n',loader:'ts'}));}}]});
     await writeFile(join(folder,'dist/main/index.cjs'),bundle.outputFiles[0].text);
     await writeFile(join(folder,'local.html'),'<h1 id="local">Local draft preview</h1>');
     await writeFile(join(folder,'harness.cjs'),String.raw`
 const {app,BrowserWindow,session,nativeImage}=require('electron');const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
-const {service:accounts,sidebarForTest,tabsForTest}=require('./dist/main/index.cjs');
+const {service:accounts,sidebarForTest,tabsForTest,settingsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary;
 const requests=[],downloads=[],a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map();let base;
 const server=http.createServer((req,res)=>{requests.push({url:req.url,ua:req.headers['user-agent'],authorization:req.headers.authorization,cookie:req.headers.cookie});
@@ -78,8 +78,30 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await evaluate(web,'window.open('+JSON.stringify(base+'/popup')+',"_blank")');await until(()=>web.getURL()===base+'/popup','popup stays in sidebar');assert.equal(BrowserWindow.getAllWindows().length,1);
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(b)+')');await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');web.focus();web.sendInputEvent({type:'keyDown',keyCode:'Tab',modifiers:['control']});web.sendInputEvent({type:'keyUp',keyCode:'Tab',modifiers:['control']});await until(()=>!pane.view.getVisible(),'focused browser retains app tab shortcut');assert.equal(web.isDestroyed(),false);
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');await until(()=>pane.view.getVisible(),'browser retained with tab');assert.equal(web.getURL(),base+'/popup');
- await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>!pane.view.getVisible()&&!tab.view.getVisible(),'modal covers both native views');
- await evaluate(shell,'document.querySelector(".settings-close").click()');await until(()=>pane.view.getVisible()&&tab.view.getVisible(),'modal restores both views');
+ const retainedChat=chat.id,retainedBrowser=web.id;
+ await evaluate(chat,'(()=>{const e=document.querySelector("[aria-label=Message]");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(e,"Retained settings draft");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
+ await evaluate(chat,'document.querySelector(".message-list").dataset.settingsRetained="yes"');
+ await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');
+ await until(()=>settingsForTest().isOpen&&BrowserWindow.getAllWindows().length===2,'Settings opens as a separate native window');
+ const settings=settingsForTest().contents;
+ await until(()=>evaluate(settings,'!!document.querySelector(".settings-window [role=tablist]")'),'Settings window renders two-column page');
+ assert.equal(await evaluate(settings,'!!document.querySelector(".native-workspace,.message-list")'),false,'Settings window has no conversation content');
+ assert.equal(pane.view.getVisible()&&tab.view.getVisible(),true,'Session and preview stay visible while Settings is open');
+ assert.equal(manager.snapshot(chat).tabActive,true,'Session stays active and usable');
+ await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await new Promise(r=>setTimeout(r,200));
+ assert.equal(BrowserWindow.getAllWindows().length,2,'second click focuses the single Settings window');
+ await assert.rejects(evaluate(settings,'window.hermesDesktop.newTab()'),/Settings action unavailable/);
+ await assert.rejects(evaluate(settings,'window.hermesDesktop.sendMessage({text:"x",attachmentIds:[]})'),/Settings action unavailable/);
+ const count=manager.tabs.size;settings.sendInputEvent({type:'keyDown',keyCode:'w',modifiers:['control']});settings.sendInputEvent({type:'keyUp',keyCode:'w',modifiers:['control']});
+ await until(()=>!settingsForTest().isOpen,'Ctrl+W closes only Settings');assert.equal(manager.tabs.size,count,'no workspace tab closed');
+ shell.focus();shell.sendInputEvent({type:'keyDown',keyCode:',',modifiers:['control']});shell.sendInputEvent({type:'keyUp',keyCode:',',modifiers:['control']});
+ await until(()=>settingsForTest().isOpen,'Ctrl+, opens Settings');
+ const reopened=settingsForTest().contents;await until(()=>evaluate(reopened,'!!document.querySelector(".settings-window")'),'reopened Settings renders');
+ reopened.sendInputEvent({type:'keyDown',keyCode:'Escape'});reopened.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+ await until(()=>!settingsForTest().isOpen&&BrowserWindow.getAllWindows().length===1,'Escape closes only Settings');
+ assert.equal(pane.view.getVisible()&&tab.view.getVisible(),true);assert.equal(chat.id,retainedChat);assert.equal(web.id,retainedBrowser);
+ assert.equal(await evaluate(chat,'document.querySelector(".message-list").dataset.settingsRetained'),'yes');
+ assert.equal(await evaluate(chat,'document.querySelector("[aria-label=Message]").value'),'Retained settings draft');
  window.setSize(720,820);await until(()=>tab.view.getBounds().x===0&&pane.view.getBounds().x+pane.view.getBounds().width===window.getContentSize()[0],'narrow sidebar layout');assert.ok(tab.view.getBounds().width>=400);
  window.setSize(1280,820);await until(()=>tab.view.getBounds().x>0,'wide sidebar restores left navigation');
  await evaluate(shell,'window.hermesDesktop.openBrowser("javascript:alert(1)").then(()=>false,()=>true)').then(result=>assert.equal(result,true));

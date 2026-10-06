@@ -9,6 +9,7 @@ import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from
 import { DesktopConnections } from "./connections";
 import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
+import { DesktopSettingsWindow } from './settings-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
@@ -20,7 +21,18 @@ let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
 protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
+const secureSettings = (contents: Electron.WebContents): void => {
+  contents.session.setPermissionCheckHandler(() => false);
+  contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  contents.on('will-attach-webview', event => event.preventDefault());
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (event, url) => { if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
+  contents.on('will-redirect', event => event.preventDefault());
+};
+const settingsWindow = new DesktopSettingsWindow(__dirname, () => service.snapshot(), secureSettings);
+
 const service = new DesktopConnections((snapshot) => {
+  settingsWindow.publish();
   if (tabs) { tabs.sync(snapshot); return; }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(SNAPSHOT_EVENT, publishedSnapshot ? snapshotDelta(publishedSnapshot,snapshot) : snapshot);
@@ -29,13 +41,15 @@ const service = new DesktopConnections((snapshot) => {
 });
 
 const trustedSender = (event: Electron.IpcMainInvokeEvent): void => {
-  if (!mainWindow || event.senderFrame !== event.sender.mainFrame) {
-    throw new Error("Untrusted desktop request");
-  }
+  if (event.senderFrame !== event.sender.mainFrame) throw new Error("Untrusted desktop request");
+  // Reached only through the Settings channel allowlist in registerDesktopApi.
+  if (settingsWindow.owns(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
+  if (!mainWindow) throw new Error("Untrusted desktop request");
   if (tabs) { tabs.authorize(event.sender, event.senderFrame?.url); return; }
   if (event.sender !== mainWindow.webContents || event.senderFrame?.url !== mainWindow.webContents.getURL()) throw new Error('Untrusted desktop request');
 };
 const shellSender = (event: Electron.IpcMainInvokeEvent): void => { trustedSender(event); if (event.sender !== mainWindow?.webContents) throw new Error('Shell action required'); };
+const settingsSender = (event: Electron.IpcMainInvokeEvent): void => { trustedSender(event); if (!settingsWindow.owns(event.sender) && event.sender !== mainWindow?.webContents) throw new Error('Settings action required'); };
 const target = (event: Electron.IpcMainInvokeEvent): string => { trustedSender(event); if (!tabs) throw new Error('Window unavailable'); return tabs.target(event.sender); };
 
 const text = (value: unknown, maximum: number): string => {
@@ -51,18 +65,28 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
   return value.map((item) => text(item, maximumLength));
 };
 
+// The Settings window may use only these channels. All other workspace,
+// Session, browser and attachment actions reject it before any handler runs.
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection']);
 const registerDesktopApi = (): void => {
-  ipcMain.handle('desktop:add-connection', async (event, value: unknown) => {
-    shellSender(event); const request = object(value);
+  const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown): void => {
+    ipcMain.handle(channel, (event, ...args) => {
+      if (settingsWindow.owns(event.sender) && !SETTINGS_CHANNELS.has(channel)) throw new Error('Settings action unavailable');
+      return listener(event, ...args);
+    });
+  };
+  handle('desktop:open-settings', event => { trustedSender(event); settingsWindow.open(); });
+  handle('desktop:add-connection', async (event, value: unknown) => {
+    settingsSender(event); const request = object(value);
     await service.addConnection({ baseUrl: text(request.baseUrl, 300), code: text(request.code, 32), deviceName: text(request.deviceName, 64) });
   });
-  ipcMain.handle('desktop:remove-connection', async (event, id: unknown) => {
-    shellSender(event); const selected = text(id, 40), key = service.snapshot().connections?.find(row => row.id === selected)?.connectionKey;
+  handle('desktop:remove-connection', async (event, id: unknown) => {
+    settingsSender(event); const selected = text(id, 40), key = service.snapshot().connections?.find(row => row.id === selected)?.connectionKey;
     if (key && [...tabs?.tabs.values() ?? []].some(tab => tab.connectionKey === key && tab.busy)) throw new Error('Wait for the current action before removing this connection.');
     await service.removeConnection(selected);
   });
-  ipcMain.handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
-  ipcMain.handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
+  handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
+  handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
     trustedSender(event);
     if (typeof confirm !== 'boolean') throw new Error('Invalid desktop request');
     return service.setModelSettings(text(key, 200), text(provider, 256), text(model, 256), confirm);
@@ -73,15 +97,15 @@ const registerDesktopApi = (): void => {
     if (!tab) throw new Error('Open a conversation or new chat first.');
     return tab;
   };
-  ipcMain.handle('desktop:open-browser', (event, url: unknown) => browser?.open(browserTab(event).id, url === undefined ? undefined : text(url, 4096)));
-  ipcMain.handle('desktop:browser-bounds', (event, value: unknown) => { shellSender(event); const b = object(value); browser?.setBounds({ x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true }); });
-  ipcMain.handle('desktop:browser-action', (event, action: unknown) => {
+  handle('desktop:open-browser', (event, url: unknown) => browser?.open(browserTab(event).id, url === undefined ? undefined : text(url, 4096)));
+  handle('desktop:browser-bounds', (event, value: unknown) => { shellSender(event); const b = object(value); browser?.setBounds({ x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true }); });
+  handle('desktop:browser-action', (event, action: unknown) => {
     shellSender(event); const tab = browserTab(event);
     if (!['back', 'forward', 'reload', 'stop', 'close'].includes(action as string)) throw new Error('Invalid browser action');
     browser?.action(tab.id, action as 'back' | 'forward' | 'reload' | 'stop' | 'close');
     if (action === 'close') tab.view.webContents.focus();
   });
-  ipcMain.handle('desktop:preview-attachment', async (event, id: unknown) => {
+  handle('desktop:preview-attachment', async (event, id: unknown) => {
     const tab = browserTab(event), thread = target(event), key = tab.connectionKey;
     const attachmentId = text(id, 200), request = browser?.startPreview(tab.id);
     let file;
@@ -96,7 +120,7 @@ const registerDesktopApi = (): void => {
       return current() ? resource : undefined;
     });
   });
-  ipcMain.handle('desktop:preview-local-file', async (event, input: unknown) => {
+  handle('desktop:preview-local-file', async (event, input: unknown) => {
     const tab = browserTab(event);
     if (tab.kind !== 'new') throw new Error('Local preview is for new chat only.');
     const request = browser?.startPreview(tab.id);
@@ -105,33 +129,33 @@ const registerDesktopApi = (): void => {
     if (tabs?.tabs.get(tab.id) !== tab || tab.kind !== 'new' || !request?.current()) return;
     return browser?.document(tab.id, file);
   });
-  ipcMain.handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
-  ipcMain.handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
-  ipcMain.handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
-  ipcMain.handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
-  ipcMain.handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
-  ipcMain.handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
-  ipcMain.handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
-  ipcMain.handle("desktop:get-snapshot", (event) => { trustedSender(event); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
-  ipcMain.handle("desktop:pair", async (event, value: unknown) => {
+  handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
+  handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
+  handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
+  handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
+  handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
+  handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
+  handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
+  handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
+  handle("desktop:pair", async (event, value: unknown) => {
     shellSender(event);
     if (!value || typeof value !== "object") throw new Error("Invalid desktop request");
     const request = value as Partial<PairingRequest>;
     await service.pair({ baseUrl: text(request.baseUrl, 300), code: text(request.code, 32), deviceName: text(request.deviceName, 64) });
   });
-  ipcMain.handle("desktop:cancel-pairing", async (event) => { trustedSender(event); await service.cancelPairing(); });
-  ipcMain.handle("desktop:forget-connection", async (event) => { shellSender(event); await service.forgetConnection(); });
-  ipcMain.handle("desktop:load-local-drafts", async (event, id: unknown) => { trustedSender(event); const identity = text(id, 24), manager = tabs, tab = manager?.sender(event.sender), saved = tab ? await service.loadLocalDrafts(identity) : await service.loadWorkspaceDrafts(); if (manager !== tabs || !service.hasConnection(identity) || tab && identity !== tab.connectionKey) throw new Error('Draft identity changed'); if (!tab) { manager?.draftThreads.clear(); for (const [threadId, draft] of Object.entries(saved)) if (draft.text.trim() || draft.attachments.length) manager?.draftThreads.add(threadId); manager?.publish(); return saved; } return tab.threadId && saved[tab.threadId] ? { [tab.threadId]: saved[tab.threadId] } : {}; });
-  ipcMain.handle("desktop:save-local-draft", async (event, id: unknown, threadId: unknown, value: unknown) => { trustedSender(event); const targetId = text(threadId, 200), manager = tabs; if (manager?.sender(event.sender) && targetId !== target(event)) throw new Error('Draft target mismatch'); await service.saveLocalDraft(text(id, 24), targetId, value); if (manager !== tabs) return; const draft = object(value); if (typeof draft.text === 'string' && (draft.text.trim() || Array.isArray(draft.attachments) && draft.attachments.length)) manager?.draftThreads.add(targetId); else manager?.draftThreads.delete(targetId); manager?.publish(); });
-  ipcMain.handle("desktop:select-channel", async (event, id: unknown) => { shellSender(event); await service.selectChannel(text(id, 200)); });
-  ipcMain.handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
-  ipcMain.handle("desktop:close-session-page", (event, id: unknown) => { shellSender(event); const tab = [...tabs?.tabs.values() ?? []].find(item => item.threadId === text(id, 200)); if (tab) tabs?.close(tab.id); });
-  ipcMain.handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && (tab.id !== tabs?.activeTabId || !tabs?.snapshot(event.sender).tabActive) || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
-  ipcMain.handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
-  ipcMain.handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); await service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
-  ipcMain.handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
-  ipcMain.handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
-  ipcMain.handle("desktop:create-thread", async (event, value: unknown) => {
+  handle("desktop:cancel-pairing", async (event) => { trustedSender(event); await service.cancelPairing(); });
+  handle("desktop:forget-connection", async (event) => { shellSender(event); await service.forgetConnection(); });
+  handle("desktop:load-local-drafts", async (event, id: unknown) => { trustedSender(event); const identity = text(id, 24), manager = tabs, tab = manager?.sender(event.sender), saved = tab ? await service.loadLocalDrafts(identity) : await service.loadWorkspaceDrafts(); if (manager !== tabs || !service.hasConnection(identity) || tab && identity !== tab.connectionKey) throw new Error('Draft identity changed'); if (!tab) { manager?.draftThreads.clear(); for (const [threadId, draft] of Object.entries(saved)) if (draft.text.trim() || draft.attachments.length) manager?.draftThreads.add(threadId); manager?.publish(); return saved; } return tab.threadId && saved[tab.threadId] ? { [tab.threadId]: saved[tab.threadId] } : {}; });
+  handle("desktop:save-local-draft", async (event, id: unknown, threadId: unknown, value: unknown) => { trustedSender(event); const targetId = text(threadId, 200), manager = tabs; if (manager?.sender(event.sender) && targetId !== target(event)) throw new Error('Draft target mismatch'); await service.saveLocalDraft(text(id, 24), targetId, value); if (manager !== tabs) return; const draft = object(value); if (typeof draft.text === 'string' && (draft.text.trim() || Array.isArray(draft.attachments) && draft.attachments.length)) manager?.draftThreads.add(targetId); else manager?.draftThreads.delete(targetId); manager?.publish(); });
+  handle("desktop:select-channel", async (event, id: unknown) => { shellSender(event); await service.selectChannel(text(id, 200)); });
+  handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
+  handle("desktop:close-session-page", (event, id: unknown) => { shellSender(event); const tab = [...tabs?.tabs.values() ?? []].find(item => item.threadId === text(id, 200)); if (tab) tabs?.close(tab.id); });
+  handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && (tab.id !== tabs?.activeTabId || !tabs?.snapshot(event.sender).tabActive) || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
+  handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
+  handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); await service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
+  handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
+  handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
+  handle("desktop:create-thread", async (event, value: unknown) => {
     trustedSender(event); const input = object(value), tab = tabs?.sender(event.sender);
     const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput;
     if (!tab) return service.createThread(request);
@@ -143,21 +167,21 @@ const registerDesktopApi = (): void => {
     try { const id = await service.createThread(request, false); if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id; }
     finally { tab.busy = false; tabs?.publish(); }
   });
-  ipcMain.handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.renameThread(text(id, 200), text(title, 200)); });
-  ipcMain.handle('desktop:save-thread-labels', async (event, id: unknown, markers: unknown, timestamp: unknown, connectionKey: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); return service.saveThreadLabels(text(id, 200), validateLabels(markers), labelTimestamp(timestamp), text(connectionKey, 200)); });
-  ipcMain.handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.archiveThread(text(id, 200)); });
-  ipcMain.handle("desktop:load-older", async (event) => { await service.loadOlder(target(event)); });
-  ipcMain.handle("desktop:get-channel-info", async (event, id: unknown) => { trustedSender(event); return service.getChannelInfo(text(id, 200)); });
-  ipcMain.handle("desktop:send-message", async (event, value: unknown) => { const threadId = target(event), input = object(value), tab = tabs?.sender(event.sender), manager = tabs; if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { await service.sendMessage({ text: text(input.text, 100_000), attachmentIds: texts(input.attachmentIds, 8, 200), ...(input.clientMessageId === undefined ? {} : { clientMessageId: text(input.clientMessageId, 100) }) } satisfies SendMessageInput, threadId); if (manager === tabs) { manager?.draftThreads.delete(threadId); manager?.publish(); } } finally { if (tab) tab.busy = false; } });
-  ipcMain.handle("desktop:retry-message", async (event, id: unknown) => { await service.retryMessage(text(id, 128), target(event)); });
-  ipcMain.handle("desktop:stop-thread", async (event) => { await service.stopThread(target(event)); });
-  ipcMain.handle("desktop:cancel-queued", async (event, id: unknown) => { await service.cancelQueued(text(id, 200), target(event)); });
-  ipcMain.handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { await service.answerInteraction(text(id, 200), text(choice, 4000), target(event)); });
-  ipcMain.handle("desktop:pick-attachments", async (event, threadId: unknown) => { const id = target(event); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); return service.pickAndUploadAttachments(id); });
-  ipcMain.handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { const id = target(event), tab = tabs?.sender(event.sender); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { return await service.uploadAttachmentInputs(attachmentInputs(paths), id); } finally { if (tab) tab.busy = false; } });
-  ipcMain.handle("desktop:delete-attachment", async (event, id: unknown) => { await service.deleteUnattachedAttachment(text(id, 200), target(event)); });
-  ipcMain.handle("desktop:preview-image", async (event, id: unknown) => { return service.previewAttachmentImage(text(id, 200), target(event)); });
-  ipcMain.handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { const threadId = target(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action, threadId); });
+  handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.renameThread(text(id, 200), text(title, 200)); });
+  handle('desktop:save-thread-labels', async (event, id: unknown, markers: unknown, timestamp: unknown, connectionKey: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); return service.saveThreadLabels(text(id, 200), validateLabels(markers), labelTimestamp(timestamp), text(connectionKey, 200)); });
+  handle("desktop:archive-thread", async (event, id: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.archiveThread(text(id, 200)); });
+  handle("desktop:load-older", async (event) => { await service.loadOlder(target(event)); });
+  handle("desktop:get-channel-info", async (event, id: unknown) => { trustedSender(event); return service.getChannelInfo(text(id, 200)); });
+  handle("desktop:send-message", async (event, value: unknown) => { const threadId = target(event), input = object(value), tab = tabs?.sender(event.sender), manager = tabs; if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { await service.sendMessage({ text: text(input.text, 100_000), attachmentIds: texts(input.attachmentIds, 8, 200), ...(input.clientMessageId === undefined ? {} : { clientMessageId: text(input.clientMessageId, 100) }) } satisfies SendMessageInput, threadId); if (manager === tabs) { manager?.draftThreads.delete(threadId); manager?.publish(); } } finally { if (tab) tab.busy = false; } });
+  handle("desktop:retry-message", async (event, id: unknown) => { await service.retryMessage(text(id, 128), target(event)); });
+  handle("desktop:stop-thread", async (event) => { await service.stopThread(target(event)); });
+  handle("desktop:cancel-queued", async (event, id: unknown) => { await service.cancelQueued(text(id, 200), target(event)); });
+  handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { await service.answerInteraction(text(id, 200), text(choice, 4000), target(event)); });
+  handle("desktop:pick-attachments", async (event, threadId: unknown) => { const id = target(event); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); return service.pickAndUploadAttachments(id); });
+  handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { const id = target(event), tab = tabs?.sender(event.sender); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { return await service.uploadAttachmentInputs(attachmentInputs(paths), id); } finally { if (tab) tab.busy = false; } });
+  handle("desktop:delete-attachment", async (event, id: unknown) => { await service.deleteUnattachedAttachment(text(id, 200), target(event)); });
+  handle("desktop:preview-image", async (event, id: unknown) => { return service.previewAttachmentImage(text(id, 200), target(event)); });
+  handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { const threadId = target(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action, threadId); });
 };
 
 const createMainWindow = (): BrowserWindow => {
@@ -194,7 +218,7 @@ const createMainWindow = (): BrowserWindow => {
     contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url); return { action: 'deny' }; });
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
-  }, browser);
+  }, browser, () => settingsWindow.open());
 
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -214,6 +238,7 @@ const createMainWindow = (): BrowserWindow => {
   window.on("closed", () => {
     if (mainWindow !== window) return;
     mainWindow = null;
+    settingsWindow.close();
     tabs?.dispose(); tabs = undefined; browser = undefined;
     publishedSnapshot = undefined;
     service.closeSessionPages();

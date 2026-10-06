@@ -12,7 +12,7 @@ test('Electron: Settings adds/lists/removes independent connections, reports liv
   try {
     await cp(join(root,'dist'),join(folder,'dist'),{recursive:true});
     const bundle = await build({entryPoints:[join(root,'src/main/index.ts')],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false,
-      plugins:[{name:'test-exports',setup(b){b.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const tabsForTest=()=>tabs;\n',loader:'ts'}));}}]});
+      plugins:[{name:'test-exports',setup(b){b.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const tabsForTest=()=>tabs; export const settingsForTest=()=>settingsWindow;\n',loader:'ts'}));}}]});
     await writeFile(join(folder,'dist/main/index.cjs'),bundle.outputFiles[0].text);
     await cp(new URL('./fixtures/connections-native.cjs',import.meta.url),join(folder,'harness.cjs'));
     const output = execFileSync('xvfb-run',['-a',require('electron'),'--no-sandbox',join(folder,'harness.cjs')],{encoding:'utf8',timeout:70000,maxBuffer:3e6,env:{...process.env,ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});

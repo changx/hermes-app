@@ -97,7 +97,7 @@ export type ThreadInput = Readonly<{ title: string; clientThreadId: string; chan
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 export type DesktopRuntimeInfo = Readonly<{
-  viewRole?: 'workspace' | 'tab';
+  viewRole?: 'workspace' | 'tab' | 'settings';
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
 }>;
@@ -118,6 +118,8 @@ export interface HermesDesktopApi {
   completeNewTab(): Promise<void>;
   setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;
+  /** Opens or focuses the single native Settings window. */
+  openSettings(): Promise<void>;
   getSnapshot(): Promise<DesktopSnapshot>;
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void;
   pair(request: PairingRequest): Promise<void>;

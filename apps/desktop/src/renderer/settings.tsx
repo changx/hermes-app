@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
 import type { AgentModelSettings, ModelSelectionConfirmation } from '@hermes-app/client';
 import type { DesktopSnapshot } from '../shared/desktop-api';
 import { ConnectionSettings } from './connection-settings';
@@ -96,39 +95,38 @@ function Shortcuts() {
     ['Find a session', [modifier, 'K']], ['New chat', [modifier, 'N']],
     ['New tab', [modifier, 'T']], ['Close current tab', [modifier, 'W']],
     ['Next tab', [modifier, 'Tab']], ['Previous tab', [modifier, 'Shift', 'Tab']],
-    ['Paste text or files', [modifier, 'V']], ['Close dialog', ['Esc']],
+    ['Paste text or files', [modifier, 'V']], ['Open Settings', [modifier, ',']], ['Close Settings or dialog', ['Esc']],
   ] as const;
   return <div className="settings-section"><p className="settings-description">Keyboard shortcuts work while Hermes is focused. These shortcuts are fixed in this version.</p><dl className="settings-shortcuts">{rows.map(([label, keys]) => <div key={label}><dt>{label}</dt><dd>{keys.map(key => <kbd key={key}>{key}</kbd>)}</dd></div>)}</dl></div>;
 }
 
-export function SettingsDialog({ snapshot, close, initialPage, onPageChange }: { snapshot: DesktopSnapshot; close: () => void; initialPage?: Page; onPageChange?: (page: Page) => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const returnFocus = useRef<Element | null>(document.activeElement);
-  const [page, updatePage] = useState<Page>(initialPage ?? (snapshot.connectionKey ? 'model' : 'font'));
-  const setPage = (value: Page) => { updatePage(value); onPageChange?.(value); };
+const PAGE_KEY = 'hermes.desktop.settings-page';
+const savedPage = (): Page | undefined => {
+  try { const value = window.localStorage.getItem(PAGE_KEY); return pages.some(item => item.id === value) ? value as Page : undefined; } catch { return undefined; }
+};
+
+/** Full content of the native Settings window: left navigation, right content. */
+export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
+  const root = useRef<HTMLElement>(null);
+  const [page, updatePage] = useState<Page>(() => savedPage() ?? (snapshot.connectionKey ? 'model' : 'font'));
+  const setPage = (value: Page) => { updatePage(value); try { window.localStorage.setItem(PAGE_KEY, value); } catch { /* Navigation still works for this window. */ } };
   const [modelKey, setModelKey] = useState(snapshot.connectionKey);
   const modelConnections = (snapshot.connections ?? []).filter(row => row.connectionKey);
   useEffect(() => {
     if (snapshot.connections && !modelConnections.some(row => row.connectionKey === modelKey)) setModelKey(modelConnections[0]?.connectionKey);
   }, [snapshot.connections, modelKey]);
+  useEffect(() => { if (!modelKey && snapshot.connectionKey) setModelKey(snapshot.connectionKey); }, [snapshot.connectionKey, modelKey]);
   useEffect(() => {
-    dialog.current?.showModal();
-    dialog.current?.querySelector<HTMLElement>(page === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
-    return () => { if (returnFocus.current instanceof HTMLElement && returnFocus.current.isConnected) returnFocus.current.focus(); };
+    root.current?.querySelector<HTMLElement>(page === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
   }, []);
   const navigationKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
     if (!delta && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? pages.length - 1 : (index + delta + pages.length) % pages.length;
-    setPage(pages[next].id); dialog.current?.querySelector<HTMLButtonElement>(`#settings-tab-${pages[next].id}`)?.focus();
+    setPage(pages[next].id); root.current?.querySelector<HTMLButtonElement>(`#settings-tab-${pages[next].id}`)?.focus();
   };
-  return createPortal(<dialog ref={dialog} className="settings-dialog" aria-labelledby="settings-title" onClose={close} onMouseDown={event => {
-    if (event.target !== dialog.current) return;
-    const rect = dialog.current.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.current.close();
-  }}>
-    <header className="settings-header"><h2 id="settings-title">Settings</h2><button type="button" className="settings-close" aria-label="Close Settings" title="Close Settings (Esc)" onClick={() => dialog.current?.close()}>×</button></header>
+  return <main ref={root} className="settings-window" aria-label="Settings">
     <div className="settings-layout"><nav className="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">{pages.map((item, index) => <button key={item.id} id={`settings-tab-${item.id}`} type="button" role="tab" aria-selected={page === item.id} aria-controls={`settings-panel-${item.id}`} tabIndex={page === item.id ? 0 : -1} onClick={() => setPage(item.id)} onKeyDown={event => navigationKey(event, index)}>{item.label}</button>)}</nav>
       <section className="settings-content" id={`settings-panel-${page}`} role="tabpanel" aria-labelledby={`settings-tab-${page}`} tabIndex={0}>
         <h3>{pages.find(item => item.id === page)?.label}</h3>
@@ -138,10 +136,11 @@ export function SettingsDialog({ snapshot, close, initialPage, onPageChange }: {
         {page === 'connection' && <ConnectionSettings snapshot={snapshot} />}
       </section>
     </div>
-  </dialog>, document.body);
+  </main>;
 }
 
-export function SettingsButton({ snapshot, className }: { snapshot: DesktopSnapshot; className?: string }) {
-  const [open, setOpen] = useState(false);
-  return <><button type="button" className={className} title="Settings" aria-label="Settings" aria-haspopup="dialog" onClick={() => setOpen(true)}>⚙</button>{open && <SettingsDialog snapshot={snapshot} close={() => setOpen(false)} />}</>;
+/** Opens (or focuses) the native Settings window. The current page stays visible and usable. */
+export function SettingsButton({ className }: { className?: string }) {
+  const [error, setError] = useState('');
+  return <><button type="button" className={className} title="Settings" aria-label="Settings" onClick={() => { setError(''); void window.hermesDesktop.openSettings().catch(() => setError('Settings could not be opened. Try again.')); }}>⚙</button>{error && <span role="alert" className="settings-open-error">{error}</span>}</>;
 }

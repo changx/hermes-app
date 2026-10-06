@@ -14,13 +14,13 @@ test('Electron: independent production tabs retain DOM, drafts, history and scop
   try {
     await cp(join(root,'dist'),join(folder,'dist'),{recursive:true});
     const candidate=await build({entryPoints:[join(root,'src/main/index.ts')],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false,
-      plugins:[{name:'test-only-exports',setup(builder){builder.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const nativeTabsForTest=()=>tabs;\n',loader:'ts'}));}}]});
+      plugins:[{name:'test-only-exports',setup(builder){builder.onLoad({filter:/src\/main\/index\.ts$/},async args=>({contents:await readFile(args.path,'utf8')+'\nexport {service}; export const nativeTabsForTest=()=>tabs; export const settingsForTest=()=>settingsWindow;\n',loader:'ts'}));}}]});
     await writeFile(join(folder,'dist/main/index.cjs'),candidate.outputFiles[0].text);
     await writeFile(join(folder,'fixture.txt'),'Controlled native attachment fixture');
     const harness=String.raw`
 const {app,BrowserWindow,clipboard,ClipboardItem,nativeImage}=require('electron'); const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
-const {service:accounts,nativeTabsForTest}=require('./dist/main/index.cjs');
+const {service:accounts,nativeTabsForTest,settingsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary;
 const calls=[], pages=new Map(), local=new Map(), a='th_aaaaaaaa',b='th_bbbbbbbb';
 const previewPng=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1}).toPNG();
@@ -155,19 +155,21 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await until(()=>draft.view.getBounds().x===390,'storage failure keeps live resize');
  assert.equal(await evaluate(shell,'document.querySelector(".native-tab-error").textContent.includes("could not be saved")'),true);
  await evaluate(shell,'Storage.prototype.setItem=window.originalSidebarSave;document.querySelector(".native-tab-error button").click();document.querySelector(".sidebar-resize-handle").dispatchEvent(new MouseEvent("dblclick",{bubbles:true}))');await until(()=>draft.view.getBounds().x===280,'restore default before existing checks');
- await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>!draft.view.getVisible(),'modal hides native view');assert.equal(manager.snapshot(dc).tabActive,false);
- await until(()=>evaluate(shell,'document.querySelector("[aria-label=Model]")?.value==="fixture-current"'),'model default loaded through real preload and IPC');
- await evaluate(shell,'(()=>{const e=document.querySelector("[aria-label=Model]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"fixture-next");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
- await until(()=>evaluate(shell,'!document.querySelector("button[type=submit]").disabled'),'edited model ready');await evaluate(shell,'document.querySelector("form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
- await until(()=>evaluate(shell,'!!document.querySelector(".settings-warning")'),'model warning through native IPC');assert.equal(calls.filter(x=>x[0]==='model-write').length,1);
- await evaluate(shell,'document.querySelector(".settings-warning button").click()');await until(()=>evaluate(shell,'!!document.querySelector(".settings-success")'),'confirmed model save read back');assert.equal(modelSettings.model,'fixture-next');assert.equal(calls.filter(x=>x[0]==='model-write').at(-1)[3],true);assert.equal(calls.at(-1)[0],'model-read');
- if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-settings.png'),(await window.capturePage()).toPNG());}
- shell.focus();shell.sendInputEvent({type:'keyDown',keyCode:'Escape'});shell.sendInputEvent({type:'keyUp',keyCode:'Escape'});await until(()=>draft.view.getVisible(),'native Escape closes Settings and restores view');
- await evaluate(dc,'document.querySelector("[aria-label=Settings]").click()');await until(()=>evaluate(dc,'!!document.querySelector("#settings-tab-font")'),'settings dialog');
- await evaluate(dc,'document.querySelector("#settings-tab-font").click()');await until(()=>evaluate(dc,'!!document.querySelector("[aria-label=\\"Text size\\"]")'),'font page');
- await evaluate(dc,'(()=>{const e=document.querySelector("[aria-label=\\"Text size\\"]");e.value="18";e.dispatchEvent(new Event("change",{bubbles:true}));})()');
+ await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await until(()=>settingsForTest().isOpen,'Settings window opens');const sc=settingsForTest().contents;
+ assert.equal(draft.view.getVisible(),true,'Session stays visible beside Settings');assert.equal(manager.snapshot(dc).tabActive,true);
+ await until(()=>evaluate(sc,'document.querySelector("[aria-label=Model]")?.value==="fixture-current"'),'model default loaded through real preload and IPC');
+ await evaluate(sc,'(()=>{const e=document.querySelector("[aria-label=Model]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"fixture-next");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
+ await until(()=>evaluate(sc,'!document.querySelector("button[type=submit]").disabled'),'edited model ready');await evaluate(sc,'document.querySelector("form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
+ await until(()=>evaluate(sc,'!!document.querySelector(".settings-warning")'),'model warning through native IPC');assert.equal(calls.filter(x=>x[0]==='model-write').length,1);
+ await evaluate(sc,'document.querySelector(".settings-warning button").click()');await until(()=>evaluate(sc,'!!document.querySelector(".settings-success")'),'confirmed model save read back');assert.equal(modelSettings.model,'fixture-next');assert.equal(calls.filter(x=>x[0]==='model-write').at(-1)[3],true);assert.equal(calls.at(-1)[0],'model-read');
+ if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-settings.png'),(await BrowserWindow.fromWebContents(sc).capturePage()).toPNG());}
+ sc.focus();sc.sendInputEvent({type:'keyDown',keyCode:'Escape'});sc.sendInputEvent({type:'keyUp',keyCode:'Escape'});await until(()=>!settingsForTest().isOpen,'native Escape closes Settings window');assert.equal(draft.view.getVisible(),true);
+ await evaluate(dc,'document.querySelector("[aria-label=Settings]").click()');await until(()=>settingsForTest().isOpen,'Settings window from Session tab');const fc=settingsForTest().contents;await until(()=>evaluate(fc,'!!document.querySelector("#settings-tab-font")'),'settings page');
+ await evaluate(fc,'document.querySelector("#settings-tab-font").click()');await until(()=>evaluate(fc,'!!document.querySelector("[aria-label=\\"Text size\\"]")'),'font page');
+ await evaluate(fc,'(()=>{const e=document.querySelector("[aria-label=\\"Text size\\"]");e.value="18";e.dispatchEvent(new Event("change",{bubbles:true}));})()');
  await until(()=>evaluate(shell,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font shared across views');
- await evaluate(dc,'document.querySelector(".settings-close").click()');
+ await until(()=>evaluate(dc,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font reaches open Session view');
+ BrowserWindow.fromWebContents(fc).close();await until(()=>!settingsForTest().isOpen,'Settings window closed');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-native-tabs.png'),(await window.capturePage()).toPNG());}
  await evaluate(shell,'window.hermesDesktop.closeTab('+JSON.stringify(second.id)+')');await until(()=>bc.isDestroyed(),'closed view released');assert.equal(ac.isDestroyed(),false);assert.equal(dc.isDestroyed(),false);
  manager.dispose();await until(()=>ac.isDestroyed()&&dc.isDestroyed(),'all views released');

@@ -4,7 +4,7 @@ import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
-  viewRole: process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
+  viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
   platform: process.platform,
   versions: Object.freeze({ chrome: process.versions.chrome, electron: process.versions.electron }),
 });
@@ -25,6 +25,7 @@ const api: HermesDesktopApi = Object.freeze({
   completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
   setContentBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:content-bounds', bounds),
   getRuntimeInfo: (): DesktopRuntimeInfo => runtimeInfo,
+  openSettings: (): Promise<void> => ipcRenderer.invoke('desktop:open-settings'),
   getSnapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("desktop:get-snapshot"),
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void {
     const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopUpdate) => listener(snapshot);

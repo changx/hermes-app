@@ -17,13 +17,15 @@ export class DesktopTabManager {
   private closed = false;
   private connectionKey?: string;
   constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnections,
-    private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar) { this.shortcuts(window.webContents); }
+    private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar,
+    private readonly openSettings?: () => void) { this.shortcuts(window.webContents); }
 
   attachShortcuts(contents: WebContents): void { this.shortcuts(contents); }
   private shortcuts(contents: WebContents): void {
     contents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat || this.closed) return;
       const key = input.key.toLowerCase();
+      if (key === ',' && this.openSettings) { event.preventDefault(); this.openSettings(); return; }
       if ((key === 't' || key === 'n') && this.service.snapshot().phase === 'connected') {
         event.preventDefault(); const tab = this.sender(contents), snapshot = this.snapshot(contents);
         this.newTab(tab?.initialChannelId ?? snapshot.selectedChannelId); return;

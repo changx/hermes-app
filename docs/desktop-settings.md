@@ -17,8 +17,11 @@ All desktop Settings entry points use the same dialog. The old font-only dialog 
 - Font size reuses the existing local 12–24 px preference, 16 px default, immediate application, restart persistence, reset and honest storage-failure feedback. The page includes live prose/code preview. It does not zoom the whole app.
 - Shortcuts lists implemented keys: Enter, Shift+Enter, Cmd/Ctrl+K, Cmd/Ctrl+N/T/W, Cmd/Ctrl+Tab, Cmd/Ctrl+Shift+Tab, paste and Escape. This version does not implement custom bindings or global shortcuts. Ctrl+K now matches the Linux/Windows shortcut label; existing Cmd+K behavior remains.
 - Connections is a saved-server list with Add, confirmed per-connection Remove, and real connection state. Each connection owns its client, credentials, drafts and tabs. The sidebar combines all connections without a switch-first menu. Default agent model provides explicit connection selection. See [Desktop Connections](desktop-connections.md) for behavior, storage compatibility and verification limits.
-- Native HTML dialog supplies modality, Escape, focus containment and focus restoration. Arrow Up/Down and Home/End select navigation sections. Workspace overlays hide native tab/browser views using existing bounds ownership.
-- Navigation and content remain side by side at tested widths. Content scrolls independently at large font sizes. Dialog geometry, controls and spacing do not scale with text size.
+- Settings opens in a separate, single-instance native window (since v0.1.34). The Settings button and Cmd/Ctrl+, open or focus it. Escape and Cmd/Ctrl+W close only Settings. The workspace window is never hidden or covered: Session and preview views stay visible and usable, with their reading position, drafts and attachments.
+- Earlier versions rendered Settings as an in-page HTML dialog. Native Session/preview views sit above page HTML, so that dialog had to hide them and the background went blank. The separate window removes the cause instead of covering it.
+- The Settings window receives connection state only; Project, Session, message and browser data are stripped from its snapshots. Its sender may call only snapshot, model and connection-management IPC. Every other workspace, Session, browser and attachment action rejects it.
+- Font size is stored in shared local storage, so a change applies immediately to the workspace and every open Session view. The last selected Settings section is remembered for the next open.
+- Arrow Up/Down and Home/End select navigation sections. Navigation and content remain side by side at tested widths. Content scrolls independently at large font sizes. Geometry, controls and spacing do not scale with text size.
 
 ## Verification
 
@@ -31,6 +34,15 @@ Evidence directory (private Channel workspace): `/home/hermes/.hermes/profiles/h
 - Linux/Xvfb production Electron check passes. The expanded check exercises real preload/trusted IPC, model warning/confirmation/readback, native Escape, native view hide/restore and font propagation across views. Transport/model/storage data are controlled fixtures; this is not macOS device acceptance.
 - The initial native checks intermittently failed an existing clipboard-thumbnail pixel assertion before reaching Settings. An unchanged retry and the expanded Settings check passed. Final test stabilization waits for the exact red pixel to paint, then keeps the original pixel assertion. No attachment production code changed. The final combined run passes; failure and retry logs remain as evidence. The right-browser native test also required updating its old Settings-close selector.
 - Local macOS arm64 package builds. Mach-O architecture and ASAR Settings labels/model IPC are verified. The package is unsigned and not notarized. Packaging is not proof of Mac execution.
+
+## Settings window verification (v0.1.34)
+
+- Linux/Xvfb production Electron: Settings opens as a second native window; a second click focuses the same window. Session and preview views stay visible and active while it is open. Ctrl+W and Escape close only Settings; no workspace tab closes. Ctrl+, reopens it. The Session keeps its WebContents identity, DOM, draft text and preview after close.
+- The Settings sender is rejected for `newTab` and `sendMessage`. The Settings DOM contains no workspace or message content.
+- Model warning, confirmation and readback, font propagation to the workspace and an open Session view, and connection add/list/status/remove all run through the separate window with production preload and IPC.
+- Chromium: the two-column page at 1280, 930 and 600 px, keyboard navigation, remembered section, and font changes while the conversation stays rendered.
+- Full desktop check: 94 pass, 0 fail, 0 skipped, in consecutive full runs. Evidence: `window-check-2.log`, `window-check-3.log` and `window-evidence/desktop-settings.png` in the Channel workspace. The first run (`window-check-1.log`) found two test-script errors, which were then fixed, and one native paste timeout. That test then passed three separate runs and two full runs without code change; unchanged main also passed it twice.
+- Mac window behavior, keyboard and visual acceptance remain unverified; Linux/Xvfb is not macOS.
 
 ## Remaining gates
 

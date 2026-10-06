@@ -19,36 +19,36 @@ test('Chromium: real settings change text only, reset, retain pages, persist to 
   const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
   const bundle=await build({stdin:{resolveDir:new URL('..',import.meta.url).pathname,loader:'tsx',contents:`
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
-    import {DesktopShellView} from './src/renderer/shell';import {initializeFontSize,FONT_SIZE_KEY} from './src/renderer/font-preference';
-    window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{chrome:'test',electron:'test'}})};
+    import {DesktopShellView} from './src/renderer/shell';import {SettingsPage} from './src/renderer/settings';import {initializeFontSize,FONT_SIZE_KEY} from './src/renderer/font-preference';
+    let opened=0;window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{chrome:'test',electron:'test'}}),openSettings:async()=>{opened++;}};
     const stage=new URL(location.href).searchParams.get('stage'),checks=[];
     const check=(name,ok)=>{checks.push({name,ok:!!ok});if(!ok)throw Error(name)};
     const tick=()=>new Promise(resolve=>setTimeout(resolve,30));
     const root=createRoot(document.getElementById('root'));
     const snapshot={revision:1,phase:'connected',connectionState:'online',channels:[{id:'p',name:'Example'}],threads:[{id:'t',channelId:'p',title:'Font preview',markers:['Label'],running:false,lastMessageAt:Date.now()/1000}],selectedChannelId:'p',selectedThreadId:'t',supportsSessionLabels:true,interactions:[],canLoadOlder:false,messages:[{id:'a',role:'assistant',displayKind:'direct',text:'Paragraph and inline \\u0060code\\u0060.\\n\\n| Name | Value |\\n| --- | --- |\\n| Row | Text |\\n\\n\\u0060\\u0060\\u0060text\\nFenced code\\n\\u0060\\u0060\\u0060',toolCalls:[{id:'cmd',name:'terminal',label:'Run command',detail:'git status'}],attachments:[]}]};
-    const render=(value=snapshot)=>flushSync(()=>root.render(<DesktopShellView snapshot={value}/>));
-    const open=()=>{document.querySelector('[aria-label="Settings"]').focus();flushSync(()=>document.querySelector('[aria-label="Settings"]').click());};
+    let settingsOpen=false;const render=(value=snapshot)=>flushSync(()=>root.render(<><DesktopShellView snapshot={value}/>{settingsOpen&&<SettingsPage snapshot={value}/>}</>));
+    const open=()=>{const before=opened;document.querySelector('[aria-label="Settings"]').focus();flushSync(()=>document.querySelector('[aria-label="Settings"]').click());check('button requests native Settings window',opened===before+1&&!document.querySelector('dialog'));settingsOpen=true;render(currentSnapshot);flushSync(()=>document.querySelector('#settings-tab-font').click());};const close=()=>{settingsOpen=false;render(currentSnapshot);};let currentSnapshot=snapshot;
     const change=value=>{const select=document.querySelector('[aria-label="Text size"]');select.value=String(value);flushSync(()=>select.dispatchEvent(new Event('change',{bubbles:true})));};
     const geometry=()=>{const page=getComputedStyle(document.querySelector('.session-tab-page')),text=getComputedStyle(document.querySelector('.composer textarea')),icon=getComputedStyle(document.querySelector('.attach-button'));return [page.width,text.padding,icon.width,icon.height].join('|');};
-    const textSize=size=>['.conversation-header h2','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.settings-dialog select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
+    const textSize=size=>['.conversation-header h2','.message p','.message code','.message td','.tool-record','.tool-command','.composer textarea','.settings-window select'].every(selector=>getComputedStyle(document.querySelector(selector)).fontSize===size+'px');
     void(async()=>{try{
       if(stage==='first')localStorage.removeItem(FONT_SIZE_KEY);
       initializeFontSize();check('font initialized before mount',getComputedStyle(document.documentElement).fontSize===(stage==='first'?'16px':'20px'));
-      render();open();check('native modal open and focused',document.querySelector('dialog').matches(':modal')&&document.activeElement.getAttribute('aria-label')==='Text size');
+      render();open();check('Settings page shows font control',!!document.querySelector('.settings-window [aria-label="Text size"]'));
       if(stage==='first'){
         const original=document.querySelector('.message'),before=geometry();
         for(const size of [12,16,18,24]){change(size);check('UI/content/code/tool size '+size,textSize(size));check('spacing/icons unchanged '+size,geometry()===before);check('message identity retained '+size,document.querySelector('.message')===original);check('persisted '+size,localStorage.getItem(FONT_SIZE_KEY)===String(size));
           for(const pill of document.querySelectorAll('.label-pills-visible .label-pill')){const child=pill.getBoundingClientRect(),parent=pill.parentElement.getBoundingClientRect();check('label not clipped '+size,child.top>=parent.top-1&&child.bottom<=parent.bottom+1);}
         }
-        flushSync(()=>[...document.querySelectorAll('dialog button')].find(button=>button.textContent==='Reset to 16').click());check('reset saves default',textSize(16)&&localStorage.getItem(FONT_SIZE_KEY)==='16');
-        change(20);document.querySelector('dialog').close();await tick();check('Done closes and restores focus',!document.querySelector('dialog')&&document.activeElement.getAttribute('aria-label')==='Settings');
-        render({...snapshot,phase:'unpaired'});open();check('settings available before pairing',document.querySelector('dialog').matches(':modal'));document.querySelector('dialog').close();await tick();
+        flushSync(()=>[...document.querySelectorAll('.settings-window button')].find(button=>button.textContent==='Reset to 16').click());check('reset saves default',textSize(16)&&localStorage.getItem(FONT_SIZE_KEY)==='16');
+        change(20);close();await tick();check('closing Settings keeps conversation and size',!document.querySelector('.settings-window')&&!!document.querySelector('.message')&&getComputedStyle(document.documentElement).fontSize==='20px');
+        currentSnapshot={...snapshot,phase:'unpaired'};render(currentSnapshot);open();check('settings available before pairing',!!document.querySelector('.settings-window'));close();currentSnapshot=snapshot;await tick();
       }else{
         check('cold browser restored setting',textSize(20)&&document.querySelector('select').value==='20');
         const nativeWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw Error('private storage detail')};change(24);
         check('save failure remains live and honest',textSize(24)&&document.querySelector('[role="alert"]').textContent.includes('could not be saved')&&localStorage.getItem(FONT_SIZE_KEY)==='20');
         Storage.prototype.setItem=nativeWrite;change(18);check('save retry clears warning',!document.querySelector('[role="alert"]')&&localStorage.getItem(FONT_SIZE_KEY)==='18');
-        document.querySelector('dialog').close();await tick();const nativeRead=Storage.prototype.getItem;Storage.prototype.getItem=function(){throw Error('private storage detail')};initializeFontSize();open();
+        close();await tick();const nativeRead=Storage.prototype.getItem;Storage.prototype.getItem=function(){throw Error('private storage detail')};initializeFontSize();open();
         check('read failure has usable default and warning',textSize(16)&&document.querySelector('[role="alert"]').textContent.includes('could not be loaded'));
         Storage.prototype.getItem=nativeRead;change(16);check('recovery clears read failure',!document.querySelector('[role="alert"]'));
       }

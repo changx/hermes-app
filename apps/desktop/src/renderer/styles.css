@@ -1,15 +1,10 @@
-.settings-dialog { margin: auto; padding: 0; width: min(900px, calc(100vw - 48px)); height: min(620px, calc(100dvh - 48px)); max-width: none; max-height: none; border: 1px solid var(--app-border); border-radius: 16px; color: var(--app-text); background: #fff; box-shadow: 0 24px 80px rgb(17 24 39 / 22%); overflow: hidden; font: inherit; }
-.settings-dialog::backdrop { background: rgb(17 24 39 / 38%); }
-.settings-dialog[open] { display: flex; flex-direction: column; }
-.settings-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--app-border); flex-shrink: 0; }
-.settings-header h2 { margin: 0; font-size: var(--app-font-size); font-weight: 700; }
-.settings-dialog button, .settings-dialog input, .settings-dialog select { font: inherit; font-size: var(--app-font-size); line-height: 1.4; }
-.settings-dialog button { cursor: pointer; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 8px 14px; background: var(--app-accent); color: #fff; }
-.settings-dialog button.secondary { background: #fff; color: var(--app-text); }
-.settings-dialog button:disabled { opacity: .5; cursor: default; }
-.settings-dialog :focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
-.settings-header .settings-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: var(--app-muted); }
-.settings-header .settings-close:hover { background: var(--app-hover); }
+.settings-window { display: flex; flex-direction: column; height: 100vh; height: 100dvh; color: var(--app-text); background: #fff; overflow: hidden; font: inherit; }
+.settings-window button, .settings-window input, .settings-window select { font: inherit; font-size: var(--app-font-size); line-height: 1.4; }
+.settings-window button { cursor: pointer; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 8px 14px; background: var(--app-accent); color: #fff; }
+.settings-window button.secondary { background: #fff; color: var(--app-text); }
+.settings-window button:disabled { opacity: .5; cursor: default; }
+.settings-window :focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.settings-open-error { color: #9d1b32; font-size: 0.85em; }
 .settings-layout { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 0; flex: 1; }
 .settings-nav { display: flex; flex-direction: column; gap: 6px; padding: 18px 12px; background: var(--app-background); border-right: 1px solid var(--app-border); overflow-y: auto; }
 .settings-nav button { border: 0; background: transparent; color: var(--app-label); text-align: left; padding: 10px 12px; flex-shrink: 0; }
@@ -39,7 +34,7 @@
 .settings-danger h4 { margin: 0 0 8px; font-size: var(--app-font-size); }
 .settings-danger p { color: var(--app-muted); margin-bottom: 16px; }
 .settings-danger button { color: #9d1b32; background: #fff; border-color: #e7b8c1; }
-@media (max-width: 650px) { .settings-dialog { width: calc(100vw - 24px); height: calc(100dvh - 24px); } .settings-layout { grid-template-columns: 150px minmax(0, 1fr); } .settings-content { padding: 20px 16px; } .settings-nav { padding: 12px 8px; } .settings-shortcuts > div { flex-wrap: wrap; } }
+@media (max-width: 650px) { .settings-layout { grid-template-columns: 150px minmax(0, 1fr); } .settings-content { padding: 20px 16px; } .settings-nav { padding: 12px 8px; } .settings-shortcuts > div { flex-wrap: wrap; } }
 
 /* Connection management shares Settings' scrollable right panel. */
 .settings-connection-list { width: 100%; margin: 0; padding: 0; list-style: none; border: 1px solid var(--app-border); border-radius: 10px; }
