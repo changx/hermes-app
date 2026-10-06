@@ -4,16 +4,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { Text } from './FontSize';
 import { routeId } from './routeId';
+import { SessionNavigationProvider, useSessionScope } from './sessionNavigation';
 
-type Viewer = { title: string; content: React.ReactNode; onClose?: () => void };
+type Viewer = { title: string; content: React.ReactNode; onClose?: () => void; owner: string | null };
 type Viewers = {
   entries: Map<string, Viewer>;
   openViewer: (title: string, content: React.ReactNode, onClose?: () => void) => void;
   release: (id: string) => void;
 };
-const Context = createContext<Viewers | null>(null);
+type Registry = Omit<Viewers, 'openViewer'> & { open: (title: string, content: React.ReactNode, onClose: (() => void) | undefined, owner: string | null) => void };
+const Context = createContext<Registry | null>(null);
 
-/** Private view content never enters URLs. Expo Router owns all history and transitions. */
+/**
+ * Private view content never enters URLs. Expo Router owns all history and
+ * transitions. A viewer records the connection that opened it, so removing
+ * that connection can pop exactly its viewers (see RouteOwnership).
+ */
 export function ViewerProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const entries = useRef(new Map<string, Viewer>()).current;
@@ -23,9 +29,9 @@ export function ViewerProvider({ children }: { children: React.ReactNode }) {
     // Cache cleanup must not prevent another viewer from closing.
     try { entry?.onClose?.(); } catch { /* best-effort private cache cleanup */ }
   }, [entries]);
-  const openViewer = useCallback((title: string, content: React.ReactNode, onClose?: () => void) => {
+  const open = useCallback((title: string, content: React.ReactNode, onClose: (() => void) | undefined, owner: string | null) => {
     const id = Crypto.randomUUID();
-    entries.set(id, { title, content, onClose });
+    entries.set(id, { title, content, onClose, owner });
     try { router.push({ pathname: '/viewer/[id]', params: { id } }); }
     catch (error) { release(id); throw error; }
   }, [entries, release, router]);
@@ -38,14 +44,24 @@ export function ViewerProvider({ children }: { children: React.ReactNode }) {
       queueMicrotask(() => { if (!mounted.current) for (const id of entries.keys()) release(id); });
     };
   }, [entries, release]);
-  const value = useMemo(() => ({ entries, openViewer, release }), [entries, openViewer, release]);
+  const value = useMemo(() => ({ entries, open, release }), [entries, open, release]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
-export function useViewer() {
+/** Owner of an open viewer route, used to pop a removed connection's viewers. */
+export function useViewerOwner(): (id: string) => string | null | undefined {
+  const value = useContext(Context);
+  return useCallback((id: string) => value?.entries.get(id)?.owner, [value]);
+}
+
+export function useViewer(): Viewers {
   const value = useContext(Context);
   if (!value) throw new Error('ViewerProvider is required');
-  return value;
+  const scope = useSessionScope();
+  // The viewer route renders outside the opener, so it carries the opener's scope.
+  const openViewer = useCallback((title: string, content: React.ReactNode, onClose?: () => void) =>
+    value.open(title, <SessionNavigationProvider value={scope}>{content}</SessionNavigationProvider>, onClose, scope.owner), [value, scope]);
+  return useMemo(() => ({ entries: value.entries, release: value.release, openViewer }), [value, openViewer]);
 }
 
 function ViewerBody({ id }: { id: string | null }) {

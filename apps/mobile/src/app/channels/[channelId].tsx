@@ -1,19 +1,25 @@
 import React from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChannelsScreen, HeaderActions, Notice, useApp } from '../../App';
+import { ChannelsScreen, ConnectionScope, HeaderActions, HeaderTitle, Notice, routeConnection, settingsRoute, useApp } from '../../App';
 import { routeId } from '../../routeId';
 
-export default function Channel() {
-  const { channelId: rawId } = useLocalSearchParams<{ channelId: string }>();
+function ChannelPage({ id }: { id: string }) {
   const router = useRouter();
-  const id = routeId(rawId);
-  const { client } = useApp();
-  if (!id) return <Notice text="This channel is unavailable." />;
-  const name = client?.channels.get(id)?.name;
-  return <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-    <Stack.Screen options={{ title: name || 'Channel',
-      headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
+  const { client, slot, name, multiple } = useApp();
+  const title = client?.channels.get(id)?.name || 'Channel';
+  return <>
+    <Stack.Screen options={{ title, ...(multiple ? { headerTitle: () => <HeaderTitle title={title} subtitle={name} /> } : {}),
+      headerRight: () => <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push(settingsRoute(slot))} /> }} />
     <ChannelsScreen channelId={id} />
+  </>;
+}
+
+export default function Channel() {
+  const { channelId: rawId, connection } = useLocalSearchParams<{ channelId: string; connection?: string | string[] }>();
+  const id = routeId(rawId), slot = routeConnection(connection);
+  if (!id || !slot) return <Notice text="This channel is unavailable." />;
+  return <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+    <ConnectionScope slot={slot} fallback={<Notice text="This channel is unavailable." />}><ChannelPage id={id} /></ConnectionScope>
   </SafeAreaView>;
 }

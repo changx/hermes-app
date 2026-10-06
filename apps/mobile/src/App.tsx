@@ -1,250 +1,52 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { LocalDraftMap } from '../../../packages/client/src/localDraftMap';
-import { bindLocalDraftStorage } from './localDraftStorage';
-import { Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Alert, AppState, KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { FontSizeSettings, Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import * as Clipboard from 'expo-clipboard';
 import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
-import { connectionFailure, isRetryableError } from '../../../packages/client/src/index';
-import { NetworkStatusToast } from './NetworkStatusToast';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
-import { SessionNavigationProvider, useSessionNavigation } from './sessionNavigation';
+import { useSessionNavigation } from './sessionNavigation';
 import type { Attachment, Interaction, Message } from '../../../packages/client/src/index';
-import { nativeTransport } from './transport';
-import { DEFAULT_BASE, connection, newSend } from './send';
-import { ConnectionScreen } from './ConnectionScreen';
-import { CONFIG_KEY, PAIRING_KEY, completePairing, newPairing, normalizePairingCode, restorePairing, type PendingPairing } from './pairing';
-import type { Connection, SendRecord } from './send';
-import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
+import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { LabelPills, LabelsEditor } from './SessionLabels';
 import { projectTimeline } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
-
-import { AttachmentComposer, MessageAttachments, releaseComposerDraft, type ComposerDraft } from './Attachments';
+import { AttachmentComposer, MessageAttachments, releaseComposerDraft } from './Attachments';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
-import { AgentSettings, useAgentName } from './AgentSettings';
+import { AgentSettings } from './AgentSettings';
 import { ModelSettings } from './ModelSettings';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
+import { useApp, useConnections } from './connections';
 
-import { reconciledSendNotice } from './sendNotice';
+export { AppProvider, ConnectionScope, routeConnection, useApp, useConnections } from './connections';
 
 function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSymbol; android: AndroidSymbol; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.headerIconPressed]}>
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
+/** Settings belong to the connection of the current page. */
+export const settingsRoute = (connection: string) => ({ pathname: '/settings' as const, params: { connection } });
+export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' = '', extra: Record<string, string> = {}) =>
+  ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
+
 export function HeaderActions({ onConnection, onSettings, onCopyLink, onSessionMenu }: { onConnection: () => void; onSettings: () => void; onCopyLink?: () => void; onSessionMenu?: () => void }) {
   return <View style={styles.headerActions}>
     {onSessionMenu ? <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onSessionMenu} /> : onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
-    <HeaderIcon label="Connection" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
+    <HeaderIcon label="Connections" ios="antenna.radiowaves.left.and.right" android="wifi" onPress={onConnection} />
     <HeaderIcon label="Agent settings" ios="gearshape" android="settings" onPress={onSettings} />
   </View>;
 }
-type AppContextValue = {
-  ready: boolean; config: Connection | null; client: LivePageClient | null;
-  agentName: ReturnType<typeof useAgentName>; identity: number; revision: number;
-  records: SendRecord[]; connectionEpoch: number; loading: boolean; status: NetworkState; error: string;
-  base: string; pairingCode: string; pendingPairing: PendingPairing | null; pairingBusy: boolean;
-  pairingStatus: string; busy: boolean; editing: boolean;
-  setPairingCode: (value: string) => void; setEditing: (value: boolean) => void;
-  saveConnection: () => void; forget: () => void; cancelPairing: () => void;
-  textDrafts: React.RefObject<LocalDraftMap<string>>; outboxRef: React.RefObject<MobileOutbox | null>;
-  composerDrafts: React.RefObject<LocalDraftMap<ComposerDraft>>;
-  forgottenConnections: React.RefObject<Set<string>>;
-};
-const AppContext = createContext<AppContextValue | null>(null);
 const EMPTY_MESSAGES: Message[] = [];
-
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [config, setConfig] = useState<Connection | null>(null);
-  const agentName = useAgentName(config?.id ?? null);
-  const [ready, setReady] = useState(false), [editing, setEditing] = useState(false);
-  const [base, setBase] = useState(DEFAULT_BASE), [pairingCode, setPairingCode] = useState('');
-  const [pendingPairing, setPendingPairing] = useState<PendingPairing | null>(null);
-  const [pairingBusy, setPairingBusy] = useState(false), [pairingStatus, setPairingStatus] = useState('');
-  const [pairingEpoch, setPairingEpoch] = useState(0);
-  const pairingTask = useRef<{ controller: AbortController; promise: Promise<unknown> } | null>(null);
-  const [session, setSession] = useState<{ config: Connection; client: LivePageClient } | null>(null);
-  const client = session?.config === config ? session.client : null;
-  const [identity, setIdentity] = useState(0);
-  const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
-  const [connectionEpoch, setConnectionEpoch] = useState(0);
-  const [loading, setLoading] = useState(false), [status, setStatus] = useState<NetworkState>('suspended'), [error, setError] = useState('');
-  const [retryAt, setRetryAt] = useState<number | null>(null), [networkFailed, setNetworkFailed] = useState(false);
-  // Only unsent user input survives leaving a conversation.
-  const textDrafts = useRef(new LocalDraftMap<string>(value => !!value.trim()));
-  const composerDrafts = useRef(new LocalDraftMap<ComposerDraft>(value => value.items.length > 0));
-  const forgottenConnections = useRef(new Set<string>());
-  const [records, setRecords] = useState<SendRecord[]>([]);
-  const outboxRef = useRef<MobileOutbox | null>(null);
-  const busyRef = useRef(false);
-  const appActive = useRef(AppState.currentState === 'active');
-
-  useEffect(() => {
-    let mounted = true;
-    let stopDraftStorage: (() => void) | undefined;
-    Promise.all([SecureStore.getItemAsync(CONFIG_KEY), SecureStore.getItemAsync(PAIRING_KEY)]).then(([raw, savedPairing]) => {
-      if (!mounted) return;
-      stopDraftStorage = bindLocalDraftStorage(textDrafts.current, composerDrafts.current, () => {
-        if (mounted) setError("Your draft could not be saved on this device. Keep the app open and copy your text before closing it.");
-      });
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') throw new Error('Saved connection is invalid');
-        const c = parsed as Connection;
-        const valid = connection(c.baseUrl, c.token, c.id);
-        // Do not remount the Stack on cold restore: keep an incoming deep link alive.
-        setConfig(valid); setBase(valid.baseUrl);
-      }
-      const pending = restorePairing(savedPairing);
-      if (pending && (!raw || JSON.parse(raw).token !== pending.config.token)) {
-        setPendingPairing(pending); setBase(pending.config.baseUrl); setPairingCode(pending.code); setEditing(true);
-      } else if (pending) void SecureStore.deleteItemAsync(PAIRING_KEY).catch(() => {});
-    }).catch(() => { if (mounted) setError("Could not load your connection or local drafts. Don't clear this app's data; reopen the app."); }).finally(() => { if (mounted) setReady(true); });
-    return () => { mounted = false; stopDraftStorage?.(); };
-  }, []);
-
-  useEffect(() => {
-    let foreground = AppState.currentState === 'active';
-    const sub = AppState.addEventListener('change', state => {
-      const next = state === 'active';
-      // End native input before background keyboard extensions can resize it.
-      // Retain drafts and leave reopening to the user's next input tap.
-      if (foreground && !next) Keyboard.dismiss();
-      if (!next) pairingTask.current?.controller.abort();
-      if (next && !foreground) setPairingEpoch(n => n + 1);
-      foreground = next;
-    });
-    return () => { sub.remove(); pairingTask.current?.controller.abort(); };
-  }, []);
-
-  useEffect(() => {
-    if (!pendingPairing || AppState.currentState === 'background') return;
-    let active = true;
-    const controller = new AbortController();
-    setPairingBusy(true); setError('');
-    const previous = pairingTask.current;
-    previous?.controller.abort();
-    const promise = (previous?.promise ?? Promise.resolve()).then(() => completePairing(pendingPairing, { store: SecureStore, signal: controller.signal,
-      onStatus: value => { if (active) setPairingStatus(value); }
-    })).then(saved => {
-      if (!active) return;
-      setPairingBusy(false);
-      setSession(null); setConfig(saved); setIdentity(n => n + 1); setBase(saved.baseUrl); setEditing(false); setPairingCode('');
-      setPendingPairing(null); setPairingStatus('');
-      router.replace('/');
-    }).catch(() => {
-      if (active && !controller.signal.aborted) { setPairingStatus(''); setError('Could not pair. Check the pairing code or contact your admin.'); }
-    }).finally(() => { if (active) setPairingBusy(false); });
-    pairingTask.current = { controller, promise };
-    return () => { active = false; controller.abort(); };
-  }, [pendingPairing, pairingEpoch]);
-
-  useEffect(() => {
-    if (!config) { setSession(null); return; }
-    let active = true;
-    const transport = nativeTransport(config.baseUrl);
-    let box: MobileOutbox | null = null;
-    const sdk = new LivePageClient({ ...transport, token: () => config.token,
-      onChange: () => { if (active) { setRevision((n: number) => n + 1); box?.reconcile(); } },
-      onConnectionState: (state: NetworkState) => {
-        if (!active) return;
-        setStatus(state); box?.setConnection(state);
-        if (state === 'connecting' || state === 'syncing' || state === 'online') setNetworkFailed(false);
-        if (state === 'online') { setLoading(false); setError(previous => previous.startsWith('Could not connect') ? '' : previous); setConnectionEpoch((n: number) => n + 1); box?.reconcile(); }
-        if (state === 'blocked') { setLoading(false); setError('Could not connect. Contact your admin. Unsent messages are still here.'); }
-      },
-      onRetryScheduled: (deadline: number | null) => { if (active) setRetryAt(deadline); },
-      onError: (failure: Error) => { if (active) { console.info('[connection]', connectionFailure(failure)); if (!isRetryableError(failure)) setNetworkFailed(true); } },
-    } as ConstructorParameters<typeof LivePageClient>[0]);
-    box = new MobileOutbox(new OutboxStore(SecureStore, config), sdk, (items, notice) => {
-      if (!active) return;
-      setRecords(items);
-      setError(previous => reconciledSendNotice(previous, items, notice));
-    }, undefined, undefined, undefined, true);
-    outboxRef.current = box;
-    setSession({ config, client: sdk }); setStatus('connecting'); setRetryAt(null); setNetworkFailed(false); setLoading(true); setError('');
-    setRecords([]);
-    (async () => {
-      try {
-        await box.start();
-        if (active && appActive.current) await sdk.connect();
-      } catch { if (active) { setLoading(false); setError("Could not load your messages. Don't clear this app's data; reopen the app."); } }
-    })();
-    return () => { active = false; sdk.close(); void box?.stop(); if (outboxRef.current === box) outboxRef.current = null; };
-  }, [config]);
-
-  useEffect(() => {
-    if (!client) return;
-    const sub = AppState.addEventListener('change', state => {
-      appActive.current = state === 'active';
-      if (state !== 'active') { outboxRef.current?.setConnection('suspended'); client.suspendConnection(); setStatus('suspended'); setNetworkFailed(false); return; }
-      setStatus('connecting');
-      client.connect().catch(() => { /* SDK retry loop owns recovery */ });
-    });
-    return () => sub.remove();
-  }, [client]);
-
-
-  const run = async (fn: () => Promise<void>, fallback = 'Could not complete that action. Try again later.') => {
-    if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError('');
-    try { await fn(); } catch { setError(fallback); }
-    finally { busyRef.current = false; setBusy(false); }
-  };
-  const saveConnection = () => run(async () => {
-    if (pairingBusy) return;
-    const code = normalizePairingCode(pairingCode);
-    const existing = restorePairing(await SecureStore.getItemAsync(PAIRING_KEY));
-    const next = existing && existing.config.baseUrl === base.replace(/\/$/, '') && existing.code === code
-      ? existing : newPairing(base, code, Platform.OS === 'ios' ? 'iPhone' : 'Android', Crypto.randomUUID(), await Crypto.getRandomBytesAsync(44));
-    setPendingPairing(next); setPairingEpoch(n => n + 1);
-  }, 'Invalid pairing code. Check it and try again.');
-  const forget = () => run(async () => {
-    pairingTask.current?.controller.abort();
-    await pairingTask.current?.promise.catch(() => {});
-    await SecureStore.deleteItemAsync(PAIRING_KEY);
-    setPendingPairing(null);
-    const old = outboxRef.current;
-    if (config) forgottenConnections.current.add(config.id);
-    if (old) { await old.stop(); await old.storage.clear(); forgottenConnections.current.add(old.storage.connectionId); }
-    await SecureStore.deleteItemAsync(CONFIG_KEY);
-    const prefix = (old?.storage.connectionId ?? config?.id) + ':';
-    for (const key of [...textDrafts.current.keys()]) if (key.startsWith(prefix)) textDrafts.current.delete(key);
-    for (const [key, draft] of [...composerDrafts.current]) if (key.startsWith(prefix)) { composerDrafts.current.delete(key); releaseComposerDraft(draft); }
-    setRecords([]); setSession(null); setConfig(null); setIdentity(n => n + 1); setPairingCode(''); setEditing(false); setStatus('suspended');
-    router.replace('/connection');
-  });
-  const cancelPairing = () => run(async () => {
-    pairingTask.current?.controller.abort();
-    await pairingTask.current?.promise.catch(() => {});
-    await SecureStore.deleteItemAsync(PAIRING_KEY);
-    setPendingPairing(null); setPairingStatus(''); setPairingCode(''); setEditing(false);
-    if (router.canGoBack()) router.back(); else router.replace('/');
-  });
-  const value: AppContextValue = { ready, config, client, agentName, identity, revision, records, connectionEpoch,
-    loading, status, error, base, pairingCode, pendingPairing, pairingBusy, pairingStatus, busy, editing,
-    setPairingCode, setEditing, saveConnection, forget, cancelPairing, textDrafts, composerDrafts, forgottenConnections, outboxRef };
-  return <AppContext.Provider value={value}><SessionNavigationProvider value={{ hasPage: id => !!client?.page(id), server: config?.baseUrl }}><View style={styles.flex}>{children}{client && <NetworkStatusToast state={status} retryAt={retryAt} failed={networkFailed} />}</View></SessionNavigationProvider></AppContext.Provider>;
-}
-
-export function useApp() {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('AppProvider is required');
-  return context;
-}
 
 export function ThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
   const { config } = useApp();
@@ -272,7 +74,7 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
 
 function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
   const router = useRouter();
-  const { client: accountClient, config, agentName, revision, records, connectionEpoch, status, error: connectionError,
+  const { client: accountClient, config, slot, name: connectionName, multiple, agentName, revision, records, connectionEpoch, status, error: connectionError,
     textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
@@ -447,8 +249,8 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     {historyBusy ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
   </View>;
   return <View style={styles.flex}>
-    <Stack.Screen options={{ title: selected.title || 'Conversation',
-      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} /> }} />
+    <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
+      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onConnection={() => router.push('/connection')} onSettings={() => router.push(settingsRoute(slot))} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
     {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}
@@ -497,35 +299,23 @@ export function FormKeyboardAvoidingView({ children }: { children: React.ReactNo
   </KeyboardAvoidingView>;
 }
 
-export function ChannelsScreen({ channelId = null }: { channelId?: string | null }) {
+/** Session list of one Project; the page is scoped to the Project's connection. */
+export function ChannelsScreen({ channelId }: { channelId: string }) {
   const navigation = useSessionNavigation();
-  const { ready, config, client, error, outboxRef, textDrafts, composerDrafts } = useApp();
-  const textVersion = useSyncExternalStore(textDrafts.current.subscribe, textDrafts.current.getSnapshot);
-  const attachmentVersion = useSyncExternalStore(composerDrafts.current.subscribe, composerDrafts.current.getSnapshot);
-  const draftThreads = useMemo(() => {
-    const ids = new Set<string>(), prefix = `${config?.id ?? ''}:`;
-    for (const map of [textDrafts.current, composerDrafts.current]) {
-      for (const key of map.keys()) if (key.startsWith(prefix) && map.hasDraft(key)) ids.add(key.slice(prefix.length));
-    }
-    return ids;
-  }, [config?.id, textVersion, attachmentVersion, textDrafts, composerDrafts]);
+  const { ready, slot, config, client, error, outboxRef, textDrafts, composerDrafts } = useApp();
+  const draftThreads = useDraftThreads(config?.id);
   const router = useRouter();
-  if (!ready) return <Notice text="Opening…" />;
-  if (!config || !client) return <Notice text="Opening…" />;
-  if (channelId && !client.channels.has(channelId))
+  if (!ready || !config || !client) return <Notice text="Opening…" />;
+  if (!client.channels.has(channelId))
     return <Notice text={client.connectionState === 'online' ? 'This channel is unavailable.' : 'Opening channel…'} />;
   return <View style={styles.flex}>
-    {!channelId && <View style={styles.header}><View style={styles.flex}><Text style={styles.brandSmall}>Hermes App</Text></View>
-      <HeaderActions onConnection={() => router.push('/connection')} onSettings={() => router.push('/settings')} />
-    </View>}
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>
-      <ChannelScreens key={config.id} client={client} channelId={channelId} draftThreads={draftThreads} onChannel={id => { if (id) router.push({ pathname: '/channels/[channelId]', params: { channelId: id } }); }}
+      <ChannelScreens key={config.id} client={client} channelId={channelId} draftThreads={draftThreads}
         onThread={id => navigation.thread(id)}
-        onNewChannel={() => router.push('/new-channel')}
-        onContext={id => router.push({ pathname: '/channels/[channelId]/context', params: { channelId: id } })}
-        onFiles={id => router.push({ pathname: '/channels/[channelId]/files', params: { channelId: id } })}
-        onAgents={id => router.push({ pathname: '/channels/[channelId]/agents', params: { channelId: id } })}
+        onContext={id => router.push(channelRoute(slot, id, '/context'))}
+        onFiles={id => router.push(channelRoute(slot, id, '/files'))}
+        onAgents={id => router.push(channelRoute(slot, id, '/agents'))}
         enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
           const box = outboxRef.current;
           if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');
@@ -535,31 +325,42 @@ export function ChannelsScreen({ channelId = null }: { channelId?: string | null
   </View>;
 }
 
-export function ConnectionRoute() {
-  const { ready, config, pairingCode, setPairingCode, pendingPairing, busy, pairingBusy, pairingStatus, error,
-    saveConnection, forget, cancelPairing, setEditing } = useApp();
-  const router = useRouter();
-  if (!ready) return <Notice text="Opening…" />;
-  return <FormKeyboardAvoidingView>
-    <ConnectionScreen code={pairingCode} onCode={setPairingCode}
-      connected={!!config} pairing={!!pendingPairing} busy={busy || pairingBusy} status={pairingStatus} error={error}
-      onPair={saveConnection} onBack={() => { if (pendingPairing) cancelPairing(); else { setEditing(false); if (router.canGoBack()) router.back(); else router.replace('/'); } }}
-      onForget={forget} />
-  </FormKeyboardAvoidingView>;
+/** Thread IDs with a local unsent draft for one connection identity. */
+export function useDraftThreads(identity: string | undefined): ReadonlySet<string> {
+  const { textDrafts, composerDrafts } = useConnections();
+  const textVersion = useSyncExternalStore(textDrafts.current.subscribe, textDrafts.current.getSnapshot);
+  const attachmentVersion = useSyncExternalStore(composerDrafts.current.subscribe, composerDrafts.current.getSnapshot);
+  return useMemo(() => {
+    const ids = new Set<string>(), prefix = `${identity ?? ''}:`;
+    if (!identity) return ids;
+    for (const map of [textDrafts.current, composerDrafts.current]) {
+      for (const key of map.keys()) if (key.startsWith(prefix) && map.hasDraft(key)) ids.add(key.slice(prefix.length));
+    }
+    return ids;
+  }, [identity, textVersion, attachmentVersion, textDrafts, composerDrafts]);
 }
 
+/** Agent settings of one connection; font size is a device preference. */
 export function SettingsRoute() {
-  const { config, client, agentName } = useApp();
+  const { config, client, agentName, multiple, name } = useApp();
   const router = useRouter();
   if (!config || !client) return <Notice text="Opening settings…" />;
   return <FormKeyboardAvoidingView>
+    {multiple && <Stack.Screen options={{ headerTitle: () => <HeaderTitle title="Agent settings" subtitle={name} /> }} />}
     <AgentSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
       saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} onClose={() => router.back()}>
       <ModelSettings key={config.id} client={client} />
       <FontSizeSettings />
-
     </AgentSettings>
   </FormKeyboardAvoidingView>;
+}
+
+/** Native header title with the Hermes name as a second line. */
+export function HeaderTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return <View accessible accessibilityRole="header" accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title} style={styles.headerTitle}>
+    <Text numberOfLines={1} style={styles.headerTitleText}>{title}</Text>
+    {!!subtitle && <Text numberOfLines={1} style={styles.headerSubtitle}>{subtitle}</Text>}
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -571,4 +372,5 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, headerLink: { color: '#2b4e81', fontSize: 13, fontWeight: '600' },
   headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, headerIconPressed: { backgroundColor: '#e6edf7' },
   secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 }, buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 }, secondaryText: { color: '#2b4e81' },
+  headerTitle: { alignItems: 'center', maxWidth: 240 }, headerTitleText: { fontSize: 17, fontWeight: '600', color: '#172a40' }, headerSubtitle: { fontSize: 12, color: '#607187' },
 });

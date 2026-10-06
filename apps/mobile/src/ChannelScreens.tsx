@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from './FontSize';
 import type { Attachment, ThreadSummary } from '../../../packages/client/src/index';
 import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
@@ -15,11 +14,9 @@ import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 
 type Props = {
   client: LiveSessionClient;
-  channelId: string | null;
+  channelId: string;
   draftThreads?: ReadonlySet<string>;
-  onChannel: (id: string | null) => void;
   onThread: (id: string) => void;
-  onNewChannel: () => void;
   onContext: (id: string) => void;
   onFiles: (id: string) => void;
   onAgents: (id: string) => void;
@@ -35,14 +32,14 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, draftThreads, onChannel, onThread, onNewChannel, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
   const [labelTarget, setLabelTarget] = useState<string | null>(null), [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const working = useRef(false), generation = useRef(0);
-  const focused = useIsFocused(), focusedRef = useRef(focused), insets = useSafeAreaInsets();
+  const focused = useIsFocused(), focusedRef = useRef(focused);
   focusedRef.current = focused;
   useFocusEffect(React.useCallback(() => {
     focusedRef.current = true;
@@ -62,8 +59,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
     catch { if (isCurrent()) setError('Could not complete that action. Try again later.'); }
     finally { working.current = false; setBusy(false); }
   };
-  const channel = client.channels.get(channelId || '');
-  const channels = [...client.channels.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const channel = client.channels.get(channelId);
   // Running sessions first; latest activity first within each group.
   const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
     .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.title.localeCompare(a.title) || a.id.localeCompare(b.id));
@@ -95,7 +91,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
     </View>
   </View>;
   return <View style={s.fill}>
-    {channelId ? <View style={s.top}>
+    <View style={s.top}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.fill} contentContainerStyle={s.toolbarLinks}>
       <Pressable accessibilityRole="button" accessibilityLabel="Channel context" disabled={busy || editing || !!renaming}
         onPress={() => onContext(channelId)} style={({ pressed }) => [s.contextLink, pressed && s.iconActionPressed]}>
@@ -116,12 +112,12 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
       </>}
       </ScrollView>
       <IconAction label="Channel options" ios="ellipsis" android="more_horiz" disabled={busy || editing || !!renaming} onPress={channelMenu} />
-    </View> : <View style={s.top}><Text style={s.heading}>Channels</Text></View>}
-    {!!channelId && client.supportsSessionLabels === true && <LabelsFilter key={'labels-filter:' + channelId} rows={channelThreads} value={labelFilter} onChange={setLabelFilter} />}
+    </View>
+    {client.supportsSessionLabels === true && <LabelsFilter key={'labels-filter:' + channelId} rows={channelThreads} value={labelFilter} onChange={setLabelFilter} />}
     {busy && <View style={s.progress}><ActivityIndicator size="small" /><Text style={s.hint}>Saving…</Text></View>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {channelForm}
-    {channelId ? <FlatList key={'sessions:' + channelId} keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id}
+    <FlatList key={'sessions:' + channelId} keyboardShouldPersistTaps="handled" data={threads} keyExtractor={t => t.id}
       style={s.fill} extraData={draftThreads}
       keyboardDismissMode="on-drag" contentContainerStyle={[s.list, { paddingTop: 16 }]}
       ListHeaderComponent={<Text style={s.sectionHeading}>Sessions</Text>}
@@ -132,12 +128,9 @@ export function ChannelScreens({ client, channelId, draftThreads, onChannel, onT
           <Text style={s.heading}>{item.title}</Text>{client.supportsSessionLabels && <LabelPills markers={item.markers} />}<View style={s.meta}>{draftThreads?.has(item.id) && <Text accessibilityLabel="Draft" style={s.draft}>draft</Text>}<MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
         </Pressable>}
       </View>}
-      ListEmptyComponent={<Text style={s.empty}>{filtering ? 'No matching sessions.' : 'No sessions yet. Write a message below to start a conversation.'}</Text>} /> : <FlatList keyboardShouldPersistTaps="handled" data={channels} keyExtractor={c => c.id} contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChannel(item.id)} style={s.card}><Text style={s.heading}>{item.name}</Text></Pressable>}
-      ListEmptyComponent={<Text style={s.empty}>Create a channel to keep related topics together.</Text>} />}
-    {!!channelId && <NewTopicComposer key={channelId} client={client} channelId={channelId} enqueue={enqueueFirstMessage} onCreated={onThread} disabled={busy || editing || !!renaming} />}
+      ListEmptyComponent={<Text style={s.empty}>{filtering ? 'No matching sessions.' : 'No sessions yet. Write a message below to start a conversation.'}</Text>} />
+    <NewTopicComposer key={channelId} client={client} channelId={channelId} enqueue={enqueueFirstMessage} onCreated={onThread} disabled={busy || editing || !!renaming} />
     {labelTarget && <LabelsEditor key={labelTarget} client={client} threadId={labelTarget} visible={focused} onClose={() => setLabelTarget(null)} />}
-    {!channelId && <Pressable accessibilityRole="button" accessibilityLabel="New channel" disabled={busy} onPress={onNewChannel} style={[s.fab, { bottom: 18 + insets.bottom }, busy && s.disabled]}><Text style={s.fabText}>＋</Text></Pressable>}
   </View>;
 }
 const s = StyleSheet.create({

@@ -17,14 +17,17 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const sdkBundle = await build({ entryPoints: [new URL('../../../packages/client/src/livePages.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
 const sdkModule = { exports: {} }; new Function('module', 'exports', sdkBundle.outputFiles[0].text)(sdkModule, sdkModule.exports);
 const { LivePageClient } = sdkModule.exports;
-const code = ts.transpileModule(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), {
+const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
+const code = transpile('../src/App.tsx'), connectionsCode = transpile('../src/connections.tsx'), navigationCode = transpile('../src/sessionNavigation.tsx');
+const slotsBundle = await build({ entryPoints: [new URL('../src/connectionSlots.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
+const slotsModule = { exports: {} }; new Function('module', 'exports', slotsBundle.outputFiles[0].text)(slotsModule, slotsModule.exports);
 
-async function harness({ multiple = false, list = false, strict = false, productionOwners = false, holdStatus = false } = {}) {
+async function harness({ multiple = false, list = false, strict = false, productionOwners = false, holdStatus = false, second = false } = {}) {
   let finishStatus;
   const statusGate = new Promise(resolve => { finishStatus = resolve; });
-  let api, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged;
+  let api, shared, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged; const boxes = [];
   const appListeners = new Set();
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
@@ -32,6 +35,10 @@ async function harness({ multiple = false, list = false, strict = false, product
   const Focus = React.createContext(true);
   const router = { push: value => events.push(['push', value]), replace: value => events.push(['replace', value]), back() {}, canGoBack: () => true };
   const config = { id: 'connection-a', baseUrl: 'https://example.test', token: 'synthetic-only' };
+  const secondSlot = 'b'.repeat(24), secondConfig = { id: 'connection-b', baseUrl: 'https://other.test', token: 'synthetic-other' };
+  const secure = new Map([[slotsModule.exports.slotKeys('primary').config, JSON.stringify(config)]]);
+  if (second) { secure.set(slotsModule.exports.INDEX_KEY, JSON.stringify({ version: 1, slots: [secondSlot] })); secure.set(slotsModule.exports.slotKeys(secondSlot).config, JSON.stringify(secondConfig)); }
+  const clients = [];
   const name = { name: 'Tuly', ready: true, error: '', saving: false };
   class SDK {
     acquirePage(id) {
@@ -47,13 +54,14 @@ async function harness({ multiple = false, list = false, strict = false, product
     page(id) { return multiple ? this.pages.get(id) : this; }
     releasePage(id) { if (!multiple) this.closeConversation(); else { this.pages.get(id)?.closeConversation(); this.pages.delete(id); } }
     constructor(options) {
-      sdkCount++; this.options = options; this.connectionState = 'online'; this.supportsLatest = true;
+      sdkCount++; clients.push(this); this.options = options; this.connectionState = 'online'; this.supportsLatest = true; this.isCatalogueReady = true;
       this.pages = new Map();
       this.channels = new Map([['p_one', { id: 'p_one' }]]);
       this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
       this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
     }
     async connect() { this.connectionState = 'online'; this.options.onConnectionState('online'); }
+    async getThread() {}
     suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
@@ -72,14 +80,14 @@ async function harness({ multiple = false, list = false, strict = false, product
 
   }
   class Box {
-    constructor(storage, _sdk, changed) { boxCount++; this.storage = storage; outboxChanged = changed; }
-    async start() {} async stop() {} reconcile() {} setConnection() {}
+    constructor(storage, _sdk, changed) { boxCount++; this.storage = storage; if (storage.connectionId === config.id) outboxChanged = changed; boxes.push(this); }
+    async start() {} async stop() { this.stopped = true; } reconcile() {} setConnection() {}
     enqueue() { return new Promise(resolve => { sendFinish = resolve; }); }
     async retryFailed(...args) { retries.push(args); }
   }
   class ProductionOwners extends LivePageClient {
     constructor(options) {
-      super(options); sdkCount++;
+      super(options); sdkCount++; clients.push(this);
       this.channels.set('p_one', { id: 'p_one' });
       for (const id of ['t_one', 't_two']) this.threads.set(id, { id, project_id: 'p_one', title: id, archived: false });
       this.directoryReady = true;
@@ -94,8 +102,13 @@ async function harness({ multiple = false, list = false, strict = false, product
     }
     close() { closed++; super.close(); }
   }
-  const exports = {};
+  const exports = {}, connectionExports = {}, navigationExports = {};
+  const store = { getItemAsync: async key => secure.get(key) ?? null, setItemAsync: async (key, value) => { secure.set(key, value); }, deleteItemAsync: async key => { secure.delete(key); } };
   const mocks = {
+    './connections': connectionExports,
+    './connectionSlots': slotsModule.exports,
+    './sessionNavigation': navigationExports,
+    './pairing': { CONFIG_KEY: 'hermes-app-connection-v1', PAIRING_KEY: 'hermes-app-pairing-v1', restorePairing: () => null, completePairing: async () => { throw Error('not used'); }, newPairing() {}, normalizePairingCode: v => v },
 
     './RenderResources': loadRenderResources(React),
     react: React,
@@ -108,19 +121,17 @@ async function harness({ multiple = false, list = false, strict = false, product
     'react-native-keyboard-controller': { useKeyboardState: selector => selector({ isVisible: false }) },
     'expo-router/react-navigation': { useHeaderHeight: () => 100 },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
-    'expo-secure-store': { getItemAsync: async key => key === 'config' ? JSON.stringify(config) : null, deleteItemAsync: async () => {} },
-    'expo-crypto': { randomUUID: () => 'synthetic-send-id' },
+    'expo-secure-store': store,
+    'expo-crypto': { randomUUID: () => 'synthetic-send-id', getRandomBytes: () => new Uint8Array(12), getRandomBytesAsync: async () => new Uint8Array(44) },
     'expo-clipboard': { setStringAsync: async () => {} },
     '../../../packages/client/src/sessionLinks': sessionLinks,
+    '../../../packages/client/src/projectDirectory': {},
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String, isRetryableError: () => true },
     './NetworkStatusToast': { NetworkStatusToast: 'NetworkStatusToast' },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     '../../../packages/client/src/livePages': { LivePageClient: productionOwners ? ProductionOwners : SDK },
-    './sessionNavigation': { SessionNavigationProvider: ({ children }) => children, useSessionNavigation: () => ({ thread() {}, link() {} }) },
     './transport': { nativeTransport: () => ({}) },
-    './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), newSend: (...args) => args },
-    './ConnectionScreen': { ConnectionScreen: 'ConnectionScreen' },
-    './pairing': { CONFIG_KEY: 'config', PAIRING_KEY: 'pairing', restorePairing: () => null },
+    './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), normalizeBase: v => v, newSend: (...args) => args },
     './outbox': { MobileOutbox: Box, OutboxStore: class { constructor(_, config) { this.connectionId = config.id; } async clear() {} } },
     './ChatTimeline': { ChatTimeline: React.forwardRef((props, ref) => {
       const scene = React.useRef({ offset: 0, following: true, media: {}, selection: null }); scenes.set(props.threadId, scene.current);
@@ -138,11 +149,19 @@ async function harness({ multiple = false, list = false, strict = false, product
     './ModelSettings': { ModelSettings: 'ModelSettings' },
     'expo-symbols': { SymbolView: 'SymbolView' },
   };
-  runInNewContext(code, { exports, console, AbortController, require: id => { if (!(id in mocks)) throw Error(id); return mocks[id]; } });
+  const require = id => { if (!(id in mocks)) throw Error(id); return mocks[id]; };
+  runInNewContext(navigationCode, { exports: navigationExports, console, require });
+  runInNewContext(connectionsCode, { exports: connectionExports, console, AbortController, queueMicrotask, require });
+  runInNewContext(code, { exports, console, AbortController, require });
   function Suspender() { throw new Promise(() => {}); }
+  function Probe() { api = exports.useApp(); return null; }
   function Pages({ thread, settings, suspend }) {
-    api = exports.useApp();
-    if (!api.config || !api.client) return null;
+    shared = exports.useConnections();
+    if (!shared.ready) return null;
+    return React.createElement(exports.ConnectionScope, { slot: 'primary' }, React.createElement(Probe), React.createElement(Scoped, { thread, settings, suspend }));
+  }
+  function Scoped({ thread, settings, suspend }) {
+    if (!api?.config || !api?.client) return null;
     return React.createElement(React.Fragment, {},
       list && React.createElement(exports.ChannelsScreen, { channelId: 'p_one' }),
       thread && (Array.isArray(thread) ? thread : [thread]).map((id,index,ids) => React.createElement(Focus.Provider, { key: id, value: !settings && index === ids.length - 1 }, React.createElement(exports.ThreadScreen, { threadId: id }))),
@@ -156,34 +175,36 @@ async function harness({ multiple = false, list = false, strict = false, product
     await act(async () => { if (root) root.update(tree); else root = create(tree); });
   }
   await render();
-  return { finishStatus, render, timelines, scenes, reads, events, retries, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  await act(async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); });
+  await render();
+  return { finishStatus, render, timelines, scenes, reads, events, retries, clients, boxes, secure, secondSlot, get shared() { return shared; }, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
-    get networkToast() { return root.root.findByType('NetworkStatusToast').props; },
-    async network(state, deadline) { await act(async () => { api.client.options.onRetryScheduled(deadline); api.client.options.onConnectionState(state); }); },
+    async network(state, deadline, client = api.client) { await act(async () => { client.options.onRetryScheduled(deadline); client.options.onConnectionState(state); }); },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
     async revision() { await act(async () => api.client.options.onChange()); },
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
 
-test('account retry schedule reaches one top toast across list, chat and covered routes', async () => {
+const runtime = (h, slot = 'primary') => h.shared.connections.find(c => c.slot === slot);
+test('account retry schedule stays on its connection across list, chat and covered routes', async () => {
   const h = await harness({ list: true });
   try {
     await h.network('retrying', 123456);
-    assert.equal(h.networkToast.state, 'retrying');
-    assert.equal(h.networkToast.retryAt, 123456);
+    assert.equal(runtime(h).status, 'retrying');
+    assert.equal(runtime(h).retryAt, 123456);
     const scene = h.scenes.get('t_one');
     await h.render('t_one', true);
-    assert.equal(h.networkToast.retryAt, 123456);
+    assert.equal(runtime(h).retryAt, 123456);
     assert.equal(h.scenes.get('t_one'), scene);
     await h.render(false);
-    assert.equal(h.networkToast.state, 'retrying');
+    assert.equal(runtime(h).status, 'retrying');
     await h.network('online', null);
-    assert.equal(h.networkToast.retryAt, null);
-    assert.equal(h.networkToast.state, 'online');
+    assert.equal(runtime(h).retryAt, null);
+    assert.equal(runtime(h).status, 'online');
     await h.appState('background');
-    assert.equal(h.networkToast.state, 'suspended');
-    assert.equal(h.networkToast.failed, false);
+    assert.equal(runtime(h).status, 'suspended');
+    assert.equal(runtime(h).failed, false);
   } finally { await h.close(); }
 });
 
@@ -337,7 +358,7 @@ test('App retry handler addresses exact thread/connection and refuses stale hidd
     await act(async () => h.timelines.get('t_two').onRetryFailed('second-id'));
     assert.deepEqual(h.retries.at(-1), ['t_two', 'second-id']);
     const oldRetry = h.timelines.get('t_two').onRetryFailed;
-    await act(async () => h.api.forget());
+    await act(async () => h.shared.removeConnection('primary'));
     await act(async () => oldRetry('forgotten-id'));
     assert.equal(h.retries.length, 2);
   } finally { await h.close(); }
@@ -436,20 +457,52 @@ test('viewer cannot keep old conversation content after another session takes ow
     h.api.client.currentThreadId='t_two';h.api.client.currentConversationKey={};h.api.client.messages.clear();await h.revision();assert.notEqual(scene.disposed,true);assert.equal(h.api.client.currentThreadId,'t_two');
     const opens=h.opens;await h.render('t_one');assert.equal(h.opens,opens+1);assert.equal(h.api.client.currentThreadId,'t_one');
     await h.render('t_two');const second=h.scenes.get('t_two');await h.render('t_two','second');
-    await act(async()=>h.api.forget());assert.equal(second.disposed,true);assert.equal(h.api.client,null);
+    await act(async()=>h.shared.removeConnection('primary'));assert.equal(second.disposed,true);assert.equal(h.shared.connections.length,0);
   } finally { await h.close(); }
 });
 
-test('forget clears identity and stops the SDK; old chat is not usable', async () => {
+test('removing the only connection clears its identity and stops the SDK; old chat is not usable', async () => {
   const h = await harness();
   await act(async () => h.timelines.get('t_one').onText('private draft'));
-  const oldIdentity = h.api.identity;
-  await act(async () => h.api.forget());
-  assert.equal(h.api.identity, oldIdentity + 1);
-  assert.equal(h.api.config, null);
-  assert.equal(h.api.client, null);
-  assert.equal(h.api.textDrafts.current.size, 0);
+  const drafts = h.api.textDrafts;
+  await act(async () => h.shared.removeConnection('primary'));
+  assert.equal(h.shared.connections.length, 0);
+  assert.equal(drafts.current.size, 0);
   assert.equal(h.counts.closed, 1);
-  assert.deepEqual(h.events.at(-1), ['replace', '/connection']);
+  assert.equal(h.secure.has('hermes-app-connection-v1'), false);
   await h.close();
+});
+
+test('two connections run independent clients; removing one keeps the other page, draft and scene', async () => {
+  const h = await harness({ second: true, multiple: true });
+  try {
+    assert.equal(h.shared.connections.length, 2);
+    assert.equal(h.counts.sdkCount, 2, 'one SDK client per connection');
+    assert.equal(h.counts.boxCount, 2, 'one outbox per connection');
+    assert.deepEqual(h.boxes.map(b => b.storage.connectionId).sort(), ['connection-a', 'connection-b']);
+    const [primary, other] = ['primary', h.secondSlot].map(slot => runtime(h, slot).client);
+    assert.notEqual(primary, other);
+    // A failure on one connection does not change its peer.
+    await h.network('blocked', null, other);
+    assert.equal(runtime(h, h.secondSlot).status, 'blocked');
+    assert.equal(runtime(h).status, 'online');
+    assert.match(runtime(h, h.secondSlot).error, /Contact your admin/);
+    assert.equal(runtime(h).error, '');
+    // Draft keys carry the connection identity; equal raw thread IDs stay apart.
+    await act(async () => h.timelines.get('t_one').onText('primary draft'));
+    await act(async () => h.api.textDrafts.current.set('connection-b:t_one', 'other draft'));
+    const scene = h.scenes.get('t_one'), page = primary.page('t_one');
+    scene.offset = 321;
+    await act(async () => h.shared.removeConnection(h.secondSlot));
+    assert.equal(h.shared.connections.length, 1);
+    assert.equal(h.boxes.find(b => b.storage.connectionId === 'connection-b').stopped, true);
+    assert.equal(h.boxes.find(b => b.storage.connectionId === 'connection-a').stopped, undefined);
+    assert.equal(h.api.textDrafts.current.get('connection-a:t_one'), 'primary draft');
+    assert.equal(h.api.textDrafts.current.has('connection-b:t_one'), false);
+    assert.equal(h.scenes.get('t_one'), scene); assert.equal(scene.disposed, undefined); assert.equal(scene.offset, 321);
+    assert.equal(primary.page('t_one'), page);
+    assert.equal(h.secure.has('hermes-app-connection-v1'), true);
+    assert.equal(h.secure.has('hermes-app-connection-v1.' + h.secondSlot), false);
+    assert.equal(h.secure.has('hermes-app-connections-v1'), false);
+  } finally { await h.close(); }
 });

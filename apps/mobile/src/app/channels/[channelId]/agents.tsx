@@ -1,17 +1,21 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { FormKeyboardAvoidingView, Notice, useApp } from '../../../App';
+import { ConnectionScope, FormKeyboardAvoidingView, Notice, routeConnection, useApp } from '../../../App';
 import { ChannelAgentsScreen } from '../../../ChannelAgentsScreen';
 import { routeId } from '../../../routeId';
 
-export default function ChannelAgents() {
-  const { channelId: rawId } = useLocalSearchParams<{ channelId: string }>();
+function Page({ id }: { id: string }) {
   const { client, config } = useApp();
-  const id = routeId(rawId);
-  if (!id) return <Notice text="This channel is unavailable." />;
   if (!client || !config) return null;
+  return <FormKeyboardAvoidingView><ChannelAgentsScreen key={config.id + ':' + id} client={client} channelId={id} /></FormKeyboardAvoidingView>;
+}
+
+export default function ChannelAgents() {
+  const { channelId: rawId, connection } = useLocalSearchParams<{ channelId: string; connection?: string | string[] }>();
+  const id = routeId(rawId), slot = routeConnection(connection);
+  if (!id || !slot) return <Notice text="This channel is unavailable." />;
   return <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-    <FormKeyboardAvoidingView><ChannelAgentsScreen key={config.id + ':' + id} client={client} channelId={id} /></FormKeyboardAvoidingView>
+    <ConnectionScope slot={slot} fallback={<Notice text="This channel is unavailable." />}><Page id={id} /></ConnectionScope>
   </SafeAreaView>;
 }

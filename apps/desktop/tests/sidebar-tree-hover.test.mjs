@@ -17,7 +17,8 @@ test('Chromium: native sidebar tree indentation, pointer hover, selection and co
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
       import {NavigationPanel} from './apps/desktop/src/renderer/navigation-panel';
       window.selected=[]; window.hermesDesktop={selectThread:async id=>window.selected.push(id)};
-      const snapshot={connectionKey:'fixture',connectionState:'online',supportsSessionLabels:true,selectedChannelId:'p',selectedThreadId:'one',channels:[{id:'p',name:'Example Channel'},{id:'q',name:'Empty Channel'}],threads:[
+      // Projects render in name order; the populated Project must sort first for the selectors below.
+      const snapshot={connectionKey:'fixture',connectionState:'online',supportsSessionLabels:true,selectedChannelId:'p',selectedThreadId:'one',channels:[{id:'p',name:'Example Channel'},{id:'q',name:'Other Channel'}],threads:[
         {id:'one',channelId:'p',title:'Selected session',markers:['Design'],lastMessageAt:Date.now()/1000},
         {id:'two',channelId:'p',title:'A long session title that must truncate without hiding status',markers:['Review'],running:true,completedUnread:true,lastMessageAt:Date.now()/1000}
       ]};

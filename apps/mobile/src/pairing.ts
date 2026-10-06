@@ -56,12 +56,15 @@ interface Options {
   onStatus?(value: string): void;
   timeoutMs?: number;
   delayMs?: number;
+  /** Storage keys of the connection slot. Defaults to the primary slot. */
+  keys?: { config: string; pairing: string };
 }
 /** The candidate secret is saved before exchange; ACK loss never needs another grant. */
 export async function completePairing(pending: PendingPairing, options: Options): Promise<Connection> {
   const { store, signal, onStatus } = options, fetcher = options.fetcher || fetch;
+  const configKey = options.keys?.config ?? CONFIG_KEY, pairingKey = options.keys?.pairing ?? PAIRING_KEY;
   assertActive(signal);
-  try { await store.setItemAsync(PAIRING_KEY, JSON.stringify(pending)); }
+  try { await store.setItemAsync(pairingKey, JSON.stringify(pending)); }
   catch { throw new PairingError('This device could not save the connection. Pairing has not started. Please try again later.'); }
   assertActive(signal);
   const request = async (path: string, init: RequestInit) => {
@@ -114,11 +117,11 @@ export async function completePairing(pending: PendingPairing, options: Options)
         continue;
       } else throw new PairingError('This device is not authorized to connect. Contact your administrator.');
       assertActive(signal);
-      try { await store.setItemAsync(CONFIG_KEY, JSON.stringify(pending.config)); }
+      try { await store.setItemAsync(configKey, JSON.stringify(pending.config)); }
       catch { throw new PairingError('Your pairing details are saved, but the connection could not be saved yet. Recovery will continue automatically.'); }
       assertActive(signal);
       // CONFIG is authoritative. A failed cleanup is safe: restore checks this identity.
-      await store.deleteItemAsync(PAIRING_KEY).catch(() => {});
+      await store.deleteItemAsync(pairingKey).catch(() => {});
       assertActive(signal);
       return pending.config;
     } catch (error) {

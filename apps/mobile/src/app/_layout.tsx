@@ -1,36 +1,53 @@
-import React, { useEffect } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Stack, useNavigationContainerRef } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { FontSizeProvider, useFontSize } from '../FontSize';
-import { AppProvider, useApp } from '../App';
-import { ViewerProvider } from '../Viewers';
+import { AppProvider, useConnections } from '../App';
+import { ViewerProvider, useViewerOwner } from '../Viewers';
+import { NetworkStatusToast } from '../NetworkStatusToast';
+import { removedConnectionRoutes } from '../routeOwnership';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
-function NativeRoutes() {
-  const { ready, config, identity, editing, pendingPairing } = useApp();
-  const { scale } = useFontSize();
-  const router = useRouter();
-  // Restore an interrupted authorization on its own page, not behind a chat.
+/**
+ * The Stack is never remounted for a connection change. Removing one
+ * connection pops only its own routes and viewers; pages of other
+ * connections keep their scene, scroll position and draft.
+ */
+function RouteOwnership({ owners }: { owners: ReadonlyMap<string, string | null> }) {
+  const navigation = useNavigationContainerRef();
+  const ownerOf = useViewerOwner();
+  const known = useRef(owners);
   useEffect(() => {
-    if (ready && editing && pendingPairing) router.replace('/connection');
-  }, [ready, editing, pendingPairing, router]);
-  // Keep the route until the cold SecureStore read completes; otherwise a
-  // direct link is discarded before its saved identity can be restored.
-  return <ViewerProvider key={identity}>
-    <Stack key={identity} screenOptions={{ keyboardHandlingEnabled: true, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
+    const removed = new Set([...known.current.keys()].filter(slot => !owners.has(slot)));
+    const removedOwners = new Set([...known.current].filter(([slot]) => removed.has(slot)).flatMap(([, owner]) => owner ? [owner] : []));
+    known.current = owners;
+    if (!removed.size || !navigation.isReady()) return;
+    const next = removedConnectionRoutes(navigation.getRootState(), removed, id => { const owner = ownerOf(id); return !!owner && removedOwners.has(owner); });
+    if (next) navigation.resetRoot(next);
+  }, [owners, navigation, ownerOf]);
+  return null;
+}
+
+function NativeRoutes() {
+  const { ready, connections } = useConnections();
+  const { scale } = useFontSize();
+  const owners = useMemo(() => new Map(connections.map(c => [c.slot, c.config?.id ?? c.pairing?.config.id ?? null])), [connections]);
+  return <ViewerProvider>
+    <RouteOwnership owners={owners} />
+    <Stack screenOptions={{ keyboardHandlingEnabled: true, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
       headerTitleStyle: { fontSize: 17 * scale }, headerBackTitleStyle: { fontSize: 17 * scale } }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="connection" options={{ title: 'Connection' }} />
-      <Stack.Protected guard={!ready || (!!config && !(editing && pendingPairing))}>
+      <Stack.Screen name="connection" options={{ title: 'Connections' }} />
+      <Stack.Protected guard={!ready || connections.length > 0}>
         <Stack.Screen name="new-channel" options={{ title: 'New channel' }} />
-        <Stack.Screen name="channels/[channelId]" options={{ title: 'Channel' }} />
+        <Stack.Screen name="channels/[channelId]" getId={({ params }) => `${params?.connection ?? 'primary'}:${params?.channelId}`} options={{ title: 'Channel' }} />
         <Stack.Screen name="channels/[channelId]/context" options={{ title: 'Channel context' }} />
         <Stack.Screen name="channels/[channelId]/files" options={{ title: 'Files' }} />
         <Stack.Screen name="channels/[channelId]/agents" options={{ title: 'AGENTS.md' }} />
         <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
-        <Stack.Screen name="threads/[threadId]" getId={({ params }) => String(params?.threadId)} options={{ title: 'Conversation' }} />
+        <Stack.Screen name="threads/[threadId]" getId={({ params }) => `${params?.connection ?? (params?.server ? 'link:' + params.server : 'primary')}:${params?.threadId}`} options={{ title: 'Conversation' }} />
         <Stack.Screen name="settings" options={{ title: 'Agent settings' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />
       </Stack.Protected>
@@ -38,6 +55,16 @@ function NativeRoutes() {
   </ViewerProvider>;
 }
 
+/** One status line: the first connection that needs attention, named when several exist. */
+function ConnectionToast() {
+  const { connections } = useConnections();
+  const live = connections.filter(c => c.client);
+  const target = live.find(c => c.status !== 'online' && (c.status !== 'suspended' || c.failed)) ?? live[0];
+  if (!target) return null;
+  return <NetworkStatusToast state={target.status === 'pairing' ? 'connecting' : target.status} retryAt={target.retryAt} failed={target.failed}
+    source={connections.length > 1 ? target.name : undefined} />;
+}
+
 export default function RootLayout() {
-  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><NativeRoutes /></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><NativeRoutes /><ConnectionToast /></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
 }

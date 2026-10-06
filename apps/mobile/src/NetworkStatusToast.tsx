@@ -14,8 +14,9 @@ export function networkStatusText(state: ConnectionState, retryAt: number | null
   return seconds > 0 ? `Connection interrupted. Retrying in ${seconds}s…` : 'Retrying connection…';
 }
 
-/** Account-wide information only. Never intercept input or ask for a retry. */
-export function NetworkStatusToast({ state, retryAt, failed = false }: { state: ConnectionState; retryAt: number | null; failed?: boolean }) {
+/** Account-wide information only. Never intercept input or ask for a retry.
+ * With several connections, `source` names the connection the status is about. */
+export function NetworkStatusToast({ state, retryAt, failed = false, source }: { state: ConnectionState; retryAt: number | null; failed?: boolean; source?: string }) {
   const insets = useSafeAreaInsets();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -24,9 +25,10 @@ export function NetworkStatusToast({ state, retryAt, failed = false }: { state: 
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
   }, [state, retryAt]);
-  const text = networkStatusText(state, retryAt, now, failed);
-  if (!text) return null;
-  const announcement = state === 'retrying' ? 'Connection interrupted. Retrying automatically.' : text;
+  const status = networkStatusText(state, retryAt, now, failed);
+  if (!status) return null;
+  const text = source ? `${source}: ${status}` : status;
+  const announcement = state === 'retrying' ? `${source ? source + ': ' : ''}Connection interrupted. Retrying automatically.` : text;
   return <View pointerEvents="none" style={[styles.position, { top: insets.top + 8 }]}>
     <View accessible accessibilityRole="text" accessibilityLiveRegion="polite" accessibilityLabel={announcement} style={styles.toast}>
       <Text accessible={false} style={styles.text}>{text}</Text>
