@@ -17,10 +17,10 @@ const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&l
 const script = (value: string) => value.replace(/<\/script/gi, '<\\/script');
 
 export type ArticleExpansion = { kind: 'table' | 'diagram'; block: Block };
-export type ArticlePage = { html: string; expansions: ArticleExpansion[]; links: string[] };
+export type ArticlePage = { html: string; expansions: ArticleExpansion[]; links: string[]; copies: string[] };
 
 export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall[], scale = 1): ArticlePage {
-  const expansions: ArticleExpansion[] = [], links: string[] = [];
+  const expansions: ArticleExpansion[] = [], links: string[] = [], copies: string[] = [];
   const imageSources = new Set<string>(), videoSources = new Set<string>();
   let rendered = 0, math = false, diagram = false;
   const expand = (kind: 'table' | 'diagram', block: Block) => {
@@ -75,7 +75,7 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
       case 'heading': { const level = Math.min(6, Math.max(1, block.level || 1)); return `<h${level}>${inline(block.children)}</h${level}>`; }
       case 'quote': return `<blockquote>${content(block.children)}</blockquote>`;
       case 'list': return `<${block.ordered ? 'ol' : 'ul'}${block.ordered ? ` start="${Number.isSafeInteger(block.start) ? block.start : 1}"` : ''}>${block.items.map((item, index) => `<li>${block.checks[index] === null ? '' : `<span class="check" aria-label="${block.checks[index] ? 'Completed' : 'Not completed'}">${block.checks[index] ? '☑' : '☐'}</span> `}${content(item)}</li>`).join('')}</${block.ordered ? 'ol' : 'ul'}>`;
-      case 'code': return `<section class="code"><small>${escape(block.language || 'Code')}</small><pre><code>${escape(block.text)}</code></pre></section>`;
+      case 'code': { const index = copies.push(block.text.replace(/\r?\n$/, '')) - 1; return `<section class="code" data-copy="${index}" role="button" aria-label="${escape(block.language || 'Code')} block. Tap to copy."><div class="code-head"><small>${escape(block.language || 'Code')}</small><small class="copy">Copy</small></div><pre><code>${escape(block.text)}</code></pre></section>`; }
       case 'math': return formula(block.text, true, 'math');
       case 'diagram': return `<section class="diagram-block">${expand('diagram', block)}${formula(block.text, true, 'diagram')}</section>`;
       case 'table': return `<section class="table-block">${expand('table', block)}<div class="table-grid"><table><thead><tr>${block.header.map(c => cell(c, 'th')).join('')}</tr></thead><tbody>${block.rows.map(row => `<tr>${row.map(c => cell(c, 'td')).join('')}</tr>`).join('')}</tbody></table></div></section>`;
@@ -97,13 +97,13 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
     document.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY}},true);
     document.addEventListener('pointercancel',()=>{start=null},true);
     document.addEventListener('click',e=>{
-      const a=e.target.closest('a[data-link]'),b=e.target.closest('button[data-expand]');
-      if(!a&&!b)return;
+      const a=e.target.closest('a[data-link]'),b=e.target.closest('button[data-expand]'),c=!a&&!b&&e.target.closest('section[data-copy]');
+      if(!a&&!b&&!c)return;
       e.preventDefault();
       if(!start||Math.abs(e.clientX-start.x)>8||Math.abs(e.clientY-start.y)>8||!window.getSelection().isCollapsed)return;
-      const node=a||b, index=a?node.dataset.link:node.dataset.expand;
+      const node=a||b||c, index=a?node.dataset.link:b?node.dataset.expand:node.dataset.copy;
       if(!/^(0|[1-9][0-9]*)$/.test(index))return;
-      if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage((a?'link:':'expand:')+index);
+      if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage((a?'link:':b?'expand:':'copy:')+index);
       start=null;
     },true);
     (async()=>{let diagramReady=false;for(const el of document.querySelectorAll('[data-render]')){
@@ -120,8 +120,8 @@ export function renderArticleHtml(blocks: Block[], toolCalls?: readonly ToolCall
       }catch(_){el.querySelector('.original')?.insertAdjacentText('beforebegin','Could not render: ');}
     }})();
   })();`;
-  return { expansions, links, html: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+  return { expansions, links, copies, html: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; font-src data:; img-src data: ${escape([...imageSources].join(' '))}; media-src ${videoSources.size ? escape([...videoSources].join(' ')) : "'none'"}; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">` +
-    `<style>:root{--interface-scale:${safeFontScale(scale)}}html,body{margin:0;background:white;color:#172a40;font:${15 * safeFontScale(scale)}px/1.55 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}body{padding:4px 16px 36px;overflow-wrap:anywhere}p{margin:0 0 12px}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:16px 0 8px}h1{font-size:${23 * safeFontScale(scale)}px}h2{font-size:${21 * safeFontScale(scale)}px}h3{font-size:${19 * safeFontScale(scale)}px}h4{font-size:${17 * safeFontScale(scale)}px}h5{font-size:${16 * safeFontScale(scale)}px}h6{font-size:${15 * safeFontScale(scale)}px}blockquote{border-left:3px solid #9ab2d2;margin:12px 0;padding-left:10px}ul,ol{padding-left:28px}li{margin:4px 0}li p{margin:0}code,pre,.original{font-family:ui-monospace,Menlo,Consolas,monospace}code{background:#dce5f0;color:#20314a;border-radius:3px;padding:1px 4px}.code,.tool pre{background:#e8eef6;border-radius:8px;padding:10px}.code pre code{background:transparent;border-radius:0;padding:0}.code pre,.tool pre{overflow:auto;white-space:pre;margin:0}.diagram{overflow:auto;max-height:50vh}.diagram svg{max-width:100%;height:auto}.fallback{overflow:auto;white-space:pre-wrap;max-height:220px}.formula{overflow:auto}.tools{margin-top:14px;color:#52657c;font-size:${13 * safeFontScale(scale)}px}.tool{margin:4px 0}.tool pre{color:#20314a}.code small{color:#52657c}a{color:#215ca7}article,.table-block{min-width:0;max-width:100%}.table-block{width:100%;box-sizing:border-box}.table-grid{width:100%;min-width:0;max-width:100%;box-sizing:border-box;overflow-x:auto;overscroll-behavior-x:contain}table{border-collapse:collapse;width:100%;max-width:100%;table-layout:fixed}td,th{border:1px solid #d6e0ed;min-width:0;padding:8px 2px;vertical-align:top;overflow-wrap:anywhere;word-break:normal}td code,th code{white-space:pre-wrap;overflow-wrap:anywhere}th{background:#e5ecf5}button{display:block;margin-left:auto;background:none;border:0;color:#215ca7;padding:8px;font:${13 * safeFontScale(scale)}px system-ui}figure{margin:8px 0}img,video{display:block;max-width:100%;max-height:320px}figcaption{font-size:${12 * safeFontScale(scale)}px;color:#52657c}hr{border:0;border-top:1px solid #d7e0eb}</style>` + (math ? `<style>${KATEX_CSS}</style><script nonce="${nonce}">${markdownEngineScript('math')}</script>` : '') + (diagram ? `<script nonce="${nonce}">${markdownEngineScript('diagram')}</script>` : '') +
+    `<style>:root{--interface-scale:${safeFontScale(scale)}}html,body{margin:0;background:white;color:#172a40;font:${15 * safeFontScale(scale)}px/1.55 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}body{padding:4px 16px 36px;overflow-wrap:anywhere}p{margin:0 0 12px}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:16px 0 8px}h1{font-size:${23 * safeFontScale(scale)}px}h2{font-size:${21 * safeFontScale(scale)}px}h3{font-size:${19 * safeFontScale(scale)}px}h4{font-size:${17 * safeFontScale(scale)}px}h5{font-size:${16 * safeFontScale(scale)}px}h6{font-size:${15 * safeFontScale(scale)}px}blockquote{border-left:3px solid #9ab2d2;margin:12px 0;padding-left:10px}ul,ol{padding-left:28px}li{margin:4px 0}li p{margin:0}code,pre,.original{font-family:ui-monospace,Menlo,Consolas,monospace}code{background:#dce5f0;color:#20314a;border-radius:3px;padding:1px 4px}.code,.tool pre{background:#e8eef6;border-radius:8px;padding:10px}.code pre code{background:transparent;border-radius:0;padding:0}.code pre,.tool pre{overflow:auto;white-space:pre;margin:0}.diagram{overflow:auto;max-height:50vh}.diagram svg{max-width:100%;height:auto}.fallback{overflow:auto;white-space:pre-wrap;max-height:220px}.formula{overflow:auto}.tools{margin-top:14px;color:#52657c;font-size:${13 * safeFontScale(scale)}px}.tool{margin:4px 0}.tool pre{color:#20314a}.code small{color:#52657c}.code{cursor:pointer;-webkit-tap-highlight-color:rgba(33,92,167,.12)}.code-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.code .copy{color:#215ca7;font-weight:600}a{color:#215ca7}article,.table-block{min-width:0;max-width:100%}.table-block{width:100%;box-sizing:border-box}.table-grid{width:100%;min-width:0;max-width:100%;box-sizing:border-box;overflow-x:auto;overscroll-behavior-x:contain}table{border-collapse:collapse;width:100%;max-width:100%;table-layout:fixed}td,th{border:1px solid #d6e0ed;min-width:0;padding:8px 2px;vertical-align:top;overflow-wrap:anywhere;word-break:normal}td code,th code{white-space:pre-wrap;overflow-wrap:anywhere}th{background:#e5ecf5}button{display:block;margin-left:auto;background:none;border:0;color:#215ca7;padding:8px;font:${13 * safeFontScale(scale)}px system-ui}figure{margin:8px 0}img,video{display:block;max-width:100%;max-height:320px}figcaption{font-size:${12 * safeFontScale(scale)}px;color:#52657c}hr{border:0;border-top:1px solid #d7e0eb}</style>` + (math ? `<style>${KATEX_CSS}</style><script nonce="${nonce}">${markdownEngineScript('math')}</script>` : '') + (diagram ? `<script nonce="${nonce}">${markdownEngineScript('diagram')}</script>` : '') +
     `</head><body><article>${body}${tools}</article><script nonce="${nonce}">${script(runtime)}</script></body></html>` };
 }

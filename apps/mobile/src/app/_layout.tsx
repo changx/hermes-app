@@ -6,6 +6,7 @@ import { FontSizeProvider, useFontSize } from '../FontSize';
 import { AppProvider, useConnections } from '../App';
 import { ViewerProvider, useViewerOwner } from '../Viewers';
 import { NetworkStatusToast } from '../NetworkStatusToast';
+import { CopyToast } from '../CopyToast';
 import { removedConnectionRoutes } from '../routeOwnership';
 
 export const unstable_settings = { initialRouteName: 'index' };
@@ -69,5 +70,5 @@ function ConnectionToast() {
 }
 
 export default function RootLayout() {
-  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><NativeRoutes /><ConnectionToast /></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><NativeRoutes /><ConnectionToast /><CopyToast /></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
 }

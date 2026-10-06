@@ -18,6 +18,7 @@ import { compactFileDetail, compactToolCaption, toolDisplayLabel, toolPresentati
 import { useViewer } from './Viewers';
 import { RenderResourceContext, useRenderResources } from './RenderResources';
 import { subscribeReducedMotion } from './reducedMotion';
+import { copyWithToast } from './CopyToast';
 
 function countNodes(value: unknown): number {
   if (!value || typeof value !== 'object') return 0;
@@ -27,7 +28,6 @@ function countNodes(value: unknown): number {
 export const copyMessageText = (value: string) => {
   void Clipboard.setStringAsync(value).catch(() => Alert.alert('Copy failed', 'Could not copy to the clipboard.'));
 };
-const copy = copyMessageText;
 
 type Tone = (color: string) => { color: string | Animated.AnimatedInterpolation<string> };
 type ExpandTarget = { kind: 'message' } | { kind: 'table' | 'diagram'; block: Block };
@@ -259,17 +259,19 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
     case 'heading':
       return <RichText nodes={block.children} tone={tone} allowed={allowed} style={[styles.heading, block.level === 1 ? styles.h1 : block.level === 2 ? styles.h2 : block.level === 3 ? styles.h3 : block.level === 4 ? styles.h4 : block.level === 5 ? styles.h5 : styles.h6]} onInteraction={onInteraction} suspended={suspended} />;
     case 'code':
-      return <View style={styles.codeBox} onTouchStart={stopTouch}>
+      // Tap anywhere on the block to copy. Horizontal scrolling and long-press
+      // selection keep their native handling and do not copy.
+      return <Pressable style={({ pressed }) => [styles.codeBox, pressed && styles.codeBoxPressed]} onTouchStart={stopTouch}
+        accessibilityRole="button" accessibilityLabel={`${block.language || 'Code'} block`} accessibilityHint="Copies the code to the clipboard"
+        onPress={() => { onInteraction(); void copyWithToast(block.text.replace(/\r?\n$/, '')); }}>
         <View style={styles.codeHeader}>
           <Text style={styles.codeLanguage} numberOfLines={1}>{block.language || 'Code'}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Copy code" hitSlop={8} onPress={() => copy(block.text)}>
-            <Text style={styles.copyCode}>Copy code</Text>
-          </Pressable>
+          <Text style={styles.copyCode}>Copy</Text>
         </View>
         <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
           <AnimatedText selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</AnimatedText>
         </ScrollView>
-      </View>;
+      </Pressable>;
     case 'math':
       return <OfflineRenderer resourceKey={block} kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;
     case 'diagram':
@@ -343,11 +345,14 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
   return <WebView style={styles.articleWeb} source={webSource} originWhitelist={['*']}
     onShouldStartLoadWithRequest={request => request.url === 'about:blank'}
     onMessage={event => {
-      const match = /^(expand|link):(0|[1-9][0-9]{0,8})$/.exec(event.nativeEvent.data);
+      const match = /^(expand|link|copy):(0|[1-9][0-9]{0,8})$/.exec(event.nativeEvent.data);
       if (!match) return;
       const index = Number(match[2]);
       // Only typed indices into this message's AST; no URL or arbitrary command bridge.
-      if (match[1] === 'expand') {
+      if (match[1] === 'copy') {
+        const value = page.copies[index];
+        if (typeof value === 'string') void copyWithToast(value);
+      } else if (match[1] === 'expand') {
         const target = page.expansions[index];
         if (target && target.block.kind === target.kind) onExpand(target);
       } else {
@@ -516,6 +521,7 @@ const styles = StyleSheet.create({
   listBody: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto', minWidth: 0 },
   rule: { height: 1, backgroundColor: '#d7e0eb', width: '100%' },
   codeBox: { width: '100%', minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: '#d6e0ed', backgroundColor: '#e8eef6', overflow: 'hidden' },
+  codeBoxPressed: { opacity: 0.7 },
   codeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, gap: 8, backgroundColor: '#e5ecf5' },
   codeLanguage: { color: '#52657c', fontSize: 12, flexShrink: 1 }, copyCode: { color: '#215ca7', fontSize: 12, fontWeight: '600' },
   codeScroll: { width: '100%', maxWidth: '100%' },

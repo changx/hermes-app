@@ -28,3 +28,15 @@ const { checkTableLayout, wideTables } = await import('../../../tests/markdown-t
 test('Chromium: full article tables fit containers and wrap across resizes', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   await checkTableLayout(render(wideTables).html, '.table-grid');
 });
+
+test('article code blocks carry an indexed copy target with the exact original text', () => {
+  const source = 'const a = "<b>&</b>";\nconsole.log(a);';
+  const page = render('Intro\n\n```js\n' + source + '\n```\n\n```\nsecond\n```');
+  assert.deepEqual([...page.copies], [source, 'second']);
+  assert.match(page.html, /<section class="code" data-copy="0" role="button"/);
+  assert.match(page.html, /data-copy="1"/);
+  assert.match(page.html, /<small class="copy">Copy<\/small>/);
+  // Only a bounded index crosses the bridge; code text never goes through postMessage.
+  assert.match(page.html, /'copy:'/);
+  assert.doesNotMatch(page.html, /<b>&<\/b>/);
+});
