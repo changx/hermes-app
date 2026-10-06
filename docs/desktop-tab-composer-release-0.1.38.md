@@ -19,3 +19,10 @@ Not included: Expo restart (desktop-only change), plugin installation, Gateway r
 ## Candidate checks
 
 Desktop typecheck, build and 106/106 tests pass with real Chromium and Linux Electron/Xvfb, 0 skipped. Evidence: channel workspace `desktop-tab-composer-polish/`.
+
+## Results
+
+- `main` moved to `05bcaeb` and was pushed atomically with annotated tag `v0.1.38`.
+- The normal tag run `37483268398` passed checks, audit, packaging and archive validation, then failed only at artifact upload (Actions storage quota). The source-pinned Desktop Direct Release run `37483387708` succeeded.
+- Release `v0.1.38` is not a draft or prerelease. Downloaded ZIP checksum and ZIP CRC passed. Info.plist and ASAR report `0.1.38`; executable is Mach-O arm64. Packaged main, preload, renderer script and stylesheet are byte-identical to the verified local build. Evidence: channel workspace `desktop-tab-composer-polish/release/`.
+- No Expo restart, Gateway restart, plugin or core change. The app is unsigned and not notarized. macOS device checks (native tab menu, trackpad/wheel tab scrolling, composer focus feel) remain pending. Rollback: reinstall v0.1.37.
