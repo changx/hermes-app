@@ -90,15 +90,19 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
 }
 
 export interface TimelinePosition { offset: number; following: boolean; startRef: number | null }
+// Rejoin follow only when the reader actually reaches the end. The small
+// tolerance absorbs native pixel rounding. A wider band (formerly 80pt) made
+// the next layout/content correction snap the rest of the way: a visible jump.
+const LATEST_TOLERANCE = 2;
 export const nearLatest = (offset: number, contentHeight: number, viewportHeight: number, inset = 0): boolean =>
-  latestOffset(contentHeight, viewportHeight, inset) - offset <= 80;
+  latestOffset(contentHeight, viewportHeight, inset) - offset <= LATEST_TOLERANCE;
 
-// A bottom overscroll and its rebound are still at the end. Only a real drag
-// beyond the threshold leaves follow mode; a swipe back down can rejoin it.
+// A bottom overscroll and its rebound are still at the end. A swipe back down
+// rejoins follow mode only once it reaches the end.
 export function followAfterUserScroll(previous: number, next: number, height: number, viewport: number, following = true, inset = 0): boolean {
   // UIKit's bottom bounce can return from beyond the maximum offset without
   // being an upward reading gesture. Once inside the content, any upward drag
-  // intentionally releases follow (even before crossing the 80pt threshold).
+  // intentionally releases follow.
   if (next === previous) return following;
   if (next < previous && previous > latestOffset(height, viewport, inset) && next >= latestOffset(height, viewport, inset)) return following;
   return next > previous && nearLatest(next, height, viewport, inset);

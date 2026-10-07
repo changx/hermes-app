@@ -154,6 +154,20 @@ test('send while reading resumes follow after optimistic row commit, even with u
   flush();assert.deepEqual(state.commands,[{animated:false}]);
   await act(async()=>root.unmount());
 });
+test('scrolling down near the end does not snap; reaching the end rejoins follow',async()=>{
+  const root=await mount({rows});await measure(root);await readOlder(root);
+  const latestShown=()=>root.root.findAllByProps({accessibilityLabel:'Jump to latest ↓'}).length>0;
+  // Slow drag down to 40pt above the end, released without momentum.
+  await act(async()=>{list(root).props.onScrollBeginDrag();list(root).props.onScroll(geometry(1460));list(root).props.onScrollEndDrag({nativeEvent:{contentOffset:{y:1460},velocity:{y:0}}});});
+  assert.equal(latestShown(),true);
+  list(root).props.onContentSizeChange(300,2000);list(root).props.onLayout({nativeEvent:{layout:{height:500}}});flush();
+  assert.deepEqual(state.commands,[],'near-end reading position is kept');
+  await act(async()=>{list(root).props.onScrollBeginDrag();list(root).props.onScroll(geometry(1500));list(root).props.onScrollEndDrag({nativeEvent:{contentOffset:{y:1500},velocity:{y:0}}});});
+  assert.equal(latestShown(),false);
+  list(root).props.onContentSizeChange(300,2100);flush();
+  assert.deepEqual(state.commands,[{animated:false}],'follow resumes at the real end');
+  await act(async()=>root.unmount());
+});
 test('reading, new drag and inactive routes suppress pending content and geometry corrections',async()=>{
   const root=await mount({rows});await measure(root);
   list(root).props.onContentSizeChange(300,2300);list(root).props.onScrollBeginDrag();flush();assert.deepEqual(state.commands,[]);
