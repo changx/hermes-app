@@ -114,6 +114,7 @@
 - [docs/desktop-browser-resize-release-0.1.40.md](docs/desktop-browser-resize-release-0.1.40.md)
 - [docs/desktop-file-preview-release-0.1.41.md](docs/desktop-file-preview-release-0.1.41.md)
 - [docs/desktop-browser-control-release-0.1.42.md](docs/desktop-browser-control-release-0.1.42.md)
+- [docs/desktop-recents-indent-release-0.1.43.md](docs/desktop-recents-indent-release-0.1.43.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布
