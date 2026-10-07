@@ -22,8 +22,16 @@ export function NetworkStatusToast({ state, retryAt, failed = false, source }: {
   useEffect(() => {
     setNow(Date.now());
     if (state !== 'retrying' || retryAt === null) return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
+    // Wake only when the shown whole second changes, not several times a second.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const left = retryAt - Date.now();
+      if (left <= 0) return;
+      const delay = left % 1000 || 1000;
+      timer = setTimeout(() => { setNow(Date.now()); schedule(); }, delay);
+    };
+    schedule();
+    return () => { if (timer !== undefined) clearTimeout(timer); };
   }, [state, retryAt]);
   const status = networkStatusText(state, retryAt, now, failed);
   if (!status) return null;

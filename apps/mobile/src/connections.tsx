@@ -3,6 +3,7 @@ import { AppState, Keyboard, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import NetInfo from '@react-native-community/netinfo';
 import { LocalDraftMap } from '../../../packages/client/src/localDraftMap';
 import { connectionFailure, isRetryableError } from '../../../packages/client/src/index';
 import { LivePageClient } from '../../../packages/client/src/livePages';
@@ -17,6 +18,7 @@ import { releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { useAgentName } from './AgentSettings';
 import { ConnectionListError, MAX_CONNECTIONS, loadSlots, removeSlot, reserveSlot, serverName, slotKeys, slotServer, type SavedSlot } from './connectionSlots';
 import { ConnectionScope as NavigationScope, SessionNavigationProvider } from './sessionNavigation';
+import { ActivityWindow, IDLE_LIVENESS_MS, LIVENESS_MS, LIVE_BACKOFF_JITTER, LIVE_BACKOFF_MS, needsFastLiveness } from './liveness';
 
 /**
  * One saved Hermes connection at run time. Each connection owns its SDK
@@ -40,6 +42,8 @@ type Shared = {
   addConnection(server: string, code: string): Promise<string>;
   removeConnection(slot: string): Promise<void>;
   cancelPairing(slot: string): Promise<void>;
+  /** Marks recent use; keeps the faster connection check for a short time. */
+  noteActivity(): void;
 };
 const SharedContext = createContext<Shared | null>(null);
 export function useConnections(): Shared {
@@ -106,6 +110,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let box: MobileOutbox | null = null;
     const live = () => active && runtimes.current.get(slot)?.config === config;
     const sdk = new LivePageClient({ ...transport, token: () => config.token,
+      livenessMs: LIVENESS_MS, idleLivenessMs: IDLE_LIVENESS_MS, backoffMs: LIVE_BACKOFF_MS, backoffJitter: LIVE_BACKOFF_JITTER,
       onChange: () => { if (live()) { setRevision(n => n + 1); box?.reconcile(); } },
       onConnectionState: (state: NetworkState) => {
         if (!live()) return;
@@ -183,6 +188,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Battery: a quiet connection checks itself less often. See docs/mobile-battery.md.
+  const applyLiveness = useCallback(() => {
+    const recent = activity.current?.active ?? false;
+    for (const runtime of runtimes.current.values()) {
+      const client = runtime.client;
+      if (!client) continue;
+      client.setLivenessIdle(!needsFastLiveness({ records: runtime.records, threads: client.threads.values(), receipts: client.receipts.values() }, recent));
+    }
+  }, []);
+  const activity = useRef<ActivityWindow | null>(null);
+  if (activity.current === null) activity.current = new ActivityWindow(() => applyLiveness());
+  const noteActivity = useCallback(() => activity.current?.note(), []);
+  useEffect(() => { applyLiveness(); });
+  useEffect(() => {
+    if (AppState.currentState === 'active') activity.current?.note();
+    return () => activity.current?.stop();
+  }, []);
+
+  // A device network change retries a waiting connection at once, or checks an
+  // open one. The first report is only the starting state.
+  useEffect(() => {
+    let last: string | null = null;
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const key = `${state.type}|${state.isConnected}`;
+      const changed = last !== null && key !== last;
+      last = key;
+      if (!changed || state.isConnected === false || !appActive.current) return;
+      for (const runtime of runtimes.current.values()) runtime.client?.networkChanged();
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Foreground connects every paired connection; background pauses all.
   useEffect(() => {
     let foreground = AppState.currentState === 'active';
@@ -191,6 +228,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       appActive.current = next;
       // End native input before background keyboard extensions can resize it.
       if (foreground && !next) Keyboard.dismiss();
+      if (next && !foreground) activity.current?.note();
       for (const runtime of runtimes.current.values()) {
         if (!next) {
           pairings.current.get(runtime.slot)?.controller.abort();
@@ -251,7 +289,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const connections = [...runtimes.current.values()] as readonly ConnectionRuntime[];
   const shared: Shared = { ready, listError, revision, connections, textDrafts, composerDrafts, forgottenConnections, draftError,
-    addConnection, removeConnection, cancelPairing };
+    addConnection, removeConnection, cancelPairing, noteActivity };
   const navigation = useMemo(() => ({ connection: null, owner: null,
     hasPage: (slot: string, id: string) => !!runtimes.current.get(slot)?.client?.page(id),
     connectionForServer: (server: string) => {

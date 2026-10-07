@@ -22,7 +22,11 @@ export interface HttpTransport { request(method: string, path: string, token: st
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
-export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; onRetryScheduled?: (retryAt: number | null) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number }
+export interface Options { http: HttpTransport; socket: SocketFactory; token: () => string; onChange?: () => void; onError?: (error: Error) => void; onConnectionState?: (state: ConnectionState) => void; onRetryScheduled?: (retryAt: number | null) => void; backoffMs?: number[]; requestTimeoutMs?: number; connectTimeoutMs?: number; livenessMs?: number;
+  /** Ping interval while the owner marks the connection idle. Unset keeps `livenessMs` always. The pong deadline stays `livenessMs`. */
+  idleLivenessMs?: number;
+  /** Random spread (0–0.5) applied to each ordinary backoff delay. Server Retry-After is never shortened. */
+  backoffJitter?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
 
 const diagnosticRoute = (path: string): string => {

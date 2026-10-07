@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Stack, useNavigationContainerRef } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -71,6 +72,14 @@ function ConnectionToast() {
     source={connections.length > 1 ? target.name : undefined} />;
 }
 
-export default function RootLayout() {
-  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><NativeRoutes /><ConnectionToast /><CopyToast /></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
+/** Observes touches only to note recent use; it never claims the responder. */
+function ActivityCapture({ children }: { children: React.ReactNode }) {
+  const { noteActivity } = useConnections();
+  return <View style={styles.fill} onStartShouldSetResponderCapture={() => { noteActivity(); return false; }}>{children}</View>;
 }
+
+export default function RootLayout() {
+  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><ActivityCapture><NativeRoutes /><ConnectionToast /><CopyToast /></ActivityCapture></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
+}
+
+const styles = StyleSheet.create({ fill: { flex: 1 } });

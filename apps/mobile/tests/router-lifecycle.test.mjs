@@ -21,6 +21,13 @@ const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.m
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
 const code = transpile('../src/App.tsx'), connectionsCode = transpile('../src/connections.tsx'), navigationCode = transpile('../src/sessionNavigation.tsx');
+const receiptStateModule = {}; runInNewContext(transpile('../src/receiptState.ts'), { exports: receiptStateModule });
+// Controllable clock/timers for the activity window only; everything else uses real timers.
+const activityClock = { now: 1_000_000, timers: new Map(), next: 0 };
+const advanceActivity = ms => { activityClock.now += ms; for (const [id, timer] of [...activityClock.timers].sort((a, b) => a[1].at - b[1].at)) if (timer.at <= activityClock.now) { activityClock.timers.delete(id); timer.fn(); } };
+const livenessModule = {}; runInNewContext(transpile('../src/liveness.ts'), { exports: livenessModule,
+  setTimeout: (fn, ms) => { const id = ++activityClock.next; activityClock.timers.set(id, { fn, at: activityClock.now + ms }); return id; }, clearTimeout: id => activityClock.timers.delete(id),
+  Date: { now: () => activityClock.now }, require: id => { if (id === './receiptState') return receiptStateModule; throw Error(id); } });
 const slotsBundle = await build({ entryPoints: [new URL('../src/connectionSlots.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
 const slotsModule = { exports: {} }; new Function('module', 'exports', slotsBundle.outputFiles[0].text)(slotsModule, slotsModule.exports);
 
@@ -29,6 +36,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   const statusGate = new Promise(resolve => { finishStatus = resolve; });
   let api, shared, sdkCount = 0, boxCount = 0, closed = 0, paused = 0, opened = 0, sendFinish, outboxChanged; const boxes = [];
   const appListeners = new Set();
+  const livenessCalls = [], netListeners = new Set(); let networkCalls = 0;
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
   const timelines = new Map(), reads = [], events = [], retries = [];
@@ -62,6 +70,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     }
     async connect() { this.connectionState = 'online'; this.options.onConnectionState('online'); }
     async getThread() {}
+    setLivenessIdle(idle) { livenessCalls.push(idle); } networkChanged() { networkCalls++; }
     suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
     async historyWindow() { return { messages: [], older_cursor: null }; }
@@ -131,6 +140,8 @@ async function harness({ multiple = false, list = false, strict = false, product
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
     '../../../packages/client/src/livePages': { LivePageClient: productionOwners ? ProductionOwners : SDK },
     './transport': { nativeTransport: () => ({}) },
+    './liveness': livenessModule,
+    '@react-native-community/netinfo': { __esModule: true, default: { addEventListener: fn => { netListeners.add(fn); return () => netListeners.delete(fn); } } },
     './send': { DEFAULT_BASE: config.baseUrl, connection: (baseUrl, token, id) => ({ baseUrl, token, id }), normalizeBase: v => v, newSend: (...args) => args },
     './outbox': { MobileOutbox: Box, OutboxStore: class { constructor(_, config) { this.connectionId = config.id; } async clear() {} } },
     './ChatTimeline': { ChatTimeline: React.forwardRef((props, ref) => {
@@ -177,7 +188,8 @@ async function harness({ multiple = false, list = false, strict = false, product
   await render();
   await act(async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); });
   await render();
-  return { finishStatus, render, timelines, scenes, reads, events, retries, clients, boxes, secure, secondSlot, get shared() { return shared; }, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, get counts() { return { sdkCount, boxCount, closed }; },
+  return { finishStatus, render, timelines, scenes, reads, events, retries, clients, boxes, secure, secondSlot, get shared() { return shared; }, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, livenessCalls, get networkCalls() { return networkCalls; },
+    async netInfo(state) { await act(async () => { for (const listener of [...netListeners]) listener(state); }); }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
     async network(state, deadline, client = api.client) { await act(async () => { client.options.onRetryScheduled(deadline); client.options.onConnectionState(state); }); },
     async appState(value) { await act(async () => { appState.currentState = value; for (const listener of [...appListeners]) listener(value); }); },
@@ -504,5 +516,48 @@ test('two connections run independent clients; removing one keeps the other page
     assert.equal(h.secure.has('hermes-app-connection-v1'), true);
     assert.equal(h.secure.has('hermes-app-connection-v1.' + h.secondSlot), false);
     assert.equal(h.secure.has('hermes-app-connections-v1'), false);
+  } finally { await h.close(); }
+});
+
+test('battery: idle connections check less often; use, sends and runs keep the fast check', async () => {
+  const h = await harness();
+  try {
+    const options = h.api.client.options;
+    assert.equal(options.livenessMs, 10_000); assert.equal(options.idleLivenessMs, 30_000);
+    assert.deepEqual([...options.backoffMs], [200, 500, 1000, 2000, 5000, 10_000, 20_000]); assert.equal(options.backoffJitter, 0.2);
+    assert.equal(h.livenessCalls.at(-1), false, 'opening in the foreground counts as recent use');
+    await act(async () => advanceActivity(119_000));
+    assert.equal(h.livenessCalls.at(-1), false);
+    await act(async () => advanceActivity(1_000));
+    assert.equal(h.livenessCalls.at(-1), true, 'two quiet minutes switch to the idle check');
+    await h.outbox([{ status: 'queued', threadId: 't_one', clientMessageId: 'mob_x' }]);
+    assert.equal(h.livenessCalls.at(-1), false, 'an unconfirmed send keeps the fast check');
+    await h.outbox([{ status: 'blocked', threadId: 't_one', clientMessageId: 'mob_x' }]);
+    assert.equal(h.livenessCalls.at(-1), true, 'a failed send waits for the user');
+    h.api.client.threads.set('t_one', { ...h.api.client.threads.get('t_one'), running: true }); await h.revision();
+    assert.equal(h.livenessCalls.at(-1), false, 'a running Agent keeps the fast check');
+    h.api.client.threads.set('t_one', { ...h.api.client.threads.get('t_one'), running: false }); await h.revision();
+    assert.equal(h.livenessCalls.at(-1), true);
+    await act(async () => h.shared.noteActivity());
+    assert.equal(h.livenessCalls.at(-1), false, 'a touch keeps the fast check');
+    await act(async () => advanceActivity(120_000));
+    assert.equal(h.livenessCalls.at(-1), true);
+  } finally { await h.close(); }
+});
+
+test('battery: a device network change wakes each connection once, only in the foreground', async () => {
+  const h = await harness();
+  try {
+    await h.netInfo({ type: 'wifi', isConnected: true });
+    assert.equal(h.networkCalls, 0, 'the first report is the starting state');
+    await h.netInfo({ type: 'wifi', isConnected: true });
+    assert.equal(h.networkCalls, 0, 'no change');
+    await h.netInfo({ type: 'cellular', isConnected: true });
+    assert.equal(h.networkCalls, 1);
+    await h.netInfo({ type: 'none', isConnected: false });
+    assert.equal(h.networkCalls, 1, 'losing the network does not retry');
+    await h.appState('background');
+    await h.netInfo({ type: 'wifi', isConnected: true });
+    assert.equal(h.networkCalls, 1, 'background stays paused');
   } finally { await h.close(); }
 });

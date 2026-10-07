@@ -177,6 +177,24 @@ export class LiveSessionClient extends HermesClient {
     this.suspendConnection();this.opened?.reject(new Error('aborted'));this.opened=null;this.publishedMessages=[];this.releaseContent();super.close();this.changed();
   }
   async retryNow():Promise<void>{this.suspendConnection();await this.connect()}
+  private livenessIdle=false;
+  private livenessChanged:(()=>void)|null=null;
+  private probeLiveness:(()=>void)|null=null;
+  private retryWake:(()=>void)|null=null;
+  get isLivenessIdle():boolean{return this.owner?.isLivenessIdle??this.livenessIdle}
+  /** Idle uses `idleLivenessMs` between pings; leaving idle brings the next ping forward. */
+  setLivenessIdle(idle:boolean):void{
+    if(this.owner){this.owner.setLivenessIdle(idle);return}
+    if(this.livenessIdle===idle)return;
+    this.livenessIdle=idle;this.livenessChanged?.();
+  }
+  /** A device network change: end an ordinary backoff wait now, or check an
+   * open socket at once. A server Retry-After wait is never shortened. */
+  networkChanged():void{
+    if(this.owner){this.owner.networkChanged();return}
+    if(this.retryWake)this.retryWake();
+    else this.probeLiveness?.();
+  }
   async snapshot(signal?:AbortSignal):Promise<void>{await (this.owner??this).refreshDirectory(signal)}
   /** UI calls only after this exact result has been displayed in the foreground. */
   async markResultRead(id:string,version:number,ref:number):Promise<void>{
@@ -405,9 +423,19 @@ export class LiveSessionClient extends HermesClient {
         }finally{attempt.abort();controller.signal.removeEventListener('abort',abort);openedSocket?.close();if(this.attempt===attempt){this.failLive=undefined;this.liveSocket=null;this.attempt=null;this.hello=false;this.watchReady=false}}
         if(controller.signal.aborted)break;
         const delays=this.liveOptions.backoffMs?.length?this.liveOptions.backoffMs:[200,500,1000,2000,5000];
-        const delay=Math.max(delays[Math.min(retries++,delays.length-1)],retryAfter);
+        const base=delays[Math.min(retries++,delays.length-1)];
+        const spread=Math.min(0.5,Math.max(0,this.liveOptions.backoffJitter??0));
+        const backoff=spread?Math.max(0,Math.round(base*(1-spread+Math.random()*2*spread))):base;
+        const delay=Math.max(backoff,retryAfter);
         this.scheduleRetry(Date.now()+delay);this.state('retrying');
-        try{await wait(delay,controller.signal)}catch{break}
+        // Only an ordinary backoff may end early on a device network change.
+        let woken=false;
+        const early=new AbortController(),stop=()=>early.abort();controller.signal.addEventListener('abort',stop,{once:true});
+        if(retryAfter===0)this.retryWake=()=>{woken=true;early.abort()};
+        try{await wait(delay,early.signal)}catch{if(!woken)break}
+        finally{this.retryWake=null;controller.signal.removeEventListener('abort',stop)}
+        if(controller.signal.aborted)break;
+        if(woken)retries=0;
       }
     }finally{if(this.liveController===controller){this.scheduleRetry(null);this.liveController=null}}
   }
@@ -415,9 +443,23 @@ export class LiveSessionClient extends HermesClient {
     return new Promise((resolve,reject)=>{
       let finished=false,awaitingPong=false;
       const interval=this.liveOptions.livenessMs??10_000;
-      let ping:ReturnType<typeof setInterval>|undefined,pong:ReturnType<typeof setTimeout>|undefined;
+      const idleInterval=Math.max(interval,this.liveOptions.idleLivenessMs??interval);
+      const gap=()=>this.livenessIdle?idleInterval:interval;
+      let ping:ReturnType<typeof setTimeout>|undefined,pong:ReturnType<typeof setTimeout>|undefined;
+      // `since` is the last ping (or hello); the next ping is due one gap later.
+      let since=0,due=Infinity;
+      const schedule=(at:number)=>{clearTimeout(ping);due=at;ping=setTimeout(sendPing,Math.max(0,at-Date.now()))};
+      const sendPing=()=>{
+        ping=undefined;due=Infinity;if(awaitingPong||finished)return;
+        awaitingPong=true;since=Date.now();
+        pong=setTimeout(()=>finish(new TimeoutError('WebSocket liveness timed out')),interval);
+        try{socket.send!('ping')}catch(error){finish(error)}
+      };
       const handshake=setTimeout(()=>finish(new TimeoutError('hello timed out')),this.liveOptions.connectTimeoutMs??10_000);
-      const finish=(error?:unknown)=>{if(finished)return;finished=true;clearTimeout(handshake);clearTimeout(pong);clearInterval(ping);attempt.signal.removeEventListener('abort',abort);attempt.abort();socket.close();if(error)reject(error);else resolve()};
+      const finish=(error?:unknown)=>{if(finished)return;finished=true;clearTimeout(handshake);clearTimeout(pong);clearTimeout(ping);if(this.livenessChanged===reschedule)this.livenessChanged=null;if(this.probeLiveness===probe)this.probeLiveness=null;attempt.signal.removeEventListener('abort',abort);attempt.abort();socket.close();if(error)reject(error);else resolve()};
+      // Leaving idle only brings the next ping forward; entering idle takes effect after it.
+      const reschedule=()=>{if(!finished&&this.hello&&!awaitingPong&&since+gap()<due)schedule(since+gap())};
+      const probe=()=>{if(!finished&&this.hello&&!awaitingPong)sendPing()};
       const abort=()=>finish();attempt.signal.addEventListener('abort',abort,{once:true});
       const failure=(error:unknown)=>{if(!attempt.signal.aborted&&!(error instanceof Error&&error.message==='aborted'))finish(error)};
       this.failLive=failure;
@@ -425,12 +467,12 @@ export class LiveSessionClient extends HermesClient {
       socket.onMessage(data=>{
         if(finished)return;
         try{
-          if(data==='pong'){if(!this.hello)throw new ProtocolError('pong before hello');awaitingPong=false;clearTimeout(pong);stable();return}
+          if(data==='pong'){if(!this.hello)throw new ProtocolError('pong before hello');awaitingPong=false;clearTimeout(pong);stable();schedule(since+gap());return}
           const frame=parseLiveFrame(JSON.parse(data));
           if(frame.type==='hello'){
             if(this.hello)throw new ProtocolError('duplicate live hello');this.hello=true;clearTimeout(handshake);this.state('syncing');this.connectionReady(frame);
             void this.refreshDirectory(attempt.signal).then(()=>{if(!attempt.signal.aborted)this.state('online')},failure);
-            ping=setInterval(()=>{if(awaitingPong||finished)return;awaitingPong=true;pong=setTimeout(()=>finish(new TimeoutError('WebSocket liveness timed out')),interval);try{socket.send!('ping')}catch(error){finish(error)}},interval);
+            since=Date.now();this.livenessChanged=reschedule;this.probeLiveness=probe;schedule(since+gap());
           }else if(!this.hello)throw new ProtocolError('live notification before hello');
           else if(frame.type==='directory_changed')void this.refreshDirectory(attempt.signal).catch(failure);
           else if(frame.type==='session_state'){

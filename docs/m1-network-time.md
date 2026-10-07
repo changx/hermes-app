@@ -36,3 +36,4 @@ Jamie 要求保留网络失败处理优化，并在每条完整消息的发送�
 - 实际开发数据库只读快照对照 **15 条**消息（7 条用户、8 条 assistant）：原始时间逐条匹配、正文/身份/顺序不变，源数据库快照哈希不变。快照核对忽略本次明确变更的工具标签语言；线上数据库未写入。
 - 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/network-time/`，包含 `client-verification.json`、`backend-verification.json`、`exports.json`、`real-copy-verification.json` 和完整日志。测试产生的运行记录转存至该目录 `runner-evidence/`，不覆盖仓库历史验收记录；自有 pytest 临时目录和数据库副本已清理。
 - 尚无真机视觉/真实断网体验结论，亦未发布到运行实例。后台系统节流可能延长探测；手机后台已有断开连接、前台重建机制保持不变。
+- 后续省电调整：手机在活跃时保持 10 秒探测，空闲时改为 30 秒，pong 期限仍为 10 秒；详见 [mobile-battery.md](mobile-battery.md)。
