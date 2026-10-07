@@ -26,6 +26,8 @@ Kanban: none (direct request in chat). Branch: `feat/mobile-labels-page`.
 
 Verification: mobile TypeScript passes. Mobile tests: 112 total, 111 pass. The only failure is the known `tests/local-draft-storage.test.mjs` failure (no repo-root `node_modules/esbuild`). New `tests/session-labels-page.test.mjs` covers header Save, add/reuse, mismatch handling and the offline state. The iOS and Android exports pass. iPhone checks of the transition, keyboard and back gesture are pending.
 
+Development release: `f50d113` was released to `exps://agent.tuly.space` (fast-forward from `a806d5d`, lockfile unchanged). Only `hermes-app-expo.service` was restarted (PID 1389957 → 1462471). The `hermes-gateway.service` PID 1305834 and the plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each launchAsset returns HTTP 200, contains the new route and page markers, and does not contain the old sheet text. Evidence: private `workspace/hermes-app/mobile-labels-page/`. Rollback baseline: `a806d5d`. iPhone acceptance is pending.
+
 ## Not included
 
 - Home and Channel headers keep their Settings gear.
