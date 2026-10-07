@@ -45,3 +45,12 @@ iPhone 原生长历史、图片/图表延迟渲染、发送时键盘变化，以
 修正：用户滚动只有真正到达底部（手机容差 2pt，桌面容差 2px，吸收像素取整）才恢复跟随。上翻立即解除跟随的规则不变；主动发送和点击回到最新仍恢复跟随。
 
 验证：手机新增组件回归，停在底部上方 40pt 时内容/布局事件不再滚动，到达底部后恢复跟随。桌面 Chromium 回归新增 3 项检查（共 15 项）：停在底部上方 30px 不跳、内容增长保留位置、到达底部后恢复跟随。两个用例均在修正前失败。iPhone 与 Mac 真机手感待验收。
+
+### 手机开发入口发布记录（接近底部跳动）
+
+- `main` 快进到 `d830bf3`。lockfile 未变，未运行 `npm ci`。只重启 `hermes-app-expo.service`；Gateway PID/启动时间和插件哈希未变。
+- 公网 iOS/Android manifest 及精确 launchAsset 均返回 HTTP 200，SDK 57.0.0，bundle 哈希与重启前不同。本机 Metro 非压缩 bundle 两个平台均包含 `LATEST_TOLERANCE = 2`，不含旧 80pt 判断。
+- 桌面修正已合入 `main`，未构建或发布新桌面安装包。
+- iPhone 与 Mac 真机手感待验收。
+- 证据：Channel workspace `session-near-bottom-jump/release.log` 及 manifest。
+- 回滚：`git revert d830bf3 f8aa944`，只重启 Expo。不影响聊天数据。
