@@ -98,3 +98,14 @@ HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop
 相关源码：`main/tab-manager.ts`、`main/index.ts`、`renderer/native-workspace.tsx`、`renderer/new-session-page.tsx`。
 
 参考：[Electron WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)、[资源释放](https://www.electronjs.org/docs/latest/api/base-window#resource-management)、[安全规则](https://www.electronjs.org/docs/latest/tutorial/security)。
+
+## Floating Session toolbar candidate
+
+Branch: `feat/desktop-floating-toolbar`; base `origin/main` `0010c74`.
+
+- The Session page has no title bar. The tab already shows the Session title; the Project name is not shown on the page.
+- The tools are one row of icon buttons that floats at the top right over the timeline: Copy link, Edit labels (when supported), Rename, Archive, Settings. Each button has an accessible name and a tooltip. Session labels stay at the left end of the row.
+- The timeline starts at the top of the page. The old header used 76px; the floating row is 36px high and covers only the top right corner. It has a translucent background so text under it stays readable.
+- Error banners stay above the timeline. No change to actions, IPC, drafts, scroll or history.
+
+Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: 124 passed, 0 skipped. New Chromium test `session-toolbar` checks no header or title/Project text, one row, position, timeline top, labels and button actions. Tests that measured the old header now measure the toolbar. macOS visual acceptance is separate. Not merged or released.

@@ -30,7 +30,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
       const close=()=>{closes++;flushSync(()=>editorRoot.render(null));};
       const edit=thread=>{target=thread;flushSync(()=>editorRoot.render(<LabelsEditor thread={thread} snapshot={snapshot} close={close}/>));};
       const render=()=>flushSync(()=>root.render(<NavigationPanel snapshot={snapshot} onNewSession={()=>{}} onEditLabels={edit}/>));
-      const button=(container,text)=>[...container.querySelectorAll('button')].find(n=>n.textContent===text);
+      const button=(container,text)=>[...container.querySelectorAll('button')].find(n=>n.textContent===text||n.getAttribute('aria-label')===text);
       const inputValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
       (async()=>{try{
         render();await tick();ensure('running survives recent cutoff',document.querySelectorAll('.channel-tree .tree-thread').length===2);
@@ -73,7 +73,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         ensure('header editor entry',document.querySelector('dialog').open);
         button(document.querySelector('dialog'),'Cancel').click();await tick();
         const updated={...shell,threads:shell.threads.map(t=>t.id==='row0'?{...t,markers:['Updated header']}:t)};shellRender(updated);await tick();
-        ensure('authoritative header labels',document.querySelector('.conversation-header .label-pills').getAttribute('aria-label')==='Labels: Updated header');
+        ensure('authoritative header labels',document.querySelector('.session-toolbar .label-pills').getAttribute('aria-label')==='Labels: Updated header');
         ensure('composer and page retained',page===document.querySelector('.session-tab-page')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
         button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();shellRender({...updated,connectionKey:'shell-two'});
         ensure('no old dialog on new connection',!document.querySelector('dialog'));
