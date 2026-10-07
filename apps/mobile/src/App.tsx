@@ -1,13 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, AppState, KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import * as Clipboard from 'expo-clipboard';
-import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
@@ -15,7 +13,7 @@ import type { Attachment, Interaction, Message } from '../../../packages/client/
 import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
-import { LabelPills, LabelsEditor } from './SessionLabels';
+import { LabelPills } from './SessionLabels';
 import { projectTimeline } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
@@ -36,10 +34,15 @@ export const channelRoute = (connection: string, channelId: string, page: '' | '
   ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
 
 /** One Settings entry; connections, Agents, models and appearance live inside it. */
-export function HeaderActions({ onSettings, onCopyLink, onSessionMenu }: { onSettings: () => void; onCopyLink?: () => void; onSessionMenu?: () => void }) {
+export function HeaderActions({ onSettings }: { onSettings: () => void }) {
   return <View style={styles.headerActions}>
-    {onSessionMenu ? <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onSessionMenu} /> : onCopyLink && <HeaderIcon label="Copy session link" ios="link" android="link" onPress={onCopyLink} />}
     <HeaderIcon label="Settings" ios="gearshape" android="settings" onPress={onSettings} />
+  </View>;
+}
+/** The Session page's only header entry; labels, link and Settings live on its page. */
+export function SessionOptionsButton({ onPress }: { onPress: () => void }) {
+  return <View style={styles.headerActions}>
+    <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onPress} />
   </View>;
 }
 const EMPTY_MESSAGES: Message[] = [];
@@ -75,7 +78,6 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
-  const [editingLabels, setEditingLabels] = useState(false);
   const draftKey = `${config?.id ?? ''}:${threadId}`;
   const [text, setText] = useState(() => textDrafts.current.get(draftKey) || ''), [historyBusy, setHistoryBusy] = useState(false);
   useEffect(() => {
@@ -246,10 +248,9 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
-      headerRight: () => <HeaderActions onSessionMenu={accountClient?.supportsSessionLabels ? () => Alert.alert(selected.title, undefined, [{ text: 'Edit labels', onPress: () => setEditingLabels(true) }, { text: 'Copy session link', onPress: () => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); } }, { text: 'Cancel', style: 'cancel' }]) : undefined} onCopyLink={() => { void Clipboard.setStringAsync(buildSessionLink(config.baseUrl, threadId)).catch(() => setError('Could not copy the conversation link.')); }} onSettings={() => router.push('/settings')} /> }} />
+      headerRight: () => <SessionOptionsButton onPress={() => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } })} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
-    {editingLabels && accountClient && <LabelsEditor key={draftKey} client={accountClient} threadId={threadId} visible={focused} onClose={() => setEditingLabels(false)} />}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}

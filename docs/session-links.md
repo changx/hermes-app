@@ -2,7 +2,7 @@
 
 ## Confirmed scope
 
-Mobile (iOS/Android source) and desktop share a stable conversation link. Copy session link in the conversation header; paste as plain text or `[title](URL)` in a message. Click from ordinary message content or the mobile full-message reader to open that conversation through existing navigation. No additional history store, hidden conversation reads, message sends or task execution.
+Mobile (iOS/Android source) and desktop share a stable conversation link. Copy session link in the conversation header (on mobile, from the header's Session options page); paste as plain text or `[title](URL)` in a message. Click from ordinary message content or the mobile full-message reader to open that conversation through existing navigation. No additional history store, hidden conversation reads, message sends or task execution.
 
 Canonical format:
 

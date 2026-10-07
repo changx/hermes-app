@@ -93,6 +93,7 @@
 - [docs/mobile-user-message-block.md](docs/mobile-user-message-block.md)
 - [docs/mobile-workspace-entry.md](docs/mobile-workspace-entry.md)
 - [docs/mobile-workspace-entry-release.md](docs/mobile-workspace-entry-release.md)
+- [docs/mobile-session-options.md](docs/mobile-session-options.md)
 
 ### 桌面应用
 

@@ -85,8 +85,11 @@ test('every Settings gear opens Settings home; only Settings itself opens a conn
     for (const match of text.matchAll(/onSettings=\{\(\) => ([^}]*)\}/g)) gears.push([name, match[1]]);
   }
   assert.deepEqual(direct, [], 'connection Settings is reached only through Settings home');
-  assert.ok(gears.length >= 3, 'home, Channel and Thread gears found: ' + JSON.stringify(gears));
+  assert.ok(gears.length >= 2, 'home and Channel gears found: ' + JSON.stringify(gears));
   for (const [name, target] of gears) assert.equal(target, "router.push('/settings')", name);
+  // The Session page has one header entry; its Settings row opens the same Settings home.
+  const options = await readFile(new URL('SessionOptions.tsx', src), 'utf8');
+  assert.match(options, /title="Settings" onPress=\{\(\) => router\.push\('\/settings'\)\}/);
 });
 
 test('offline connection explains model settings instead of failing', async () => {
