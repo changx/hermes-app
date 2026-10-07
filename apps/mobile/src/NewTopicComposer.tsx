@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
 import { Text, TextInput } from './FontSize';
 import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments';
+import { ComposerSendButton } from './ComposerCard';
 
 /** Route-owned draft: retained by the native Stack while an existing topic is open.
  * Mount with a connection/channel key; never share files or IDs across channels.
@@ -18,7 +19,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   const [text, setText] = useState(''), [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false), [attachmentBusy, setAttachmentBusy] = useState(false);
   const [error, setError] = useState(''), [clearKey, setClearKey] = useState(0);
-  const [sealed, setSealed] = useState(false);
+  const [sealed, setSealed] = useState(false), [inputFocused, setFocused] = useState(false);
   const input = useRef<React.ElementRef<typeof TextInput>>(null);
   const attachments = useRef<AttachmentComposerHandle>(null);
   const selection = useRef<{ start: number; end: number } | null>(null);
@@ -81,27 +82,20 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   return <View collapsable={false} style={s.surface} testID="new-topic-composer">
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <AttachmentComposer client={client} threadId={null} handleRef={attachments} clearKey={clearKey}
-      disabled={busy || disabled || sealed} onSelectionChange={setCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={paste}>
-      <Pressable accessible={false} focusable={false} style={s.field} onPress={() => input.current?.focus()}>
-        <TextInput ref={input} accessibilityLabel="First message" placeholder="Start a new conversation…" placeholderTextColor="#65758b"
-          multiline maxLength={16000} editable={!busy && !disabled && !sealed} value={text} onChangeText={value => { if (!working.current && !attempt.current?.payload) setText(value); }}
-          numberOfLines={Platform.OS === 'ios' && !text.length ? 1 : undefined}
-          onSelectionChange={event => { selection.current = event.nativeEvent.selection; }}
-          underlineColorAndroid="transparent" style={s.input} />
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Send" accessibilityHint="Starts a new conversation"
-        accessibilityState={{ busy }} disabled={busy || disabled || attachmentBusy || (!text.trim() && !count)} onPress={() => void submit()}
-        style={[s.send, (busy || disabled || attachmentBusy || (!text.trim() && !count)) && s.disabled]}>
-        <Text style={s.arrow}>↑</Text>
-      </Pressable>
+      disabled={busy || disabled || sealed} onSelectionChange={setCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={paste}
+      expanded={inputFocused} onPressField={() => input.current?.focus()}
+      send={<ComposerSendButton hint="Starts a new conversation" busy={busy} disabled={busy || disabled || attachmentBusy || (!text.trim() && !count)} onPress={() => void submit()} />}>
+      <TextInput ref={input} accessibilityLabel="First message" placeholder="Start a new conversation…" placeholderTextColor="#8e8e93"
+        multiline maxLength={16000} editable={!busy && !disabled && !sealed} value={text} onChangeText={value => { if (!working.current && !attempt.current?.payload) setText(value); }}
+        numberOfLines={Platform.OS === 'ios' && !text.length ? 1 : undefined}
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        onSelectionChange={event => { selection.current = event.nativeEvent.selection; }}
+        underlineColorAndroid="transparent" style={s.input} />
     </AttachmentComposer>
   </View>;
 }
 const s = StyleSheet.create({
   surface: { flexShrink: 0, backgroundColor: 'rgba(248, 250, 253, 0.98)', borderTopWidth: 1, borderColor: '#e2e8f0', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
-  field: { flex: 1, minWidth: 0, minHeight: 42, maxHeight: 120, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  input: { maxHeight: 102, padding: 0, color: '#172a40' },
-  send: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#2960ad', alignItems: 'center', justifyContent: 'center' },
-  arrow: { color: '#fff', fontSize: 24, fontWeight: '600' }, disabled: { opacity: 0.5 },
+  input: { maxHeight: 102, padding: 0, color: '#1f2329' },
   error: { color: '#9d1b32', paddingHorizontal: 12, paddingTop: 8 },
 });

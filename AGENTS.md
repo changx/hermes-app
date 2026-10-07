@@ -30,6 +30,7 @@
 - [docs/m1-combined-release.md](docs/m1-combined-release.md)
 - [docs/m1-composer-attachments.md](docs/m1-composer-attachments.md)
 - [docs/m1-composer-blur-background.md](docs/m1-composer-blur-background.md)
+- [docs/m1-composer-chatgpt.md](docs/m1-composer-chatgpt.md)
 - [docs/m1-composer-latest.md](docs/m1-composer-latest.md)
 - [docs/m1-composer-reset.md](docs/m1-composer-reset.md)
 - [docs/m1-composer-shadow.md](docs/m1-composer-shadow.md)

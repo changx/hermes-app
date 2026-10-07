@@ -11,6 +11,7 @@ import type { Attachment, HermesClient } from '../../../packages/client/src/inde
 import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
+import { ComposerCard } from './ComposerCard';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
 let fileSequence = 0;
@@ -55,8 +56,8 @@ export type ComposerDraft = { items: DraftAttachment[]; files: Array<[number, Fi
 export function releaseComposerDraft(draft: ComposerDraft) { draft.files.forEach(([, file]) => forgetFile(file)); }
 
 /** Ready server metadata reaches onChange. With no threadId, files stay local until uploadTo(). */
-export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, onComposerHeight, onSelectionChange, handleRef, initialDraft, onDraftChange, disabled = false }: {
-  client: HermesClient; threadId: string | null; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; onComposerHeight?: (height: number) => void; onSelectionChange?: (count: number) => void; handleRef?: React.MutableRefObject<AttachmentComposerHandle | null>; disabled?: boolean;
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, send, expanded = false, onPressField, onComposerHeight, onSelectionChange, handleRef, initialDraft, onDraftChange, disabled = false }: {
+  client: HermesClient; threadId: string | null; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; send?: React.ReactNode; expanded?: boolean; onPressField?: () => void; onComposerHeight?: (height: number) => void; onSelectionChange?: (count: number) => void; handleRef?: React.MutableRefObject<AttachmentComposerHandle | null>; disabled?: boolean;
   initialDraft?: ComposerDraft; onDraftChange?: (draft: ComposerDraft) => void;
 }) {
   const [items, setItems] = useState<DraftAttachment[]>(() => initialDraft?.items ?? []);
@@ -270,6 +271,10 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     handleRef.current = { uploadTo, discardFrom };
     return () => { handleRef.current = null; };
   }, [client, threadId, handleRef]);
+  const addButton = <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" accessibilityState={{ expanded: menuOpen }} hitSlop={4}
+    disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
+    <Text style={styles.addText}>{menuOpen ? '×' : '+'}</Text>
+  </Pressable>;
   return <View style={styles.composerRoot}>
       {menuOpen && <View style={[styles.controls, styles.menu]}>
         <Action label="Choose file" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
@@ -290,13 +295,13 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       {item.status === 'failed' && <Action label={`Retry: ${item.source.name}`} title="Retry" onPress={() => retry(item.key)} disabled={disabled} />}
       <Action label={`Remove: ${item.source.name}`} title="×" onPress={() => remove(item.key)} disabled={disabled} />
     </View>)}</ScrollView>}
-    <View style={styles.composerRow} onLayout={event => onComposerHeight?.(event.nativeEvent.layout.height)}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" accessibilityState={{ expanded: menuOpen }}
-        disabled={disabled} onPress={() => setMenuOpen(open => !open)} style={[styles.add, disabled && styles.disabled]}>
-        <Text style={styles.addText}>{menuOpen ? '×' : '＋'}</Text>
-      </Pressable>
+    {send !== undefined ? <ComposerCard expanded={expanded} send={send} onPressField={() => onPressField?.()}
+      // Card height plus its 6pt/8pt outer margins.
+      onLayout={event => onComposerHeight?.(event.nativeEvent.layout.height + 14)} leading={addButton}>
       {children}
-    </View>
+    </ComposerCard>
+      // Legacy full-screen editor: `+` followed by its own actions in one row.
+      : <View style={styles.composerRow} onLayout={event => onComposerHeight?.(event.nativeEvent.layout.height)}>{addButton}{children}</View>}
   </View>;
 }
 
@@ -394,7 +399,7 @@ const styles = StyleSheet.create({
   draftStrip: { maxHeight: 112 }, draftTile: { width: 250, marginRight: 6 },
   root: { marginVertical: 4 }, controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   action: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, backgroundColor: '#e6f0ff' }, actionText: { color: '#215ca7', fontSize: 12 }, disabled: { opacity: 0.45 },
-  add: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 }, addText: { color: '#215ca7', fontSize: 28 },
+  add: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 }, addText: { color: '#1f2329', fontSize: 28, lineHeight: 32, fontWeight: '300' },
   tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
   thumb: { width: 62, height: 62, borderRadius: 6 }, fileText: { flex: 1, minWidth: 0 }, title: { color: '#172a40', fontSize: 12 },
   detail: { color: '#50647b', fontSize: 11, marginTop: 3 }, error: { color: '#a53238', fontSize: 12, marginTop: 5 },

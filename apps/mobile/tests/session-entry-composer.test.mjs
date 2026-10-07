@@ -181,3 +181,23 @@ test('six visible lines scale with app and system fonts; overflow keeps complete
 test('empty iOS composer retains single-line reset; Android does not get fixed native lines',async()=>{
   for(const os of ['ios','android']){state.os=os;const root=await mount();assert.equal(root.root.findByProps({accessibilityLabel:'Message text'}).props.numberOfLines,os==='ios'?1:undefined);await act(async()=>root.unmount());}
 });
+
+test('ChatGPT-style composer: collapsed pill, focus expands in place, round send reflects draft',async()=>{
+  state.os='ios';
+  const flat=x=>Object.assign({},...[x].flat(Infinity).filter(Boolean));
+  const root=await mount();
+  const card=()=>flat(root.root.findByProps({testID:'composer-card'}).props.style);
+  const send=()=>root.root.findByProps({accessibilityLabel:'Send'});
+  const input=root.root.findByProps({accessibilityLabel:'Message text'});
+  assert.equal(card().borderRadius,24);assert.equal(card().marginHorizontal,36);
+  assert.equal(send().props.disabled,true);assert.equal(flat(send().props.style).backgroundColor,'#d7d7d9');
+  await act(async()=>input.props.onFocus());
+  assert.equal(card().marginHorizontal,12);
+  // Same native input node: focus change never remounts the TextInput.
+  assert.equal(root.root.findByProps({accessibilityLabel:'Message text'}),input);
+  await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,text:'hi'})));
+  assert.equal(send().props.disabled,false);assert.equal(flat(send().props.style).backgroundColor,'#1f2329');
+  await act(async()=>root.root.findByProps({accessibilityLabel:'Message text'}).props.onBlur());
+  assert.equal(card().marginHorizontal,36);
+  await act(async()=>root.unmount());
+});

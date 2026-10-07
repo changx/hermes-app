@@ -12,6 +12,7 @@ import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, type ScrollGeome
 import { MessageContent, copyMessageText } from './MessageContent';
 import { WorkChevron } from './WorkChevron';
 import { MessageTime } from './MessageTime';
+import { ComposerCard, ComposerSendButton } from './ComposerCard';
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../../../packages/client/src/workPresentation';
 import { hasRunningReceipt } from './receiptState';
 import { chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from '../../../packages/client/src/chatPresentation';
@@ -71,7 +72,7 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
-  composerAccessory?: (controls: React.ReactNode, onHeight: (height: number) => void) => React.ReactNode;
+  composerAccessory?: (parts: ComposerParts, onHeight: (height: number) => void) => React.ReactNode;
   typingIndicator?: React.ReactNode;
   attachmentCount?: number;
   attachmentsBusy?: boolean;
@@ -88,6 +89,8 @@ interface Props {
   onStop(): void;
   busy: boolean;
 }
+/** The input keeps one tree position; the accessory places it in a ComposerCard. */
+export type ComposerParts = { input: React.ReactNode; send: React.ReactNode; expanded: boolean; onPressField: () => void };
 export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatTimeline(props, ref) {
   const { rows, position } = props;
   const { scale } = useFontSize();
@@ -114,6 +117,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const [latestRowHeight, setLatestRowHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
   const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
+  const [inputFocused, setInputFocused] = useState(false);
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
 
@@ -270,14 +274,14 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     reportVisible();
   }, [reportVisible]);
 
-  const composerControls = <><Pressable accessible={false} focusable={false} style={styles.composeField} onPress={() => composerInput.current?.focus()}>
-      <TextInput ref={composerInput} nativeID={composerID} accessibilityLabel="Message text" multiline
-        // Fabric iOS: reset empty measurement without fixing font height.
-        // Android setLines also fixes the widget's height, so leave it unset there.
-        numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
-        style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />
-      </Pressable>
-      {action('Send', props.onSend, props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount))}</>;
+  const composerInputNode = <TextInput ref={composerInput} nativeID={composerID} accessibilityLabel="Message text" multiline
+    // Fabric iOS: reset empty measurement without fixing font height.
+    // Android setLines also fixes the widget's height, so leave it unset there.
+    numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
+    onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
+    style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />;
+  const composerParts: ComposerParts = { input: composerInputNode, expanded: inputFocused, onPressField: () => composerInput.current?.focus(),
+    send: <ComposerSendButton onPress={props.onSend} disabled={props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount)} busy={props.busy} /> };
   return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <KeyboardChatScrollView ref={list as never} testID="chat-history" style={[styles.flex, !positioned && rows.length > 0 && styles.unpositioned]}
@@ -371,8 +375,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           <Text style={styles.stopIcon}>■</Text>
         </Pressable>
       </View>}
-      {props.composerAccessory ? props.composerAccessory(composerControls, setComposerHeight)
-        : <View style={styles.composer} onLayout={e => setComposerHeight(e.nativeEvent.layout.height)}>{composerControls}</View>}
+      {props.composerAccessory ? props.composerAccessory(composerParts, setComposerHeight)
+        : <ComposerCard expanded={inputFocused} send={composerParts.send} onPressField={composerParts.onPressField}
+          onLayout={e => setComposerHeight(e.nativeEvent.layout.height + 14)}>{composerInputNode}</ComposerCard>}
       </View>
     </View>
     </KeyboardStickyView>
@@ -438,13 +443,10 @@ const styles = StyleSheet.create({
   runningIndicator: { flex: 1, minWidth: 0 },
   statusStopButton: { width: 34, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#e6edf7' },
   stopIcon: { color: '#425874', fontSize: 17 },
-  // Center the content-sized native input, not text inside a fixed-height UITextView.
-  composeField: { flex: 1, minWidth: 0, minHeight: 42, justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  composeInput: { padding: 0, color: '#172a40' },
+  composeInput: { padding: 0, color: '#1f2329' },
   // One shadow around the shared surface; blur never owns interactive content.
   composerSurface: { backgroundColor: 'rgba(248, 250, 253, 0.78)', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },
   composerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 },
   composerForeground: { zIndex: 1 },
-  composer: { backgroundColor: 'transparent', borderTopWidth: 1, borderColor: 'rgba(205, 215, 227, 0.72)', paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 12, minHeight: 42, paddingHorizontal: 12, paddingVertical: 8, color: '#172a40' }
 });
