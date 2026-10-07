@@ -19,7 +19,7 @@ let mainWindow: BrowserWindow | null = null;
 let publishedSnapshot: DesktopSnapshot | undefined;
 let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
-protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 const secureSettings = (contents: Electron.WebContents): void => {
   contents.session.setPermissionCheckHandler(() => false);
