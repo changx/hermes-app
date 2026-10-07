@@ -17,7 +17,7 @@ const modules = {
   '../../../packages/client/src/sessionLinks': {}, 'expo-video': {},
   'react-native-webview': 'WebView', './messageMarkdown': {}, './markdownWeb': {}, './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article>Fixture</article>', links: [], expansions: [] }) },
   '../../../packages/client/src/toolPresentation': {}, './Viewers': {}, './RenderResources': { useRenderResources: () => null }, './reducedMotion': {},
-  './CopyToast': { copyWithToast: async text => { copiedTexts.push(text); return true; } },
+  './CopyToast': { copyWithToast: async text => { copiedTexts.push(text); return true; } }, './openLink': { openLink: () => {} },
 };
 const output = { exports: {} };
 // Test-only exports exercise the exact internal production components, not a replica.

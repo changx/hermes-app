@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Alert, AppState, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Alert, AppState, Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AnimatedText, Text, useFontSize } from './FontSize';
 import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -19,6 +19,7 @@ import { useViewer } from './Viewers';
 import { RenderResourceContext, useRenderResources } from './RenderResources';
 import { subscribeReducedMotion } from './reducedMotion';
 import { copyWithToast } from './CopyToast';
+import { openLink } from './openLink';
 
 function countNodes(value: unknown): number {
   if (!value || typeof value !== 'object') return 0;
@@ -39,7 +40,7 @@ function InlineText({ nodes, tone, onInteraction, inLink = false }: { nodes: Inl
   const openLink = (href: string) => {
     const route = sessionLinkRoute(href);
     if (route) router.link(href);
-    else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
+    else openLink(href);
   };
   return <>{nodes.map((node, index) => {
     const key = index;
@@ -364,7 +365,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
         if (href && safeLinkUrl(href) === href) {
           const route = sessionLinkRoute(href);
           if (route) router.link(href);
-          else void Linking.openURL(href).catch(() => Alert.alert('Could not open link'));
+          else openLink(href);
         }
       }
     }}

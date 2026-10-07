@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from './FontSize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import { File, Paths } from 'expo-file-system';
 import { toByteArray } from 'base64-js';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebView from 'react-native-webview';
+import { useIsFocused } from 'expo-router';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
-import { chooseAttachments, draftBusy, isImage, isPdf, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
+import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, uploadedInOrder } from './attachmentHelpers';
+import { FilePreview } from './FilePreview';
+import { previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
@@ -22,40 +23,17 @@ function Action({ label, title = label, onPress, disabled = false }: { label: st
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.action, disabled && styles.disabled]}><Text style={styles.actionText}>{title}</Text></Pressable>;
 }
 
-export function ImageViewer({ uri }: { uri: string }) {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const [scale, setScale] = useState(1);
-  return <View style={styles.viewer}>
-    <ScrollView style={styles.zoom} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent>
-      <Image source={{ uri }} resizeMode="contain" style={{ width: width * scale, height: (height - insets.top - insets.bottom - 70) * scale }} />
-    </ScrollView>
-    {Platform.OS !== 'ios' && <View style={styles.controls}>
-      <Action label="Zoom out" onPress={() => setScale(Math.max(1, scale / 1.5))} />
-      <Action label="Zoom in" onPress={() => setScale(Math.min(4, scale * 1.5))} />
-    </View>}
-  </View>;
-}
-
-// iOS WKWebView renders a local PDF natively. JavaScript stays off and every
-// navigation other than this file (for example links inside the PDF) is refused.
-export function PdfViewer({ uri }: { uri: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <View style={styles.viewer}><Text style={styles.previewText}>Could not open this PDF. Go back and try again.</Text></View>;
-  return <WebView style={styles.pdf} source={{ uri }} originWhitelist={['file://*']} allowingReadAccessToURL={uri}
-    javaScriptEnabled={false} startInLoadingState renderLoading={() => <ActivityIndicator style={styles.pdfLoading} />}
-    onShouldStartLoadWithRequest={request => request.url === uri} onError={() => setFailed(true)} />;
-}
+export { ImageViewer } from './FilePreview';
 
 // Row-owned files can disappear while a Stack route is still visible. Copy on
 // demand and transfer only this copy's lifecycle to the viewer's onClose.
-async function openLocalCopy(uri: string, title: string, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean, pdf = false) {
-  // WKWebView picks the PDF renderer from the file extension.
-  const file = pdf ? new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}.pdf`) : ownedFile();
+async function openLocalCopy(uri: string, title: string, kind: PreviewKind, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean) {
+  // AVPlayer and WKWebView choose their decoder from the file extension.
+  const file = new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}${previewSuffix(title)}`);
   try {
     await new File(uri).copy(file);
     if (!stillValid()) { forgetFile(file); return; }
-    openViewer(title, pdf ? <PdfViewer uri={file.uri} /> : <ImageViewer uri={file.uri} />, () => forgetFile(file));
+    openViewer(title, <FilePreview uri={file.uri} kind={kind} />, () => forgetFile(file));
   } catch (error) { forgetFile(file); throw error; }
 }
 
@@ -237,7 +215,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   const previewImage = (item: DraftAttachment) => {
     if (!item.source.uri) return;
     const generation = epoch.current;
-    void openLocalCopy(item.source.uri, item.source.name, openViewer,
+    void openLocalCopy(item.source.uri, item.source.name, 'image', openViewer,
       () => generation === epoch.current && itemsRef.current.some(entry => entry.key === item.key))
       .catch(() => { if (generation === epoch.current) setNotice('Could not open the image. Please try again.'); });
   };
@@ -333,70 +311,74 @@ async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
   return release;
 }
 
-/** Authenticated SDK bytes only; no token-bearing image URLs, external viewers, or eager non-image downloads. */
+/** Authenticated SDK bytes only; no token-bearing URLs or external viewers. Images download eagerly, other files on tap. */
+type Loaded = { uri?: string; kind?: PreviewKind; status: 'loading' | 'ready' | 'error' };
 export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
-  const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; pdf?: boolean; status: 'loading' | 'ready' | 'error' }>>({});
+  const [loaded, setLoaded] = useState<Record<string, Loaded>>({});
   const { openViewer } = useViewer();
-  const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, AbortController>()), generation = useRef(0);
-  const load = async (attachment: Attachment) => {
-    if (attachment.state !== 'available' || pending.current.has(attachment.id) || loaded[attachment.id]?.status === 'ready') return;
+  const focused = useIsFocused(), focusedRef = useRef(focused); focusedRef.current = focused;
+  const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, Promise<Loaded | undefined>>()), controllers = useRef(new Map<string, AbortController>());
+  const ready = useRef(new Map<string, Loaded>()), generation = useRef(0);
+  const load = (attachment: Attachment): Promise<Loaded | undefined> => {
+    const done = ready.current.get(attachment.id);
+    if (attachment.state !== 'available') return Promise.resolve(undefined);
+    if (done) return Promise.resolve(done);
+    const running = pending.current.get(attachment.id);
+    if (running) return running;
     const controller = new AbortController(), current = generation.current;
-    pending.current.set(attachment.id, controller);
+    controllers.current.set(attachment.id, controller);
     setLoaded(old => ({ ...old, [attachment.id]: { status: 'loading' } }));
-    let release: (() => void) | undefined;
-    try {
-      release = await attachmentSlot(controller.signal);
-      if (attachment.size && attachment.size > MAX_ATTACHMENT_BYTES) throw new Error('too large');
-      const bytes = await client.download(threadId, attachment.id, controller.signal);
-      if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
-      if (controller.signal.aborted || current !== generation.current) return;
-      const file = ownedFile(); file.create();
-      try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
-      cache.current.set(attachment.id, file);
-      const text = readableText(attachment.mime, attachment.name) && bytes.length <= 64 * 1024 ? await file.text() : undefined;
-      const pdf = isPdf(attachment.mime, attachment.name, bytes);
-      if (controller.signal.aborted || current !== generation.current) return;
-      setLoaded(old => ({ ...old, [attachment.id]: { status: 'ready', uri: file.uri, text, pdf } }));
-    } catch {
-      if (!controller.signal.aborted && current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } }));
-    } finally {
-      release?.();
-      if (pending.current.get(attachment.id) === controller) pending.current.delete(attachment.id);
-    }
+    const task = (async (): Promise<Loaded | undefined> => {
+      let release: (() => void) | undefined;
+      try {
+        release = await attachmentSlot(controller.signal);
+        if (attachment.size && attachment.size > MAX_ATTACHMENT_BYTES) throw new Error('too large');
+        const bytes = await client.download(threadId, attachment.id, controller.signal);
+        if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
+        if (controller.signal.aborted || current !== generation.current) return undefined;
+        const file = ownedFile(); file.create();
+        try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
+        cache.current.set(attachment.id, file);
+        const entry: Loaded = { status: 'ready', uri: file.uri, kind: previewKind(attachment.name || '', attachment.mime, bytes) };
+        ready.current.set(attachment.id, entry);
+        setLoaded(old => ({ ...old, [attachment.id]: entry }));
+        return entry;
+      } catch {
+        if (!controller.signal.aborted && current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } }));
+        return undefined;
+      } finally {
+        release?.();
+        if (controllers.current.get(attachment.id) === controller) { controllers.current.delete(attachment.id); pending.current.delete(attachment.id); }
+      }
+    })();
+    pending.current.set(attachment.id, task);
+    return task;
   };
   useEffect(() => {
     setLoaded({});
     return () => {
-      generation.current++; pending.current.forEach(controller => controller.abort()); pending.current.clear();
+      generation.current++; controllers.current.forEach(controller => controller.abort()); controllers.current.clear(); pending.current.clear(); ready.current.clear();
       cache.current.forEach(forgetFile); cache.current.clear();
     };
   }, [client, threadId]);
   useEffect(() => {
     for (const attachment of attachments) if (attachment.state === 'available' && isImage(attachment.mime, attachment.name)) void load(attachment);
   }, [attachments, client, threadId]);
-  const open = (attachment: Attachment) => {
-    const entry = loaded[attachment.id];
-    if (entry?.status === 'ready') {
-      if (isImage(attachment.mime, attachment.name)) {
-        if (!entry.uri) return;
-        const current = generation.current;
-        void openLocalCopy(entry.uri, attachment.name || 'Image', openViewer, () => current === generation.current)
-          .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
-      } else if (entry.pdf && entry.uri && Platform.OS === 'ios') {
-        const current = generation.current;
-        void openLocalCopy(entry.uri, attachment.name || 'PDF', openViewer, () => current === generation.current, true)
-          .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
-      } else openViewer(attachment.name || 'Attachment', <View style={styles.viewer}>
-        <ScrollView><Text selectable style={styles.previewText}>{entry.text || (entry.pdf ? 'PDF preview is not available on this device yet.' : 'File downloaded. This format cannot be opened in the app yet.')}</Text></ScrollView>
-      </View>);
-    } else void load(attachment);
+  // One tap downloads (if needed) and opens. A download that finishes after the user left this page does not open a viewer.
+  const open = async (attachment: Attachment) => {
+    const current = generation.current;
+    const entry = await load(attachment);
+    if (!entry?.uri || !entry.kind || current !== generation.current || !focusedRef.current) return;
+    const title = attachment.name || 'Attachment';
+    await openLocalCopy(entry.uri, title, entry.kind, openViewer, () => current === generation.current && focusedRef.current)
+      .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
   };
   return <View style={styles.root}>{attachments.map(attachment => {
     const entry = loaded[attachment.id];
     const image = isImage(attachment.mime, attachment.name);
     const label = attachment.name || 'Unnamed attachment';
     return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`View attachment: ${label}`} style={styles.tile}
-      disabled={attachment.state !== 'available'} onPress={() => open(attachment)}>
+      disabled={attachment.state !== 'available'} onPress={() => { void open(attachment); }}>
       {image && <View style={styles.thumb}>
         {entry?.uri && <Image source={{ uri: entry.uri }} style={styles.thumb} />}
       </View>}
@@ -420,6 +402,4 @@ const styles = StyleSheet.create({
   tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
   thumb: { width: 62, height: 62, borderRadius: 6 }, fileText: { flex: 1, minWidth: 0 }, title: { color: '#172a40', fontSize: 12 },
   detail: { color: '#50647b', fontSize: 11, marginTop: 3 }, error: { color: '#a53238', fontSize: 12, marginTop: 5 },
-  viewer: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 },
-  pdf: { flex: 1, backgroundColor: '#fff' }, pdfLoading: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }
 });

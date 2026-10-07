@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPdf } from '../src/attachmentHelpers.ts';
+import { isPdf } from '../src/filePreviewKind.ts';
 
 const bytes = text => new TextEncoder().encode(text);
 
