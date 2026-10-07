@@ -430,6 +430,8 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
 /* Guide line under the chevron centre; Session titles sit at least 16px right of the Project name. */
 .native-sidebar .thread-children { margin: 0 0 6px 12px; padding-left: 22px; border-left: 1px solid var(--app-field-border); }
+/* Recents rows sit one level in, with the same inset and guide as Sessions under a Project. */
+.native-sidebar .recent-list { margin: 0 0 6px 12px; padding-left: 22px; border-left: 1px solid var(--app-field-border); }
 .native-sidebar .tree-thread { min-height: var(--sidebar-row); padding: 6px 8px; border-radius: 8px; font-size: var(--sidebar-text); }
 .native-sidebar .tree-more, .native-sidebar .tree-empty { padding: 6px 8px; border-radius: 8px; color: var(--app-muted); font-size: var(--sidebar-text); }
 .native-sidebar .empty-state { padding: 8px 10px; color: var(--app-muted); font-size: var(--sidebar-text); }
