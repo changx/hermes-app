@@ -484,6 +484,16 @@ dialog.labels-editor::backdrop { background: #0005; }
 .browser-resize-handle:hover, .browser-resize-handle:focus-visible, .browser-resizing .browser-resize-handle { background: var(--app-field-border); }
 .browser-resize-handle:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
 .browser-error { margin: 0; padding: 8px 12px; overflow-wrap: anywhere; color: var(--app-text); }
+.browser-notice { margin: 0; padding: 6px 12px; overflow-wrap: anywhere; color: var(--app-muted); font-size: .92em; }
+/* The page is a native view drawn above this renderer, so Agent status sits in its own row above the page. */
+.browser-control { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: 8px 12px; border-bottom: 1px solid var(--app-border); background: var(--app-selected); color: var(--app-text); }
+.browser-control > span { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
+.browser-control > button { flex: 0 0 auto; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 4px 12px; background: var(--app-surface); color: var(--app-text); font: inherit; cursor: pointer; -webkit-app-region: no-drag; }
+.browser-control > button:hover { background: var(--app-border); }
+.browser-control-agent > span::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--app-accent); vertical-align: middle; animation: browser-control-pulse 1.4s ease-in-out infinite; }
+.browser-control-waiting { background: var(--app-surface); border-left: 3px solid var(--app-accent); }
+@keyframes browser-control-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .browser-control-agent > span::before { animation: none; } }
 .desktop-browser-toggle { flex: 0 0 auto; margin-left: auto; font: inherit; }
 .browser-title button:hover, .browser-toolbar button:not(:disabled):hover, .desktop-browser-toggle:not(:disabled):hover { background: var(--app-border); }
 .attachment-row { flex-wrap: wrap; }

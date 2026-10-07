@@ -17,7 +17,7 @@ test('Electron: production right browser previews attachments and generated page
     await writeFile(join(folder,'local.html'),'<h1 id="local">Local draft preview</h1>');
     await writeFile(join(folder,'harness.cjs'),String.raw`
 const {app,BrowserWindow,session,nativeImage}=require('electron');const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
-app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
+app.setPath('userData',path.join(__dirname,'user-data'));app.setPath('downloads',path.join(__dirname,'downloads'));app.commandLine.appendSwitch('disable-gpu');
 const {service:accounts,sidebarForTest,tabsForTest,settingsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary;
 const requests=[],downloads=[],a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map();let base;
@@ -57,7 +57,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  assert.equal(await evaluate(web,'fetch("secret.txt").then(r=>r.status)'),404);
  assert.equal(downloads.some(([,id])=>id==='secret'),false);
  assert.equal(await evaluate(web,'fetch("file:///etc/passwd").then(()=>false,()=>true)'),true);
- assert.equal(await evaluate(web,'Notification.requestPermission()'),'denied');
+ const asked=[];browser.options.askPermission=async(host,text)=>{asked.push(text);return false;};assert.equal(await evaluate(web,'Notification.requestPermission()'),'denied');assert.deepEqual(asked,[],'an attachment preview is not a website: permissions are refused without asking');
  await until(()=>pane.view.getVisible()&&pane.view.getBounds().width>280,'pane placed');
  let rb=pane.view.getBounds(),cb=tab.view.getBounds();assert.equal(cb.x+cb.width+6,rb.x,'6px resize strip between native views');assert.equal(rb.x+rb.width,window.getContentSize()[0]);
  // Real input on the production resize strip. Neither native view may cover it.
@@ -144,7 +144,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  window.setSize(720,820);await until(()=>tab.view.getBounds().x===0&&pane.view.getBounds().x+pane.view.getBounds().width===window.getContentSize()[0],'narrow sidebar layout');assert.ok(tab.view.getBounds().width>=400);
  window.setSize(1280,820);await until(()=>tab.view.getBounds().x>0,'wide sidebar restores left navigation');
  await evaluate(shell,'window.hermesDesktop.openBrowser("javascript:alert(1)").then(()=>false,()=>true)').then(result=>assert.equal(result,true));
- await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/download')+')');await until(()=>browser.state(tab.id).error?.includes('Downloads'),'download denied');
+ await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/download')+')');await until(()=>browser.state(tab.id).notice?.includes('not-saved.txt'),'download saved to Downloads');assert.equal(fs.readFileSync(path.join(__dirname,'downloads','not-saved.txt'),'utf8'),'blocked download');
  await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/unsafe-redirect')+')');await until(()=>!browser.state(tab.id).loading,'unsafe redirect stopped');assert.doesNotMatch(web.getURL(),/^file:/);
  let external={skipped:true};
  if(process.env.HERMES_TEST_EXTERNAL_BROWSER){const opened=await Promise.race([evaluate(shell,'window.hermesDesktop.openBrowser("https://example.com")').then(()=>true),new Promise(resolve=>setTimeout(()=>resolve(false),20000))]);if(!opened)await evaluate(shell,'window.hermesDesktop.browserAction("stop")');external={url:web.getURL(),title:web.getTitle(),error:browser.state(tab.id).error||(!opened?'Timed out':undefined)};console.log('EXTERNAL_SITE '+JSON.stringify(external));if(!external.error){assert.equal(external.title,'Example Domain');assert.match(await evaluate(web,'document.body.textContent'),/documentation examples/);}}
@@ -165,7 +165,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await evaluate(local,'document.querySelectorAll(".session-files button")[1].click()');await until(()=>browser.panes.has(localTab.id),'local preview pane');const localWeb=browser.panes.get(localTab.id).view.webContents;await until(()=>evaluate(localWeb,'!!document.querySelector("#local")'),'local HTML preview');assert.equal(downloads.length,before,'local preview has no authenticated download');
  localWeb.focus();localWeb.sendInputEvent({type:'keyDown',keyCode:'W',modifiers:['control']});await until(()=>localWeb.isDestroyed()&&!manager.tabs.has(localTab.id),'focused browser close shortcut releases only its tab');assert.equal(window.isDestroyed(),false);
  await evaluate(chat,'window.hermesDesktop.previewAttachment("html")');const lastWeb=browser.panes.get(tab.id).view.webContents;service.connection={...service.connection,id:'b'.repeat(24)};service.changed();await until(()=>lastWeb.isDestroyed()&&browser.panes.size===0,'identity switch releases browsers');
- console.log('BROWSER_SIDEBAR_OK '+JSON.stringify({ua,networkUa,html:true,relativeAssets:true,image:true,pdfEmbed:true,textEscaped:true,localDraft:true,links:true,history:true,layout:true,isolation:true,permissionsDenied:true,downloadDenied:true,lifecycle:true,external}));server.close();app.exit(0);
+ console.log('BROWSER_SIDEBAR_OK '+JSON.stringify({ua,networkUa,html:true,relativeAssets:true,image:true,pdfEmbed:true,textEscaped:true,localDraft:true,links:true,history:true,layout:true,isolation:true,permissionsAsked:true,downloadSaved:true,lifecycle:true,external}));server.close();app.exit(0);
 })().catch(error=>{console.error(error.stack);server.close();app.exit(1)});
 `);
     const output=execFileSync('xvfb-run',['-a',require('electron'),'--no-sandbox',join(folder,'harness.cjs')],{encoding:'utf8',timeout:110000,env:process.env,maxBuffer:2_000_000});

@@ -36,6 +36,17 @@ await Promise.all([
     sourcemap: true,
   }),
   build({
+    // Isolated-world page reader for the built-in browser; exposes nothing to pages.
+    entryPoints: [resolve(root, "src/preload/browser-page.ts")],
+    outfile: resolve(dist, "preload/browser-page.cjs"),
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    external: ["electron"],
+    sourcemap: true,
+  }),
+  build({
     entryPoints: [resolve(root, "src/renderer/index.tsx")],
     outfile: resolve(dist, "renderer/index.js"),
     bundle: true,

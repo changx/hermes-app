@@ -19,7 +19,15 @@ export class DesktopTabManager {
   private connectionKey?: string;
   constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnections,
     private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar,
-    private readonly openSettings?: () => void) { this.shortcuts(window.webContents); }
+    private readonly openSettings?: () => void, private readonly published?: () => void) { this.shortcuts(window.webContents); }
+
+  /** The conversation's tab, opened in the background (not activated) when missing. */
+  ensureSessionTab(threadId: string): Tab {
+    const existing = [...this.tabs.values()].find(tab => tab.threadId === threadId);
+    if (existing) return existing;
+    if (this.closed || !this.service.snapshot().threads.some(thread => thread.id === threadId)) throw new Error('Conversation unavailable');
+    const tab = this.create('session', threadId); this.publish(); return tab;
+  }
 
   attachShortcuts(contents: WebContents): void { this.shortcuts(contents); }
   private shortcuts(contents: WebContents): void {
@@ -196,5 +204,6 @@ export class DesktopTabManager {
       const next = this.snapshot(tab.view.webContents);
       tab.view.webContents.send('desktop:snapshot', tab.baseline ? snapshotDelta(tab.baseline, next) : next); tab.baseline = next;
     }
+    this.published?.();
   }
 }

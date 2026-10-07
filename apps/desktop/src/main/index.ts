@@ -1,5 +1,8 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, protocol, shell } from "electron";
-import { DesktopBrowserSidebar } from './browser-sidebar';
+import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
+import { DesktopBrowserControl } from './browser-control';
+import { BrowserControlError } from '../shared/browser-control';
+import { hostname } from 'node:os';
 import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
 import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
@@ -19,6 +22,7 @@ let mainWindow: BrowserWindow | null = null;
 let publishedSnapshot: DesktopSnapshot | undefined;
 let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
+let browserControl: DesktopBrowserControl | undefined;
 protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 const secureSettings = (contents: Electron.WebContents): void => {
@@ -33,6 +37,7 @@ const settingsWindow = new DesktopSettingsWindow(__dirname, () => service.snapsh
 
 const service = new DesktopConnections((snapshot) => {
   settingsWindow.publish();
+  browserControl?.sync();
   if (tabs) { tabs.sync(snapshot); return; }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(SNAPSHOT_EVENT, publishedSnapshot ? snapshotDelta(publishedSnapshot,snapshot) : snapshot);
@@ -104,6 +109,11 @@ const registerDesktopApi = (): void => {
     if (!['back', 'forward', 'reload', 'stop', 'close'].includes(action as string)) throw new Error('Invalid browser action');
     browser?.action(tab.id, action as 'back' | 'forward' | 'reload' | 'stop' | 'close');
     if (action === 'close') tab.view.webContents.focus();
+  });
+  handle('desktop:browser-control', (event, action: unknown) => {
+    shellSender(event); const tab = browserTab(event);
+    if (!['stop', 'resume', 'done'].includes(action as string)) throw new Error('Invalid browser action');
+    browser?.control(tab.id, action as 'stop' | 'resume' | 'done');
   });
   handle('desktop:preview-attachment', async (event, id: unknown) => {
     const tab = browserTab(event), thread = target(event), key = tab.connectionKey;
@@ -218,7 +228,15 @@ const createMainWindow = (): BrowserWindow => {
   });
   mainWindow = window;
   publishedSnapshot = undefined;
-  browser = new DesktopBrowserSidebar(window, () => tabs?.publish(), contents => tabs?.attachShortcuts(contents));
+  browser = new DesktopBrowserSidebar(window, () => tabs?.publish(), contents => tabs?.attachShortcuts(contents), {
+    preload: join(__dirname, '../preload/browser-page.cjs'),
+    // One persistent login partition per Project (Channel) and server.
+    partitionFor: tabId => {
+      const tab = tabs?.tabs.get(tabId);
+      const channel = tab?.threadId ? service.snapshot(undefined, false).threads.find(thread => thread.id === tab.threadId)?.channelId : tab?.initialChannelId;
+      return browserPartition(tab?.connectionKey, channel);
+    },
+  });
   const openWebLink = (contents: Electron.WebContents, url: string) => {
     try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
       if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
@@ -231,7 +249,8 @@ const createMainWindow = (): BrowserWindow => {
     contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url); return { action: 'deny' }; });
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
-  }, browser, () => settingsWindow.open());
+  }, browser, () => settingsWindow.open(), () => browserControl?.sync());
+  window.on('focus', () => browserControl?.sync()); window.on('blur', () => browserControl?.sync());
 
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -277,6 +296,23 @@ app.whenReady().then(async () => {
   registerDesktopApi();
   powerMonitor.on("resume", () => { void service.resumeConnection(); });
   createMainWindow();
+  browserControl = new DesktopBrowserControl({
+    accounts: () => service.browserAccounts(),
+    tabs: () => [...(tabs?.tabs.values() ?? [])],
+    activeTabId: () => tabs?.activeTabId,
+    windowFocused: () => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized(),
+    channels: () => new Map(service.snapshot(undefined, false).threads.map(thread => [thread.id, thread.channelId] as const)),
+    ensureTab: async threadId => {
+      if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+      try { if (!tabs) throw new Error('Window unavailable'); return tabs.ensureSessionTab(threadId); }
+      catch { throw new BrowserControlError('not_ready', 'This conversation is not open on the computer yet. Try again in a moment.'); }
+    },
+    execute: (tabId, command, signal) => {
+      if (!browser) throw new BrowserControlError('not_ready', 'Hermes is starting on the computer. Try again in a moment.');
+      return browser.command(tabId, command.action, command.args, signal, command.timeoutMs);
+    },
+    deviceName: hostname(),
+  });
   await service.initialize();
   const url = process.argv.find(value => value.startsWith("hermesapp:"));
   if (url) focusSessionLink(url);
@@ -286,7 +322,7 @@ app.whenReady().then(async () => {
 let readyToQuit = false;
 let flushingDrafts = false;
 app.on("before-quit", event => {
-  if (readyToQuit) { service.close(); return; }
+  if (readyToQuit) { browserControl?.close(); service.close(); return; }
   event.preventDefault();
   if (flushingDrafts) return;
   flushingDrafts = true;

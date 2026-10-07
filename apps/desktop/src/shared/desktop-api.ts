@@ -3,7 +3,10 @@ import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
-export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>;
+export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string;
+  /** Saved download and similar one-line results. */ notice?: string;
+  /** Agent control of this page: Hermes working, the user took over, or Hermes waits for the user. */
+  control?: 'agent' | 'user' | 'waiting'; controlMessage?: string }>;
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean }>;
@@ -121,6 +124,8 @@ export interface HermesDesktopApi {
   previewAttachment(attachmentId: string): Promise<void>;
   previewLocalFile(file: File): Promise<void>;
   browserAction(action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void>;
+  /** Stop Hermes, let Hermes continue after a takeover, or tell Hermes the user finished. */
+  browserControl(action: 'stop' | 'resume' | 'done'): Promise<void>;
   setBrowserBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   newTab(channelId?: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
