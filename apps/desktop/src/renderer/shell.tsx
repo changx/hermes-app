@@ -168,7 +168,9 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
   const scroll = () => {
     const node = list.current;
     if (!node) return;
-    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+    // Rejoin follow only at the real end (2px absorbs fractional scrollTop).
+    // A wider band made the follow layout effect snap the remainder: a jump.
+    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= 2;
     // A size correction is not a reader gesture. Keep follow until its resize
     // observer has reconciled the new content/viewport extent.
     if (followingRef.current && (geometry.current.height !== node.scrollHeight || geometry.current.viewport !== node.clientHeight)) return;

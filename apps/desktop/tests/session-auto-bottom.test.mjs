@@ -42,6 +42,10 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
       scrollUp();const failedPosition=list().scrollTop;fail=true;fill();send();await wait();ensure('failed save preserves reading',list().scrollTop===failedPosition);ensure('failed save retains draft',document.querySelector('.composer-row textarea').value==='New synthetic input');
       snapshot={...snapshot,tabActive:false};render();grow();await wait();ensure('inactive page does not follow',list().scrollTop===failedPosition);
       snapshot={...snapshot,tabActive:true};render();await wait();ensure('retained reading position survives return',list().scrollTop===failedPosition);
+      const scrollTo=y=>flushSync(()=>{list().scrollTop=y;list().dispatchEvent(new Event('scroll',{bubbles:true}));});
+      scrollTo(list().scrollHeight-list().clientHeight-30);const near=list().scrollTop;await wait();ensure('near-end scroll does not snap',list().scrollTop===near);
+      grow();await wait();ensure('near-end growth preserves reading',list().scrollTop===near);
+      scrollTo(list().scrollHeight);await wait();grow();await wait();bottom('reaching the end resumes follow');
       document.getElementById('results').textContent=JSON.stringify({ok:true,checks});root.unmount();
     }catch(error){document.getElementById('results').textContent=JSON.stringify({ok:false,error:String(error),checks});}})();
   ` }, bundle: true, platform: 'browser', format: 'iife', write: false });
@@ -69,6 +73,6 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
     const evaluation=await call('Runtime.evaluate',{expression:`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const text=document.getElementById('results')?.textContent;if(text)resolve(JSON.parse(text));else if(Date.now()>deadline)reject(Error('Browser checks timed out'));else setTimeout(check,50);};check();})`,awaitPromise:true,returnByValue:true});
     const result=evaluation.result?.value;
     assert.equal(result?.ok, true, JSON.stringify(result));
-    assert.equal(result.checks.length, 12);
+    assert.equal(result.checks.length, 15);
   } finally { socket?.close();if(chrome){const exited=new Promise(resolve=>chrome.once('exit',resolve));chrome.kill();await exited;}await rm(folder, { recursive: true, force: true }); }
 });
