@@ -41,3 +41,13 @@ Jamie asked to reduce phone battery use and approved the proposed design (A + B 
 - Automatic tests cover the active/idle interval, bringing the ping forward, the fixed pong deadline, the open-socket probe, waking an ordinary backoff, not shortening `Retry-After`, jitter bounds, suspend during a wakeable wait, the idle rules, the activity window, the NetInfo rules and the countdown timer.
 - These tests prove the timing logic only. They do not measure battery use. iOS reports battery use for the whole "Expo Go" app. Compare it with the same use pattern before and after.
 - iPhone checks not yet done: a network switch (Wi-Fi ↔ cellular) recovers quickly; airplane mode on and off reconnects at once; a quiet chat still receives a reply from another device.
+
+## Dev release
+
+Commit `2badd5d` was fast-forwarded into `main` and published to `exps://agent.tuly.space`. The mobile lockfile changed (NetInfo), so `npm ci` ran in `apps/mobile`. Only `hermes-app-expo.service` restarted. The unused `session-timing.conf` drop-in (`EXPO_PUBLIC_SESSION_TIMING=1`) was removed; a copy is kept with the evidence. Gateway PID/start time and the plugin hash did not change; no plugin was installed.
+
+- Automatic checks: SDK 34/34; mobile 119 pass, 1 skipped, 0 fail; mobile TypeScript; desktop typecheck; desktop tests 76 pass, 24 skipped, the same as a clean `main` baseline; iOS/Android exports.
+- Public iOS/Android manifests and exact launch assets returned HTTP 200 with SDK 57.0.0, `dev=false`, `minify=true`. Both bundles contain the new markers (`idleLivenessMs`, `backoffJitter`, `networkChanged`, `RNCNetInfo`, root touch capture).
+- Evidence: Channel workspace `mobile-battery/release.log`, `tests.log`, the manifests and `session-timing.conf.bak`.
+- Rollback: `git revert` the feature commit, run `npm ci` in `apps/mobile`, and restart only Expo. Chat data is not affected.
+- iPhone acceptance and battery comparison are not verified.
