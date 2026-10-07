@@ -13,10 +13,10 @@
 
 ## 并行工作
 
-- 历史与 Channel 提示：`p0/history`；卡 `t_36cbbc47`；目录 `probes/p0/history/`、报告 `history.md`（交付后加入）。
-- 双客户端通信：`p0/transport`；卡 `t_cbd62b53`；目录 `probes/p0/transport/`、报告 `transport.md`（交付后加入）。
-- 桌面与手机复用：`p0/clients`；卡 `t_8b2a7ca6`；目录 `probes/p0/clients/`、报告 `clients.md`（交付后加入）。
-- 主控：`t_7d91e988`；审核脚本和报告、独立重跑关键检查、形成 P1 最小方案与未验证清单。
+- 历史与 Channel 提示：`p0/history`；目录 `probes/p0/history/`、报告 `history.md`（交付后加入）。
+- 双客户端通信：`p0/transport`；目录 `probes/p0/transport/`、报告 `transport.md`（交付后加入）。
+- 桌面与手机复用：`p0/clients`；目录 `probes/p0/clients/`、报告 `clients.md`（交付后加入）。
+- 主控：审核脚本和报告、独立重跑关键检查、形成 P1 最小方案与未验证清单。
 
 ## P0 决策闸口
 

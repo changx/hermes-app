@@ -15,7 +15,6 @@
 - [docs/dev-lcm-fix.md](docs/dev-lcm-fix.md)
 - [docs/p1-plan.md](docs/p1-plan.md)
 - [docs/p2-mobile-dev.md](docs/p2-mobile-dev.md)
-- [docs/p2-p3-kanban.md](docs/p2-p3-kanban.md)
 - [apps/mobile/README.md](apps/mobile/README.md)
 - [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
 - [docs/channel-repository-agents.md](docs/channel-repository-agents.md)
@@ -99,7 +98,6 @@
 
 ### 桌面应用
 
-- [docs/desktop-kanban.md](docs/desktop-kanban.md)
 - [docs/desktop-macos-v1.md](docs/desktop-macos-v1.md)
 - [docs/desktop-release-0.1.6.md](docs/desktop-release-0.1.6.md)
 - [docs/desktop-release-0.1.32.md](docs/desktop-release-0.1.32.md)

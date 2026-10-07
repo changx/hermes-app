@@ -8,8 +8,8 @@
 - 发布目录再次执行手机 TypeScript 与全部52项手机测试通过；部署插件8个文件逐一与验收归档匹配。
 - 公网认证 HTTP 与 WS hello、未认证401、历史分页/身份、配对管理接口通过；发布前3个话题与历史保留。
 - iOS/Android 公网 manifest 与实际 launchAsset 下载通过，SDK57，Expo账号 `jamsben`；包内包含新配对代码。iOS SHA-256 `0bcebb71c3a2d504accc3a52c09785b642e7f1a7b8a20f58cafc51c3666536ba`，Android `91e64767f20e832793d7883e9c9668bce7cd28c3e298ce1b5c7b1655fbba2657`。
-- 入口 `exps://agent.tuly.space`；已有设备连接继续兼容。iPhone切网/后台/强杀等故障实测仍未完成，本次不关闭首版总卡。
-- 发布卡 `t_0ead0059`；证据目录下 `release-apply.log`、`release-verification.json`、`release-assets.json`。`rollback-pre-reliability/` 保留旧插件、原main提交、数据库一致性备份、历史快照与主实例身份，不提交真实数据。
+- 入口 `exps://agent.tuly.space`；已有设备连接继续兼容。iPhone切网/后台/强杀等故障实测仍未完成，本次不称首版完成。
+- 证据目录下 `release-apply.log`、`release-verification.json`、`release-assets.json`。`rollback-pre-reliability/` 保留旧插件、原main提交、数据库一致性备份、历史快照与主实例身份，不提交真实数据。
 - 回滚须单独授权：先停对应开发服务，恢复记录的代码与插件再启动并验证。不要盲目恢复旧数据库覆盖发布后的消息；本次数据库变更为增量配对表。
 
 ## 候选阶段结论与范围（发布前记录）
@@ -62,7 +62,7 @@ python3 scripts/device-pairing.py --base https://agent.tuly.space devices
 
 ## 未验证及限制
 
-- 未做iPhone真实Wi-Fi/蜂窝切换、弱网、后台冻结、系统杀进程、Keychain持久化和滚动/键盘验收；R1/R2/R3/R5进入review，R4和网络总卡仍未完成。
+- 未做iPhone真实Wi-Fi/蜂窝切换、弱网、后台冻结、系统杀进程、Keychain持久化和滚动/键盘验收；R1/R2/R3/R5待复核，R4和网络可靠性整体验收仍未完成。
 - 服务端当前不自动裁剪事件；正常旧游标重启回放已通过。SDK的 `410 cursor_expired` 自动重建只完成故障注入测试，插件尚不产生此响应。畸形/异身份/未来400不能为无感而静默接受。
 - 配对码到期前从未成功送达服务器，或设备被主动撤销，不能自动获得授权；这与网络ACK丢失后的自动恢复不同。服务器内部故障不要求用户修令牌。
 - 非幂等频道创建、审批、停止等操作不套用无差别自动POST重试。
@@ -75,4 +75,4 @@ python3 scripts/device-pairing.py --base https://agent.tuly.space devices
 - 正在发送/执行中分别切后台、杀进程，重新打开：历史和最终状态恢复，不重复执行。
 - Wi-Fi与蜂窝切换，空闲连接断开再恢复：界面连接状态准确，阅读位置不被抢走。
 - 新设备首次配对后重启、切网：无原始令牌输入；配对响应丢失自动恢复。
-- 记录手机系统、Expo版本、代码版本、实际结果；未测项继续保留，不提前关闭首版总卡。
+- 记录手机系统、Expo版本、代码版本、实际结果；未测项继续保留，不提前称首版完成。

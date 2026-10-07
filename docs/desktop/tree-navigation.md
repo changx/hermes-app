@@ -24,7 +24,7 @@ Verification:
 
 ## Native sidebar indentation and hover candidate
 
-Branch: `fix/sidebar-tree-hover`; card: `t_6cd23e5f`.
+Branch: `fix/sidebar-tree-hover`.
 
 The native-sidebar override removed the original child indent and branch border. The existing Session hover used the same color as the sidebar, so it had no visible contrast.
 
@@ -38,7 +38,7 @@ The native-sidebar override removed the original child indent and branch border.
 
 ## Resizable native sidebar candidate
 
-Branch: `feat/sidebar-resize`; card: `t_4295a06a`. This candidate includes the indentation/hover candidate above.
+Branch: `feat/sidebar-resize`. This candidate includes the indentation/hover candidate above.
 
 Confirmed behavior:
 - Drag the sidebar's right edge to change its width. Default 280px; minimum 200px; maximum 480px. Smaller windows reduce the maximum to leave 360px for the conversation where possible.

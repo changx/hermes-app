@@ -34,4 +34,4 @@ Jamie 补充触发条件是反复停止、发送。沿 nativeTransport → Herme
 
 ## 跟踪和证据位置
 
-主卡 t_2a787cc7，发送队列子卡 t_72adfa04。私有检查脚本位于 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-send-recovery/`，不保存凭据或真实消息正文。固定 Hermes 核心、Jamie 主实例、开发服务和既有附件候选未修改。
+私有检查脚本位于 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-send-recovery/`，不保存凭据或真实消息正文。固定 Hermes 核心、Jamie 主实例、开发服务和既有附件候选未修改。

@@ -1,6 +1,6 @@
 # In-app file preview
 
-Kanban: `t_073d55bc`. Status: candidate on branch `feat/file-preview`. Not yet released.
+Status: candidate on branch `feat/file-preview`. Not yet released.
 
 ## Requirement
 

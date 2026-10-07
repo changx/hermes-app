@@ -1,10 +1,10 @@
 # Delete a local failed mobile message
 
-Card: `default / t_995eeaa4`; candidate branch `feat/delete-local-failed`, baseline `1606491`.
+Candidate branch `feat/delete-local-failed`, baseline `1606491`.
 
 ## Follow-up: explicit failed-message actions
 
-Card `t_707f4e40`; isolated candidate `fix/failed-message-buttons`, baseline `591ffc2`. The earlier published long-press implementation below is historical; this follow-up is not yet published.
+Isolated candidate `fix/failed-message-buttons`, baseline `591ffc2`. The earlier published long-press implementation below is historical; this follow-up is not yet published.
 
 - Failed local messages now show **Retry**, **Copy**, and **Delete** buttons below their error text. Do not wrap selectable prose or the error line in a long-press responder. Native text selection stays unchanged.
 - Retry changes the existing durable record from blocked to queued before network I/O. Keep the original connection/thread/client-message identity, timestamp, text and attachment IDs. Offline retry waits for the existing connection recovery. Do not replace device authorization or send with a new identity.

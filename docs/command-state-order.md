@@ -4,7 +4,7 @@
 
 Jamie 最终确认的本地范围仅为：排序与执行状态解耦、收据传递已有消息位置、有证据的本地副本清理。旧版命令存在 processing=completed 而 state=unknown 的记录，但历史状态自动恢复明确排除；不能通过改成 completed 掩盖排序缺陷。不再新增功能或机制。
 
-基线 `7659d02`，隔离分支 `jamie/command-state-order`。主卡 `t_c056131a`，后端子卡 `t_e5ba7875`。不修改运行主目录、现场数据库、Hermes 核心或其他 profile，不在本次实现中发布。
+基线 `7659d02`，隔离分支 `jamie/command-state-order`。不修改运行主目录、现场数据库、Hermes 核心或其他 profile，不在本次实现中发布。
 
 ## 最小实现
 
@@ -46,4 +46,4 @@ Jamie 随后明确要求“发布”。开发版 `e25d81262b3a8bd7b09f8c7bfd953f
 - 发布前 8 条旧 unknown 收据全部保持 unknown；其中 5 条有可核验的既有用户引用，已逐条通过公网读取核对，其余未强行补位置或改写状态。
 - 本次验收话题 `th_878d2912253749b1a1ae4f5d` 已归档并回读确认。
 
-发布卡 `t_0402d746`。私有证据在上述目录：`release-before.json`、`release-verification.json`、`live-smoke-state.json`；`rollback/` 保留发布前插件及 metadata 备份，Git 回滚基线 `7659d02`。本次无数据库修复或历史状态恢复。iPhone 实际视觉与操作仍待 Jamie 验收；没有生成独立签名包。
+私有证据在上述目录：`release-before.json`、`release-verification.json`、`live-smoke-state.json`；`rollback/` 保留发布前插件及 metadata 备份，Git 回滚基线 `7659d02`。本次无数据库修复或历史状态恢复。iPhone 实际视觉与操作仍待 Jamie 验收；没有生成独立签名包。

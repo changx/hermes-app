@@ -1,6 +1,6 @@
 # Desktop Settings
 
-Task: `t_810a35d8`. Initial candidate: `feat/desktop-settings`, based on `main` at `3a2b2fe` (desktop v0.1.31). Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Not installed on Jamie's Mac.
+Initial candidate: `feat/desktop-settings`, based on `main` at `3a2b2fe` (desktop v0.1.31). Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Not installed on Jamie's Mac.
 
 ## Confirmed scope
 

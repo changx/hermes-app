@@ -18,7 +18,7 @@ Hermes 直接回复显示给用户、持久进入 App 可见历史与同步，�
 
 原生命令注册/分派清单覆盖，实际 GatewayRunner 的代表命令、运行中回复、同ID重试、冷读、分页、搜索、编辑、模型session不污染及普通AI不重复。危险/账户/部署命令只测试分派与回执机制，不在真实环境执行。自动化与真机验证分开记录。
 
-主卡 `t_ba8d7eda`，命令路径审计 `t_0e379fcc`，存储 `t_3aaea74f`。隔离分支 `jamie/native-command-output`。
+隔离分支 `jamie/native-command-output`。
 
 ## 收尾交付范围
 

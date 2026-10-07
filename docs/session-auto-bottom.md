@@ -4,7 +4,7 @@
 
 用户要求：普通打开 Session 后显示底部；在 Session 内主动发送后恢复底部跟随。
 
-候选分支：`fix/session-auto-bottom`。基线：`c39bd30`。卡片：`t_dfad30dd`。
+候选分支：`fix/session-auto-bottom`。基线：`c39bd30`。
 
 只修改手机和桌面客户端。未合入 main、推送、发布或重启服务。未修改插件、协议、Hermes 核心、依赖或聊天数据。
 

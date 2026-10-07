@@ -1,6 +1,6 @@
 # Desktop Connections in Settings
 
-Task: `t_810a35d8`. Initial candidate: `feat/desktop-settings`, extending the Settings candidate at `a726d0e`. Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Mac installation remains unperformed.
+Initial candidate: `feat/desktop-settings`, extending the Settings candidate at `a726d0e`. Published as [Desktop v0.1.32](desktop-release-0.1.32.md). Mac installation remains unperformed.
 
 ## Confirmed product behavior
 

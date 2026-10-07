@@ -2,7 +2,7 @@
 
 **Publication update:** both editor changes are merged and published to the existing Expo entry in code release `6ce95ed`; see [combined release](client-layout-tools-blur-release.md). The isolated-candidate boundary below records the earlier stage; native iPhone acceptance remains pending.
 
-Continuation of `t_6d9ddce9`, based on main `7fefae5`. The new 2026-10-01 iPhone screenshot shows the current full-screen editor, not the former EditorSheet. The first-message border and attachment/create controls overlap, with a large gap above the keyboard.
+Follow-up work, based on main `7fefae5`. The new 2026-10-01 iPhone screenshot shows the current full-screen editor, not the former EditorSheet. The first-message border and attachment/create controls overlap, with a large gap above the keyboard.
 
 ## Confirmed defect and scope
 
@@ -31,6 +31,6 @@ Follow-up checks: targeted channel/topic/form/router tests 24/24; full serial mo
 
 ## Delivery boundary
 
-Isolated branch `fix/new-topic-resume-layout`; not merged, deployed, pushed or signed. Main Expo bundle and all Gateway/plugin/core state unchanged. Do not close the parent keyboard acceptance card from these checks.
+Isolated branch `fix/new-topic-resume-layout`; not merged, deployed, pushed or signed. Main Expo bundle and all Gateway/plugin/core state unchanged. These checks do not complete keyboard acceptance.
 
 After publication authorization, verify public iOS/Android manifests and exact launchAssets. iPhone acceptance must include Chinese nine-key multiline drafts, keyboard show/hide, repeated inactive/background/active transitions while typing, attachment menus/previews and returning from pickers. Check input/footer bounds, remaining keyboard gap, retained text/selection, and keyboard/focus behavior. If the large gap persists, capture lifecycle and native root bounds in a separate scoped diagnosis rather than claiming this overflow fix is complete.

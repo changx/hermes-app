@@ -15,7 +15,7 @@ Verification:
 - iOS and Android Expo JS exports succeeded. Both exact bundles contain the article fixed-width/wrapping CSS and bounded native cell padding. Exports are not independently installable mobile packages.
 - Dependency versions and both lockfiles are unchanged. A fresh isolated mobile locked install reports 29 existing audit findings (10 moderate, 19 high); dependency remediation is outside this layout change.
 
-No main merge, runtime deployment, service restart, release or signing operation. Mac/iPhone visual layout, text selection and rotation remain physical-device acceptance gates. Kanban: `default / t_22892d12`.
+No main merge, runtime deployment, service restart, release or signing operation. Mac/iPhone visual layout, text selection and rotation remain physical-device acceptance gates.
 
 ## Historical horizontal-grid policy (superseded)
 
@@ -51,5 +51,3 @@ This supersedes candidate `e8d8df6`'s fixed-layout/no-table-scroll interpretatio
 ## Remaining gates
 
 Candidate only: no main merge, runtime deployment, desktop release or service restart. Native Mac/iPhone visual, horizontal gestures, selection, rotation and keyboard acceptance remains pending. Browser/Yoga/component checks do not replace physical-device acceptance. Jamie's screenshot is an issue report, not a final-candidate acceptance result.
-
-Kanban: `default / t_22892d12`.

@@ -2,7 +2,7 @@
 
 ## Scope and evidence
 
-Card: `t_c42f40e8`; baseline: `857a0e2`; candidate branch: `fix/mobile-failed-send-recovery`.
+Baseline: `857a0e2`; candidate branch: `fix/mobile-failed-send-recovery`.
 
 Jamie supplied recording `att_9ee25c2382ad41e3bdc0f020f2298653`. Local ffprobe and frame extraction/OCR show a failed optimistic user message on entry, followed by normal server history, while the global “Sending could not be confirmed” banner remains. This is observation of the recording, not access to iPhone SecureStore or proof of its exact client-message identity.
 

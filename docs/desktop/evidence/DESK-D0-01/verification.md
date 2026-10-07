@@ -2,7 +2,7 @@
 
 Status: Done
 
-Verified on Linux before macOS device work. This card establishes the repository and build baseline only; it does not claim that Electron has launched on macOS.
+Verified on Linux before macOS device work. This task establishes the repository and build baseline only; it does not claim that Electron has launched on macOS.
 
 ## Locked toolchain
 

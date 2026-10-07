@@ -1,6 +1,6 @@
 # M1 手机连接循环：隔离客户端调查
 
-范围：仅候选 worktree 的共享 SDK、原生 transport、outbox 与极窄的 App 连接状态；不改运行中的 Expo/Gateway/队列，不关闭网络验收卡。首版标准见 [网络可靠性](m1-network-reliability.md)。
+范围：仅候选 worktree 的共享 SDK、原生 transport、outbox 与极窄的 App 连接状态；不改运行中的 Expo/Gateway/队列，不称网络验收完成。首版标准见 [网络可靠性](m1-network-reliability.md)。
 
 ## 开发发布结果
 

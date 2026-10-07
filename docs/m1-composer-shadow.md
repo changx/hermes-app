@@ -8,7 +8,7 @@
 
 ## 外层居中修订（已发布，真机待验）
 
-卡片 `t_ddd5e38f`；Jamie 明确授权发布后，已从干净的 `d91e06b` fast-forward 至 `1d3a68b3d3586dcc1fd9d6dbe849fce4d81b4cbc`，发布到 `exps://agent.tuly.space`。仅停止/启动 Expo；发布后 TypeScript 通过，公网 iOS/Android manifest 及精确 launchAsset 均已核验外层居中、内部 padding=0、平台行数差异、共用阴影、透明最新行及 96pt 留白。两个 Gateway 的 PID/启动时间与插件哈希不变，未修改聊天数据。
+Jamie 明确授权发布后，已从干净的 `d91e06b` fast-forward 至 `1d3a68b3d3586dcc1fd9d6dbe849fce4d81b4cbc`，发布到 `exps://agent.tuly.space`。仅停止/启动 Expo；发布后 TypeScript 通过，公网 iOS/Android manifest 及精确 launchAsset 均已核验外层居中、内部 padding=0、平台行数差异、共用阴影、透明最新行及 96pt 留白。两个 Gateway 的 PID/启动时间与插件哈希不变，未修改聊天数据。
 
 发布证据：私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/composer-outer-center/` 中 `release-before.json`、`release-verification.json`、双平台 manifest 和 `release.py`。Metro 对 Platform.OS 做平台常量折叠，验证脚本按 iOS 空内容一行、Android undefined 分别核验。保留原提交和候选分支用于回滚；实现工作树及复制依赖已清理。
 
@@ -32,7 +32,7 @@ Jamie 授权后，提交 `8fe48074982a21cafc686b89389a3a8c45901219` 已发布至
 
 Jamie 反馈 placeholder 仍未视觉居中，确认撤去额外字体排版干预：移除显式行高、includeFontPadding/textAlignVertical 覆盖，以及按应用/系统字体倍率计算高度和留白的逻辑。继续使用原生 placeholder 和字体度量，不新增占位层；保留原先 8pt 上下内边距、空输入 42pt 高度复位、非空多行增长和 120pt 高度上限。应用字号仍由已有 FontSize 包装器处理。
 
-卡片 `t_1f0a1c12`。仅本地隔离候选，不改运行目录、不发布。TypeScript 与手机端串行测试 281/281 通过，日志：私有 `workspace/hermes-app/composer-native-text/tests.log`。新工作树先生成已有 Markdown renderer 与 client bundle，再运行完整检查；未增加依赖。组件测试验证没有额外字体排版覆盖及输入/清空行为；真机视觉与系统大字体是否受既有 42pt 高度限制仍需设备验收，不能以样式断言代替。
+仅本地隔离候选，不改运行目录、不发布。TypeScript 与手机端串行测试 281/281 通过，日志：私有 `workspace/hermes-app/composer-native-text/tests.log`。新工作树先生成已有 Markdown renderer 与 client bundle，再运行完整检查；未增加依赖。组件测试验证没有额外字体排版覆盖及输入/清空行为；真机视觉与系统大字体是否受既有 42pt 高度限制仍需设备验收，不能以样式断言代替。
 
 ## 原发布实现方案（以下为历史记录）
 
@@ -41,7 +41,7 @@ Jamie 反馈 placeholder 仍未视觉居中，确认撤去额外字体排版干�
 
 ## 验证与发布边界
 
-卡片 `t_7a83add6`。Jamie 明确授权后，已将实现提交 `fd0570f21f956b8c96d524571855b470dbbfe88e` 发布到手机开发入口 `exps://agent.tuly.space`；真机视觉另验。
+Jamie 明确授权后，已将实现提交 `fd0570f21f956b8c96d524571855b470dbbfe88e` 发布到手机开发入口 `exps://agent.tuly.space`；真机视觉另验。
 
 - 最终版本手机测试串行 281/281 通过，TypeScript 检查通过。
 - iOS/Android Metro export 均通过，导出的实际 JS 资源包含阴影样式；资源哈希与日志保存在私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/composer-shadow/`。

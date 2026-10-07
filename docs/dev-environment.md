@@ -19,7 +19,7 @@
 
 LCM 修复曾以提交 `19845a7` 安装并等待激活；当前运行版本见上节。相关隔离回归 1235 项通过，现有历史指纹不变；没有升级固定核心或重启 Jamie/Expo。配置、证据、恢复见 [开发实例 LCM 修复](dev-lcm-fix.md)。
 
-2026-09-28 已为隔离 `hermes-app-dev` profile 接入现有 Mac mini MCP。配置只引用开发 profile 私有环境变量，不在仓库、聊天或验证结果中保存凭据。`hermes -p hermes-app-dev mcp test macmini` 实际连接成功并发现 21 个工具；随后经 `https://agent.tuly.space` 新建自动验收 Thread，真实模型完成一次只读 `mcp__macmini__calendar_list_calendars` 调用，收据为 `completed`、结果无错误，Thread 已归档。运行中的开发 Gateway 会为新会话动态发现该 MCP，因此无需重启；开发 Gateway 与 Jamie 主 Gateway 的 PID/启动时间均保持不变。回滚备份与脱敏证据保存在私有 `workspace/hermes-app/macmini-mcp-test/`，跟踪卡 `default / t_53fe1740`。
+2026-09-28 已为隔离 `hermes-app-dev` profile 接入现有 Mac mini MCP。配置只引用开发 profile 私有环境变量，不在仓库、聊天或验证结果中保存凭据。`hermes -p hermes-app-dev mcp test macmini` 实际连接成功并发现 21 个工具；随后经 `https://agent.tuly.space` 新建自动验收 Thread，真实模型完成一次只读 `mcp__macmini__calendar_list_calendars` 调用，收据为 `completed`、结果无错误，Thread 已归档。运行中的开发 Gateway 会为新会话动态发现该 MCP，因此无需重启；开发 Gateway 与 Jamie 主 Gateway 的 PID/启动时间均保持不变。回滚备份与脱敏证据保存在私有 `workspace/hermes-app/macmini-mcp-test/`。
 
 系统通知开发版 `edc541e` 已发布：Hermes 记忆/Skill 自检与 context compression 状态通过独立 `system_notice` 持久显示在对应 Thread，不写 SessionDB、不冒充 Agent 回复。插件完整 artifact 与两平台 Expo bundle 均已更新；真实 Gateway 延迟回调、压缩原位更新、公网冷读/同步事件、精确 ref/搜索和模型历史隔离通过。只重启开发 Gateway 与 Expo，Jamie 主实例、固定 Core 和 dev 配置不变；iPhone 视觉待验收。详情见[系统通知开发版发布记录](system-notices-release.md)。下方均为历史发布记录。
 
@@ -37,13 +37,13 @@ LCM 修复曾以提交 `19845a7` 安装并等待激活；当前运行版本见�
 
 最新手机修正 `ff41a76`：前后台键盘布局、滑动收键盘与消息滚动联动，已仅更新Expo；两个Gateway和插件未变化。双平台公网包及账号检查通过，真机待验收见 [键盘修正](m1-keyboard-layout.md)。下述可靠性插件部署保持不变。
 
-2026-09-26 可靠性版已根据 Jamie“再写 AGENTS.md，更新手机 app”授权发布，运行代码 `bd0ca43`（含候选 `1389b8c`）。插件归档 SHA-256：`dad18bde21f273413926f151ab45ee858a07fa3bcc1a5e20815a65d9a396f17e`。只重启隔离开发 Gateway 与 Expo；公网 HTTP/WS、配对管理路由、历史及 iOS/Android 新 bundle 均通过，Expo 账号 `jamsben`。Jamie 主实例 PID/启动时间不变。入口仍为 `exps://agent.tuly.space`，手机重开项目加载新版。回滚与本轮证据在私有 `workspace/hermes-app/m1-reliability-verification/`；详见 [可靠性验证](m1-reliability-verification.md)。iPhone 故障矩阵仍未验收，不能据发布成功关闭首版总卡。
+2026-09-26 可靠性版已根据 Jamie“再写 AGENTS.md，更新手机 app”授权发布，运行代码 `bd0ca43`（含候选 `1389b8c`）。插件归档 SHA-256：`dad18bde21f273413926f151ab45ee858a07fa3bcc1a5e20815a65d9a396f17e`。只重启隔离开发 Gateway 与 Expo；公网 HTTP/WS、配对管理路由、历史及 iOS/Android 新 bundle 均通过，Expo 账号 `jamsben`。Jamie 主实例 PID/启动时间不变。入口仍为 `exps://agent.tuly.space`，手机重开项目加载新版。回滚与本轮证据在私有 `workspace/hermes-app/m1-reliability-verification/`；详见 [可靠性验证](m1-reliability-verification.md)。iPhone 故障矩阵仍未验收，不能据发布成功称首版完成。
 
 ### 上一版 M1 发布（历史）
 
 M1 已获授权部署，当前开发插件归档 SHA-256 为 `1c726ac8177ee7eadb1ff33e56e91026ef0cbfbcfeeed787be20bc5280b36a40`。Expo 开发入口已更新，账号 `jamsben`、SDK 57；开发 Gateway 与 Expo 服务已重启并通过公网接口及 iOS bundle 检查，Jamie 主实例未重启。发布验收与真机待验收项见 [M1 验证](m1-verification.md)，回滚和证据保留于私有 `workspace/hermes-app/m1-verification/`。AGENTS.md 已成功更新；下方初次搭建中的旧状态仅作历史记录。
 
-后续已正确持久化独立开发 Codex OAuth，并通过真实 openai-codex / gpt-6-luna 消息联调；Jamie 已在 iPhone 确认基本通讯正常。下面早期的 No Codex credentials stored 是历史阻塞，现已解除。开发部署重启持久化及 SQLite 运行时风险仍待验收，原卡 t_42490468 依赖 t_c0dc25f5，见 [P2/P3 Kanban](p2-p3-kanban.md)。
+后续已正确持久化独立开发 Codex OAuth，并通过真实 openai-codex / gpt-6-luna 消息联调；Jamie 已在 iPhone 确认基本通讯正常。下面早期的 No Codex credentials stored 是历史阻塞，现已解除。开发部署重启持久化及 SQLite 运行时风险仍待验收。
 
 ## 初次开发状态（历史记录）
 
@@ -51,7 +51,7 @@ M1 已获授权部署，当前开发插件归档 SHA-256 为 `1c726ac8177ee7eadb
 
 **插件已经运行，模型联调尚未通过**：开发实例已于 2026-09-26 01:01:30 PDT 重启，PID 3674837。本机与公网认证 capabilities 均 200；未认证 HTTP/WS 为 401，两个认证 WS 接收到同一持久事件，相同 client_message_id 返回同一收据。真实消息尝试返回 unknown；日志明确报 No Codex credentials stored，检查开发 auth.json 的 providers 和 credential_pool 为空。先前 CLI 登录成功通知并不足以证明当前凭据可用，正在重新登录并核对实际存储；不能声明真实模型接通。合成测试频道/话题保留供移动端查看，证据在私有 workspace/dev/mobile-api-smoke.*。Expo 移动开发本轮见 [P2 首版](p2-mobile-dev.md)。
 
-跟踪卡：`default / t_42490468`，验收未完成，不关闭。
+验收未完成。
 
 ## 实际配置
 

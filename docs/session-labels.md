@@ -21,7 +21,7 @@ Integration checks passed: shared client TypeScript/build plus 24 legacy, 20 rel
 
 The sections below record the initial isolated candidate and its original verification, not the subsequent main-integration state.
 
-This implements the confirmed design for parent-owned task `t_3218e8df`. It is an isolated, unpublished candidate on `feat/session-labels`: App base `b486e13df66d3e054002ab5d5c8800c24f8397a1`, Plugin base `208a07c12be562ba8e027ffc3747f3f93711fae2`. No live checkout, profile, Hermes core, credentials, signing account or deployment was changed.
+This implements the confirmed design. It is an isolated, unpublished candidate on `feat/session-labels`: App base `b486e13df66d3e054002ab5d5c8800c24f8397a1`, Plugin base `208a07c12be562ba8e027ffc3747f3f93711fae2`. No live checkout, profile, Hermes core, credentials, signing account or deployment was changed.
 
 ## Contract and authority
 

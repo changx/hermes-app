@@ -1,6 +1,6 @@
 # Mobile Session options page
 
-Kanban: `t_0965eebd`. Branch: `feat/mobile-session-options`.
+Branch: `feat/mobile-session-options`.
 
 ## Confirmed scope
 
@@ -15,7 +15,7 @@ Kanban: `t_0965eebd`. Branch: `feat/mobile-session-options`.
 
 ## Label editor page
 
-Kanban: none (direct request in chat). Branch: `feat/mobile-labels-page`.
+Branch: `feat/mobile-labels-page`.
 
 - The label editor is a pushed native Stack page, `threads/[threadId]/labels`, titled `Labels`. It replaces the earlier bottom-sheet modal.
 - Both entries push this page: the `Labels` row on Session options, and `Edit labels` in the Channel list long-press and accessibility menu. The route carries the connection slot.

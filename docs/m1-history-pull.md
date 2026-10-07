@@ -41,4 +41,4 @@ Jamie 随后明确要求“提交发布”。客户端提交 `6bf6667` 已快进
 - 回滚分支 `rollback/session-pull-history-before-6bf6667` 保留基线 `b248409`。
 - 证据与核验脚本：`/home/hermes/.hermes/profiles/hermes-app-dev/workspace/hermes-app/session-pull-history/`（`release-tests.log`、平台 manifest/代码片段、`release-verification.json`、服务前后状态）。下载 bundle 在保存哈希和核验片段后清理。
 
-请在 Expo Go 完整 Reload 后测试顶部下拉；真机阅读锚点、键盘与断网体验仍待 Jamie 确认，Kanban `t_f4e52b28` 保持 review。
+请在 Expo Go 完整 Reload 后测试顶部下拉；真机阅读锚点、键盘与断网体验仍待 Jamie 确认。

@@ -6,7 +6,7 @@
 
 ## 当前候选：右侧附件预览与浏览器
 
-隔离分支 `feat/desktop-preview-sidebar`，卡 `t_7de73bfe`。附件卡、已上传草稿及 New chat 本地文件提供 **Preview**；tab 栏 **Browser** 打开地址输入。HTTP/HTTPS 消息链接和附件公开链接进入同一右侧浏览器；Session 链接仍沿用原路由。保留 Save 与 Open externally，不自动上传本地预览、不自动发送消息。
+隔离分支 `feat/desktop-preview-sidebar`。附件卡、已上传草稿及 New chat 本地文件提供 **Preview**；tab 栏 **Browser** 打开地址输入。HTTP/HTTPS 消息链接和附件公开链接进入同一右侧浏览器；Session 链接仍沿用原路由。保留 Save 与 Open externally，不自动上传本地预览、不自动发送消息。
 
 - 支持 PNG/JPEG/GIF/WebP、Chromium 内置 PDF 阅读器、文本/JSON/源码，以及可执行 JavaScript 的 HTML 页面。Markdown 当前显示源码，不宣称富文本预览；其他二进制格式明确提示保存或外部打开。
 - HTML 页面可使用网页依赖和 HTTP(S)/WebSocket。相对资源仅匹配同一 Session 中唯一同名的图片、CSS、JS、字体附件，最多八个。拒绝目录穿越、任意磁盘邻居和文本/文档附件资源。New chat 本地 HTML 不读取旁边文件；多目录页面需使用自包含 HTML 或网页 URL。单文件最多 10 MiB，单 HTML 上下文累计最多 30 MiB。只保留最近一次附件上下文；较早附件需从卡片重新打开。网页历史支持后退、前进、刷新、停止。
@@ -21,7 +21,7 @@
 
 已检查的官方参考：[WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)、[webContents](https://www.electronjs.org/docs/latest/api/web-contents)、[session](https://www.electronjs.org/docs/latest/api/session)、[protocol](https://www.electronjs.org/docs/latest/api/protocol)、[security](https://www.electronjs.org/docs/latest/tutorial/security)、[Chrome UA reduction](https://www.chromium.org/updates/ua-reduction/)。运行行为以原生测试结果为准，不由 API 名称推断。
 
-以下保留早期设计状态记录，不代表当前实现或发布状态：设计方向已确认，实施任务已拆分到 `docs/desktop-kanban.md`；当时仓库已有未验证的 Electron main/preload/build 脚手架，但尚无完成的桌面功能卡。
+以下保留早期设计状态记录，不代表当前实现或发布状态：设计方向已确认，实施任务已拆分；当时仓库已有未验证的 Electron main/preload/build 脚手架，但尚无已完成的桌面功能。
 
 ## 1. 已确认决策
 
@@ -298,12 +298,12 @@ D3 不阻塞 D0–D2 的内部开发与真实设备验收。
 - 消息编辑、删除、引用或重新执行语义。
 - 第二套聊天后端、独立权威消息数据库或 Hermes 核心改动。
 
-## 13. 实现卡中的决策点
+## 13. 实现任务中的决策点
 
-以下内容不阻塞设计定稿，已分配到对应实现卡，必须在开工或验收前明确：
+以下内容不阻塞设计定稿，已分配到对应实现任务，必须在开工或验收前明确：
 
 - `DESK-D0-01`：Electron、构建器、React 工具链和 workspace 的固定版本及选择依据。
 - `DESK-D0-06`：最低 macOS 版本、内部 `.app` 构建、传输和回滚方式。
 - `DESK-D0-09`、`DESK-D1-06`：Keychain 库与本地 outbox 存储格式、迁移和清理规则。
 - `DESK-D2-04`：renderer 虚拟列表方案、数据集及长历史性能门槛。
-- 各卡分别标记自动测试、Mac 真机和 Mac/iPhone 双端证据；总验收卡不得用自动检查替代真实设备项目。
+- 各任务分别标记自动测试、Mac 真机和 Mac/iPhone 双端证据；总验收不得用自动检查替代真实设备项目。

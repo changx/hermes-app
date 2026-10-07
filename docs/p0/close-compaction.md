@@ -25,7 +25,7 @@ uv run --no-project --offline --python /opt/projects/jamie/_worktrees/hermes-age
 
 1. 在独立 plugin 自有元数据中维护稳定 Thread → lineage root / 当前 tip 映射及**原始 Description 初始化快照**；callback 收到 child `session_id` 时，从 Hermes 现有 `parent_session_id` 且 parent `end_reason='compression'` 的链只读向上查 root，再取 root 快照；不得对未知 child 默默返回空说明。可用 `SessionDB.get_compression_tip` 与 `gateway/session_transcript.py:60-67,178-184` 的 tip 逻辑做跟随，遵守权限/配置及内部接口版本边界。压缩提交后的 tip 更新、冷恢复及多进程访问须原子可验证；不可改核心、不可把 Description 逐消息注入或写入普通聊天正文。
 2. 基于真实 GatewayRunner 挂载该 plugin 的隔离集成测试，同时跑显式 `in_place:false` successor、默认 `in_place:true` 和下一轮 idle；审查 parent→child、callback 次数、cold process 原始 header、重建、用户展示 API 的用户/助手原文逐条有序且不重。处理本探针多出的 assistant 投影差异后才能关闭 R03/R04 压缩验收；不要拿本文的 direct-agent 结果充当完整客户端测试。
-3. 在未批准 P1 之前保持上述为计划，不部署、不改服务端状态、不关闭卡片。
+3. 在未批准 P1 之前保持上述为计划，不部署、不改服务端状态。
 
 ## Native Responses 独立边界（仅源码核对）
 

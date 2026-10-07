@@ -2,7 +2,7 @@
 
 Status: Done
 
-This card verifies the Electron main/preload security boundary with automated checks. Real macOS launch remains assigned to `DESK-D0-05`.
+This task verifies the Electron main/preload security boundary with automated checks. Real macOS launch remains assigned to `DESK-D0-05`.
 
 ## Implemented boundary
 
@@ -45,4 +45,4 @@ Results:
 - OS permission prompts
 - Keychain, files, notifications or other future IPC
 
-These require later cards and must preserve this default-deny baseline.
+These require later tasks and must preserve this default-deny baseline.

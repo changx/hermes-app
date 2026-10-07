@@ -23,8 +23,7 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 
 ## 跟踪
 
-- 汇总卡：`default / t_78108f1a`。
-- UI 归属子卡：`t_f3b50ba2`；隔离工作树 `/opt/projects/jamie/_worktrees/hermes-app/p2-expo-first`。
+- 隔离工作树 `/opt/projects/jamie/_worktrees/hermes-app/p2-expo-first`。
 - 主控负责现有后端联调、入口、独立验收和集成；不修改其他 profile，不因客户端开发升级/重启 Hermes 核心。
 - 主控已核验并集成本地提交 `5cb1128` 与 `de592a4`；临时 UI 工作树已移除，分支保留。
 
@@ -60,7 +59,7 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 
 ## 手机验收进展与清单
 
-Jamie 已在本线程确认 SDK 57 界面可打开、令牌连接成功、基本通讯正常。完整后台/断网/冷启动/双端与交互验收仍未完成，转入 [P2/P3 Kanban 计划](p2-p3-kanban.md)。当前真实 Codex 登录与 Luna 通讯已恢复，上文首次 SDK54 的 OAuth 错误仅为历史记录。
+Jamie 已在本线程确认 SDK 57 界面可打开、令牌连接成功、基本通讯正常。完整后台/断网/冷启动/双端与交互验收仍未完成。当前真实 Codex 登录与 Luna 通讯已恢复，上文首次 SDK54 的 OAuth 错误仅为历史记录。
 
 1. Expo Go 扫码加载，界面无红屏，安全区与键盘不遮挡发送框。
 2. 填令牌连接，打开“手机开发测试”频道和测试话题；创建自己的新话题。

@@ -21,7 +21,7 @@ Mobile publication updates the existing Expo Go test entry `exps://agent.tuly.sp
 
 No Gateway restart, plugin copy/install, Hermes core change, credentials/config change, other-profile write or Mac mini install. No signing/notarization/EAS/TestFlight/App Store release is authorized. Desktop remains an unsigned Apple Silicon macOS development build; mobile remains Expo Go, not an independent phone installer.
 
-Before/after source commits, service PIDs/start times and development-plugin hashes plus workflow/asset/bundle evidence live privately in active-profile `workspace/hermes-app/markdown-table-container/release/`. Release task: `default / t_b5281522`; implementation/device review: `default / t_22892d12`.
+Before/after source commits, service PIDs/start times and development-plugin hashes plus workflow/asset/bundle evidence live privately in active-profile `workspace/hermes-app/markdown-table-container/release/`.
 
 Rollback preserves chat data: use explicit Git revert of the table implementation commits (latest `09d3277`, then `e8d8df6`, then `0b94983` if restoring the original main rendering), with a separate version-metadata revert only if needed; restart only Expo for mobile rollback. Reinstall the intact v0.1.6 desktop ZIP if reverting the installed desktop app. Never overwrite/delete authoritative history or replace existing release assets.
 

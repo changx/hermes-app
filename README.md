@@ -25,12 +25,10 @@
 - [P1-04 第三 gate](docs/p1/third-gate.md)、[P1-05 第四 gate](docs/p1/fourth-gate.md)与[共享客户端契约](docs/p1/client-contract.md)：交互、附件、主动投递、测试客户端与集成限制。
 - [开发环境](docs/dev-environment.md)与[P2 Expo 手机开发版](docs/p2-mobile-dev.md)：隔离后端、手机测试链接、运行方法和未完成验收。
 - [macOS 桌面 App 第一版设计](docs/desktop-macos-v1.md)：已确认方向、三栏交互、Electron 安全边界、实施阶段与真机验收。
-- [macOS 桌面 App Kanban](docs/desktop-kanban.md)：D0–D2 可独立验收任务、依赖链、证据要求和当前状态。
 
 ## 项目跟踪
 
 - Hermes 项目：`hermes-app / p_212cf0b9`，主目录 `/opt/projects/jamie/hermes-app`。
-- 初始化任务：Hermes Kanban `default / t_94cc1d1e`。
 - 需求来源：Jamie 与 Tuly 的 Discord 设计讨论，线程 `1552884015143583759`。
 - 文档建立：2026-09-24（PDT）。
 - 当前开发环境与既有验收状态见 [开发环境](docs/dev-environment.md)。仓库建立不代表授权生产发布、签名、notarization、其他 profile 变更或正式 App 发布。

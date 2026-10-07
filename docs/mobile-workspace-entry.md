@@ -4,7 +4,7 @@ Current candidate update: [Repository AGENTS binding](channel-repository-agents.
 
 ## Scope and candidate
 
-Task `t_5ebd1858`, branch `feat/mobile-workspace-entry`, base `857a0e2`. Mobile-first implementation uses the standalone plugin's workspace contract from `docs/channel-workspace.md` in the plugin repository. No server/core changes, runtime plugin installation, Gateway/Expo restarts, desktop UI changes, dependency/lockfile changes or publication in this implementation step.
+Branch `feat/mobile-workspace-entry`, base `857a0e2`. Mobile-first implementation uses the standalone plugin's workspace contract from `docs/channel-workspace.md` in the plugin repository. No server/core changes, runtime plugin installation, Gateway/Expo restarts, desktop UI changes, dependency/lockfile changes or publication in this implementation step.
 
 Channel retains latest-first sessions, Context link, completed-unread light-blue dot and the existing first-message/attachment composer. It adds a compact Files / AGENTS.md row only after authenticated capabilities explicitly advertise all workspace features and the native transport supports conditional writes. No header prefetch of file bodies. Unsupported direct routes explain unavailability rather than displaying a fake editor or attempting setup.
 
@@ -45,7 +45,7 @@ Channel retains latest-first sessions, Context link, completed-unread light-blue
 
 ## Files return/attachment fix verification
 
-Candidate branch `fix/channel-files-preview`, task `t_b04ba284`, base `591ffc2`.
+Candidate branch `fix/channel-files-preview`, base `591ffc2`.
 
 - Root cause: Channel previews invoked the conversation-scoped `LiveSessionClient.download` without an open conversation. The earlier interoperability probe used the base `HermesClient` and therefore missed this guard. The updated probe uses the actual live client.
 - Actual isolated plugin HTTP + native transport verified authenticated inventory and selected attachment bytes with `currentThreadId === null`, empty message/attachment caches, and the ordinary conversation download still rejected. Existing guideline conditional-save/conflict/readback and file/folder checks also passed. Synthetic files were written to an isolated ProjectDB/home and removed after the probe; no live chats were used.
@@ -57,7 +57,7 @@ Candidate branch `fix/channel-files-preview`, task `t_b04ba284`, base `591ffc2`.
 
 ## Attachment source navigation candidate
 
-Task `t_41f40076`, branch `feat/attachment-origin`, based on Files fix `941a5f5`. Matching server candidate is `feat/plugin-attachment-origin`, based on plugin `64e49fe`. No merge, publication or runtime restart is implied.
+Branch `feat/attachment-origin`, based on Files fix `941a5f5`. Matching server candidate is `feat/plugin-attachment-origin`, based on plugin `64e49fe`. No merge, publication or runtime restart is implied.
 
 - An attachment reader on a server advertising `attachment_origin` and `history_around` resolves its selected attachment through `/v1/channels/{id}/attachments/{attachment_id}/source`. The SDK validates the exact Channel, attachment, Thread and positive safe `ref_seq`. File bodies and conversation messages are not prefetched by this metadata read.
 - `View in conversation` pushes the existing native `/threads/[threadId]` route with a validated `messageRef`. Ordinary Workspace files, unpublished/ambiguous sources and old servers do not offer a guessed link. Unsupported preview formats can still have a valid source link.

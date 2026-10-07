@@ -97,5 +97,5 @@
 - Chromium **9/9**：生产模板+真实打包引擎，含中文流程图、序列图、行内/独立公式、无效输入及注入边界；字体可用、无意外远程请求。Chromium 不是 iPhone WKWebView 真机验收。
 - Expo 本地版本映射检查通过（CLI 提示离线模式），npm audit 为 10 moderate、0 high、0 critical；10 项 moderate 与主分支基线一致。
 - 证据目录：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/markdown-verification/`，包括 `parent-tests.log`、`parent-ts.log`、`parent-export.log`、`parent-audit.json`、`browser-final/browser-results.json`。
-- `AGENTS.md` 本轮追加渲染要求的写入因保护文件审批超时被阻止，未重试，文件未修改；实际范围已记在本文和卡片中。
+- `AGENTS.md` 本轮追加渲染要求的写入因保护文件审批超时被阻止，未重试，文件未修改；实际范围已记在本文中。
 - 发布已完成：代码提交 `1272ee6`，只更新 Expo 开发入口及前端依赖；公网 iOS/Android manifest 和实际 launchAsset bundle 都返回成功且包含新渲染器，Expo 登录账户校验通过。开发 Gateway、Jamie 主 Gateway 的 PID/启动时间和开发插件哈希发布前后完全一致。证据 `release-before.json`、`release-install.log`、`release-verification.json`；回滚基线 `f6e0132` 保留在 Git。iPhone 播放器、排版和手势体验仍待 Jamie 测试。

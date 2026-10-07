@@ -32,7 +32,7 @@ The script refuses a target-Gateway ancestor, checks queued/running tasks and th
 
 ## Evidence, rollback and remaining acceptance
 
-Private evidence and operator lane: active-profile `workspace/hermes-app/completed-unread/release/`. Includes source/service/hash baseline, both manifests and exact bundles, desktop ZIP/sidecar/ASAR checks, minimal artifact and rollback code, and authenticated backend baseline without credentials. Deployment card `t_00c33792` remains review/pending activation rather than done.
+Private evidence and operator lane: active-profile `workspace/hermes-app/completed-unread/release/`. Includes source/service/hash baseline, both manifests and exact bundles, desktop ZIP/sidecar/ASAR checks, minimal artifact and rollback code, and authenticated backend baseline without credentials. The deployment remains pending activation.
 
 Client rollback baseline is `9227691148443268538b38c322f7db5910e3ba9a`; use explicit Git reverts of the three client publication commits and restart only Expo. Do not replace history databases. Desktop rollback uses existing v0.1.9 release. Backend has not changed; once externally installed, code-only rollback must use the preserved `6b8fbb6` baseline and restart only the development Gateway externally, retaining all plugin metadata and history.
 

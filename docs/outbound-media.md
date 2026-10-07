@@ -1,6 +1,6 @@
 # Agent media delivery and permanent static links
 
-Tracking: `default / t_bf2b66af`. Paired candidates: App `feat/app-media-static`, standalone plugin `feat/plugin-media-static` based on presentation baseline `9b531bb`. User explicitly approved no-expiry static links.
+Paired candidates: App `feat/app-media-static`, standalone plugin `feat/plugin-media-static` based on presentation baseline `9b531bb`. User explicitly approved no-expiry static links.
 
 ## Contract
 

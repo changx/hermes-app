@@ -20,7 +20,7 @@ Jamie 真机反馈：滚到最底后跳回中段，向下拖拽收键盘触发�
 
 只重启Expo，开发Gateway、Jamie主实例的PID/启动时间与插件文件哈希均未变化。证据：私有 `workspace/hermes-app/m1-keyboard-verification/release-verification.json`；旧版本 `f1dfa84` 与服务指纹保存在 `before.json`。手机入口仍为 `exps://agent.tuly.space`。
 
-当前结论仅为修正代码发布成功，截图问题是否消失、交互是否跟手仍待iPhone确认；卡片 `t_7eb46948` 保持review。
+当前结论仅为修正代码发布成功，截图问题是否消失、交互是否跟手仍待iPhone确认。
 
 ## 观察与判断
 

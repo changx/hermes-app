@@ -8,7 +8,6 @@ Published [Desktop v0.1.31](https://github.com/changx/hermes-app/releases/tag/v0
 
 Runtime checkout/dirty files, Expo/Gateway PID/start timestamps, installed plugin code hashes and mobile lockfile hash are unchanged. No installation or service restart occurred. The app remains unsigned and unnotarized; installed macOS visual/keyboard/Finder acceptance is pending. Prior Desktop v0.1.30 remains available for rollback. Evidence: channel `desktop-preview-release/`, including logs, actual screenshots, authenticated GitHub release readback, downloaded assets, archive/code verification and before/after snapshots. The repository is private; release links require an authorized GitHub login. The following candidate-stage sections are historical records; this publication supersedes their unmerged/independent status.
 
-
 ## Attachment small thumbnails (candidate)
 
 Candidate `feat/desktop-attachment-thumbnails` adds a fixed **40 × 40px** thumbnail to message attachment rows, uploaded Session composer drafts, and selected/pasted local New chat files. It builds on the isolated right sidebar candidate `e791529`; it does not publish or modify main. The separate code-background candidate remains unchanged.
@@ -26,8 +25,7 @@ Verification uses production components and real Chromium/Electron. Native tests
 
 The latest desktop request sets Session code backgrounds to `rgb(245,245,250)`. This supersedes the earlier blue-tinted inline/fenced code colors. Inline code, single-line/multiline fenced and indented code, and existing safe tool command blocks use the same background. Nested fenced `code` remains transparent so the enclosing `pre` supplies one surface. Foreground colors, fonts, padding, radii, wrapping, message content and behavior stay unchanged. Mobile and browser-side HTML rendering are outside this correction.
 
-Candidate `fix/desktop-code-background`, card `t_a3d4c44b`, starts from main `142381c` independently of the pending browser-sidebar candidate. The production-DOM regression fails on the baseline's inline `rgb(220, 229, 240)` and passes after correction. Chromium checks user/direct/final messages, inline/table code, single-line/multiline fences, indented blocks and safe commands at 720/1280/1800px, including forced dark mode. Desktop typecheck/build and **49/49** tests pass with Chromium headless-shell and Linux/Xvfb Electron enabled, zero skips. An initial parallel Electron extraction caused `Text file busy`; completing the locked binary installation and rerunning the same checks passed. Evidence: channel workspace `desktop-code-background/`, including computed colors and failed/successful logs. No main merge, release, mobile/plugin/core change or service restart. Installed macOS visual acceptance remains pending.
-
+Candidate `fix/desktop-code-background` starts from main `142381c` independently of the pending browser-sidebar candidate. The production-DOM regression fails on the baseline's inline `rgb(220, 229, 240)` and passes after correction. Chromium checks user/direct/final messages, inline/table code, single-line/multiline fences, indented blocks and safe commands at 720/1280/1800px, including forced dark mode. Desktop typecheck/build and **49/49** tests pass with Chromium headless-shell and Linux/Xvfb Electron enabled, zero skips. An initial parallel Electron extraction caused `Text file busy`; completing the locked binary installation and rerunning the same checks passed. Evidence: channel workspace `desktop-code-background/`, including computed colors and failed/successful logs. No main merge, release, mobile/plugin/core change or service restart. Installed macOS visual acceptance remains pending.
 
 ## Desktop clipboard attachment paste
 
@@ -46,7 +44,7 @@ Private evidence: Channel workspace `desktop-paste-attachments/release/`, includ
 
 The following paragraphs record candidate-stage behavior and checks, not an unpublished current state.
 
-Candidate `feat/desktop-paste-attachments` starts from main `0a617d4`. Card: `t_5b6da349`. This is a desktop-only implementation, not a published update.
+Candidate `feat/desktop-paste-attachments` starts from main `0a617d4`. This is a desktop-only implementation, not a published update.
 
 - Paste clipboard files or screenshots into the Message textarea or the New chat first-message textarea. Handle the native `paste` event, not a global Command-V key interceptor. Pure text keeps the browser default. File-bearing paste does not insert an accompanying filename/path into the message text.
 - Existing conversations upload to the requesting tab's exact Thread and retain attachments in the existing persistent draft. Paste does not send. New chat retains files locally until explicit submit, then uses the authoritative created Thread for upload and send. Existing text remains unchanged.
@@ -73,7 +71,7 @@ Jamie authorized main merge and publication. Verified candidate `065de52` was fa
 
 The following paragraphs record the candidate implementation and automatic checks before publication.
 
-Latest request supersedes the fixed 18.4px proposal: provide a simple local setting with **16px default**. Candidate `feat/desktop-font-settings` continues from `880095b`; card `t_5b1d1261` tracks the update.
+Latest request supersedes the fixed 18.4px proposal: provide a simple local setting with **16px default**. Candidate `feat/desktop-font-settings` continues from `880095b`.
 
 - Open the bottom-left Settings gear, then choose Text size from 12–24px in 1px steps. Changes apply immediately to interface, message text, code and tool commands. Reset to 16 restores and saves the default. Settings is also available before pairing.
 - Save only the non-sensitive device preference in renderer localStorage under `hermes.desktop.font-size`. Initialize the CSS variable before React mounts; reopening the app restores the value. Invalid/out-of-range values use 16 without overwriting storage. Failed reads/writes show a clear message in Settings; failed saves keep the current text usable without claiming persistence.
@@ -84,7 +82,7 @@ Latest request supersedes the fixed 18.4px proposal: provide a simple local sett
 
 ### Font-only follow-up: 18.4px (not published)
 
-Jamie reported that three `alt+=` presses make the text readable but enlarge spacing, then restricted the fix to font size and existing fixed line heights. Candidate `fix/desktop-font-18-4` starts from `b4cf2d8`; card `t_5b1d1261` continues tracking the same feedback.
+Jamie reported that three `alt+=` presses make the text readable but enlarge spacing, then restricted the fix to font size and existing fixed line heights. Candidate `fix/desktop-font-18-4` starts from `b4cf2d8`.
 
 The pinned [Electron 44.4.5 Zoom In role](https://github.com/electron/electron/blob/v44.4.5/lib/browser/api/menu-item-roles.ts) adds 0.5 to zoomLevel per action. [Chromium's conversion](https://github.com/chromium/chromium/blob/main/third_party/blink/common/page/page_zoom.cc) is `1.2 ** zoomLevel`. Assuming a 100% start and that the user's key triggers this role, three actions give `14 * 1.2 ** 1.5 = 18.40347793217358px`, approximately 18.4px. This is not a readback of the user's shortcut binding or zoom state.
 
@@ -104,7 +102,7 @@ Jamie authorized main merge and desktop packaging/publication. Candidate `f0f99b
 
 The following paragraphs describe the pre-publication candidate checks, not the current publication state.
 
-Jamie requested a desktop default of **14px for UI and content**. Candidate `fix/desktop-default-font-14` starts from main `d675836`; tracking card `t_5b1d1261`.
+Jamie requested a desktop default of **14px for UI and content**. Candidate `fix/desktop-default-font-14` starts from main `d675836`.
 
 - Root text, native form controls, navigation, dialogs, status text, timestamps, labels, draft text, message paragraphs/lists/tables, inline/fenced code and tool commands use the shared 14px default. Preserve icon sizes, colors, layout rules and behavior. Mobile is unchanged. This supersedes the earlier desktop 11px draft-text size only.
 - Chromium computes the production components' text size at widths 720, 1280 and 1800. The regression fails on the baseline's 16px root and passes after the change. Existing browser geometry and draft non-overlap tests also pass.
@@ -144,7 +142,7 @@ Mac: native file picker/drag-drop upload, dialog focus, Channel hover toolbar, r
 
 iPhone: left blue bubbles with text, tables and attachments; keyboard/scrolling and retained composer experience. Independent installers/release and real-device acceptance are not delivered by this candidate.
 
-Tracking: default Kanban `t_85324483`. Private evidence: active-profile `workspace/desktop-session-composer/`.
+Private evidence: active-profile `workspace/desktop-session-composer/`.
 
 ## Authorized publication
 
@@ -156,13 +154,13 @@ Jamie subsequently authorized main merge and publication. Candidate `e2cc7fa` me
 - Mobile Expo Go entry `exps://agent.tuly.space` updated. Public iOS and Android manifests and their exact launchAssets returned HTTP 200, SDK `57.0.0`, runtime `exposdk:57.0.0`; served code verifies left blue bubbles/left corner/media bounds while preserving Channel Context, latest-first lists and first-message composer.
 - Only user-level `hermes-app-expo.service` restarted. Both Gateway PIDs/start times, installed plugin hashes and mobile lockfile hash remained unchanged. Root locked dependencies were restored because the dev-only test dependency changed; no mobile dependency installation or Gateway/plugin/core/other-profile/signing/EAS/store changes.
 
-Publication card `t_f8af393d`; private readbacks, service/hash snapshots, exact bundles, CI logs and downloaded-asset verification: active-profile `workspace/desktop-session-composer/release/`. Implementation remains in review for the native checks above; publication does not convert skipped browser or physical-device tests into passes.
+Private readbacks, service/hash snapshots, exact bundles, CI logs and downloaded-asset verification: active-profile `workspace/desktop-session-composer/release/`. Implementation remains in review for the native checks above; publication does not convert skipped browser or physical-device tests into passes.
 
 Rollback: reinstall intact Desktop `v0.1.8`; revert release metadata commit `4e16412` and feature merge using `git revert -m 1 d3aafa5` (baseline `1c4d584`), then restart only Expo for the mobile rollback. Preserve concurrent Channel Context changes and all server/chat data; do not reset or overwrite storage.
 
 ## Desktop palette follow-up (isolated candidate)
 
-User confirmed: discard the desktop warm beige/brown combination. Use white and neutral light gray application chrome, with the existing mobile semantic colors. Candidate `feat/desktop-mobile-palette`, baseline `591ffc2`, card `t_24175050`.
+User confirmed: discard the desktop warm beige/brown combination. Use white and neutral light gray application chrome, with the existing mobile semantic colors. Candidate `feat/desktop-mobile-palette`, baseline `591ffc2`.
 
 - White conversation/forms/dialogs; `#f9fafb` application/navigation background; `#f3f4f6` rail/hover; `#e5e7eb` dividers; `#d1d5db` form borders.
 - Neutral UI text `#1f2937`, secondary `#6b7280`, labels `#4b5563`.
@@ -174,11 +172,11 @@ Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome npm run desktop:check` 
 
 Private evidence is in the current profile Channel workspace `desktop-mobile-palette/`: computed colors, production-component HTML, PNG and final check log. Preview messages are synthetic, not a live conversation or macOS screenshot. Pairing and new-session forms are in hidden probe containers, so their computed styles do not prove native interactions.
 
-No main merge, push, Release, service restart or Mac installation. Local `apps/desktop/dist` is built; this candidate has no new macOS installer or native visual acceptance. Those checks remain separate; the implementation card stays in review.
+No main merge, push, Release, service restart or Mac installation. Local `apps/desktop/dist` is built; this candidate has no new macOS installer or native visual acceptance. Those checks remain separate.
 
 ## Latest Session content follow-up (isolated candidate)
 
-User subsequently requested applying the latest mobile Session content display design to desktop. This overrides the old desktop content-sized blue-bubble rules above. Continue the neutral palette candidate from `283f636`; card `t_22bde83d`.
+User subsequently requested applying the latest mobile Session content display design to desktop. This overrides the old desktop content-sized blue-bubble rules above. Continue the neutral palette candidate from `283f636`.
 
 - User messages are full available-width `#e6f0ff` blocks, with no outer border, rounded corners, 80% limit or content-type-specific width.
 - User and final backgrounds reach both timeline edges. Ordinary assistant, user and final bylines/prose all start at the same 14px inset. Text does not touch the window edge.
@@ -194,7 +192,7 @@ No main merge, push, installer release, native installation or service restart. 
 
 ## Navigation cleanup and running composer row (isolated candidate)
 
-User requested removing `Select channel` and correcting the missing `Agent is running` presentation. Continue from `0d69e5d`; card `t_a8372411`.
+User requested removing `Select channel` and correcting the missing `Agent is running` presentation. Continue from `0d69e5d`.
 
 - Delete the redundant tree action and its unused CSS selector. Expanding/collapsing the Channel still does not forcibly leave the current Session. The Channel plus and Session selection remain unchanged.
 - Match current mobile `runningRow`: a compact 32px row above the input contains three scaling dots and `Agent is running`, with the independent Stop button on the right (34×28px). The input row contains only plus, textarea and send.
@@ -207,7 +205,7 @@ Evidence: current profile Channel workspace `desktop-running-row/`, with final c
 
 ## ChatGPT-style user bubbles and hidden sender names (latest isolated candidate)
 
-Jamie requested the desktop counterpart to the mobile candidate `fa8ecc0`. This decision supersedes earlier left blue bubbles, full-width blue blocks and visible sender-name rules. Desktop baseline `9c41f17`; branch `fix/desktop-chatgpt-message-style`; card `t_4059e0a8`.
+Jamie requested the desktop counterpart to the mobile candidate `fa8ecc0`. This decision supersedes earlier left blue bubbles, full-width blue blocks and visible sender-name rules. Desktop baseline `9c41f17`; branch `fix/desktop-chatgpt-message-style`.
 
 - Hide sender names for all chat rows. Keep valid timestamps on full messages. Assistant continuations still omit repeated timestamps; missing timestamps do not leave an empty header.
 - User bubbles align right, with a 14px right gutter. Their maximum width equals 60% of the timeline width after deducting both 14px gutters (`calc(60% - 16.8px)`).
@@ -219,7 +217,7 @@ New production component and Chromium assertions failed against the baseline, th
 
 Desktop TypeScript, main/preload/renderer build and all **120 tests passed**, with **0 failures and 0 skips**, using `/usr/bin/google-chrome`. The built artifact is `apps/desktop/dist`. Private evidence: active-profile `workspace/desktop-chatgpt-message-style/`, including baseline failure, full check log, production DOM geometry and preview HTML/PNG. The preview uses synthetic fixture messages, not a live conversation or native Mac screenshot.
 
-No new installer, signing, push, Release or native installation. Installed Mac visual, scrolling and keyboard acceptance remains separate. The card stays in review.
+No new installer, signing, push, Release or native installation. Installed Mac visual, scrolling and keyboard acceptance remains separate.
 
 ### Authorized publication: Desktop v0.1.14
 
@@ -231,13 +229,13 @@ Jamie then authorized main submission and publication of both desktop and mobile
 - Packaged CSS confirms intrinsic width, right alignment, the gutter-adjusted 60% cap, gray rounded background and left-aligned prose. Packaged renderer confirms timestamp-only message headers and retained live session pages.
 - Mobile public iOS/Android manifests and exact launchAssets passed SDK57/current-code verification. Only Expo restarted; Gateways and installed plugin hashes remained unchanged.
 
-Private evidence: active profile `workspace/chatgpt-style-release/`, including downloaded archive/ASAR, packaged code readback, release metadata, CI logs and mobile service/resource verification. Publication card `t_1a24c734`. The package is unsigned and not notarized. No signing account, App Store, EAS/TestFlight or device installation change. Installed Mac/iPhone visual and keyboard acceptance remains pending.
+Private evidence: active profile `workspace/chatgpt-style-release/`, including downloaded archive/ASAR, packaged code readback, release metadata, CI logs and mobile service/resource verification. The package is unsigned and not notarized. No signing account, App Store, EAS/TestFlight or device installation change. Installed Mac/iPhone visual and keyboard acceptance remains pending.
 
 Desktop rollback: reinstall intact `v0.1.13`. Source style rollback uses `git revert -m 1 8138302`; mobile style rollback uses `git revert -m 1 2883bdb` followed by only an Expo restart. Preserve concurrent main changes and all chat data.
 
 ## Latest follow-up: hide Agent reply times (isolated candidate)
 
-Jamie requested removing Agent reply timestamps on both platforms. Candidate `fix/hide-agent-timestamps`, baseline `559ca04`, card `t_626cc866`. This supersedes timestamp retention for assistant messages only. User and system timestamps remain visible. Missing/hidden assistant times leave no empty header. The stored timestamps, identities, ordering, grouping, final background and tools remain unchanged.
+Jamie requested removing Agent reply timestamps on both platforms. Candidate `fix/hide-agent-timestamps`, baseline `559ca04`. This supersedes timestamp retention for assistant messages only. User and system timestamps remain visible. Missing/hidden assistant times leave no empty header. The stored timestamps, identities, ordering, grouping, final background and tools remain unchanged.
 
 The implementation adds a non-assistant guard to the existing desktop/mobile timestamp presentation. Production regressions fail against the baseline and pass after the change. Desktop TypeScript/build and **120/120** tests pass with real Chromium and no skips. Mobile TypeScript and **506/506** tests pass with no skips. Serial iOS/Android exports pass; both exact output bundles and the built desktop renderer contain the assistant timestamp guard. Tests cover commentary, tools, final/direct replies, cold history, user timestamps and system notices. Existing geometry checks retain non-overlap and bubble alignment.
 
@@ -245,7 +243,7 @@ Private evidence: active profile `workspace/hide-agent-timestamps/`, including b
 
 ## Latest follow-up: 80% user width and collapsible public work (isolated candidate)
 
-Card `t_5a04dba0`, branch `fix/collapsible-work`, baseline `f748cc9`. Both clients retain hidden Agent timestamps and use an 80% user-message cap, with intrinsic width/height, right alignment, left-aligned content and gray background. Desktop deducts the shared gutters before applying the percentage. Previous 60% records are historical.
+Branch `fix/collapsible-work`, baseline `f748cc9`. Both clients retain hidden Agent timestamps and use an 80% user-message cap, with intrinsic width/height, right alignment, left-aligned content and gray background. Desktop deducts the shared gutters before applying the percentage. Previous 60% records are historical.
 
 Public assistant process messages between explicit final/direct boundaries share a toggle above the first loaded process row and a divider below its title. User follow-ups/system notices remain visible at their original positions. Real running state displays `Working`; final arrival immediately invalidates active expansion overrides and collapses process records before paint. Completed history starts collapsed; a user can reopen the exact commentary, command and attachment components. A later ordinary refresh preserves that choice; the next group is independent. Messages retain their IDs/order and mounted content. No tools are marked successful by the toggle. Internal reasoning remains excluded by the existing projection.
 

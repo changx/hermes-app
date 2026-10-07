@@ -31,7 +31,7 @@ Jamie 明确要求“发布”后，`15c2c8f495d8bd1a411cd2f2a4412d5f3949389a` �
 
 返回最新所在行显式透明，沿用同一 KeyboardStickyView，并以行的实际测量高度抵消占位，让消息可在透明区域后方滚动；不把按钮移出父级触摸边界。行和 dock 使用 box-none，空白区域不拦截消息手势。按钮底色和点击行为不变，行高适应字体变化，隐藏后取消重叠。
 
-定向组件、滚动、键盘与附件测试 52/52 通过，TypeScript 检查通过。首次类型检查缺少独立工作树的生成渲染器，执行既有 build:markdown-renderer 后通过。候选阶段未发布；卡片 `t_80d8ff5c`。
+定向组件、滚动、键盘与附件测试 52/52 通过，TypeScript 检查通过。首次类型检查缺少独立工作树的生成渲染器，执行既有 build:markdown-renderer 后通过。候选阶段未发布。
 
 ### 透明面板授权发布
 
@@ -43,11 +43,9 @@ Jamie 再次要求“发布”后，`42a20a9adaf9ff5d0842515db1cd3c17adec2706` �
 - 发布脚本、发布前状态、manifest 和资源 SHA-256 保存在私有 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/latest-panel-transparent/`。回滚基线 `9ba1f15` 保留在 Git；如需回滚使用明确回滚提交。
 - 真机视觉、透明区域手势穿透与按钮点击仍未验收；公网资源核验不代替设备测试。
 
-卡片：`t_774c8f06`。
-
 ## Session initial tail and six-line composer
 
-候选分支 `fix/session-initial-tail-six-lines`，基线 `33e2975`，卡片 `t_a128128a`。仅修改手机 `ChatTimeline`，不发布、不改桌面、协议、插件或 Hermes 核心。
+候选分支 `fix/session-initial-tail-six-lines`，基线 `33e2975`。仅修改手机 `ChatTimeline`，不发布、不改桌面、协议、插件或 Hermes 核心。
 
 - 首次普通进入使用 FlashList 的 `startRenderingFromBottom`，配置在组件挂载时固定。保留原有列表锚点机制。
 - 第一批非空历史提交后安排无动画到底部，不依赖新消息是 Agent 回复，也不只依赖 content-size 事件。FlashList 首次布局完成的 `onLoad` 再使用现有原生精确到底部函数。

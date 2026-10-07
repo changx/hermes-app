@@ -2,7 +2,7 @@
 
 **Publication update:** merged in code release `6ce95ed`, with mobile resources deployed and read back; see [combined release](client-layout-tools-blur-release.md). Desktop source is merged, but no new desktop install package was published. The candidate boundary below is historical; native acceptance remains pending.
 
-Card `t_bdaf101d`; candidate based on main `7fefae5`, independent of pending new-topic/new-channel layout branch. Jamie's screenshot shows `Editing path=/opt/...` alongside `Editing /opt/...` while Reading already displays basenames.
+Candidate based on main `7fefae5`, independent of pending new-topic/new-channel layout branch. Jamie's screenshot shows `Editing path=/opt/...` alongside `Editing /opt/...` while Reading already displays basenames.
 
 ## Confirmed cause
 

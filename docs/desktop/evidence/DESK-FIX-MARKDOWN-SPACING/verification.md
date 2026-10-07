@@ -1,6 +1,5 @@
 # DESK-FIX-MARKDOWN-SPACING
 
-- Card: `default / t_7ae5d04b`.
 - Baseline: `eefad6c`; candidate branch: `fix/desktop-markdown-spacing`.
 - Scope: desktop Markdown whitespace only. No mobile, shared protocol, plugin, Hermes core, gateway, Expo service or release changes.
 

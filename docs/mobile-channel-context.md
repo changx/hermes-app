@@ -8,7 +8,7 @@ The second row shows `Filters: All sessions` and an add control when inactive. S
 
 Sessions now sort `running === true` before every other state. Each group sorts by descending `last_message_at`; missing times use the existing zero fallback. Existing ref/title ties remain, followed by stable Thread ID. Completed-unread and local drafts do not create additional priority groups. Directory state changes recompute order without opening conversation bodies or replacing the composer.
 
-Candidate: `feat/mobile-channel-toolbar`, task `t_fdfefb50`, base `0de8ffa`. Mobile component tests exercise production sorting/status changes, filtering, toolbar capability/navigation and composer identity. Full mobile suite: 533 passed, zero failures, one optional browser-layout test skipped. Mobile TypeScript and both iOS/Android Expo exports passed. Root esbuild's missing optional binary was supplied from the same-version existing mobile installation; no dependency or lockfile changes.
+Candidate: `feat/mobile-channel-toolbar`, base `0de8ffa`. Mobile component tests exercise production sorting/status changes, filtering, toolbar capability/navigation and composer identity. Full mobile suite: 533 passed, zero failures, one optional browser-layout test skipped. Mobile TypeScript and both iOS/Android Expo exports passed. Root esbuild's missing optional binary was supplied from the same-version existing mobile installation; no dependency or lockfile changes.
 
 Private evidence is in this Channel workspace under `mobile-channel-toolbar/`. No main merge, publication, service restart, plugin/core change or desktop change. Expo exports and native component substitutes do not prove iPhone layout, touch or large-font behavior; device acceptance remains separate. Earlier newest-first-only descriptions below are historical and are superseded by this running-first rule.
 
@@ -48,7 +48,7 @@ Native UI primitives/navigation in the component tests are substitutes. Exports 
 
 ## Candidate delivery boundary (before publication)
 
-Candidate branch: `feat/mobile-channel-context`; base: `f14b251`. Kanban: `t_f0e49193` (old ordering supersession noted on `t_47ae9b11`). No main merge, public push, Expo deployment, service restart, plugin install, core edit, desktop change or other-profile write. Deployment and iPhone acceptance remain separate. The attempted synchronization of the repository's protected AGENTS.md instruction file was denied by the approval guard; it remains unchanged.
+Candidate branch: `feat/mobile-channel-context`; base: `f14b251`. No main merge, public push, Expo deployment, service restart, plugin install, core edit, desktop change or other-profile write. Deployment and iPhone acceptance remain separate. The attempted synchronization of the repository's protected AGENTS.md instruction file was denied by the approval guard; it remains unchanged.
 
 ## Publication outcome
 

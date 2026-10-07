@@ -38,8 +38,6 @@ systemctl --user restart hermes-gateway-hermes-app-dev.service
 
 ## 恢复与证据
 
-跟踪卡：`default / t_a7ece0ab`。
-
 私有证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/lcm-fix/`。保留 `deployment.json`、`staged-verification.json`、测试日志、脚本与 `rollback/`。回滚包括原 config/env、Git bundle 和通过 quick_check 的 state.db/lcm.db 在线备份。正常代码/配置回滚不要恢复数据库；恢复 DB 会覆盖之后历史，必须另获授权。
 
 隔离 LCM 工作树和自建测试目录已清理，源分支与备份保留。未推送或发布客户端。

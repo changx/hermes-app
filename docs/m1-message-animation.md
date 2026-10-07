@@ -20,4 +20,4 @@ Jamie 在 iPhone 反馈新消息仍是突然跳入；本机没有 iPhone，不�
 
 主控检查 `2238059b92015476d7f6b812d0b9f66daa366b8f` 改动后独立复跑：手机测试 **72/72**、TypeScript、iOS/Android Expo 导出和 diff 检查全部通过。按 Jamie「改完直接上」授权，将已验证提交 fast-forward 至主目录，仅重启 `hermes-app-expo.service`。首次公网检查遇到启动期间 502，服务运行后复查成功：两平台 manifest 的 SDK 57、Expo 账号及精确 launchAsset 均验证，bundle 包含新动画调度、短列表自然高度及既有网络诊断。两个 Gateway 的 PID/启动时间及插件文件哈希未变。
 
-发布证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-message-animation-verification/release-verification.json`；主控测试与导出日志同目录 `parent-mobile-tests.log`、`parent-export.log`。旧版 `b6087ff` 保留用于回滚；开发入口仍为 `exps://agent.tuly.space`。这些验证不等于 iPhone 手感通过，卡片保留 review，待真机确认。
+发布证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/m1-message-animation-verification/release-verification.json`；主控测试与导出日志同目录 `parent-mobile-tests.log`、`parent-export.log`。旧版 `b6087ff` 保留用于回滚；开发入口仍为 `exps://agent.tuly.space`。这些验证不等于 iPhone 手感通过，待真机确认。

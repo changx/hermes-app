@@ -18,5 +18,5 @@ Jamie 在 iPhone 上反馈：只有一两条消息时打开键盘，消息被顶
 
 ## 开发入口已更新
 
-代码 `ba48c60` 已发布到 `exps://agent.tuly.space`，仅更新并重启 Expo；双平台公网 manifest/实际 launchAsset 下载、包内自然高度 style、既有网络修正及 Expo 账号核验通过。两个 Gateway 的 PID/启动时间与插件哈希未变。回滚起点 `2e48596`，证据与验证脚本保存在私有 `workspace/hermes-app/m1-short-list-keyboard-verification/`。初次 bundle 内容断言误假定无空白的 minify 格式，检查真实包后改为允许空白并通过，不曾用假结果替代检查。Kanban `t_7eb46948` 保持 review；请在仅一两条消息的频道弹出/收起键盘并切前后台，再检查长列表阅读位置。
+代码 `ba48c60` 已发布到 `exps://agent.tuly.space`，仅更新并重启 Expo；双平台公网 manifest/实际 launchAsset 下载、包内自然高度 style、既有网络修正及 Expo 账号核验通过。两个 Gateway 的 PID/启动时间与插件哈希未变。回滚起点 `2e48596`，证据与验证脚本保存在私有 `workspace/hermes-app/m1-short-list-keyboard-verification/`。初次 bundle 内容断言误假定无空白的 minify 格式，检查真实包后改为允许空白并通过，不曾用假结果替代检查。请在仅一两条消息的频道弹出/收起键盘并切前后台，再检查长列表阅读位置。
 

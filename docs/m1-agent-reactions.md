@@ -39,7 +39,7 @@ Jamie确认借鉴Discord reaction，主要用于表达Agent真实状态，不做
 
 已按 Jamie「改完直接上」授权发布 `dc5a20ebd09d1debf2a497034a8513272ef894d8`，仅重启 `hermes-app-expo.service`。公网 iOS/Android manifest、账号与精确 launchAsset 均检查通过，包含 reaction、灰色待发送文字和原有动画修正，旧发送汇总/诊断界面文案不存在。两个 Gateway 的 PID/启动时间、开发插件哈希保持不变；回滚基线 `58980ea`，入口仍为 `exps://agent.tuly.space`。
 
-发布证据：私有 `workspace/hermes-app/m1-reactions-verification/release-verification.json`。主控临时导出包核对后删除，保留验证日志、发布脚本与回滚记录；已合并隔离工作树在交付时清理。iPhone 实际视觉和交互待 Jamie 验收，卡片留 review。
+发布证据：私有 `workspace/hermes-app/m1-reactions-verification/release-verification.json`。主控临时导出包核对后删除，保留验证日志、发布脚本与回滚记录；已合并隔离工作树在交付时清理。iPhone 实际视觉和交互待 Jamie 验收。
 
 ## 验收
 

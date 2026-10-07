@@ -89,4 +89,4 @@ The development artifact is self-contained. After the app exits, rollback is del
 rm -rf "$HOME/hermes-desktop-acceptance/installed/de6bc0b"
 ```
 
-No system package, login item, privileged helper, Keychain item, or background service is installed by this card. The retained directory is acceptance evidence only and is not a production installation.
+No system package, login item, privileged helper, Keychain item, or background service is installed by this task. The retained directory is acceptance evidence only and is not a production installation.

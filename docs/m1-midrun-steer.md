@@ -32,4 +32,4 @@
 3. 仅在确切普通 owner/核心行证据下追认独立完成；busy steer 的 receipt 不应拿主轮最终助手行作自己的 completion。核心 `display_kind=steer` 聚合行是**单一原生 steering 记录**，不伪造两个核心行。Gateway 生成的 origin JSON 在 `content` 内且多条聚合，**不是正式逐 ID provenance**，不以正文相似度/包含关系追认完成；健康 Gateway 转交后的终态是 `received`，而非模型完成。`unknown` 留给崩溃或转交异常。
 4. 重启时已持久进入 running 的 steer 收据变 `unknown`，不再送；仍 queued 的才能照常调度。补测竞争：入口前/后崩溃、owner 刚结束时正常下一轮、Gateway agent 尚未启动时的原生 FIFO 回退、两 ID 聚合、附件不 steer、澄清与停止。`unknown` 允许用户自己决定是否重发，这是现有普通发送相同的 at-most-once/歧义契约。
 
-**边界**：上述第 3 步若产品坚持每条 steer 都显示“已被模型读到/已完成”并有独立核心 user row ID，则固定核心确实没有这个信号；但这不是实现 Discord 式功能、保留原始 receipt 元数据和如实标注 `unknown` 的前置条件。候选已接线但未部署、未关卡 `t_6516f909`。
+**边界**：上述第 3 步若产品坚持每条 steer 都显示“已被模型读到/已完成”并有独立核心 user row ID，则固定核心确实没有这个信号；但这不是实现 Discord 式功能、保留原始 receipt 元数据和如实标注 `unknown` 的前置条件。候选已接线但未部署。

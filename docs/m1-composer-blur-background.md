@@ -4,7 +4,7 @@
 
 ## Scope and diagnosis
 
-Card: `t_64d903f8`. Jamie reported intermittent blurred input text with the iOS Chinese keyboard and supplied a screenshot. The image shows blurred input glyphs while the composer border and send button remain sharp. This is consistent with a native compositing/layer-order issue, but the cause has not been reproduced on a device.
+Jamie reported intermittent blurred input text with the iOS Chinese keyboard and supplied a screenshot. The image shows blurred input glyphs while the composer border and send button remain sharp. This is consistent with a native compositing/layer-order issue, but the cause has not been reproduced on a device.
 
 The previous composer supplied the running row and editable input/accessory as `BlurView` children. Inspection of installed `expo-blur` 57.0.3 (`src/BlurView.tsx`) shows that Expo itself renders a `NativeBlurView` followed by those children inside a shared View: it is **not** proof that UIKit intentionally blurs its children. The candidate makes the background/foreground separation explicit outside that wrapper, adds stable native foreground and outer Views (`collapsable={false}`), and orders the sibling layers with `zIndex: 0/1`. This is a targeted layering fix, not a verified upstream bug diagnosis.
 

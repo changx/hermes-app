@@ -1,6 +1,6 @@
 # Mobile session-list inline composer
 
-Task: `t_b9cc89a8`. Isolated branch: `feat/mobile-list-composer`, baseline `68f0706`. Jamie requested replacing the mobile session-list creation FAB/full-screen editor with a bottom input and complete attachment menu, then authorized implementation. This candidate is local-only; main, Expo, Gateway, plugin and Hermes core remain unchanged.
+Isolated branch: `feat/mobile-list-composer`, baseline `68f0706`. Jamie requested replacing the mobile session-list creation FAB/full-screen editor with a bottom input and complete attachment menu, then authorized implementation. This candidate is local-only; main, Expo, Gateway, plugin and Hermes core remain unchanged.
 
 ## Implemented interaction
 

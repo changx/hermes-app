@@ -1,6 +1,6 @@
 # Multi-connection: mobile pairing and Project unread counts
 
-Kanban: `t_f4849cdd`. Branch `feat/multi-connection` in `/opt/projects/jamie/_worktrees/hermes-app/multi-connection`, based on main `e6c2d57`. Not merged, not published.
+Branch `feat/multi-connection` in `/opt/projects/jamie/_worktrees/hermes-app/multi-connection`, based on main `e6c2d57`. Not merged, not published.
 
 ## Confirmed design (Jamie, 2026-10-05)
 

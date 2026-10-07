@@ -1,6 +1,6 @@
 # Unified Settings
 
-Task: `t_8f7a3bcf`. Candidate branch `feat/unified-settings`, based on `main` at `b7a96a0`.
+Candidate branch `feat/unified-settings`, based on `main` at `b7a96a0`.
 
 ## Requirement
 

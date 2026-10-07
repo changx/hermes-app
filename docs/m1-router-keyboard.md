@@ -2,7 +2,7 @@
 
 ## 反馈与范围
 
-Jamie 反馈迁移 Expo Router 后：输入区落入底部安全区，打开中文键盘后输入区被挡，消息区不能协调移动，拖动消息区不能收键盘。续接 `default / t_7eb46948`，关联 Router 卡 `t_49b0a1d8`。只修客户端布局与已有键盘库接入；保留原生 Stack、消息跟随/阅读锚点、字体、通信和后端。
+Jamie 反馈迁移 Expo Router 后：输入区落入底部安全区，打开中文键盘后输入区被挡，消息区不能协调移动，拖动消息区不能收键盘。只修客户端布局与已有键盘库接入；保留原生 Stack、消息跟随/阅读锚点、字体、通信和后端。
 
 ## 证据与修正决定
 
@@ -40,7 +40,7 @@ Jamie 补充频道页截图，并确认发生路径为“从键盘打开的聊�
 
 - 增量动画样式替身接入后，原实现 4 项测试中 3 项失败，稳定保留 `height:470/flex:0`；日志 `workspace/hermes-app/router-keyboard-height-reset/red.log`。
 - 新版执行已安装 RN 0.86.3 KAV 与 controller visibility hook 源码，专项 8/8，全量手机 263/263（0 failed/skipped）；TS、iOS/Android Metro 导出通过。导航生命周期测试同步了新增 hook 的替身，没有改变断线、消息或草稿逻辑。
-- 构建/测试日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/router-keyboard-height-reset/`。这些是 Node 原生边界替身测试和 JS 导出，不是 iPhone UI 实测，卡片须保留 review。
+- 构建/测试日志：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/router-keyboard-height-reset/`。这些是 Node 原生边界替身测试和 JS 导出，不是 iPhone UI 实测。
 
 - 已将 `409479b` 发布原入口 `exps://agent.tuly.space`。两平台公网 manifest 与精确 launchAsset 均确认应用使用 RN KAV/padding、header offset 与 focus/visibility 条件；SDK/账号不变。只重启 Expo，两 Gateway 的 PID/启动时间与本轮发布前一致。
 - 发布核验：上述证据目录 `verification.json`；回滚分支 `rollback/router-keyboard-before-409479b` 保留 `1dea030`。下载包已清理，manifest/hash/代码片段/测试日志保留。需要完整 Reload 清掉旧原生视图，而非只依赖 Fast Refresh；iPhone 开键盘直接返回尚待用户验收。
@@ -54,7 +54,7 @@ Jamie 确认 `409479b` 已修复父页半高，但开着键盘返回后，第一
 - 上游相近报告：https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1283 。它是支持性证据，不证明 Jamie 的实际 UIKit 事件次序；本轮仅确证默认关闭及原生转发路径。若真机仍失败，下一步需事件追踪，而非继续猜测添加焦点补丁。
 - 验收：实际 root 配置执行测试、固定依赖转发源码契约、全量手机/TS/双平台导出；iPhone 按钮返回、侧滑完成/取消、第一次重进点输入、跨聊天/设置返回与草稿保留另验。
 - 本地结果：配置回归修正前 1 failed / 1 passed，修正后 2/2；全量手机 265/265，0 failed/skipped，TypeScript 和 iOS/Android Metro 导出通过。日志 `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/chat-keyboard-refocus/`。这些检查不是 UIKit 焦点复现或真机验收。
-- 已发布 `cef0ff6` 到原 Expo 入口；两平台公网精确 launchAsset 已核验 `NativeRoutes` 内 `keyboardHandlingEnabled:true`，并确认 RN padding 高度修正保留。SDK/账号一致，两 Gateway PID/启动时间未变。`verification.json` 为发布证据，回滚分支 `rollback/chat-keyboard-before-cef0ff6` 保留 `12bb928`。下载包已清理，哈希/manifest/源码片段保留；卡片保持 review 等待完整 Reload 后的 iPhone 复测。
+- 已发布 `cef0ff6` 到原 Expo 入口；两平台公网精确 launchAsset 已核验 `NativeRoutes` 内 `keyboardHandlingEnabled:true`，并确认 RN padding 高度修正保留。SDK/账号一致，两 Gateway PID/启动时间未变。`verification.json` 为发布证据，回滚分支 `rollback/chat-keyboard-before-cef0ff6` 保留 `12bb928`。下载包已清理，哈希/manifest/源码片段保留；等待完整 Reload 后的 iPhone 复测。
 
 ## 验证结果
 
@@ -68,4 +68,4 @@ Jamie 确认 `409479b` 已修复父页半高，但开着键盘返回后，第一
 - 两平台公网 manifest 与其精确 launchAsset 已下载，均核验聊天 route 的 bottom/left/right 安全区、应用层触摸兼容开关、表单焦点/键盘可见性条件、SDK57 与原 Expo 账号。普通 urllib 请求收到 403，改用 curl/Expo UA 后 200；没有改变边缘安全规则。验证脚本首次误命中库的属性声明，改为核验应用组件上下文后通过，没有重复部署。
 - 开发 Gateway、Jamie 主实例的 PID/启动时间保持不变；插件源文件、字体和依赖/入口配置哈希均与发布前一致。
 - 发布证据：上述目录 `release/verification.json`、manifest、代码片段与操作日志。回滚分支 `rollback/router-keyboard-before-40a215a` 指向 `2b47eda`；下载 bundle 在记录哈希与核验片段后清理，源码与日志保留。
-- 发布验证不等于 iPhone 手势验收；卡片保持 review，待 Jamie 重载后验证中文键盘、拖动和开着键盘返回频道的实际表现。
+- 发布验证不等于 iPhone 手势验收；待 Jamie 重载后验证中文键盘、拖动和开着键盘返回频道的实际表现。

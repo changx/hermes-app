@@ -19,7 +19,7 @@ Confirmed by Jamie: completed but unread results need a session-list marker, sha
 
 ## Candidate and verification
 
-Kanban: `t_00c33792`. App branch `feat/completed-unread`; plugin branch `feat/plugin-completed-unread` based on the existing channel-workspace candidate. The latter dependency is not an authorization to deploy workspace APIs or any other pending feature; publication must select the reviewed plugin baseline and carry only this change.
+App branch `feat/completed-unread`; plugin branch `feat/plugin-completed-unread` based on the existing channel-workspace candidate. The latter dependency is not an authorization to deploy workspace APIs or any other pending feature; publication must select the reviewed plugin baseline and carry only this change.
 
 Implemented: plugin schema, post-success publication, authenticated acknowledgement endpoint, catalogue projection and live invalidation; strict shared-client decoding/acknowledgement; mobile and desktop list markers and actual visible-result acknowledgement.
 
