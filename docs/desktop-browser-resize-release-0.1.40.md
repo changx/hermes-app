@@ -16,4 +16,7 @@ Desktop typecheck, build and 108/108 tests pass with real Chromium and Linux Ele
 
 ## Results
 
-Pending: recorded after the tag run completes.
+- `main` moved to `fc7bce1` and was pushed atomically with annotated tag `v0.1.40`.
+- Tag run [37567200960](https://github.com/changx/hermes-app/actions/runs/37567200960) passed checks, audit, packaging, archive validation, publication and **Remove older releases**. That last step is the Bash 3.2 fix from v0.1.39, and this is its first successful run in CI. Main CI for the previous head `ecc25be` passed.
+- Release `v0.1.40` is not a draft or prerelease. The downloaded ZIP passed the sidecar SHA-256 check (`dabcbd21ec41a06f8f44664b7aa8825a3e4f526bb5825230b4f4ea24b13e5717`) and the ZIP CRC check. Info.plist and ASAR report `0.1.40`, and the executable is Mach-O arm64. Packaged main, preload, renderer script, HTML and stylesheet are byte-identical to the verified local build. Retention now keeps v0.1.40 and v0.1.39. Evidence: channel workspace `desktop-browser-resize/release/`.
+- No Expo restart, Gateway restart, plugin or core change. The app is unsigned and not notarized. macOS drag feel and the 6px strip appearance remain pending. Rollback: reinstall v0.1.39.
