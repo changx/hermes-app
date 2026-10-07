@@ -63,9 +63,9 @@ test('Chromium: sidebar starts with New chat, then Recents, then Projects with f
         ensure('recents: last 24 hours across connections, newest first',recents.join('|')==='Just now|An hour ago');
         ensure('recent row names its project',scroll.querySelector('#sidebar-recents-list .tree-thread').title==='Hermes App');
         const recentTitle=scroll.querySelector('#sidebar-recents-list .thread-title').getBoundingClientRect().left, recentsLabel=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().left;
-        const projectChild=scroll.querySelector('.channel-tree .thread-title').getBoundingClientRect().left, list=getComputedStyle(scroll.querySelector('#sidebar-recents-list'));
-        ensure('recents rows indented one level',recentTitle-recentsLabel>=16&&list.borderLeftWidth==='1px');
-        ensure('recents rows align with project sessions',Math.abs(recentTitle-projectChild)<=1);
+        const projectStep=scroll.querySelector('.channel-tree .thread-title').getBoundingClientRect().left-scroll.querySelector('.channel-toggle strong').getBoundingClientRect().left, list=getComputedStyle(scroll.querySelector('#sidebar-recents-list'));
+        checks.indent={recents:recentTitle-recentsLabel,project:projectStep};
+        ensure('recents rows indented exactly one level, the Project step',Math.abs((recentTitle-recentsLabel)-projectStep)<=1&&list.borderLeftWidth==='1px');
         const header=[...scroll.querySelectorAll('.sidebar-section-header')].find(e=>e.textContent.includes('Projects'));
         const filter=header.querySelector('[aria-label="Filter sessions"]'), plus=header.querySelector('[aria-label="New project"]');
         ensure('plus beside filter in Projects header',filter&&plus&&plus.getBoundingClientRect().left>filter.getBoundingClientRect().left&&Math.abs(plus.getBoundingClientRect().top-filter.getBoundingClientRect().top)<=2);
