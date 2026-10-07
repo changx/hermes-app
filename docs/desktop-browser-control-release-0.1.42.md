@@ -24,4 +24,10 @@ Not included: Hermes core, signing, notarization, other profiles' plugins.
 
 ## Results
 
-Pending.
+- `main` moved from local `f22c05a` and remote `9e9a0ae` to `d0f4178` and was pushed atomically with annotated tag `v0.1.42`.
+- Tag run [37616557894](https://github.com/changx/hermes-app/actions/runs/37616557894) passed checks, audit, packaging, archive validation, publication and **Remove older releases**.
+- Release `v0.1.42` is not a draft or prerelease. The downloaded ZIP passed the sidecar SHA-256 check. Info.plist and ASAR report `0.1.42`; the executable is Mach-O arm64; the ASAR contains `dist/preload/browser-page.cjs`, and the main process contains the `/v1/desktop-browser` control connection. Retention keeps v0.1.42 and v0.1.41.
+- Mobile: only `hermes-app-expo` restarted (PID 1909875 → 2127634). Public iOS and Android manifests return HTTP 200 with SDK 57.0.0; each exact `launchAsset` returns HTTP 200 and contains the merged shared-client code.
+- Plugin `v0.2.6`: on `hermes-app-plugin` main `f2b41e5` with tag `v0.2.6`, installed in `hermes-app-dev` (rollback copy and hashes in the private workspace). Gateway not restarted (PID 1305834 unchanged); the plugin takes effect after Jamie restarts `hermes-gateway.service`.
+- Evidence: channel workspace `desktop-browser-control/release/`.
+- Pending: macOS device acceptance of Agent browser control (design document section 12). The app is unsigned and not notarized. Rollback: reinstall v0.1.41; plugin rollback copy restores v0.2.5.
