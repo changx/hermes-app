@@ -13,6 +13,13 @@ export function browserUrl(value: string): string {
   return url.href;
 }
 
+export const pdfExtension = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai';
+// The built-in PDF viewer loads its scripts and styles from chrome://resources.
+// Allow only those subresources, and only when the PDF viewer frame requests them.
+export function pdfViewerResource(details: { url: string; resourceType: string; frame?: { url: string } | null }): boolean {
+  if (!details.url.startsWith('chrome://resources/') || !['script', 'stylesheet', 'image', 'font'].includes(details.resourceType)) return false;
+  try { return details.frame?.url.startsWith(`${pdfExtension}/`) === true; } catch { return false; }
+}
 export type PreviewDocument = { name: string; mime: string; bytes: Uint8Array };
 export function previewMime(name: string, mime: string): string {
   const base = mime.toLowerCase().split(';')[0];
@@ -37,7 +44,7 @@ export function previewResponse(document: PreviewDocument, rawAsset = false): Re
     body = `<!doctype html><meta charset="utf-8"><title>${escapeHtml(document.name)}</title><style>body{margin:20px;color:#1f2937;background:white;font:16px/1.5 system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><pre>${escapeHtml(text)}</pre>`;
     contentType = 'text/html';
   }
-  const pdfViewer = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai';
+  const pdfViewer = pdfExtension;
   const csp = mime === 'application/pdf'
     ? `default-src 'none'; style-src ${pdfViewer}; frame-src ${pdfViewer}; object-src 'self'`
     : "default-src 'self' https: http: data: blob:; connect-src 'self' https: http: ws: wss:; script-src 'self' 'unsafe-inline' https: http:; style-src 'self' 'unsafe-inline' https: http:; object-src 'none'; base-uri 'self'; frame-src https: http:; form-action https: http:";

@@ -22,6 +22,7 @@ const {service:accounts,sidebarForTest,tabsForTest,settingsForTest}=require('./d
 const service=accounts.primary;
 const requests=[],downloads=[],a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map();let base;
 const server=http.createServer((req,res)=>{requests.push({url:req.url,ua:req.headers['user-agent'],authorization:req.headers.authorization,cookie:req.headers.cookie});
+ if(req.url==='/doc.pdf'){res.writeHead(200,{'Content-Type':'application/pdf'});res.end(data.get('pdf').bytes);return;}
  if(req.url==='/download'){res.writeHead(200,{'Content-Disposition':'attachment; filename=not-saved.txt','Content-Type':'application/octet-stream'});res.end('blocked download');return;}
  if(req.url==='/unsafe-redirect'){res.writeHead(302,{Location:'file:///etc/passwd'});res.end();return;}
  res.writeHead(200,{'Content-Type':'text/html'});res.end('<!doctype html><title>Fixture '+req.url+'</title><h1 id="page">Browser fixture '+req.url+'</h1><script>document.documentElement.dataset.ua=navigator.userAgent</script>');});
@@ -94,6 +95,11 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  const nativeNodes=[];const collect=node=>{nativeNodes.push(node);for(const child of [...node.children||[],...node.shadowRoots||[]])collect(child);};collect(pdfDom.root);
  assert.ok(nativeNodes.some(node=>node.nodeName==='IFRAME'&&node.attributes?.includes('application/pdf')),'Chromium creates the built-in PDF plugin frame in its closed shadow tree');
  console.log('PDF_FRAMES '+JSON.stringify(web.mainFrame.framesInSubtree.map(frame=>frame.url)));
+ // The viewer frame alone is not enough: a blocked viewer leaves a uniform grey pane. Require a rendered white page.
+ const pdfPage=async()=>{const bitmap=(await web.capturePage()).toBitmap();let white=0;for(let i=0;i<bitmap.length;i+=4)if(bitmap[i]>245&&bitmap[i+1]>245&&bitmap[i+2]>245)white++;return white>2000;};
+ await until(pdfPage,'PDF page rendered');
+ await browser.open(tab.id,base+'/doc.pdf');await until(()=>web.getURL()===base+'/doc.pdf'&&web.mainFrame.framesInSubtree.some(f=>f.url.startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/')),'remote PDF viewer frame');
+ await until(pdfPage,'remote PDF page rendered');
  await web.session.cookies.set({url:base,name:'isolated',value:'browser-only'});await shell.session.cookies.set({url:base,name:'app-secret',value:'must-not-leak'});
  await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/first')+')');await until(()=>evaluate(web,'!!document.querySelector("#page")'),'web page');
  const networkUa=requests.find(r=>r.url==='/first').ua;assert.equal(networkUa,ua);assert.equal(await evaluate(web,'navigator.userAgent'),ua);

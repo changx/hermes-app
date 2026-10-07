@@ -1,7 +1,7 @@
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { DesktopBrowserState } from '../shared/desktop-api';
-import { browserUrl, chromeUserAgent, previewResponse, type PreviewDocument } from '../shared/browser-policy';
+import { browserUrl, chromeUserAgent, pdfExtension, pdfViewerResource, previewResponse, type PreviewDocument } from '../shared/browser-policy';
 
 type Bounds = { x: number; y: number; width: number; height: number; visible: boolean };
 type Pane = { view: WebContentsView; state: DesktopBrowserState; document?: { host: string; file: PreviewDocument; resolve?: (name: string) => Promise<PreviewDocument | undefined>; resources: Map<string, PreviewDocument>; pending: Map<string, Promise<PreviewDocument | undefined>>; size: number }; generation: number; previewRequest: number };
@@ -38,7 +38,7 @@ export class DesktopBrowserSidebar {
       const inline = details.resourceType !== 'mainFrame' && /^(data:|blob:)/.test(details.url);
       const socket = details.resourceType === 'webSocket' && /^wss?:/.test(details.url) && allowed(details.url.replace(/^ws(s?):/, 'http$1:'));
       // Only Chromium's bundled PDF viewer may use an extension scheme. Top-level navigation still rejects it.
-      const pdfViewer = details.url.startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/');
+      const pdfViewer = details.url.startsWith(`${pdfExtension}/`) || pdfViewerResource(details);
       callback({ cancel: !inline && !socket && !pdfViewer && !allowed(details.url) });
     });
     session.protocol.handle('hermes-preview', async request => {
