@@ -13,6 +13,8 @@
 
 桌面所有添加的附件都有小缩略图，覆盖已发送消息、Session 附件草稿及 New chat 本地选择/粘贴的文件。受支持的图片显示真实缩略图；PDF、HTML、文本及其他文件显示文件类型图标，不能伪造内容预览。保留大图、预览、移除、保存及外部打开行为；本地缩略图不得提前创建会话或上传。候选与验收边界见 [附件小缩略图](desktop-session-composer.md#attachment-small-thumbnails-candidate)。
 
+已确认：手机和桌面点一次即可在 App 内查看常见内容，包括 Markdown（渲染）、HTML、文本/代码、PDF、图片、视频、音频及网页链接；不支持的格式明确说明。手机网页链接在 App 内浏览器打开。范围、平台限制与验收见 [App 内文件预览](file-preview.md)。
+
 桌面增加可收起的右侧 sidebar，用于附件预览、查看生成的 HTML 页面及浏览网页。右侧浏览器 UA 必须使用当前 Chromium 主版本对应的标准 Chrome 格式，不含 Hermes/Electron 标记；HTTP 请求与页面 `navigator.userAgent` 一致。候选能力、文件类型/资源限制及真机边界见 [桌面右侧预览与浏览器](desktop-macos-v1.md#当前候选右侧附件预览与浏览器)。
 
 桌面 Session 内容的行内代码、单行/多行 fenced 或缩进代码块，以及已有安全命令块，统一使用 `rgb(245,245,250)` 背景色；不改变文字颜色、字号、间距或行为。此要求覆盖此前蓝灰代码背景，仅限桌面。候选及验证边界见 [代码背景色](desktop-session-composer.md#desktop-session-code-background-correction)。
