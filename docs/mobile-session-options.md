@@ -23,3 +23,9 @@ Kanban: `t_0965eebd`. Branch: `feat/mobile-session-options`.
 
 - Automated checks: `tests/session-options.test.mjs` (rows, order, editor open/close, copy, Settings) and `tests/settings-levels.test.mjs` (every Settings entry opens Settings home).
 - iPhone hand checks (header shows one button, page transition, label save, copy toast, back gesture) are recorded separately. They are not covered by the automated checks.
+
+Results: mobile TypeScript passes. Mobile tests: 109 total, 107 pass, 1 skipped, 1 fail. The failure is `tests/local-draft-storage.test.mjs`. It also fails on `main` before this change, because the repo root has no `node_modules/esbuild`. The iOS and Android exports pass.
+
+## Development release
+
+Released `2703c4c` to `exps://agent.tuly.space` (fast-forward from `d9849f2`, lockfile unchanged). Only `hermes-app-expo.service` was restarted (PID 1292938 → 1389957). The `hermes-gateway.service` PID 1305834 and the hermes-app-dev plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each exact launchAsset returns HTTP 200 and contains the new route and page markers. Evidence: private `workspace/hermes-app/mobile-session-options/`. Rollback baseline: `d9849f2`. iPhone acceptance is pending.
