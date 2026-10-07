@@ -16,4 +16,8 @@ Publication:
 
 ## Results
 
-Pending.
+- `origin/main` fast-forwarded to `9af8aba` (release commit on `aec29d0`). Annotated tag `v0.1.43` points at `9af8aba`.
+- Tag workflow run `37622207003` (Desktop Build and Release, event push, ref `v0.1.43`) succeeded: desktop checks, audit, unsigned macOS package, archive verification, Release publication and pruning.
+- Release `Hermes Desktop v0.1.43` is Latest; v0.1.42 is kept, older Releases pruned. Asset `Hermes-0.1.43-macOS-arm64.zip` (130,254,655 bytes) matches its `.sha256` file.
+- Downloaded archive: `Info.plist` version `0.1.43`, `app.asar` package version `0.1.43`, Mach-O arm64 executable, renderer CSS contains the new `.recent-list` rule.
+- No Expo, Gateway or plugin change. Unsigned build; macOS install and visual acceptance remain with Jamie.
