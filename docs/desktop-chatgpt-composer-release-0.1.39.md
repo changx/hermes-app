@@ -16,4 +16,8 @@ Desktop typecheck, build and 106/106 tests pass with real Chromium and Linux Ele
 
 ## Results
 
-Pending: recorded after the tag run completes.
+- `main` moved to `cd8aca7` and was pushed atomically with annotated tag `v0.1.39`.
+- Tag run [37566102231](https://github.com/changx/hermes-app/actions/runs/37566102231) passed checks, audit, packaging, archive validation and **Publish GitHub Release**. Main run `37566102219` passed.
+- The tag run then failed at **Remove older releases**: `scripts/prune-releases.sh` used `mapfile`, which macOS Bash 3.2 does not have. This was the first tag run of that step. The fix replaces `mapfile` and array slices with a `while read` loop. A stub `gh` test passed on local Bash 5.2 and on macOS `/bin/bash` 3.2.57 (Mac mini). Then the script was run once by hand with the real `gh`, as the retention policy specifies.
+- Release `v0.1.39` is not a draft or prerelease. The downloaded ZIP passed the sidecar SHA-256 check and the ZIP CRC check. Info.plist and ASAR report `0.1.39`, and the executable is Mach-O arm64. Packaged main, preload, renderer script, HTML and stylesheet are byte-identical to the verified local build. Evidence: channel workspace `desktop-chatgpt-composer/release/`.
+- No Expo restart, Gateway restart, plugin or core change. The app is unsigned and not notarized. Installed macOS visual and keyboard checks remain pending. Rollback: reinstall v0.1.38.

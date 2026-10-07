@@ -23,14 +23,21 @@ while (($#)); do
 done
 if ! [[ "$keep" =~ ^[1-9][0-9]*$ ]]; then echo "keep must be a positive integer" >&2; exit 2; fi
 
-mapfile -t tags < <(gh api --paginate "repos/$repo/releases?per_page=100" \
-  --jq '.[] | select(.draft == false) | [.created_at, .tag_name] | @tsv' | sort -r | cut -f2)
+# macOS runners use Bash 3.2: no mapfile, and empty-array expansion fails under `set -u`.
+list=$(gh api --paginate "repos/$repo/releases?per_page=100" \
+  --jq '.[] | select(.draft == false) | [.created_at, .tag_name] | @tsv' | sort -r | awk -F '\t' '{print $2}')
 
-echo "Published releases: ${#tags[@]}; keeping newest $keep."
-for tag in "${tags[@]:0:keep}"; do echo "keep   $tag"; done
-for tag in "${tags[@]:keep}"; do
+count=0; [[ -n "$list" ]] && count=$(printf '%s\n' "$list" | wc -l | tr -d ' ')
+echo "Published releases: $count; keeping newest $keep."
+index=0
+while IFS= read -r tag; do
+  [[ -z "$tag" ]] && continue
+  index=$((index + 1))
+  if ((index <= keep)); then echo "keep   $tag"; continue; fi
   if [[ -n "$protect" && "$tag" == "$protect" ]]; then echo "keep   $tag (protected)"; continue; fi
   if $dry_run; then echo "would delete $tag"; continue; fi
   gh release delete "$tag" --repo "$repo" --yes
   echo "delete $tag"
-done
+done <<EOF
+$list
+EOF
