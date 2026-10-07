@@ -106,6 +106,7 @@
 - [docs/desktop-tabs.md](docs/desktop-tabs.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
+- [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布
