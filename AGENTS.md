@@ -233,9 +233,25 @@
 - 项目仓库在 /opt/projects/jamie/hermes-app；隔离 worktree 在 /opt/projects/jamie/_worktrees/hermes-app/<task>。
 - 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。仓库 AGENTS.md 独立绑定已由插件实现并在开发 Gateway 中运行（`channel_agents` capability 为 true），见 docs/channel-repository-agents.md。该绑定不意味着客户端可访问整个仓库。
 - 仓库内的项目临时文件使用 tmp/，由根 .gitignore 的 /tmp/ 排除；权威文档留在 docs/，不放入临时目录。运行时工具 scratch 仍遵守 Hermes 提供的 TMPDIR，不擅自修改全局临时目录或其他 profile。
-- 不为客户端修改 Hermes 核心源码；新增服务端能力必须通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch、复制修改核心模块或维护客户端专用 fork 绕过此约束。
-- Hermes 源码 worktree 仅用于只读检查和隔离验证；插件代码在独立仓库 /opt/projects/jamie/hermes-app-plugin（远端 changx/hermes-app-plugin）维护，本仓库不再包含 plugins/hermes_app、scripts/pack-plugin.sh 或 tests/p1。扩展点不足时先报告限制和替代方案，不擅自修改核心。
+- 新增服务端能力默认通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch 或复制修改核心模块绕过此约束。
+- 插件代码在独立仓库 /opt/projects/jamie/hermes-app-plugin（远端 changx/hermes-app-plugin）维护，本仓库不再包含 plugins/hermes_app、scripts/pack-plugin.sh 或 tests/p1。扩展点不足时先报告限制和替代方案，不擅自修改核心。Jamie 明确同意后才可修改核心，并遵守下方「Hermes 核心本地分支」。
 - 检查其他会话/任务正在进行的修改；不得覆盖、回退或干扰它们。
+
+## Hermes 核心本地分支
+
+- 核心检出 `~/.hermes/hermes-agent` 运行本地部署主分支 `local/main`。`main` 只镜像上游 `upstream/main`（NousResearch），不放本地提交。`origin` 是 fork，不作为上游。
+- 本地改动只以提交形式保留在 `local/main`。改动必须通用、可提交上游（例如由 adapter 显式开启的能力），不写入客户端专用逻辑。
+- 本地提交标题以 `local:` 开头。正文写明：需要它的原因、依赖它的 profile 或插件、可以删除的条件（例如上游合入同等功能）。
+- 本地改动清单以 `git log --oneline upstream/main..local/main` 为准，不另维护列表。
+- 开发在 `jamie/<topic>` 分支和 /opt/projects/jamie/_worktrees/hermes-agent/<topic> 中进行。核心测试的 home I/O 保护拒绝 `~/.hermes` 下的路径，所以测试在 `~/.hermes` 之外的 clone 中运行。Jamie 同意部署后，再把提交 cherry-pick 到 `local/main`。
+- 警告：不要在核心检出中运行 `hermes update`。在 fork 检出上，它会把 `main` 强制推送到 `origin`。
+- 同步上游的步骤：
+  1. `git fetch upstream`，把 `main` 快进到 `upstream/main`。
+  2. 从 `upstream/main` 新建候选分支。逐个评估 `upstream/main..local/main` 中的本地提交：上游已有同等功能则删除；配置、插件或 profile 已不使用则删除；保留的 bug 修复先用它的测试在纯上游上确认问题仍存在。
+  3. 把保留的提交移到候选分支，测试核心和依赖它的插件。
+  4. 向 Jamie 报告保留和删除的提交及理由。Jamie 同意后，旧的 `local/main` 保留为 `local/pre-YYYYMMDD` 回滚分支，再把 `local/main` 移到候选分支。
+  5. Gateway 重启由 Jamie 执行。重启后核对运行的提交。
+- 本地改动的上游 PR 合入后，下次同步时删除对应的本地提交。
 
 ## 授权与安全
 
