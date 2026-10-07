@@ -95,6 +95,7 @@
 - [docs/mobile-workspace-entry-release.md](docs/mobile-workspace-entry-release.md)
 - [docs/mobile-session-options.md](docs/mobile-session-options.md)
 - [docs/mobile-battery.md](docs/mobile-battery.md)
+- [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)
 
 ### 桌面应用
 
