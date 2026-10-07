@@ -57,7 +57,34 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  assert.equal(await evaluate(web,'fetch("file:///etc/passwd").then(()=>false,()=>true)'),true);
  assert.equal(await evaluate(web,'Notification.requestPermission()'),'denied');
  await until(()=>pane.view.getVisible()&&pane.view.getBounds().width>280,'pane placed');
- let rb=pane.view.getBounds(),cb=tab.view.getBounds();assert.equal(cb.x+cb.width+1,rb.x);assert.equal(rb.x+rb.width,window.getContentSize()[0]);
+ let rb=pane.view.getBounds(),cb=tab.view.getBounds();assert.equal(cb.x+cb.width+6,rb.x,'6px resize strip between native views');assert.equal(rb.x+rb.width,window.getContentSize()[0]);
+ // Real input on the production resize strip. Neither native view may cover it.
+ const contentWidth=window.getContentSize()[0],paneWidth=()=>pane.view.getBounds().width;
+ const handle=()=>evaluate(shell,'(()=>{const r=document.querySelector(".browser-resize-handle").getBoundingClientRect();return {left:r.left,right:r.right,x:Math.round(r.x+r.width/2),y:Math.round(r.y+200)}})()');
+ let strip=await handle();assert.ok(strip.left>=cb.x+cb.width-0.5&&strip.right<=rb.x+0.5,'resize strip lies between the native views');
+ assert.equal(rb.width+6,538,'automatic default is 42% of the window');
+ const dragBrowser=async target=>{
+   const point=await handle();shell.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});shell.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});
+   await until(()=>evaluate(shell,'document.querySelector(".native-workspace").classList.contains("browser-resizing")'),'preview pointer captured');
+   const x=contentWidth-target+3;shell.sendInputEvent({type:'mouseMove',x,y:point.y,movementX:x-point.x,movementY:0});
+   await until(()=>paneWidth()+6===Math.max(280,target),'native preview tracks drag '+target);
+   shell.sendInputEvent({type:'mouseUp',x,y:point.y,button:'left',clickCount:1});
+   await until(()=>evaluate(shell,'!document.querySelector(".native-workspace").classList.contains("browser-resizing")'),'preview pointer released');
+ };
+ // Xvfb keeps a real pointer at window x=640. When a native view edge crosses it during pointer capture, X11 delivers a
+ // real move there. Pointer drags therefore keep the preview edge right of x=640; keyboard steps cover wider widths.
+ await dragBrowser(600);assert.equal(await evaluate(shell,'localStorage.getItem("hermes.desktop.browser-width")'),'600');
+ await until(()=>{const c=tab.view.getBounds();return c.x+c.width+6===pane.view.getBounds().x;},'conversation follows the preview edge');
+ await dragBrowser(150);
+ await evaluate(shell,'document.querySelector(".browser-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"End",bubbles:true}))');await until(()=>paneWidth()+6===720,'End clamps to the conversation reserve');
+ await until(()=>tab.view.getBounds().x===200,'left sidebar yields to its minimum');cb=tab.view.getBounds();assert.ok(cb.width>=354,'conversation keeps its reserve');
+ await evaluate(shell,'document.querySelector(".browser-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}))');await until(()=>paneWidth()+6===710,'keyboard narrows preview');
+ await evaluate(shell,'document.querySelector(".browser-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowLeft",bubbles:true}))');await until(()=>paneWidth()+6===720,'keyboard widens preview');
+ await evaluate(shell,'document.querySelector(".browser-resize-handle").dispatchEvent(new KeyboardEvent("keydown",{key:"Home",bubbles:true}))');await until(()=>paneWidth()+6===280,'Home returns to the minimum');
+ await dragBrowser(560);shell.reload();await until(()=>evaluate(shell,'!!document.querySelector(".browser-resize-handle")'),'reloaded workspace with preview');await until(()=>paneWidth()+6===560,'cold renderer restores preview width');
+ await evaluate(shell,'document.querySelector(".browser-resize-handle").dispatchEvent(new MouseEvent("dblclick",{bubbles:true}))');await until(()=>paneWidth()+6===538,'double click returns to automatic width');
+ assert.equal(await evaluate(shell,'localStorage.getItem("hermes.desktop.browser-width")'),null);
+ rb=pane.view.getBounds();cb=tab.view.getBounds();
  await evaluate(chat,'window.hermesDesktop.browserAction("close").then(()=>false,()=>true)').then(result=>assert.equal(result,true,'conversation cannot control shell browser actions'));
  await evaluate(chat,'window.hermesDesktop.previewAttachment("txt")');await until(()=>evaluate(web,'!!document.querySelector("pre")'),'text preview');assert.match(await evaluate(web,'document.querySelector("pre").textContent'),/<script>/);assert.equal(await evaluate(web,'window.evil'),undefined);
  await evaluate(chat,'window.hermesDesktop.previewAttachment("png")');await until(()=>evaluate(web,'!!document.querySelector("img")&&document.querySelector("img").naturalWidth===1'),'full image preview');
