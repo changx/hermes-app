@@ -19,4 +19,8 @@ Publication: desktop tag `v0.1.45` through the release workflow. Version metadat
 
 ## Results
 
-Pending.
+- `origin/main` and annotated tag `v0.1.45` point at `615fe43`.
+- Tag run `37630089634` succeeded, including Release publication and pruning. `Hermes Desktop v0.1.45` is Latest; v0.1.44 kept.
+- Downloaded `Hermes-0.1.45-macOS-arm64.zip` (130,257,740 bytes) matches its `.sha256`. `Info.plist` and `app.asar` versions are `0.1.45`; Mach-O arm64. Packaged code contains the separate browser window (`--hermes-browser-view`, `showInactive`, `browser-window.json`, "Open in separate window") and the Settings rule `.settings-nav button:focus-visible { outline-offset: -2px; }`.
+- Plugin: `hermes-app-plugin` main and tag `v0.2.7` at `5c563ba` (tag only, like v0.2.6). The `hermes-app-dev` installation matches plugin main file by file. The running Gateway still has the old code until `hermes-gateway.service` restarts.
+- Not done: Gateway restart (Jamie), plugin for the `jamie` profile (needs separate approval), macOS acceptance.
