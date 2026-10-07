@@ -7,7 +7,7 @@ import type { LiveSessionClient } from '../../../packages/client/src/liveClient'
 import { NewTopicComposer } from './NewTopicComposer';
 import { threadPatch } from './channel-edits';
 import { MessageTime } from './MessageTime';
-import { LabelPills, LabelsEditor, LabelsFilter } from './SessionLabels';
+import { LabelPills, LabelsFilter } from './SessionLabels';
 import { emptyLabelFilter, labelFilterActive, matchesLabels } from '../../../packages/client/src/sessionLabels';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 
@@ -20,6 +20,7 @@ type Props = {
   onContext: (id: string) => void;
   onFiles: (id: string) => void;
   onAgents: (id: string) => void;
+  onLabels: (id: string) => void;
   enqueueFirstMessage: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
 };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
@@ -32,9 +33,9 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, onLabels, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
-  const [labelTarget, setLabelTarget] = useState<string | null>(null), [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
+  const [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -48,7 +49,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
   useEffect(() => {
     generation.current++;
     setEditing(false); setRenaming(null); setName(''); setError('');
-    setLabelTarget(null); setLabelFilter(emptyLabelFilter());
+    setLabelFilter(emptyLabelFilter());
     return () => { generation.current++; };
   }, [channelId, client]);
   const run = async (work: (isCurrent: () => boolean) => Promise<void>) => {
@@ -78,7 +79,7 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
   const sessionMenu = (thread: ThreadSummary) => { if (busy) return; Alert.alert(thread.title, undefined, [
     { text: 'Rename session', onPress: () => rename(thread) },
-    ...(client.supportsSessionLabels ? [{ text: 'Edit labels', onPress: () => setLabelTarget(thread.id) }] : []),
+    ...(client.supportsSessionLabels ? [{ text: 'Edit labels', onPress: () => { if (focusedRef.current) onLabels(thread.id); } }] : []),
     { text: 'Cancel', style: 'cancel' },
   ]); };
   const channelForm = editing && <View style={[s.form, { marginHorizontal: 12 }]}>
@@ -123,14 +124,13 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
       ListHeaderComponent={<Text style={s.sectionHeading}>Sessions</Text>}
       renderItem={({ item }) => <View style={s.card}>
         {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}${draftThreads?.has(item.id) ? ', draft' : ''}${client.supportsSessionLabels && item.markers?.length ? ', labels: ' + item.markers.join(', ') : ''}`} accessibilityHint="Open session. Long press for options."
-          accessibilityActions={[{ name: 'rename', label: 'Rename session' }, ...(client.supportsSessionLabels ? [{ name: 'labels', label: 'Edit labels' }] : [])]} onAccessibilityAction={event => { if (!busy && event.nativeEvent.actionName === 'rename') rename(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'labels') setLabelTarget(item.id); }}
+          accessibilityActions={[{ name: 'rename', label: 'Rename session' }, ...(client.supportsSessionLabels ? [{ name: 'labels', label: 'Edit labels' }] : [])]} onAccessibilityAction={event => { if (!busy && event.nativeEvent.actionName === 'rename') rename(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'labels' && focusedRef.current) onLabels(item.id); }}
           disabled={busy || editing || !!renaming} onPress={() => onThread(item.id)} onLongPress={() => sessionMenu(item)} style={s.fill}>
           <Text style={s.heading}>{item.title}</Text>{client.supportsSessionLabels && <LabelPills markers={item.markers} />}<View style={s.meta}>{draftThreads?.has(item.id) && <Text accessibilityLabel="Draft" style={s.draft}>draft</Text>}<MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
         </Pressable>}
       </View>}
       ListEmptyComponent={<Text style={s.empty}>{filtering ? 'No matching sessions.' : 'No sessions yet. Write a message below to start a conversation.'}</Text>} />
     <NewTopicComposer key={channelId} client={client} channelId={channelId} enqueue={enqueueFirstMessage} onCreated={onThread} disabled={busy || editing || !!renaming} />
-    {labelTarget && <LabelsEditor key={labelTarget} client={client} threadId={labelTarget} visible={focused} onClose={() => setLabelTarget(null)} />}
   </View>;
 }
 const s = StyleSheet.create({

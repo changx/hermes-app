@@ -50,6 +50,7 @@ function NativeRoutes() {
         <Stack.Screen name="channels/[channelId]/new-topic" options={{ title: 'New topic' }} />
         <Stack.Screen name="threads/[threadId]" getId={({ params }) => `${params?.connection ?? (params?.server ? 'link:' + params.server : 'primary')}:${params?.threadId}`} options={{ title: 'Conversation' }} />
         <Stack.Screen name="threads/[threadId]/options" options={{ title: 'Session options' }} />
+        <Stack.Screen name="threads/[threadId]/labels" options={{ title: 'Labels' }} />
         <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
         <Stack.Screen name="settings/connection" options={{ title: 'Connection' }} />
         <Stack.Screen name="settings/add-connection" options={{ title: 'Add connection' }} />

@@ -32,6 +32,9 @@ function HeaderIcon({ label, ios, android, onPress }: { label: string; ios: SFSy
 }
 export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' = '', extra: Record<string, string> = {}) =>
   ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
+/** Pushed label editor of one Session on one connection. */
+export const labelsRoute = (connection: string, threadId: string) =>
+  ({ pathname: '/threads/[threadId]/labels' as const, params: { threadId, connection } });
 
 /** One Settings entry; connections, Agents, models and appearance live inside it. */
 export function HeaderActions({ onSettings }: { onSettings: () => void }) {
@@ -313,6 +316,7 @@ export function ChannelsScreen({ channelId }: { channelId: string }) {
         onContext={id => router.push(channelRoute(slot, id, '/context'))}
         onFiles={id => router.push(channelRoute(slot, id, '/files'))}
         onAgents={id => router.push(channelRoute(slot, id, '/agents'))}
+        onLabels={id => router.push(labelsRoute(slot, id))}
         enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
           const box = outboxRef.current;
           if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');

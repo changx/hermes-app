@@ -6,6 +6,7 @@ import { emptyLabelFilter, labelCandidates, labelFilterActive, labelPillLayout, 
 import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import type { ThreadSummary } from '../../../packages/client/src/index';
 import { SymbolView } from 'expo-symbols';
+import { Stack, useIsFocused } from 'expo-router';
 
 function Button({ label, text, onPress, disabled = false }: { label: string; text?: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[s.button, disabled && s.disabled]}><Text style={s.buttonText}>{text ?? label}</Text></Pressable>;
@@ -73,15 +74,21 @@ export function LabelsFilter({ rows, value, onChange }: { rows: readonly ThreadS
   </View>;
 }
 
-export function LabelsEditor({ client, threadId, onClose, visible = true }: { client: LiveSessionClient; threadId: string; onClose: () => void; visible?: boolean }) {
+/**
+ * Label editor as a pushed native Stack page. Save sits in the header;
+ * Back discards the draft. A confirmed save returns to the previous page.
+ */
+export function LabelsEditorPage({ client, threadId, onDone }: { client: LiveSessionClient; threadId: string; onDone: () => void }) {
   const thread = client.threads.get(threadId), [draft, setDraft] = useState(() => [...(thread?.markers ?? [])]);
   const [entry, setEntry] = useState(''), [editing, setEditing] = useState<number | null>(null);
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false);
   const working = useRef(false), alive = useRef(true), controller = useRef(new AbortController());
-  const input = useRef<React.ElementRef<typeof TextInput>>(null), insets = useSafeAreaInsets();
+  const input = useRef<React.ElementRef<typeof TextInput>>(null), focused = useIsFocused();
   useEffect(() => { alive.current = true; controller.current = new AbortController(); return () => { alive.current = false; controller.current.abort(); }; }, []);
+  // Leave only after the busy guard has cleared, so Back is enabled again.
+  useEffect(() => { if (saved && !busy) onDone(); }, [saved, busy, onDone]);
   const online = client.connectionState === 'online', available = client.isThreadAvailable(threadId);
-  const enabled = online && available && client.supportsSessionLabels && !busy && visible;
+  const enabled = online && available && client.supportsSessionLabels && !busy && !saved && focused;
   const add = (label = entry) => {
     if (!enabled) return;
     try {
@@ -97,27 +104,53 @@ export function LabelsEditor({ client, threadId, onClose, visible = true }: { cl
       const saved = await client.saveThreadLabels(threadId, validateLabels(draft), Date.now(), controller.current.signal);
       if (!alive.current) return;
       if (JSON.stringify(saved.markers) !== JSON.stringify(draft)) setError('Labels changed on another device. Your draft is still here. Try saving again.');
-      else onClose();
+      else setSaved(true);
     } catch { if (alive.current) setError('Could not confirm the save. Your draft is still here. Try again when connected.'); }
     finally { working.current = false; if (alive.current) setBusy(false); }
   };
   const candidates = labelCandidates([...client.threads.values()].filter(t => client.isThreadAvailable(t.id))).filter(label => !draft.includes(label) && label.toLocaleLowerCase().includes(entry.toLocaleLowerCase()));
-  return <Modal transparent visible={visible} animationType="slide" onRequestClose={() => { if (!working.current) onClose(); }}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.backdrop}><View style={[s.sheet, { paddingBottom: Math.max(16, insets.bottom) }]} accessibilityViewIsModal accessibilityLabel="Edit labels">
-      <Text accessibilityRole="header" style={s.heading}>Edit labels</Text><Text numberOfLines={2} style={s.hint}>{thread?.title}</Text>
-      <Text style={s.hint}>Up to 10 labels, 30 characters each.</Text>
-      {!online && <Text>Connect to edit labels. Your draft is still here.</Text>}
-      {!available && <Text accessibilityRole="alert">This session is unavailable. Your draft is still here.</Text>}
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        {draft.map((label, i) => <View key={i} style={s.draftRow}><Text numberOfLines={1} style={s.draftLabel}>{label}</Text><Button label={`Edit label ${label}`} text="Edit" disabled={!enabled} onPress={() => { setEditing(i); setEntry(label); setError(''); input.current?.focus(); }} /><Button label={`Remove label ${label}`} text="Remove" disabled={!enabled} onPress={() => { setDraft(draft.filter((_, n) => n !== i)); setEntry(''); setEditing(null); setError(''); }} /></View>)}
-        <TextInput ref={input} accessibilityLabel="Label text" placeholder="Add a label" value={entry} editable={enabled} autoCapitalize="none" onChangeText={setEntry} style={s.input} onSubmitEditing={() => add()} />
-        <View style={s.actions}><Button label={editing === null ? 'Add' : 'Update'} disabled={!enabled} onPress={() => add()} />{editing !== null && <Button label="Cancel edit" disabled={!enabled} onPress={() => { setEditing(null); setEntry(''); }} />}</View>
-        {candidates.length > 0 && <View style={s.reuse}><Text style={s.hint}>Reuse an existing label</Text>{candidates.map(label => <Pressable key={label} accessibilityRole="button" accessibilityLabel={`Reuse label ${label}`} disabled={!enabled} onPress={() => add(label)} style={s.choice}><Text numberOfLines={1}>{label}</Text></Pressable>)}</View>}
-      </ScrollView>
-      {error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-      <View style={s.actions}><Button label="Clear labels" disabled={!enabled || !draft.length} onPress={() => { setDraft([]); setEntry(''); setEditing(null); setError(''); }} /><Button label="Cancel" disabled={busy} onPress={onClose} /><Button label={busy ? 'Saving…' : 'Save'} disabled={!enabled} onPress={() => void save()} /></View>
-    </View></KeyboardAvoidingView>
-  </Modal>;
+  return <>
+    <Stack.Screen options={{ title: 'Labels', gestureEnabled: !busy, headerBackVisible: !busy,
+      headerRight: () => <Pressable accessibilityRole="button" accessibilityLabel="Save labels" accessibilityState={{ disabled: !enabled, busy }} disabled={!enabled} hitSlop={8}
+        onPress={() => void save()} style={({ pressed }) => [s.headerSave, pressed && s.headerSavePressed]}>
+        <Text style={[s.headerSaveText, !enabled && s.disabled]}>{busy ? 'Saving…' : 'Save'}</Text>
+      </Pressable> }} />
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={s.page}>
+      {!!thread?.title && <Text numberOfLines={2} style={s.pageTitle}>{thread.title}</Text>}
+      {!online && <Text style={s.notice}>Connect to edit labels. Your draft is still here.</Text>}
+      {!available && <Text accessibilityRole="alert" style={s.notice}>This session is unavailable. Your draft is still here.</Text>}
+      {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+      <View style={s.section}>
+        <Text accessibilityRole="header" style={s.sectionTitle}>Labels</Text>
+        <View style={s.group}>
+          {draft.map((label, i) => <View key={i} style={[s.groupRow, i > 0 && s.divider]}>
+            <Text numberOfLines={1} style={s.draftLabel}>{label}</Text>
+            <Button label={`Edit label ${label}`} text="Edit" disabled={!enabled} onPress={() => { setEditing(i); setEntry(label); setError(''); input.current?.focus(); }} />
+            <Button label={`Remove label ${label}`} text="Remove" disabled={!enabled} onPress={() => { setDraft(draft.filter((_, n) => n !== i)); setEntry(''); setEditing(null); setError(''); }} />
+          </View>)}
+          <View style={[s.groupRow, draft.length > 0 && s.divider]}>
+            <TextInput ref={input} accessibilityLabel="Label text" placeholder={editing === null ? 'Add a label' : 'Update label'} placeholderTextColor="#8a98aa" value={entry} editable={enabled}
+              autoCapitalize="none" returnKeyType="done" onChangeText={setEntry} style={s.entry} onSubmitEditing={() => add()} />
+            {editing !== null && <Button label="Cancel edit" text="Cancel" disabled={!enabled} onPress={() => { setEditing(null); setEntry(''); }} />}
+            <Button label={editing === null ? 'Add' : 'Update'} disabled={!enabled || !entry} onPress={() => add()} />
+          </View>
+        </View>
+        <Text style={s.footer}>Up to 10 labels, 30 characters each.</Text>
+      </View>
+      {candidates.length > 0 && <View style={s.section}>
+        <Text accessibilityRole="header" style={s.sectionTitle}>Existing labels</Text>
+        <View style={s.group}>{candidates.map((label, i) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={`Reuse label ${label}`} disabled={!enabled}
+          onPress={() => add(label)} style={({ pressed }) => [s.groupRow, i > 0 && s.divider, pressed && s.rowPressed]}>
+          <Text numberOfLines={1} style={s.draftLabel}>{label}</Text>
+          <SymbolView name={{ ios: 'plus', android: 'add' }} size={16} tintColor="#2b4e81" fallback={<Text style={s.buttonText}>＋</Text>} />
+        </Pressable>)}</View>
+      </View>}
+      {draft.length > 0 && <View style={s.section}><View style={s.group}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Clear labels" disabled={!enabled} onPress={() => { setDraft([]); setEntry(''); setEditing(null); setError(''); }}
+          style={({ pressed }) => [s.groupRow, pressed && s.rowPressed, !enabled && s.disabled]}><Text style={s.destructive}>Clear labels</Text></Pressable>
+      </View></View>}
+    </ScrollView>
+  </>;
 }
 
 const s = StyleSheet.create({
@@ -134,7 +167,20 @@ const s = StyleSheet.create({
   heading: { fontSize: 20, fontWeight: '600', color: '#172a40' }, hint: { color: '#65758b', fontSize: 13 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, color: '#172a40' },
   actions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }, button: { backgroundColor: '#e7eef8', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 9, minHeight: 44, justifyContent: 'center' }, buttonText: { color: '#2b4e81', fontWeight: '600' }, disabled: { opacity: 0.5 },
-  choice: { minHeight: 44, padding: 10 }, reuse: { marginTop: 12 },
-  draftRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }, draftLabel: { flex: 1, minWidth: 0, color: '#172a40' },
+  choice: { minHeight: 44, padding: 10 },
+  draftLabel: { flex: 1, minWidth: 0, color: '#172a40', fontSize: 16 },
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, borderRadius: 8 },
+  headerSave: { minHeight: 36, paddingHorizontal: 8, borderRadius: 8, justifyContent: 'center' }, headerSavePressed: { backgroundColor: '#e7eef8' },
+  headerSaveText: { color: '#2b4e81', fontSize: 17, fontWeight: '600' },
+  page: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40, gap: 22, backgroundColor: '#f2f5f9' },
+  pageTitle: { color: '#607187', fontSize: 14, paddingHorizontal: 4 },
+  notice: { color: '#42566f', backgroundColor: '#fff', padding: 10, borderRadius: 8 },
+  section: { gap: 7 },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#607187', textTransform: 'uppercase', letterSpacing: 0.4, paddingHorizontal: 4 },
+  group: { backgroundColor: '#fff', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: '#d5dde8', overflow: 'hidden' },
+  groupRow: { minHeight: 52, paddingHorizontal: 14, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff' },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#d5dde8' }, rowPressed: { backgroundColor: '#eef3fa' },
+  entry: { flex: 1, minWidth: 0, minHeight: 44, fontSize: 16, color: '#172a40', paddingVertical: 8 },
+  footer: { fontSize: 13, lineHeight: 19, color: '#607187', paddingHorizontal: 4 },
+  destructive: { color: '#b3261e', fontSize: 16 },
 });

@@ -15,9 +15,8 @@ const mocks = {
   'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r)}); export const useIsFocused=()=>s.focused;`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   './FontSize': `export const Text='Text';`,
-  './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app;`,
+  './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app; export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}});`,
   './CopyToast': `const s=globalThis.__sessionOptionsTest; export const copyWithToast=async v=>{s.copied.push(v);return true};`,
-  './SessionLabels': `export const LabelsEditor='LabelsEditor';`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SessionOptions.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
   b.onResolve({ filter: /.*/ }, args => mocks[args.path] ? { path: args.path, namespace: 'mock' } : undefined);
@@ -27,22 +26,18 @@ const mod = { exports: {} }; new Function('module', 'exports', 'require', bundle
 const { SessionOptionsScreen } = mod.exports;
 
 const thread = (extra = {}) => ({ id: 'th_1', title: 'Plan', project_id: 'p', markers: ['bug', 'ios'], ...extra });
-const app = (threads, supportsSessionLabels = true) => ({ config: { id: 'primary-id', baseUrl: 'https://agent.example' }, client: { threads: new Map(threads.map(t => [t.id, t])), supportsSessionLabels } });
+const app = (threads, supportsSessionLabels = true) => ({ slot: 'second', config: { id: 'primary-id', baseUrl: 'https://agent.example' }, client: { threads: new Map(threads.map(t => [t.id, t])), supportsSessionLabels } });
 const labels = root => root.root.findAll(node => node.type === 'Pressable').map(node => node.props.accessibilityLabel);
 const press = async (root, label) => { const node = root.root.findAll(n => n.type === 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(node, 'missing ' + label + ' in ' + labels(root)); await act(async () => { node.props.onPress(); await Promise.resolve(); }); };
 const reset = () => Object.assign(state, { pushed: [], copied: [], focused: true });
 
-test('Session options lists labels, link and Settings in that order', async () => {
+test('Session options lists labels, link and Settings in that order; Labels pushes the editor page', async () => {
   reset(); state.app = app([thread()]);
   let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
   assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Copy session link', 'Settings']);
-  assert.equal(root.root.findAllByType('LabelsEditor').length, 0, 'editor opens only on request');
   await press(root, 'Edit labels, bug, ios');
-  const editor = root.root.findByType('LabelsEditor');
-  assert.equal(editor.props.threadId, 'th_1');
-  assert.equal(editor.props.visible, true);
-  await act(async () => { editor.props.onClose(); });
-  assert.equal(root.root.findAllByType('LabelsEditor').length, 0);
+  assert.deepEqual(state.pushed, [{ pathname: '/threads/[threadId]/labels', params: { threadId: 'th_1', connection: 'second' } }], 'labels open as a pushed page on the same connection');
+  state.pushed = [];
   await press(root, 'Copy session link');
   assert.equal(state.copied.length, 1);
   assert.match(state.copied[0], /th_1/);
