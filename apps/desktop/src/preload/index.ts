@@ -18,6 +18,7 @@ const api: HermesDesktopApi = Object.freeze({
   previewAttachment: (id: string): Promise<void> => ipcRenderer.invoke('desktop:preview-attachment', id),
   previewLocalFile: async (file: File): Promise<void> => ipcRenderer.invoke('desktop:preview-local-file', (await filesForUpload([file], item => webUtils.getPathForFile(item)))[0]),
   browserAction: (action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void> => ipcRenderer.invoke('desktop:browser-action', action),
+  browserControl: (action: 'stop' | 'resume' | 'done'): Promise<void> => ipcRenderer.invoke('desktop:browser-control', action),
   setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:browser-bounds', bounds),
   newTab: (channelId?: string): Promise<void> => ipcRenderer.invoke('desktop:new-tab', channelId),
   activateTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:activate-tab', id),

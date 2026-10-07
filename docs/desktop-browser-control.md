@@ -1,6 +1,6 @@
 # 桌面版内置浏览器：Agent 操作能力
 
-状态：方案已确认（2026-10-07），实现中。本文区分**已确认需求**、**已验证事实**和**待验证项**。
+状态：方案已确认（2026-10-07），已实现并通过本地验证，macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
 
 ## 1. 目标
 
@@ -150,3 +150,24 @@ Agent（Gateway 进程，hermes-app-dev profile）
 3. 断开网络再恢复，未完成的指令返回“结果不确定”，不重复执行。
 4. 同一个 Channel 的两个 Thread 共享登录；另一个 Channel 看不到这个登录。
 5. 桌面版没有运行时，工具返回用户能看懂的提示，不改用后台浏览器。
+
+## 13. 实现（分支 `feat/desktop-browser-control`）
+
+| 位置 | 内容 |
+|---|---|
+| 插件 `plugins/hermes_app/desktop_browser.py` | 工具注册、`/v1/desktop-browser` 连接、设备选择、幂等、打断（插件仓库，v0.2.6） |
+| `apps/desktop/src/shared/browser-control.ts` | 指令解析、按键映射、注入事件记录、Client Hints、导航规则 |
+| `apps/desktop/src/preload/browser-page.ts` | 隔离 world 页面读取：快照、元素定位、字段值、滚动位置 |
+| `apps/desktop/src/main/browser-sidebar.ts` | 按 Channel 的持久分区、权限询问、下载、弹出窗口、原生输入执行、接管和交还状态 |
+| `apps/desktop/src/main/browser-control.ts` | 每个服务器一条控制连接、上报打开的会话、后台打开标签页、取消和断线处理 |
+| `apps/desktop/src/renderer/browser-sidebar.tsx` | 状态行：“Hermes 正在使用此页面 · Stop”、“You took over · Let Hermes continue”、交还说明 · Done |
+
+界面文字沿用应用现有的英文界面。
+
+## 14. 本地验证（2026-10-07）
+
+- 插件：`tests/p1` 完整套件 141 通过、2 跳过；新增 `test_desktop_browser.py` 覆盖认证、往返、重复应答、设备选择、断线不重发、打断、无效帧、工具说明和截图格式。
+- 桌面：`HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm test` 133 通过、0 跳过。
+  - `browser-control.test.mjs`：真实 WebSocket 服务器上的握手、会话上报、执行、重复 ID 只执行一次、后台标签页、取消、断线中止和重连、旧服务器不频繁重试。
+  - `browser-control-native.test.mjs`（真实 Electron/Xvfb）：打开、快照（含同源 iframe）、点击和按键为 `isTrusted`、中文输入和替换、提交表单、后退、滚动、截图 JPEG；读取页面前后 DOM 和全局对象不变；用户按下即接管，下一个指令等待“继续”；侧栏停止和服务器取消；交还和 Done；通知权限询问用户；下载保存；同一 Channel 共享登录、不同 Channel 隔离、关闭页面不清除登录；登录弹窗打开为真实窗口。
+- 以上是 Linux/Xvfb 的本地验证，不等于 macOS 真机验收。第 12 节的真机验收待完成。

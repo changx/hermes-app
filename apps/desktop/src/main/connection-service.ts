@@ -177,6 +177,10 @@ export class DesktopConnectionService {
   }
 
   serverAddress(): string | undefined { return this.connection?.baseUrl; }
+  /** Endpoint for the App-side browser control connection, only while paired and connected. */
+  browserEndpoint(): { baseUrl: string; token: string; connectionKey: string } | undefined {
+    return this.phase === 'connected' && this.connection ? { baseUrl: this.connection.baseUrl, token: this.connection.token, connectionKey: this.connection.id } : undefined;
+  }
   /** True when this server offers Project Files and AGENTS.md and this transport can write them safely. */
   supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
 

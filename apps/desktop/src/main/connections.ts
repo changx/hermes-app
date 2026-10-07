@@ -58,6 +58,14 @@ export class DesktopConnections {
   hasConnection(key?: string): boolean { return !!key && [...this.accounts.values()].some(a => a.service.snapshot().connectionKey === key); }
   connectionForChannel(id?: string): string | undefined { return (id ? this.route(id).account : this.current()).service.snapshot().connectionKey; }
   threadIdentity(raw: string, channel?: string): string { return this.encode(channel ? this.route(channel).account : this.current(), raw)!; }
+  /** Paired, connected servers for the App-side browser control connection. */
+  browserAccounts() {
+    return [...this.accounts.values()].flatMap(account => {
+      const endpoint = account.service.browserEndpoint(); if (!endpoint) return [];
+      return [{ ...endpoint, qualify: (raw: string) => this.encode(account, raw)!,
+        unqualify: (id: string) => { try { const r = this.route(id); return r.account === account ? r.raw : undefined; } catch { return undefined; } } }];
+    });
+  }
   private projected(account: Account, thread?: string, pages = true): DesktopSnapshot {
     const snap = account.service.snapshot(thread, pages), name = snap.connectionName ?? (account.server ? new URL(account.server).hostname : undefined);
     return { ...snap, connectionName: name,
