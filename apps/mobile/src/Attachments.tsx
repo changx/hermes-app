@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from './FontSize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -7,8 +7,9 @@ import * as Clipboard from 'expo-clipboard';
 import { File, Paths } from 'expo-file-system';
 import { toByteArray } from 'base64-js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WebView from 'react-native-webview';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
-import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
+import { chooseAttachments, draftBusy, isImage, isPdf, MAX_ATTACHMENT_BYTES, readableText, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
@@ -36,14 +37,25 @@ export function ImageViewer({ uri }: { uri: string }) {
   </View>;
 }
 
+// iOS WKWebView renders a local PDF natively. JavaScript stays off and every
+// navigation other than this file (for example links inside the PDF) is refused.
+export function PdfViewer({ uri }: { uri: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <View style={styles.viewer}><Text style={styles.previewText}>Could not open this PDF. Go back and try again.</Text></View>;
+  return <WebView style={styles.pdf} source={{ uri }} originWhitelist={['file://*']} allowingReadAccessToURL={uri}
+    javaScriptEnabled={false} startInLoadingState renderLoading={() => <ActivityIndicator style={styles.pdfLoading} />}
+    onShouldStartLoadWithRequest={request => request.url === uri} onError={() => setFailed(true)} />;
+}
+
 // Row-owned files can disappear while a Stack route is still visible. Copy on
 // demand and transfer only this copy's lifecycle to the viewer's onClose.
-async function openImage(uri: string, title: string, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean) {
-  const file = ownedFile();
+async function openLocalCopy(uri: string, title: string, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean, pdf = false) {
+  // WKWebView picks the PDF renderer from the file extension.
+  const file = pdf ? new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}.pdf`) : ownedFile();
   try {
     await new File(uri).copy(file);
     if (!stillValid()) { forgetFile(file); return; }
-    openViewer(title, <ImageViewer uri={file.uri} />, () => forgetFile(file));
+    openViewer(title, pdf ? <PdfViewer uri={file.uri} /> : <ImageViewer uri={file.uri} />, () => forgetFile(file));
   } catch (error) { forgetFile(file); throw error; }
 }
 
@@ -225,7 +237,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   const previewImage = (item: DraftAttachment) => {
     if (!item.source.uri) return;
     const generation = epoch.current;
-    void openImage(item.source.uri, item.source.name, openViewer,
+    void openLocalCopy(item.source.uri, item.source.name, openViewer,
       () => generation === epoch.current && itemsRef.current.some(entry => entry.key === item.key))
       .catch(() => { if (generation === epoch.current) setNotice('Could not open the image. Please try again.'); });
   };
@@ -323,7 +335,7 @@ async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
 
 /** Authenticated SDK bytes only; no token-bearing image URLs, external viewers, or eager non-image downloads. */
 export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
-  const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; status: 'loading' | 'ready' | 'error' }>>({});
+  const [loaded, setLoaded] = useState<Record<string, { uri?: string; text?: string; pdf?: boolean; status: 'loading' | 'ready' | 'error' }>>({});
   const { openViewer } = useViewer();
   const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, AbortController>()), generation = useRef(0);
   const load = async (attachment: Attachment) => {
@@ -342,8 +354,9 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
       try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
       cache.current.set(attachment.id, file);
       const text = readableText(attachment.mime, attachment.name) && bytes.length <= 64 * 1024 ? await file.text() : undefined;
+      const pdf = isPdf(attachment.mime, attachment.name, bytes);
       if (controller.signal.aborted || current !== generation.current) return;
-      setLoaded(old => ({ ...old, [attachment.id]: { status: 'ready', uri: file.uri, text } }));
+      setLoaded(old => ({ ...old, [attachment.id]: { status: 'ready', uri: file.uri, text, pdf } }));
     } catch {
       if (!controller.signal.aborted && current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } }));
     } finally {
@@ -367,10 +380,14 @@ export function MessageAttachments({ client, threadId, attachments }: { client: 
       if (isImage(attachment.mime, attachment.name)) {
         if (!entry.uri) return;
         const current = generation.current;
-        void openImage(entry.uri, attachment.name || 'Image', openViewer, () => current === generation.current)
+        void openLocalCopy(entry.uri, attachment.name || 'Image', openViewer, () => current === generation.current)
+          .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
+      } else if (entry.pdf && entry.uri && Platform.OS === 'ios') {
+        const current = generation.current;
+        void openLocalCopy(entry.uri, attachment.name || 'PDF', openViewer, () => current === generation.current, true)
           .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
       } else openViewer(attachment.name || 'Attachment', <View style={styles.viewer}>
-        <ScrollView><Text selectable style={styles.previewText}>{entry.text || 'File downloaded. This format cannot be opened in the app yet.'}</Text></ScrollView>
+        <ScrollView><Text selectable style={styles.previewText}>{entry.text || (entry.pdf ? 'PDF preview is not available on this device yet.' : 'File downloaded. This format cannot be opened in the app yet.')}</Text></ScrollView>
       </View>);
     } else void load(attachment);
   };
@@ -403,5 +420,6 @@ const styles = StyleSheet.create({
   tile: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, padding: 6, borderRadius: 10, backgroundColor: '#f1f5fa' },
   thumb: { width: 62, height: 62, borderRadius: 6 }, fileText: { flex: 1, minWidth: 0 }, title: { color: '#172a40', fontSize: 12 },
   detail: { color: '#50647b', fontSize: 11, marginTop: 3 }, error: { color: '#a53238', fontSize: 12, marginTop: 5 },
-  viewer: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 }
+  viewer: { flex: 1, backgroundColor: '#101722', padding: 12 }, zoom: { flex: 1 }, zoomContent: { alignItems: 'center', justifyContent: 'center', flexGrow: 1 }, previewText: { color: '#fff', fontSize: 15, paddingTop: 18 },
+  pdf: { flex: 1, backgroundColor: '#fff' }, pdfLoading: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }
 });

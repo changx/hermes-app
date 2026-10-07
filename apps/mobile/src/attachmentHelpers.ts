@@ -37,6 +37,12 @@ export function uploadedInOrder(items: DraftAttachment[]): Attachment[] {
 export function draftBusy(items: DraftAttachment[]): boolean {
   return items.some(item => item.status !== 'ready');
 }
+/** Filename/MIME say PDF and the body starts with the `%PDF-` signature. */
+export function isPdf(mime?: string | null, name?: string, bytes?: Uint8Array): boolean {
+  const declared = mime === 'application/pdf' || /\.pdf$/i.test(name || '');
+  if (!declared || !bytes) return declared;
+  return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-';
+}
 export function readableText(mime?: string, name?: string): boolean {
   return mime?.startsWith('text/') === true || /\.(txt|md|csv|json|log)$/i.test(name || '');
 }
