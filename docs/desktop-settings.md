@@ -49,3 +49,14 @@ Evidence directory (private Channel workspace): `/home/hermes/.hermes/profiles/h
 ## Remaining gates
 
 No real provider/default was changed during this work. Live backend model-switch acceptance and Mac visual/keyboard acceptance remain separate. Candidate development did not change a service, plugin, Hermes core, mobile app or production configuration. Jamie subsequently authorized the main merge and desktop publication; verified release evidence is recorded in [Desktop v0.1.32](desktop-release-0.1.32.md). Mac installation remains unperformed.
+
+## Settings focus overlap fix
+
+- Symptom: on open, "All connections" partly covered the row below it.
+- Cause: the window first renders an empty snapshot, so focus went to "All connections". When the real snapshot arrived, the page switched to the current connection, but focus stayed on the old tab. Its focus ring (`outline-offset: 2px`) reached over the next row (rows are 2px apart).
+- Fix: until the user chooses a page, focus follows the page actually shown. Navigation focus rings are drawn inside the row (`outline-offset: -2px`).
+- Test: `settings-focus` (Chromium) renders the empty snapshot, then the real one, and checks focus, overlap of every row's ring, and that a user choice keeps focus. It failed before the fix.
+
+## Model settings in a multiplexed Gateway
+
+"Could not load model settings" came from the server: plugin v0.2.6 refused model reads/writes (HTTP 503) when one Gateway serves several profiles. Plugin v0.2.7 runs them inside core's profile scope for the adapter's own home. No desktop change.

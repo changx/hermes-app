@@ -9,6 +9,7 @@
 .settings-nav { display: flex; flex-direction: column; gap: 6px; padding: 18px 12px; background: var(--app-background); border-right: 1px solid var(--app-border); overflow-y: auto; }
 .settings-nav button { border: 0; background: transparent; color: var(--app-label); text-align: left; padding: 10px 12px; flex-shrink: 0; }
 .settings-nav button:hover { background: var(--app-border); }
+.settings-nav button:focus-visible { outline-offset: -2px; } /* Ring stays inside its row; rows are 2px apart. */
 .settings-nav button[aria-selected="true"] { color: var(--app-accent); background: var(--app-selected); font-weight: 600; }
 .settings-content { min-width: 0; overflow: auto; padding: 28px 32px; }
 .settings-content h3 { margin: 0 0 14px; font-size: var(--app-font-size); font-weight: 650; }
