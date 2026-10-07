@@ -9,7 +9,27 @@ const require = createRequire(import.meta.url);
 const root = new URL('..', import.meta.url).pathname;
 const compiled = await build({ stdin: { resolveDir: root, loader: 'ts', contents: `export * from './src/shared/browser-policy'; export { localPreview } from './src/main/local-preview'; export { DesktopConnectionService } from './src/main/connection-service';` }, bundle: true, format: 'cjs', platform: 'node', external: ['electron'], write: false });
 const mod = { exports: {} }; new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(name => name === 'electron' ? {} : require(name), mod, mod.exports);
-const { chromeUserAgent, browserUrl, previewMime, previewResponse, pdfViewerResource, localPreview, DesktopConnectionService } = mod.exports;
+const { chromeUserAgent, browserUrl, previewMime, previewResponse, pdfViewerResource, byteRange, markdownPage, localPreview, DesktopConnectionService } = mod.exports;
+test('Markdown renders as static HTML without scripts', async () => {
+  const response = previewResponse({ name: 'notes.md', mime: 'text/markdown', bytes: bytes('# Title\n\n<script>alert(1)</script>\n\n[x](javascript:alert(1)) | a |\n|---|\n| 1 |') });
+  const html = await response.text();
+  assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.match(html, /<h1>Title<\/h1>/); assert.doesNotMatch(html, /<script/); assert.doesNotMatch(html, /href="javascript:/);
+  assert.match(response.headers.get('content-security-policy'), /default-src 'none'/); assert.doesNotMatch(response.headers.get('content-security-policy'), /script-src/);
+  assert.equal(await previewResponse({ name: 'notes.md', mime: 'text/markdown', bytes: bytes('# raw') }, true).text(), '# raw');
+});
+test('media bodies answer Range requests', async () => {
+  const media = { name: 'clip.mp4', mime: 'video/mp4', bytes: bytes('0123456789') };
+  const full = previewResponse(media);
+  assert.equal(full.status, 200); assert.equal(full.headers.get('accept-ranges'), 'bytes');
+  const part = previewResponse(media, false, 'bytes=2-5');
+  assert.equal(part.status, 206); assert.equal(part.headers.get('content-range'), 'bytes 2-5/10'); assert.equal(await part.text(), '2345');
+  assert.equal(await previewResponse(media, false, 'bytes=7-').text(), '789');
+  assert.equal(await previewResponse(media, false, 'bytes=-3').text(), '789');
+  assert.equal(previewResponse(media, false, 'bytes=20-').status, 416);
+  assert.deepEqual(byteRange('bytes=0-99', 10), { start: 0, end: 9 });
+  for (const bad of ['bytes=5-2', 'items=0-1', 'bytes=-', 'bytes=1-2,4-5']) assert.equal(byteRange(bad, 10), undefined);
+});
 test('chrome://resources is allowed only for subresources of the built-in PDF viewer frame', () => {
   const viewer = { url: 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html' };
   assert.equal(pdfViewerResource({ url: 'chrome://resources/js/assert.js', resourceType: 'script', frame: viewer }), true);
@@ -37,7 +57,7 @@ test('web URL policy supports web addresses but denies privileged schemes and cr
   for (const value of ['', 'file:///etc/passwd', 'javascript:alert(1)', 'data:text/html,a', 'hermesapp://session/a', 'hermes-preview://test/a', 'https://user:pass@example.com', 'https://a\nb.com', 'a'.repeat(4097)]) assert.throws(() => browserUrl(value));
 });
 test('preview types include images, PDF and generated HTML; text is escaped and binary reports an explicit fallback', async () => {
-  for (const [name, expected] of [['screenshot.png','image/png'],['document.pdf','application/pdf'],['page.html','text/html'],['source.js','text/javascript'],['notes.md','text/plain'],['style.css','text/css'],['font.woff2','font/woff2'],['vector.svg','application/octet-stream']]) assert.equal(previewMime(name,'application/octet-stream'),expected);
+  for (const [name, expected] of [['screenshot.png','image/png'],['document.pdf','application/pdf'],['page.html','text/html'],['source.js','text/javascript'],['notes.md','text/markdown'],['clip.mov','video/mp4'],['song.mp3','audio/mpeg'],['voice.m4a','audio/mp4'],['style.css','text/css'],['font.woff2','font/woff2'],['vector.svg','application/octet-stream']]) assert.equal(previewMime(name,'application/octet-stream'),expected);
   const text = await previewResponse({ name: '<notes>.txt', mime: 'text/plain', bytes: bytes('<script>throw Error("unsafe")</script>') }).text();
   assert.match(text, /&lt;script&gt;/); assert.doesNotMatch(text, /<script>/);
   const html = '<!doctype html><script>document.title="Generated"</script>';

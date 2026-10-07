@@ -48,7 +48,7 @@ export class DesktopBrowserSidebar {
         if (!doc || this.panes.get(id) !== pane || url.host !== doc.host || request.method !== 'GET') return new Response('Preview unavailable', { status: 404 });
         const name = decodeURIComponent(url.pathname.slice(1));
         if (name.includes('/') || name.includes('\\') || name === '..') return new Response('Not found', { status: 404 });
-        if (name === doc.file.name) return previewResponse(doc.file);
+        if (name === doc.file.name) return previewResponse(doc.file, false, request.headers.get('range'));
         let resource = doc.resources.get(name);
         if (!resource && doc.resolve) {
           let pending = doc.pending.get(name);
@@ -65,7 +65,7 @@ export class DesktopBrowserSidebar {
           }
           resource = doc.resources.get(name);
         }
-        return resource ? previewResponse(resource, true) : new Response('Not found', { status: 404 });
+        return resource ? previewResponse(resource, true, request.headers.get('range')) : new Response('Not found', { status: 404 });
       } catch { return new Response('Preview unavailable', { status: 404 }); }
     });
     contents.on('will-attach-webview', event => event.preventDefault());
