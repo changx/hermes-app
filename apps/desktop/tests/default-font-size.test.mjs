@@ -45,7 +45,7 @@ test('Chromium: production UI and content use 16px at narrow and wide widths', {
     for(const row of rows) {
       assert.equal(row.size,'16px',`${row.width} ${row.selector}`);
       if (['.composer textarea','.tool-record'].includes(row.selector)) assert.ok(Math.abs(parseFloat(row.lineHeight)-24)<0.01, row.selector);
-      if (row.selector === '.composer textarea') assert.equal(row.paddingLeft,'12px');
+      if (row.selector === '.composer textarea') assert.equal(row.paddingLeft,'16px');
     }
   } finally { await rm(folder,{recursive:true,force:true}); }
 });

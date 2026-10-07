@@ -211,6 +211,10 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
   </div>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
+// Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
+const COMPOSER_INPUT_MIN = 48;
+const COMPOSER_INPUT_MAX = 216;
+
 const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(): void }) => {
   const threadId = snapshot.selectedThreadId;
   const [text, setText] = useState(threadId ? drafts.get(threadId) ?? "" : "");
@@ -218,6 +222,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
   const working = useRef(false);
   const mounted = useRef(true);
   const restoreFocus = useRef(false);
@@ -234,7 +239,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   useLayoutEffect(() => {
     if (!input.current) return;
     input.current.style.height = "0px";
-    input.current.style.height = `${Math.min(120, Math.max(42, input.current.scrollHeight))}px`;
+    input.current.style.height = `${Math.min(COMPOSER_INPUT_MAX, Math.max(COMPOSER_INPUT_MIN, input.current.scrollHeight))}px`;
   }, [text]);
   const update = (value: string) => { setText(value); if (threadId) drafts.set(threadId, value); };
   const finish = () => { working.current = false; if (mounted.current) setBusy(false); };
@@ -284,7 +289,6 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const active = online && snapshot.interactions.length === 0;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
     {error && <p role="alert">{error}</p>}
-    {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span className="composer-attachment" key={item.id}><AttachmentThumbnail attachment={item} />{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
     {running ? <div className="running-row">
       <div className="agent-running" role="status" aria-live="polite">
         {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}
@@ -292,7 +296,15 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
       </div>
       <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" disabled={!online} onClick={() => safely(window.hermesDesktop.stopThread())}>■</button>
     </div> : null}
-    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files">＋</button><textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(files)); } }} /><button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>↑</button></div>
+    {/* ChatGPT-style input card: attachments, borderless textarea, then a tool row with plus and a round send button. */}
+    <div className="composer-box" onClick={event => { if (event.target === event.currentTarget || event.target === toolbar.current) input.current?.focus(); }}>
+      {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span className="composer-attachment" key={item.id}><AttachmentThumbnail attachment={item} />{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
+      <textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(files)); } }} />
+      <div className="composer-toolbar" ref={toolbar}>
+        <button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg></button>
+        <button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" /></svg></button>
+      </div>
+    </div>
   </footer>;
 };
 

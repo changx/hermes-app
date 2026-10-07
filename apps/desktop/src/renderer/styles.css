@@ -575,11 +575,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .receipt button { margin-left: 8px; }
 .load-older { display: block; margin: 0 auto 20px; }
 .new-messages { position: absolute; right: 24px; bottom: 16px; border: 0; border-radius: 999px; padding: 8px 13px; color: #294e7b; background: #e7eef7; box-shadow: 0 5px 18px rgb(0 0 0 / 20%); }
-.composer { display: block; padding: 7px 10px; border-top: 1px solid rgba(205, 215, 227, .72); background: rgba(248, 250, 253, .78); backdrop-filter: blur(16px); box-shadow: 0 -4px 10px -4px rgba(23, 42, 64, .16); }
-.composer-row { display: flex; align-items: flex-end; gap: 5px; }
-.composer textarea { flex: 1; min-width: 0; min-height: 42px; max-height: 120px; resize: none; overflow-y: auto; border: 1px solid #cdd7e3; border-radius: 12px; padding: 9px 12px; color: #172a40; background: #fff; font: inherit; line-height: 1.5; }
-.composer-row > button { flex-shrink: 0; width: 40px; height: 42px; border: 0; border-radius: 10px; padding: 0; color: #fff; background: #285ea5; font-weight: 650; font-size: 24px; }
-.composer-row .attach-button { color: #294e7b; background: #e7eef7; }
+/* ChatGPT-style composer: no dock bar; a white rounded card floats 12px above the window bottom. */
+.composer { display: block; padding: 0 16px 12px; }
+.composer > [role="alert"] { margin: 0 0 6px; padding: 0 4px; color: #9d1b32; font-size: var(--app-font-size); }
+.composer-box { display: flex; flex-direction: column; border: 1px solid #e5e5e5; border-radius: 22px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 4px 16px rgb(0 0 0 / 5%); cursor: text; transition: border-color .15s, box-shadow .15s; }
+.composer-box:focus-within { border-color: #d4d4d4; box-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 6px 20px rgb(0 0 0 / 8%); }
+.composer textarea { display: block; width: 100%; min-width: 0; min-height: 48px; max-height: 216px; resize: none; overflow-y: auto; border: 0; outline: none; padding: 12px 16px 0; color: #172a40; background: transparent; font: inherit; line-height: 1.5; }
+.composer textarea::placeholder { color: #9b9ca0; }
+.composer-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px; cursor: text; }
+.composer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border: 0; border-radius: 50%; padding: 0; cursor: pointer; }
+.composer-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.composer-toolbar .attach-button { color: #1f2329; background: transparent; }
+.composer-toolbar .attach-button:not(:disabled):hover { background: #f0f0f0; }
+.composer-toolbar .send-button { margin-left: auto; color: #fff; background: #1f2329; }
+.composer-toolbar .send-button:not(:disabled):hover { background: #3a3f46; }
+.composer-toolbar .send-button:disabled { color: #fff; background: #d7d7d9; cursor: default; }
+.composer-toolbar .attach-button:disabled { color: #b5b6b9; cursor: default; }
+.composer-toolbar > button:focus-visible { outline: 2px solid #285ea5; outline-offset: 2px; }
 .running-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; }
 .agent-running { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: #607187; font-size: var(--app-font-size); }
 .running-dots { display: flex; align-items: center; gap: 3px; flex: 0 0 24px; }
@@ -589,7 +601,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @keyframes agent-running-dot { 0%, 33%, 100% { transform: scale(.6); } 16.67% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .running-dots span { animation: none; } }
 .running-row .stop-button { flex: 0 0 34px; height: 28px; padding: 0; border: 0; border-radius: 9px; color: #425874; background: #e6edf7; font-size: 17px; }
-.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 10px 10px 0; cursor: default; }
 .composer-attachments > .composer-attachment { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 6px; border-radius: 8px; padding: 5px 8px; background: #f1f5fa; font-size: var(--app-font-size); overflow-wrap: anywhere; }
 .composer-attachments button { border: 0; margin-left: 5px; background: transparent; }
 .interaction-card { margin: 0 18px 10px; border: 1px solid #efdfb8; border-radius: 10px; padding: 12px; background: #fff7e6; }

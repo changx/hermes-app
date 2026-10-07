@@ -29,7 +29,7 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
     const bottom=name=>ensure(name,Math.abs(gap())<1);
     const scrollUp=()=>flushSync(()=>{list().scrollTop=100;list().dispatchEvent(new Event('scroll',{bubbles:true}));});
     const grow=()=>{const row=document.querySelector('.timeline-entry');row.style.paddingBottom=(parseInt(row.style.paddingBottom||'0')+300)+'px';};
-    const fill=()=>flushSync(()=>{const input=document.querySelector('.composer-row textarea');const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;setter.call(input,'New synthetic input');input.dispatchEvent(new Event('input',{bubbles:true}));});
+    const fill=()=>flushSync(()=>{const input=document.querySelector('.composer-box textarea');const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;setter.call(input,'New synthetic input');input.dispatchEvent(new Event('input',{bubbles:true}));});
     const send=()=>flushSync(()=>document.querySelector('.send-button').click());
     (async()=>{try {
       render();await wait();snapshot={...snapshot,loadingMessages:false,messages:Array.from({length:20},(_,i)=>message('m'+i))};render();await wait();bottom('first loaded history at bottom');
@@ -37,9 +37,9 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
       document.querySelector('.session-tab-page').style.height='650px';await wait();bottom('viewport shrink at bottom');
       scrollUp();const reading=list().scrollTop;grow();await wait();ensure('growth preserves reading',list().scrollTop===reading);
       snapshot={...snapshot,messages:[...snapshot.messages,message('reply','assistant')]};render();await wait();ensure('Agent reply preserves reading',list().scrollTop===reading);
-      fill();send();await wait();bottom('accepted local send resumes follow');ensure('sent draft cleared',document.querySelector('.composer-row textarea').value==='');
+      fill();send();await wait();bottom('accepted local send resumes follow');ensure('sent draft cleared',document.querySelector('.composer-box textarea').value==='');
       snapshot={...snapshot,messages:[...snapshot.messages,message('local')]};render();grow();await wait();bottom('later optimistic commit and rich layout at bottom');
-      scrollUp();const failedPosition=list().scrollTop;fail=true;fill();send();await wait();ensure('failed save preserves reading',list().scrollTop===failedPosition);ensure('failed save retains draft',document.querySelector('.composer-row textarea').value==='New synthetic input');
+      scrollUp();const failedPosition=list().scrollTop;fail=true;fill();send();await wait();ensure('failed save preserves reading',list().scrollTop===failedPosition);ensure('failed save retains draft',document.querySelector('.composer-box textarea').value==='New synthetic input');
       snapshot={...snapshot,tabActive:false};render();grow();await wait();ensure('inactive page does not follow',list().scrollTop===failedPosition);
       snapshot={...snapshot,tabActive:true};render();await wait();ensure('retained reading position survives return',list().scrollTop===failedPosition);
       document.getElementById('results').textContent=JSON.stringify({ok:true,checks});root.unmount();

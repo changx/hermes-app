@@ -42,10 +42,10 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
       const results=[];
       for(const width of [720,1280,1800]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.session-tab-page').style.width=width+'px';
-        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.session-tab-page'),row=document.querySelector('.composer-row');
+        const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.session-tab-page'),row=document.querySelector('.composer-toolbar'),box=document.querySelector('.composer-box'),field=box.querySelector('textarea');
         const bubble=user.getBoundingClientRect(),other=agent.getBoundingClientRect(),bounds=pane.getBoundingClientRect(),controls=[...row.children].map(x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,width:b.width,height:b.height}});
         const stop=document.querySelector('.running-row .stop-button').getBoundingClientRect();
-        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
+        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:box.getBoundingClientRect().top,box:(b=>({left:b.left,right:b.right,height:b.height}))(box.getBoundingClientRect()),boxRadius:getComputedStyle(box).borderTopLeftRadius,fieldHeight:field.getBoundingClientRect().height,fieldBottom:field.getBoundingClientRect().bottom,rowTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
       } document.getElementById('results').textContent=JSON.stringify(results);
     </script></body></html>`);
     for(const reduced of [false,true]) {
@@ -56,15 +56,19 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
       assert.ok(result.bubbleLeft>result.agentLeft,'user bubble is right aligned');
       assert.ok(result.bubbleWidth<=(result.agentWidth-28)*.6+1,'user bubble has 60 percent cap');
       assert.ok(Math.abs(result.bubbleLeft+result.bubbleWidth-(result.agentLeft+result.agentWidth-14))<1,'user right gutter');
-      assert.equal(result.controls.length,3,'plus, input, send only');
+      assert.equal(result.controls.length,2,'tool row holds plus and send only');
       assert.ok(result.stop.bottom<=result.inputTop,'stop shares running row above input, not send row');
       assert.ok(result.stop.left>=result.paneLeft && result.stop.right<=result.paneRight);
       assert.deepEqual(result.animations,Array(3).fill(reduced?'none':'agent-running-dot'));
       for(const control of result.controls){assert.ok(control.width>0);assert.ok(control.left>=result.paneLeft);assert.ok(control.right<=result.paneRight);}
-      // One text line (16px * 1.5) plus unchanged 9px vertical padding and 1px borders.
-      assert.ok(Math.abs(result.controls[1].height-44)<0.1);
-      assert.equal(result.controls[0].height,42);
-      assert.equal(result.controls[2].height,42);
+      // ChatGPT-style card: one borderless text line above a tool row with round 32px plus/send.
+      assert.equal(result.boxRadius,'22px');
+      assert.equal(result.fieldHeight,48);
+      assert.ok(result.rowTop>=result.fieldBottom-0.5,'tool row sits below the text');
+      assert.ok(Math.abs(result.box.height-100)<0.6,'empty card is about 100px tall');
+      for(const control of result.controls){assert.equal(control.width,32);assert.equal(control.height,32);}
+      assert.ok(Math.abs(result.controls[0].left-(result.box.left+11))<0.6,'plus at card left');
+      assert.ok(Math.abs(result.controls[1].right-(result.box.right-11))<0.6,'send at card right');
     }
     }
   } finally {await rm(folder,{recursive:true,force:true});}

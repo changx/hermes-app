@@ -57,7 +57,10 @@ test('Chromium: session page focuses the composer, keeps focus after send, appli
       ensure('switching session focuses composer',document.activeElement===box());
       render({...base,tabActive:true});await wait(20);
 
+      const sendColor=()=>getComputedStyle(document.querySelector('.composer-toolbar .send-button')).backgroundColor;
+      ensure('empty draft send is gray',sendColor()==='rgb(215, 215, 217)');
       type('hello');await wait(10);
+      ensure('ready send is black',sendColor()==='rgb(31, 35, 41)');
       let event=enter({shiftKey:true});
       ensure('shift enter adds a line',!event.defaultPrevented&&sent.length===0);
       event=enter({isComposing:true});
@@ -84,7 +87,7 @@ test('Chromium: session page focuses the composer, keeps focus after send, appli
         document.getElementById('root').style.width=width+'px';await wait(20);
         const page=document.querySelector('.session-tab-page').getBoundingClientRect();
         const column=document.querySelector('.timeline-content').getBoundingClientRect();
-        const row=document.querySelector('.composer-row').getBoundingClientRect();
+        const row=document.querySelector('.composer-box').getBoundingClientRect();
         const list=document.querySelector('.message-list').getBoundingClientRect();
         const expected=Math.min(768,document.querySelector('.message-list').clientWidth);
         widths[width]={column:column.width,composer:row.width};
