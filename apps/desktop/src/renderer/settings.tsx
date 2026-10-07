@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { DesktopSnapshot } from '../shared/desktop-api';
 import { ConnectionPage, ConnectionSettings } from './connection-settings';
@@ -101,7 +102,7 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
 }
 
 /** Opens (or focuses) the native Settings window. The current page stays visible and usable. */
-export function SettingsButton({ className }: { className?: string }) {
+export function SettingsButton({ className, icon }: { className?: string; icon?: ReactNode }) {
   const [error, setError] = useState('');
-  return <><button type="button" className={className} title="Settings" aria-label="Settings" onClick={() => { setError(''); void window.hermesDesktop.openSettings().catch(() => setError('Settings could not be opened. Try again.')); }}>⚙</button>{error && <span role="alert" className="settings-open-error">{error}</span>}</>;
+  return <><button type="button" className={className} title="Settings" aria-label="Settings" onClick={() => { setError(''); void window.hermesDesktop.openSettings().catch(() => setError('Settings could not be opened. Try again.')); }}>{icon ?? '⚙'}</button>{error && <span role="alert" className="settings-open-error">{error}</span>}</>;
 }

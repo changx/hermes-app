@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar } from './browser-sidebar';
 import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
@@ -132,6 +132,16 @@ const registerDesktopApi = (): void => {
   handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
   handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
   handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
+  handle('desktop:tab-menu', (event, id: unknown, x: unknown, y: unknown) => {
+    shellSender(event); const manager = tabs, tabId = text(id, 200);
+    if (!manager || !mainWindow || mainWindow.isDestroyed()) return;
+    const items = manager.menu(tabId);
+    const position = Number.isFinite(x) && Number.isFinite(y) ? { x: Math.max(0, Math.round(x as number)), y: Math.max(0, Math.round(y as number)) } : {};
+    Menu.buildFromTemplate(items.map(item => ({ label: item.label, enabled: item.enabled, click: () => {
+      if (manager !== tabs || !manager.tabs.has(tabId)) return;
+      try { manager.menuAction(tabId, item.action); } catch { /* A busy tab stays open. */ }
+    } }))).popup({ window: mainWindow, ...position });
+  });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
   handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
   handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
@@ -152,7 +162,10 @@ const registerDesktopApi = (): void => {
   handle("desktop:close-session-page", (event, id: unknown) => { shellSender(event); const tab = [...tabs?.tabs.values() ?? []].find(item => item.threadId === text(id, 200)); if (tab) tabs?.close(tab.id); });
   handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && (tab.id !== tabs?.activeTabId || !tabs?.snapshot(event.sender).tabActive) || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
   handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
-  handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); await service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
+  handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); return service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
+  handle("desktop:get-project-workspace", async (event, id: unknown) => { shellSender(event); return service.getProjectWorkspace(text(id, 200)); });
+  handle("desktop:save-project-agents", async (event, id: unknown, content: unknown, previous: unknown) => { shellSender(event); return service.saveProjectAgents(text(id, 200), text(content, 10 * 1024 * 1024), previous === null ? null : text(previous, 80)); });
+  handle("desktop:add-project-files", async (event, id: unknown, files: unknown) => { shellSender(event); return service.addProjectFiles(text(id, 200), attachmentInputs(files)); });
   handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
   handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
   handle("desktop:create-thread", async (event, value: unknown) => {

@@ -1,5 +1,16 @@
 # Desktop session composer and left user bubbles
 
+## ChatGPT-style input card (isolated candidate)
+
+Jamie asked to copy the ChatGPT desktop Session input area. Branch `feat/desktop-chatgpt-composer`, baseline main `d1d171c`. This supersedes the earlier translucent dock, the separate bordered textarea and the blue 40×42px plus/send buttons.
+
+- Measured reference (2× screenshot): a card that fills the content column, about 100pt tall, 22pt radius, 1pt light-gray border and 12pt bottom margin. A borderless text line is at the top. The tool row below has `+` on the left and a 28pt dark round send button on the right.
+- Implementation: remove the dock border, blur and background. A white `.composer-box` card fills the existing 768px column, with a 22px radius, a `#e5e5e5` border, a soft shadow and a darker border while focused. The card holds attachment previews, then a borderless textarea (48–216px, padding 12px 16px 0), then `.composer-toolbar`. The tool row has a transparent 32px round `+` and a 32px round send button. Send is `#1f2329` when ready and `#d7d7d9` when disabled. Icons are inline SVG. A click on empty card space focuses the textarea. The empty card is 100px tall.
+- Not copied: the ChatGPT `Work with ChatGPT`, `Approve for me` and model controls, and its microphone. Hermes has no matching function on this screen, and nonfunctional controls are not added.
+- Unchanged: the running row stays above the card with its separate Stop button, and Send stays usable while the Agent runs. Enter/Shift-Enter/Command-Enter rules, IME, paste and drop uploads, the eight-file limit, drafts, focus restore and the 768px column also stay unchanged.
+
+Verification: desktop TypeScript, build and **106/106** tests pass with `/usr/bin/google-chrome` and Electron/Xvfb, 0 skipped. Updated real-Chromium assertions check the 22px radius, 48px text line, 100px empty card, 32px controls 11px from the card edges, gray/black send states, palette and 16px text padding. The first full run failed one palette assertion because its empty draft shows the disabled gray. That assertion now expects gray, and the focus test checks black after typing. Evidence: Channel workspace `desktop-chatgpt-composer/` (`check.log`, `check-first-failure.log`, `composer-idle.png`, `composer-running.png`; previews use synthetic messages). No main merge, release, installation, mobile/plugin/core change or service restart. Installed Mac visual and keyboard acceptance remains pending.
+
 ## Desktop v0.1.31 integration
 
 Jamie authorized main merge and desktop publication of right-side attachment/page/browser preview, all attachment-list thumbnails, and the `rgb(245,245,250)` Session code background correction. Release source combines `e791529`, `b9a4f97` and `d6d4f18`. Desktop **62/62** checks pass with real Chromium and Linux/Xvfb Electron, zero skips, including a real `https://example.com/` browser load and standard Chrome UA verification. Shared-client checks/build/tests and dependency audit also pass. Version metadata is `0.1.31`; dependencies stay locked.
@@ -115,7 +126,7 @@ Jamie requested a desktop default of **14px for UI and content**. Candidate `fix
 - Channel tree rows expose a new-session button on hover and keyboard focus. Clicking it opens the same dialog with that row's Channel selected without first navigating away from the current conversation.
 - Attachment uploads are scoped to the new session's authoritative returned ID. The existing upload API requires an existing session: files stay local until Create session, then upload into its message draft. They are **not automatically sent**. Cancel before creation does not create a session or upload files.
 - Creation retries preserve the original client identity and Channel/title. Upload failures preserve files and retry the already-created session instead of creating another. An existing empty session is not silently deleted when continuing without files.
-- Desktop composer uses the mobile palette, translucent dock, compact inline plus/stop/send controls, attachments above the input, and bounded content-sized multiline input (42–120px). Enter sends; Shift-Enter and composing IME input do not. Running tasks keep separate stop and send actions.
+- Desktop composer uses the mobile palette, translucent dock, compact inline plus/stop/send controls, attachments above the input, and bounded content-sized multiline input (42–120px). Enter sends; Shift-Enter and composing IME input do not. (Superseded: single-line Enter sends; multiline text needs Cmd/Ctrl+Enter. See docs/desktop-tabs.md.) Running tasks keep separate stop and send actions.
 - Desktop user messages include the You byline, Markdown and attachments inside a pale-blue rounded bubble aligned left. Mobile user bubbles now also align left, with the small corner on the left. Short text remains content-sized; wide tables/media retain bounded viewports.
 - Alignment is intended to become a user preference in a later change. This candidate does not introduce a nonfunctional settings control or persistence schema.
 

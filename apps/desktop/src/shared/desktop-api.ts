@@ -6,7 +6,7 @@ export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }>;
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string }>;
-export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string }>;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;
   id: string;
@@ -93,6 +93,16 @@ export type DesktopSnapshot = Readonly<{
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
 export type ProjectCreationInput = ChannelInput & Readonly<{ connectionKey: string }>;
+/** Project Files and AGENTS.md from the plugin workspace API. `supported: false` hides both sections. */
+export type DesktopProjectFile = Readonly<{ name: string; kind: 'file' | 'directory' | 'unavailable'; size: number | null }>;
+export type DesktopProjectWorkspace = Readonly<{
+  supported: boolean;
+  agents: Readonly<{ content: string; etag: string }> | null;
+  files: readonly DesktopProjectFile[];
+  moreFiles: boolean;
+}>;
+export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
+export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?: Readonly<{ name: string; reason: 'exists' | 'invalid' | 'failed' }> }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
@@ -115,6 +125,8 @@ export interface HermesDesktopApi {
   newTab(channelId?: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   closeTab(tabId: string): Promise<void>;
+  /** Show the native Close Tab / Close Tabs to the Right / Close Other Tabs menu at window coordinates. */
+  showTabMenu(tabId: string, x: number, y: number): Promise<void>;
   completeNewTab(): Promise<void>;
   setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;
@@ -134,9 +146,15 @@ export interface HermesDesktopApi {
   copySessionLink(): Promise<void>;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
-  createChannel(input: ProjectCreationInput): Promise<void>;
+  /** Resolves with the new Project's identity after server readback. */
+  createChannel(input: ProjectCreationInput): Promise<string>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
+  getProjectWorkspace(channelId: string): Promise<DesktopProjectWorkspace>;
+  /** `previousEtag === null` creates AGENTS.md only if it does not exist. */
+  saveProjectAgents(channelId: string, content: string, previousEtag: string | null): Promise<ProjectAgentsResult>;
+  /** Adds new root files. Never replaces an existing file. Stops at the first failure. */
+  addProjectFiles(channelId: string, files: readonly File[]): Promise<ProjectFilesResult>;
   createThread(input: ThreadInput): Promise<string>;
   renameThread(threadId: string, title: string): Promise<void>;
   saveThreadLabels(threadId: string, markers: string[], timestamp: number, connectionKey: string): Promise<LabelDetail>;

@@ -388,38 +388,70 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-resize-handle { position: absolute; z-index: 21; left: calc(var(--sidebar-width, 280px) - 6px); top: 48px; bottom: 0; width: 6px; cursor: col-resize; touch-action: none; -webkit-app-region: no-drag; }
 .sidebar-resize-handle:hover, .sidebar-resize-handle:focus-visible, .sidebar-resizing .sidebar-resize-handle { background: var(--app-field-border); }
 .sidebar-resize-handle:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
-.sidebar-resizing, .sidebar-resizing * { cursor: col-resize !important; user-select: none; }
+.sidebar-resizing, .sidebar-resizing *, .browser-resizing, .browser-resizing * { cursor: col-resize !important; user-select: none; }
 .native-workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
-.native-sidebar { display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
-.native-sidebar .channel-tree { flex: 1; overflow-y: auto; padding: 0 6px; }
-.native-sidebar .thread-children { margin: 0 4px 12px 24px; padding-left: 10px; border-left: 1px solid var(--app-field-border); }
-.native-sidebar .tree-thread { border-radius: 8px; }
-.native-sidebar .channel-toolbar { border-radius: 8px; }
+/* Native sidebar, after the ChatGPT desktop reference: quiet grey rail,
+   compact rows, section titles at the row size in a muted colour (not
+   uppercase or bold), icon-font controls. Text follows the user's text-size
+   setting; row height scales with it. */
+.native-sidebar { --sidebar-text: var(--app-font-size); --sidebar-small: calc(var(--app-font-size) * .8125); --sidebar-row: calc(var(--app-font-size) * 2); display: flex; flex-direction: column; min-height: 0; background: var(--app-rail); border-right: 1px solid var(--app-border); }
+.native-sidebar .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 12px; }
+.app-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; font-family: "HermesWorkIcons"; font-size: 17px; font-style: normal; font-weight: 400; line-height: 18px; speak: never; }
+.sidebar-actions { display: grid; gap: 1px; padding: 8px 0 2px; }
+/* No blank band above New chat. The collapse button sits at the right end of the New chat row. */
+.native-sidebar .sidebar-actions .sidebar-action:first-child { width: calc(100% - 34px); }
+.native-sidebar .sidebar-recents .sidebar-section-header { margin-top: 8px; }
+.sidebar-section-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sidebar-section-chevron { width: 14px; height: 14px; font-size: 12px; opacity: 0; }
+.sidebar-section-header:hover .sidebar-section-chevron, .sidebar-section-toggle:focus-visible .sidebar-section-chevron, .sidebar-section-toggle[aria-expanded="false"] .sidebar-section-chevron { opacity: 1; }
+.native-sidebar .sidebar-new-project:disabled { opacity: .5; cursor: default; }
+.sidebar-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--sidebar-row); padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--app-text); font: inherit; font-size: var(--sidebar-text); text-align: left; cursor: pointer; }
+.sidebar-action .app-icon { color: var(--app-label); }
+.sidebar-action:disabled { opacity: .5; cursor: default; }
+.sidebar-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
+.sidebar-section-header { position: relative; display: flex; align-items: center; gap: 4px; min-height: var(--sidebar-row); margin-top: 12px; padding: 0 2px 0 10px; }
+.sidebar-section-title { flex: 1; margin: 0; color: var(--app-muted); font-size: var(--sidebar-text); font-weight: 400; }
+.native-sidebar .labels-filter { position: static; display: contents; margin: 0; }
+.native-sidebar .labels-filter .sidebar-filter-chips { order: 3; flex-basis: 100%; }
+.native-sidebar .sidebar-section-header:has(.sidebar-filter-chips) { flex-wrap: wrap; }
+.native-sidebar .labels-filter-popover { top: 100%; left: 8px; right: 8px; font-size: var(--sidebar-text); }
+.native-sidebar .sidebar-filter-icon[aria-pressed="true"] { color: var(--app-accent); background: var(--app-selected); }
+.native-sidebar .channel-tree { padding: 0; }
+.native-sidebar .channel-toolbar { display: flex; align-items: center; min-height: var(--sidebar-row); border-radius: 8px; }
+.native-sidebar .channel-toggle { gap: 6px; min-height: var(--sidebar-row); padding: 4px 6px 4px 4px; color: var(--app-text); font-size: var(--sidebar-text); }
+.native-sidebar .channel-toggle strong { font-weight: 400; }
+.native-sidebar .channel-chevron { width: 16px; height: 16px; font-size: 13px; color: var(--app-muted); }
+.native-sidebar .channel-name { gap: 1px; }
+.native-sidebar .channel-connection-name { font-size: var(--sidebar-small); }
+.native-sidebar .project-unread-count { font-size: 11px; }
+.native-sidebar .channel-new-session, .native-sidebar .channel-options { opacity: 0; }
+.native-sidebar .channel-new-session { margin-right: 2px; }
+.native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session,
+.native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
+/* Guide line under the chevron centre; Session titles sit at least 16px right of the Project name. */
+.native-sidebar .thread-children { margin: 0 0 6px 12px; padding-left: 22px; border-left: 1px solid var(--app-field-border); }
+.native-sidebar .tree-thread { min-height: var(--sidebar-row); padding: 6px 8px; border-radius: 8px; font-size: var(--sidebar-text); }
+.native-sidebar .tree-more, .native-sidebar .tree-empty { padding: 6px 8px; border-radius: 8px; color: var(--app-muted); font-size: var(--sidebar-text); }
+.native-sidebar .empty-state { padding: 8px 10px; color: var(--app-muted); font-size: var(--sidebar-text); }
+.native-sidebar .sidebar-action:hover, .native-sidebar .sidebar-icon-button:hover,
 .native-sidebar .channel-toolbar:hover, .native-sidebar .channel-toolbar:focus-within,
-.native-sidebar .tree-thread:hover, .native-sidebar .tree-thread:focus-visible,
-.native-sidebar .tree-more:hover, .native-sidebar .sidebar-new-chat:hover, .native-sidebar .sidebar-filter-icon:hover { background: var(--app-border); }
+.native-sidebar .tree-thread:hover, .native-sidebar .tree-thread:focus-visible, .native-sidebar .tree-more:hover { background: var(--app-border); }
+.native-sidebar .channel-toolbar:hover .sidebar-icon-button:hover { background: var(--app-field-border); }
 .native-sidebar .tree-thread.selected { background: var(--app-selected); }
-.native-sidebar .tree-more { border-radius: 8px; }
-.native-sidebar .channel-toggle { color: var(--app-muted); font-size: var(--app-font-size); }
-.native-sidebar .channel-new-session, .native-sidebar .channel-options { width: 26px; height: 28px; border: 0; padding: 0; border-radius: 6px; background: transparent; color: var(--app-muted); opacity: 0; }
-.native-sidebar .channel-toolbar:hover .channel-new-session, .native-sidebar .channel-toolbar:focus-within .channel-new-session, .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
-.native-sidebar-footer { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--app-border); }
-.native-sidebar-footer > div { display: flex; align-items: center; gap: 6px; color: var(--app-muted); }
-.native-sidebar-footer > div > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.native-sidebar-footer button, .sidebar-new-chat, .sidebar-filter-icon { border: 0; background: transparent; color: var(--app-text); padding: 8px; border-radius: 8px; text-align: left; }
-.sidebar-new-chat-row { display: flex; align-items: center; gap: 8px; }
-.sidebar-new-chat { flex: 1; font-weight: 500; }
-.sidebar-filter-icon { display: flex; }
-.sidebar-filter-icon[aria-pressed="true"] { background: var(--app-selected); }
+.native-sidebar-footer { padding: 6px 8px 10px; }
+.native-sidebar-footer .sidebar-action { color: var(--app-label); }
 .sidebar-filter-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
 .sidebar-filter-chip { display: flex; align-items: center; min-width: 0; max-width: 170px; border-radius: 6px; background: var(--app-selected); }
 .sidebar-filter-chip button { border: 0; background: transparent; padding: 4px 6px; color: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-filter-chip button:first-child { flex: 1; }
 .labels-filter-popover { box-shadow: 0 8px 24px #0002; }
-.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 32px); top: 10px; width: 26px; height: 28px; border: 0; border-radius: 6px; background: var(--app-rail); color: var(--app-muted); }
+.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 36px); top: calc(8px + (var(--app-font-size, 16px) * 2 - 28px) / 2); background: var(--app-rail); }
+.sidebar-edge-toggle:hover { background: var(--app-border); }
 .sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+.desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+/* The strip still scrolls (trackpad, wheel, active tab reveal); it only hides the scrollbar. */
+.desktop-tabs::-webkit-scrollbar { display: none; }
 .sidebar-collapsed .desktop-tabs { padding-left: 42px; }
 /* Reserve six full-width characters plus padding, three status dots and the close control. */
 .desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: calc(6em + 90px); max-width: max(240px, calc(6em + 90px)); border-radius: 8px; color: var(--app-muted); }
@@ -445,7 +477,12 @@ dialog.labels-editor::backdrop { background: #0005; }
 .browser-toolbar { display: flex; align-items: center; flex: 0 0 44px; padding: 6px; gap: 2px; border-bottom: 1px solid var(--app-border); }
 .browser-toolbar button:disabled { opacity: .4; cursor: default; }
 .browser-toolbar input { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--app-field-border); border-radius: 6px; background: var(--app-surface); color: var(--app-text); font: inherit; }
-.browser-view-slot { flex: 1; min-height: 0; background: white; }
+.browser-view-slot { flex: 1; min-height: 0; margin-left: 5px; background: white; }
+/* The preview page and the conversation are native views drawn above this renderer, so the resize handle
+   uses a 6px strip (1px border + 5px slot margin) that no native view covers. */
+.browser-resize-handle { position: absolute; z-index: 21; right: calc(var(--browser-width) - 6px); top: 0; bottom: 0; width: 6px; cursor: col-resize; touch-action: none; -webkit-app-region: no-drag; }
+.browser-resize-handle:hover, .browser-resize-handle:focus-visible, .browser-resizing .browser-resize-handle { background: var(--app-field-border); }
+.browser-resize-handle:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
 .browser-error { margin: 0; padding: 8px 12px; overflow-wrap: anywhere; color: var(--app-text); }
 .desktop-browser-toggle { flex: 0 0 auto; margin-left: auto; font: inherit; }
 .browser-title button:hover, .browser-toolbar button:not(:disabled):hover, .desktop-browser-toggle:not(:disabled):hover { background: var(--app-border); }
@@ -458,7 +495,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .session-tab-page { height: 100dvh; display: flex; flex-direction: column; min-height: 0; background: var(--app-background); }
 .session-tab-page .message-list { flex: 1; min-height: 0; }
 .new-chat-page { height: 100dvh; overflow-y: auto; padding: clamp(24px, 5vw, 64px); background: var(--app-background); }
-.new-chat-form { display: flex; flex-direction: column; gap: 20px; max-width: 850px; min-height: min(560px, calc(100dvh - 96px)); margin: 0 auto; }
+.new-chat-form { display: flex; flex-direction: column; gap: 20px; max-width: 768px; min-height: min(560px, calc(100dvh - 96px)); margin: 0 auto; }
 .new-chat-form h1 { font-size: 28px; font-weight: 500; margin: 0; }
 .new-chat-project { display: flex; align-items: center; gap: 12px; color: var(--app-muted); }
 .new-chat-project select { min-width: 160px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-background); color: var(--app-text); }
@@ -550,11 +587,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .receipt button { margin-left: 8px; }
 .load-older { display: block; margin: 0 auto 20px; }
 .new-messages { position: absolute; right: 24px; bottom: 16px; border: 0; border-radius: 999px; padding: 8px 13px; color: #294e7b; background: #e7eef7; box-shadow: 0 5px 18px rgb(0 0 0 / 20%); }
-.composer { display: block; padding: 7px 10px; border-top: 1px solid rgba(205, 215, 227, .72); background: rgba(248, 250, 253, .78); backdrop-filter: blur(16px); box-shadow: 0 -4px 10px -4px rgba(23, 42, 64, .16); }
-.composer-row { display: flex; align-items: flex-end; gap: 5px; }
-.composer textarea { flex: 1; min-width: 0; min-height: 42px; max-height: 120px; resize: none; overflow-y: auto; border: 1px solid #cdd7e3; border-radius: 12px; padding: 9px 12px; color: #172a40; background: #fff; font: inherit; line-height: 1.5; }
-.composer-row > button { flex-shrink: 0; width: 40px; height: 42px; border: 0; border-radius: 10px; padding: 0; color: #fff; background: #285ea5; font-weight: 650; font-size: 24px; }
-.composer-row .attach-button { color: #294e7b; background: #e7eef7; }
+/* ChatGPT-style composer: no dock bar; a white rounded card floats 12px above the window bottom. */
+.composer { display: block; padding: 0 16px 12px; }
+.composer > [role="alert"] { margin: 0 0 6px; padding: 0 4px; color: #9d1b32; font-size: var(--app-font-size); }
+.composer-box { display: flex; flex-direction: column; border: 1px solid #e5e5e5; border-radius: 22px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 4px 16px rgb(0 0 0 / 5%); cursor: text; transition: border-color .15s, box-shadow .15s; }
+.composer-box:focus-within { border-color: #d4d4d4; box-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 6px 20px rgb(0 0 0 / 8%); }
+.composer textarea { display: block; width: 100%; min-width: 0; min-height: 48px; max-height: 216px; resize: none; overflow-y: auto; border: 0; outline: none; padding: 12px 16px 0; color: #172a40; background: transparent; font: inherit; line-height: 1.5; }
+.composer textarea::placeholder { color: #9b9ca0; }
+.composer-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px; cursor: text; }
+.composer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border: 0; border-radius: 50%; padding: 0; cursor: pointer; }
+.composer-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.composer-toolbar .attach-button { color: #1f2329; background: transparent; }
+.composer-toolbar .attach-button:not(:disabled):hover { background: #f0f0f0; }
+.composer-toolbar .send-button { margin-left: auto; color: #fff; background: #1f2329; }
+.composer-toolbar .send-button:not(:disabled):hover { background: #3a3f46; }
+.composer-toolbar .send-button:disabled { color: #fff; background: #d7d7d9; cursor: default; }
+.composer-toolbar .attach-button:disabled { color: #b5b6b9; cursor: default; }
+.composer-toolbar > button:focus-visible { outline: 2px solid #285ea5; outline-offset: 2px; }
 .running-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; }
 .agent-running { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: #607187; font-size: var(--app-font-size); }
 .running-dots { display: flex; align-items: center; gap: 3px; flex: 0 0 24px; }
@@ -564,7 +613,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @keyframes agent-running-dot { 0%, 33%, 100% { transform: scale(.6); } 16.67% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .running-dots span { animation: none; } }
 .running-row .stop-button { flex: 0 0 34px; height: 28px; padding: 0; border: 0; border-radius: 9px; color: #425874; background: #e6edf7; font-size: 17px; }
-.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 10px 10px 0; cursor: default; }
 .composer-attachments > .composer-attachment { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 6px; border-radius: 8px; padding: 5px 8px; background: #f1f5fa; font-size: var(--app-font-size); overflow-wrap: anywhere; }
 .composer-attachments button { border: 0; margin-left: 5px; background: transparent; }
 .interaction-card { margin: 0 18px 10px; border: 1px solid #efdfb8; border-radius: 10px; padding: 12px; background: #fff7e6; }
@@ -586,6 +635,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-files button { border: 0; padding: 4px; background: transparent; }
 .session-hint { color: #50647b; font-size: var(--app-font-size); line-height: 1.5; }
 .editor-dialog textarea { min-height: 100px; resize: vertical; }
+/* Project modal: same for New project and Project settings. Body scrolls; actions stay visible. */
+.project-dialog { width: min(620px, 100%); max-height: calc(100dvh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.project-dialog h2 { margin: 0; }
+.project-dialog-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.project-dialog .field-hint { color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); font-weight: 400; line-height: 1.4; }
+.project-dialog .project-agents { min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--app-font-size) * .875); }
+.project-files { display: grid; gap: 6px; border: 1px dashed var(--app-field-border); border-radius: 10px; padding: 10px 12px; }
+.project-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.project-section-title { color: var(--app-label); font-size: var(--app-font-size); font-weight: 650; }
+.project-section-header button { border: 1px solid var(--app-field-border); border-radius: 8px; padding: 5px 10px; color: var(--app-label); background: #fff; font: inherit; font-size: calc(var(--app-font-size) * .875); cursor: pointer; }
+.project-section-header button:disabled { opacity: .5; cursor: default; }
+.project-file-list { display: grid; gap: 2px; max-height: 180px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.project-file-list li { display: flex; align-items: center; gap: 8px; min-height: 30px; border-radius: 6px; padding: 2px 8px; font-size: calc(var(--app-font-size) * .875); }
+.project-file-list li:hover { background: var(--app-hover); }
+.project-file-list .project-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-file-list .project-file-size { color: var(--app-muted); white-space: nowrap; }
+.project-file-list li.staged .project-file-size { color: var(--app-accent); }
+.project-file-list button { border: 0; padding: 2px 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
+.project-files-empty { margin: 0; color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); }
+.dialog-actions .danger { margin-right: auto; color: #9d1b32; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: var(--app-accent); }
 .dialog-actions .secondary { border: 1px solid var(--app-field-border); color: var(--app-label); background: #fff; }
@@ -604,3 +673,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .attachment-thumbnail small { position: absolute; left: 0; right: 0; bottom: 1px; padding: 0; text-align: center; background: white; color: inherit; font: calc(var(--app-font-size) * .625)/1.1 system-ui; }
 .attachment-image span { display: block; padding: 20px; color: var(--app-muted); }
 .attachment-row a { margin-left: 8px; font-size: var(--app-font-size); }
+
+/* Session content column: messages, interaction cards and composer controls share one centered
+   768px column. The scroll area and composer background still span the full page width. */
+.session-tab-page { --session-content-max: 768px; }
+/* Floating Session toolbar: no title bar; one compact row at the top right over the timeline. */
+.session-main { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.session-toolbar { position: absolute; z-index: 5; top: 8px; right: 12px; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); padding: 3px; border: 1px solid var(--app-border); border-radius: 10px; background: rgb(255 255 255 / 86%); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgb(0 0 0 / 6%); }
+.session-toolbar .label-pills { min-width: 0; margin: 0 2px 0 6px; overflow: hidden; flex-wrap: nowrap; }
+.session-toolbar .conversation-actions { gap: 2px; }
+.session-toolbar .conversation-actions button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--app-label); font-size: var(--app-font-size); cursor: pointer; }
+.session-toolbar .conversation-actions button:hover { background: var(--app-hover); color: var(--app-text); }
+.session-toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.session-toolbar .settings-open-error { position: absolute; top: calc(100% + 4px); right: 0; white-space: nowrap; }
+.session-tab-page .timeline-content { max-width: var(--session-content-max); margin-inline: auto; }
+.session-tab-page .interaction-card { margin-inline: max(18px, calc((100% - var(--session-content-max)) / 2)); }
+.session-tab-page .composer > * { max-width: var(--session-content-max); margin-inline: auto; }

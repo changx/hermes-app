@@ -1,7 +1,7 @@
 import { AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
 import { SettingsButton } from './settings';
-import { NewProjectDialog } from './new-project-dialog';
+import { ProjectDialog } from './project-dialog';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
@@ -15,10 +15,30 @@ import { NewSessionPage } from './new-session-page';
 import { LabelPills, LabelsEditor } from './session-labels';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
+// Stroke icons for the floating Session toolbar. Decorative: each button carries its accessible name.
+const TOOL_ICONS = {
+  link: 'M8.5 11.5l3-3M7 9.5l-1.6 1.6a2.6 2.6 0 003.7 3.7L10.7 13M13 10.5l1.6-1.6a2.6 2.6 0 00-3.7-3.7L9.3 6.8',
+  label: 'M3.5 4.5v4.6l7.4 7.4 5.6-5.6-7.4-7.4H4.5zM7 7h.01',
+  rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
+  archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
+  settings: 'M10 7.2a2.8 2.8 0 100 5.6 2.8 2.8 0 000-5.6zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4',
+} as const;
+const ToolIcon = ({ name }: { name: keyof typeof TOOL_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={TOOL_ICONS[name]} /></svg>;
+
 const drafts = new LocalDraftMap<string>(value => !!value.trim());
 const draftAttachments = new LocalDraftMap<readonly DesktopAttachment[]>(value => value.length > 0);
 const EmptyState = ({ children }: { children: string }) => <p className="empty-state">{children}</p>;
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
+
+/**
+ * Composer Enter rule. Single-line text: Enter sends. Multiline text: Enter adds a
+ * line and Cmd/Ctrl+Enter sends. Shift+Enter always adds a line.
+ */
+export const composerEnterAction = (value: string, keys: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): "send" | "newline" => {
+  if (keys.shiftKey || keys.altKey) return "newline";
+  if (keys.metaKey || keys.ctrlKey) return "send";
+  return value.includes("\n") ? "newline" : "send";
+};
 
 const PairingPanel = ({ busy }: { busy: boolean }) => {
   const [baseUrl, setBaseUrl] = useState("");
@@ -38,37 +58,19 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
   </form></div>;
 };
 
-type Editor = "new-channel" | "edit-channel" | "rename-thread" | "palette" | null;
-const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null | "new-channel">; snapshot: DesktopSnapshot; close: () => void }) => {
-  const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
-  const [name, setName] = useState(kind === "edit-channel" ? channel?.name ?? "" : "");
-  const [description, setDescription] = useState(kind === "edit-channel" ? channel?.description ?? "" : "");
-
-  const [detailsReady, setDetailsReady] = useState(kind !== "edit-channel");
-  const [detailError, setDetailError] = useState("");
-  useEffect(() => {
-    if (kind !== "edit-channel" || !channel) return;
-    let active = true;
-    void window.hermesDesktop.getChannelInfo(channel.id).then(value => { if (active) { setName(value.name); setDescription(value.description ?? ""); setDetailsReady(true); } }, () => { if (active) setDetailError("Channel details could not be loaded. Close this form and open it again."); });
-    return () => { active = false; };
-  }, [kind, channel?.id]);
-
+type Editor = "rename-thread" | "palette" | null;
+type ProjectEditor = { channelId?: string } | null;
+const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; snapshot: DesktopSnapshot; close: () => void }) => {
+  const [name, setName] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!detailsReady) return;
-    let task: Promise<void>;
-    if (kind === "edit-channel" && channel) task = window.hermesDesktop.updateChannel(channel.id, { name, description });
-    else if (kind === "rename-thread" && snapshot.selectedThreadId) task = window.hermesDesktop.renameThread(snapshot.selectedThreadId, name);
-    else return;
-    safely(task.then(close));
+    if (kind === "rename-thread" && snapshot.selectedThreadId) safely(window.hermesDesktop.renameThread(snapshot.selectedThreadId, name).then(close));
   };
   if (kind === "palette") return <SessionPicker snapshot={snapshot} close={close} />;
-  const channelEditor = kind === "edit-channel";
-  const title = kind === "edit-channel" ? "Edit channel" : "Rename topic";
+  const title = "Rename topic";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-    <h2>{title}</h2>{detailError ? <p role="alert">{detailError}</p> : null}<label>{channelEditor ? "Name" : "Title"}<input autoFocus required disabled={!detailsReady} maxLength={channelEditor ? 120 : 200} value={name} onChange={(event) => setName(event.target.value)} /></label>
-    {channelEditor ? <label>Description<textarea disabled={!detailsReady} maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label> : null}
-    <div className="dialog-actions">{kind === 'edit-channel' && channel && <button type="button" className="secondary" disabled={!detailsReady} onClick={() => { if (window.confirm(`Delete “${channel.name}”? This cannot be undone.`)) safely(window.hermesDesktop.deleteChannel(channel.id).then(close)); }}>Delete project</button>}<button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit" disabled={!detailsReady}>Save</button></div>
+    <h2>{title}</h2><label>Title<input autoFocus required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} /></label>
+    <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit">Save</button></div>
   </form></div>;
 };
 
@@ -203,6 +205,10 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
   </div>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
 
+// Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
+const COMPOSER_INPUT_MIN = 48;
+const COMPOSER_INPUT_MAX = 216;
+
 const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(): void }) => {
   const threadId = snapshot.selectedThreadId;
   const [text, setText] = useState(threadId ? drafts.get(threadId) ?? "" : "");
@@ -210,18 +216,30 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
   const working = useRef(false);
   const mounted = useRef(true);
+  const restoreFocus = useRef(false);
+  const tabActive = snapshot.tabActive === true;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // Entering a Session page puts the cursor in the composer. Hidden tabs never take focus.
+  useEffect(() => { if (tabActive && threadId) input.current?.focus({ preventScroll: true }); }, [tabActive, threadId]);
+  // The textarea is disabled while a send/upload runs, which drops focus. Restore it afterwards.
+  useEffect(() => {
+    if (busy || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    if (tabActive) input.current?.focus({ preventScroll: true });
+  }, [busy, tabActive]);
   useLayoutEffect(() => {
     if (!input.current) return;
     input.current.style.height = "0px";
-    input.current.style.height = `${Math.min(120, Math.max(42, input.current.scrollHeight))}px`;
+    input.current.style.height = `${Math.min(COMPOSER_INPUT_MAX, Math.max(COMPOSER_INPUT_MIN, input.current.scrollHeight))}px`;
   }, [text]);
   const update = (value: string) => { setText(value); if (threadId) drafts.set(threadId, value); };
   const finish = () => { working.current = false; if (mounted.current) setBusy(false); };
   const submit = async () => {
     if (!threadId || working.current || (!text.trim() && !attachments.length)) return;
+    restoreFocus.current = document.activeElement === input.current;
     working.current = true; setBusy(true); setError("");
     try {
       await window.hermesDesktop.sendMessage({ text, attachmentIds: attachments.map(({ id }) => id) });
@@ -232,7 +250,9 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     finally { finish(); }
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); safely(submit()); }
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    const action = composerEnterAction(text, event);
+    if (action === "send") { event.preventDefault(); safely(submit()); }
   };
   const rememberAttachments = (items: readonly DesktopAttachment[]) => {
     const next = [...attachments, ...items];
@@ -249,6 +269,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     if (files && (attachments.length + files.length > 8 || files.some(file => file.size < 1 || file.size > 10 * 1024 * 1024))) {
       setError('Choose up to eight files, each between 1 byte and 10 MiB.'); return;
     }
+    restoreFocus.current = document.activeElement === input.current;
     working.current = true; setBusy(true); setError("");
     try { rememberAttachments(files ? await window.hermesDesktop.uploadDroppedFiles(files, threadId) : await window.hermesDesktop.pickAndUploadAttachments(threadId)); }
     catch { if (mounted.current) setError("The files could not be uploaded. Check their size and try again."); }
@@ -262,7 +283,6 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const active = online && snapshot.interactions.length === 0;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
     {error && <p role="alert">{error}</p>}
-    {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span className="composer-attachment" key={item.id}><AttachmentThumbnail attachment={item} />{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
     {running ? <div className="running-row">
       <div className="agent-running" role="status" aria-live="polite">
         {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}
@@ -270,7 +290,15 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
       </div>
       <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" disabled={!online} onClick={() => safely(window.hermesDesktop.stopThread())}>■</button>
     </div> : null}
-    <div className="composer-row"><button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files">＋</button><textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(files)); } }} /><button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}>↑</button></div>
+    {/* ChatGPT-style input card: attachments, borderless textarea, then a tool row with plus and a round send button. */}
+    <div className="composer-box" onClick={event => { if (event.target === event.currentTarget || event.target === toolbar.current) input.current?.focus(); }}>
+      {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span className="composer-attachment" key={item.id}><AttachmentThumbnail attachment={item} />{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
+      <textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(files)); } }} />
+      <div className="composer-toolbar" ref={toolbar}>
+        <button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg></button>
+        <button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" /></svg></button>
+      </div>
+    </div>
   </footer>;
 };
 
@@ -308,14 +336,14 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
+  const [projectEditor, setProjectEditor] = useState<ProjectEditor>(null);
   const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined } | null>(null);
   const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey }), [snapshot.channels, snapshot.connectionKey]);
   useEffect(() => { if (labelTarget && (snapshot.connections ? !snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey !== snapshot.connectionKey)) setLabelTarget(null); }, [snapshot.connections, snapshot.connectionKey, labelTarget]);
-  const channel = snapshot.channels.find(({ id }) => id === snapshot.selectedChannelId);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229) return;
-      if (event.key === "Escape") { setEditor(null); return; }
+      if (event.key === "Escape") { setEditor(null); setProjectEditor(null); return; }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
 
       if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
@@ -329,15 +357,27 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
 
 
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{editor === 'new-channel' ? <NewProjectDialog key="new-project" snapshot={snapshot} close={() => setEditor(null)} /> : editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
-  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setEditor('new-channel')} onProjectOptions={id => { safely(window.hermesDesktop.selectChannel(id).then(() => setEditor('edit-channel'))); }} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!labelTarget}>
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
+  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget}>
     {overlays}
   </NativeWorkspace>;
   if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;
   return <main className="session-tab-page" aria-label="Hermes session">
-    <header className="conversation-header"><div><p className="eyebrow">{channel?.name ?? 'Conversation'}</p><h2>{snapshot.selectedThreadTitle ?? 'Conversation'}</h2>{snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}</div><div className="conversation-actions"><button type="button" onClick={() => safely(window.hermesDesktop.copySessionLink())}>Copy link</button>{snapshot.supportsSessionLabels && <button type="button" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}>Edit labels</button>}<button type="button" onClick={() => setEditor('rename-thread')}>Rename</button><button type="button" onClick={archive}>Archive</button><SettingsButton className="text-button" /></div></header>
     {snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{draftError && <div className="error-banner" role="alert">{draftError}</div>}
-    <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
+    <div className="session-main">
+      {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline. */}
+      <div className="session-toolbar" role="toolbar" aria-label="Session tools">
+        {snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}
+        <div className="conversation-actions">
+          <button type="button" aria-label="Copy link" title="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
+          {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" title="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
+          <button type="button" aria-label="Rename" title="Rename" onClick={() => setEditor('rename-thread')}><ToolIcon name="rename" /></button>
+          <button type="button" aria-label="Archive" title="Archive" onClick={archive}><ToolIcon name="archive" /></button>
+          <SettingsButton icon={<ToolIcon name="settings" />} />
+        </div>
+      </div>
+      <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
+    </div>
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
     <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />{overlays}
   </main>;

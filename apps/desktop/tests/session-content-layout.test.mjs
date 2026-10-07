@@ -46,9 +46,10 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
       const results=[];
       for(const width of [720,900,1280,1800,720]) {
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.session-tab-page').style.width=width+'px';
-        const list=document.querySelector('.message-list'),bounds=list.getBoundingClientRect(),rows=[...document.querySelectorAll('.message:not([hidden])')];
+        // Messages sit in the centered 768px content column inside the full-width scroll area.
+        const list=document.querySelector('.message-list'),column=document.querySelector('.timeline-content'),bounds=column.getBoundingClientRect(),rows=[...document.querySelectorAll('.message:not([hidden])')];
         const rect=x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width}};
-        results.push({width,left:bounds.left,right:bounds.left+list.clientWidth,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{textAlign:getComputedStyle(row.querySelector('.message-markdown')).textAlign,background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
+        results.push({width,left:bounds.left,right:bounds.right,clientWidth:column.clientWidth,listWidth:list.clientWidth,listLeft:list.getBoundingClientRect().left,scrollWidth:list.scrollWidth,listClient:list.clientWidth,rows:rows.map((row,i)=>({box:rect(row),byline:row.querySelector('.message-role')?rect(row.querySelector('.message-role')):null,prose:rect(row.querySelector('.message-markdown')),last:rect(row.lastElementChild),next:rows[i+1]?rect(rows[i+1]):null,user:row.classList.contains('message-user'),final:row.classList.contains('message-final'),style:{textAlign:getComputedStyle(row.querySelector('.message-markdown')).textAlign,background:getComputedStyle(row).backgroundColor,radius:getComputedStyle(row).borderRadius,border:getComputedStyle(row).borderLeftWidth,marginTop:getComputedStyle(row).marginTop}})),tables:[...document.querySelectorAll('.markdown-table')].map(x=>({clientWidth:x.clientWidth,scrollWidth:x.scrollWidth}))});
       }
       document.getElementById('results').textContent=JSON.stringify(results);
     </script></body></html>`);
@@ -56,7 +57,9 @@ test('Chromium: gray bubbles shrink-wrap, align right and contain rich content a
     const results=JSON.parse(/<pre id="results" hidden="">(.*?)<\/pre>/.exec(dom)[1]);
     const near=(actual,expected,label)=>assert.ok(Math.abs(actual-expected)<1,`${label}: ${actual} != ${expected}`);
     for(const result of results){
-      assert.ok(result.scrollWidth<=result.clientWidth,'wide contents scroll locally, not across timeline');
+      assert.ok(result.scrollWidth<=result.listClient,'wide contents scroll locally, not across timeline');
+      near(result.clientWidth,Math.min(768,result.listWidth),'content column is at most 768px');
+      near(result.left-result.listLeft,result.listLeft+result.listWidth-result.right,'content column is centered');
       for(const row of result.rows){
         if(row.user){
           near(row.box.right,result.right-14,'user right gutter');

@@ -6,6 +6,7 @@ import { snapshotDelta } from '../shared/snapshot-delta';
 import type { DesktopConnections } from './connections';
 import type { DesktopBrowserSidebar } from './browser-sidebar';
 
+export type TabMenuAction = 'close' | 'close-right' | 'close-others';
 type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session'; busy: boolean; baseline?: DesktopSnapshot };
 export class DesktopTabManager {
   readonly tabs = new Map<string, Tab>();
@@ -48,7 +49,7 @@ export class DesktopTabManager {
     this.tabs.set(tab.id, tab); this.window.contentView.addChildView(view); view.setVisible(false);
     this.secure(view.webContents);
     this.shortcuts(view.webContents);
-    view.webContents.on('did-finish-load', () => { tab.baseline = undefined; this.publish(); });
+    view.webContents.on('did-finish-load', () => { tab.baseline = undefined; this.publish(); if (tab.id === this.activeTabId) this.focusActive(); });
     view.webContents.on('render-process-gone', () => {
       // Reload only the failed view on explicit user activation. Never rerun a task.
       tab.baseline = undefined;
@@ -60,11 +61,12 @@ export class DesktopTabManager {
     const snapshot = this.service.snapshot();
     if (snapshot.phase !== 'connected' || channelId && !snapshot.channels.some(c => c.id === channelId)) throw new Error('Choose a project');
     const tab = this.create('new', undefined, channelId ?? snapshot.selectedChannelId);
-    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish();
+    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
   }
   sync(snapshot: DesktopSnapshot): void {
     if (this.closed) return;
     this.connectionKey = snapshot.connectionKey;
+    const previous = this.activeTabId;
     for (const tab of [...this.tabs.values()]) {
       if (!this.service.hasConnection(tab.connectionKey) ||
           tab.kind === 'session' && !snapshot.loadingConversations && !snapshot.threads.some(t => t.id === tab.threadId)) this.destroy(tab);
@@ -75,6 +77,8 @@ export class DesktopTabManager {
       if (tab.kind === 'session') this.activeTabId = tab.id;
     }
     this.publish();
+    // Opening a Session from the sidebar moves keyboard focus into its page.
+    if (this.activeTabId && this.activeTabId !== previous) this.focusActive();
   }
   activate(id: string): void {
     const tab = this.tabs.get(id); if (!tab) throw new Error('Tab unavailable');
@@ -93,6 +97,38 @@ export class DesktopTabManager {
     if (active) this.service.deactivateThread();
     if (tab.threadId) this.service.closeSessionPage(tab.threadId);
     if (this.activeTabId) this.activate(this.activeTabId); else { this.service.deactivateThread(); this.publish(); }
+  }
+  /** Context-menu entries for one tab, in display order. Tab order is insertion order. */
+  menu(id: string): { action: TabMenuAction; label: string; enabled: boolean }[] {
+    const ids = [...this.tabs.keys()], index = ids.indexOf(id);
+    if (index < 0) throw new Error('Tab unavailable');
+    return [
+      { action: 'close', label: 'Close Tab', enabled: true },
+      { action: 'close-right', label: 'Close Tabs to the Right', enabled: index < ids.length - 1 },
+      { action: 'close-others', label: 'Close Other Tabs', enabled: ids.length > 1 },
+    ];
+  }
+  menuAction(id: string, action: TabMenuAction): void {
+    const ids = [...this.tabs.keys()], index = ids.indexOf(id);
+    if (index < 0) throw new Error('Tab unavailable');
+    if (action === 'close') { this.close(id); return; }
+    this.closeMany(action === 'close-right' ? ids.slice(index + 1) : ids.filter(other => other !== id), id);
+  }
+  /** Close several tabs at once. A busy tab stays open; if the active tab closes, `keepId` becomes active. */
+  closeMany(ids: readonly string[], keepId: string): void {
+    const requested = ids.map(id => this.tabs.get(id)).filter((tab): tab is Tab => !!tab);
+    const targets = requested.filter(tab => !tab.busy);
+    const activeClosing = targets.some(tab => tab.id === this.activeTabId);
+    for (const tab of targets) this.destroy(tab);
+    if (activeClosing) { this.activeTabId = this.tabs.has(keepId) ? keepId : [...this.tabs.keys()][0]; this.service.deactivateThread(); }
+    for (const tab of targets) if (tab.threadId) this.service.closeSessionPage(tab.threadId);
+    if (activeClosing && this.activeTabId) this.activate(this.activeTabId);
+    else { if (!this.activeTabId) this.service.deactivateThread(); this.publish(); }
+    if (targets.length < requested.length) throw new Error('Wait for the current action');
+  }
+  private focusActive(): void {
+    const tab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
+    if (tab && !tab.view.webContents.isDestroyed()) tab.view.webContents.focus();
   }
   private destroy(tab: Tab): void {
     this.browser?.remove(tab.id);

@@ -7,7 +7,8 @@ import { HttpError, ProtocolError, isRetryableError, type Attachment, type Conne
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
-import type { ChannelInput, DesktopAttachment, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import { workspacePath } from "../../../../packages/client/src/workspace";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
@@ -176,6 +177,8 @@ export class DesktopConnectionService {
   }
 
   serverAddress(): string | undefined { return this.connection?.baseUrl; }
+  /** True when this server offers Project Files and AGENTS.md and this transport can write them safely. */
+  supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
 
   snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;
@@ -639,7 +642,7 @@ export class DesktopConnectionService {
     this.changed();
   }
 
-  async createChannel(input: ChannelInput): Promise<void> {
+  async createChannel(input: ChannelInput): Promise<string> {
     const name = input.name.trim(), description = input.description.trim();
     if (!name || name.length > 120 || description.length > 4000) throw new Error("Enter a channel name and a shorter description.");
     const client = this.requireClient(), connection = this.connection;
@@ -652,6 +655,86 @@ export class DesktopConnectionService {
     }
     catch { this.actionError("Project creation could not be confirmed. Check this connection’s project list before trying again."); throw new Error("Project creation was not confirmed."); }
     await this.selectChannel(channel.id).catch(() => this.actionError("The channel was created, but its topics could not be loaded yet."));
+    return channel.id;
+  }
+
+  // Project Files and AGENTS.md. Route-owned reads; nothing enters the chat caches.
+  private workspaceClient(channelId: string): LivePageClient | null {
+    const client = this.requireClient();
+    if (!client.channels.has(channelId)) throw new Error("This project is unavailable.");
+    return client.supportsChannelWorkspace ? client : null;
+  }
+
+  private async readAgents(client: LivePageClient, channelId: string) {
+    try { const value = await client.workspace.getAgents(channelId); return { content: value.content, etag: value.etag }; }
+    catch (error) { if (error instanceof HttpError && error.status === 404) return null; throw error; }
+  }
+
+  async getProjectWorkspace(channelId: string): Promise<DesktopProjectWorkspace> {
+    const client = this.workspaceClient(channelId);
+    if (!client) return { supported: false, agents: null, files: [], moreFiles: false };
+    try {
+      const state = await client.workspace.getState(channelId);
+      const agents = (state.agentsAvailable ?? state.initialized) ? await this.readAgents(client, channelId) : null;
+      const page = state.initialized ? await client.workspace.list(channelId, '') : null;
+      if (this.client !== client) throw new Error('Connection changed');
+      // AGENTS.md has its own editor; do not show it twice.
+      const files = (page?.items ?? []).filter(item => item.path !== 'AGENTS.md').map(item => ({ name: item.name, kind: item.kind, size: item.size }));
+      return { supported: true, agents, files, moreFiles: page?.nextAfter != null };
+    } catch (error) { this.stopIfUnauthorized(error); throw new Error("Project files could not be loaded."); }
+  }
+
+  /** Initialize once, only when a write needs it. Initialization is idempotent on the server. */
+  private async ensureWorkspace(client: LivePageClient, channelId: string, need: 'agents' | 'files'): Promise<void> {
+    const state = await client.workspace.getState(channelId);
+    const ready = need === 'files' ? state.initialized : (state.agentsAvailable ?? state.initialized);
+    if (!ready) await client.workspace.initialize(channelId);
+  }
+
+  async saveProjectAgents(channelId: string, content: string, previous: string | null): Promise<ProjectAgentsResult> {
+    const client = this.workspaceClient(channelId);
+    if (!client) return { ok: false, reason: 'failed' };
+    try {
+      await this.ensureWorkspace(client, channelId, 'agents');
+      const saved = await client.workspace.saveAgents(channelId, content, previous);
+      return { ok: true, etag: saved.etag };
+    } catch (error) {
+      this.stopIfUnauthorized(error);
+      return { ok: false, reason: error instanceof HttpError && error.status === 412 ? 'conflict' : 'failed' };
+    }
+  }
+
+  async addProjectFiles(channelId: string, inputs: readonly AttachmentInput[]): Promise<ProjectFilesResult> {
+    const client = this.workspaceClient(channelId);
+    const uploaded: string[] = [];
+    const named = attachmentInputs(inputs).map(input => typeof input === 'string' ? { name: basename(input), input } : { name: input.name, input });
+    if (!client) return { uploaded, failed: { name: named[0]?.name ?? '', reason: 'failed' } };
+    for (const { name } of named) {
+      try { workspacePath(name); } catch { return { uploaded, failed: { name, reason: 'invalid' } }; }
+      if (name === 'AGENTS.md') return { uploaded, failed: { name, reason: 'invalid' } };
+    }
+    try { if (named.length) await this.ensureWorkspace(client, channelId, 'files'); }
+    catch (error) { this.stopIfUnauthorized(error); return { uploaded, failed: { name: named[0].name, reason: 'failed' } }; }
+    for (const { name, input } of named) {
+      try {
+        let bytes: Uint8Array;
+        if (typeof input === 'string') {
+          if (!isAbsolute(input)) throw new Error('Invalid path');
+          const info = await stat(input);
+          if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
+          bytes = new Uint8Array(await readFile(input));
+        } else bytes = input.bytes;
+        if (bytes.byteLength < 1 || bytes.byteLength > MAX_ATTACHMENT_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
+        if (this.client !== client) throw new Error('Connection changed');
+        // Create-only: an existing server file is never replaced.
+        await client.workspace.writeFile(channelId, name, bytes, null);
+        uploaded.push(name);
+      } catch (error) {
+        this.stopIfUnauthorized(error);
+        return { uploaded, failed: { name, reason: error instanceof HttpError && error.status === 412 ? 'exists' : 'failed' } };
+      }
+    }
+    return { uploaded };
   }
 
   private modelClient(connectionKey: string): LivePageClient {

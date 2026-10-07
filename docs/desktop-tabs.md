@@ -20,7 +20,26 @@
 
 标签栏沿用 `overflow-x: auto`。超过可见空间时横向滚动，不压缩到六个字以下，不撑宽正文区域。未改变 tab 身份、激活、关闭、内容 View 或页面状态。
 
+后续要求：标签栏不显示滚动条（`scrollbar-width: none` 与 `::-webkit-scrollbar`），仍可用触控板横向滚动。没有滚动条后，鼠标纵向滚轮在标签栏上转为横向滚动；激活的 tab 自动滚入可见范围。
+
 候选 `fix/desktop-tab-width`。生产 React/CSS 的 Chromium 回归覆盖 720/1280/1800px 窗口及 12/16/24px 字号、八种状态组合、新建标签、六字下限、标题截断及完整悬停属性、状态点和关闭按钮不重叠、横向滚动两端可达。桌面 TypeScript、构建及全部 41 项测试通过，0 失败、0 跳过；包括受控传输的 Linux Electron/Xvfb 原生工作区测试。未合入、未发布；macOS 真机悬停提示、触控板及视觉验收仍待完成。
+
+## 标签右键菜单
+
+每个 tab 支持右键菜单，键盘 ContextMenu 或 Shift+F10 也可打开。菜单由主进程使用原生 `Menu` 显示，因为 HTML 浮层会被原生内容 View 遮住。只有主窗口 renderer 可以请求此菜单。
+
+- Close Tab：与关闭按钮相同。
+- Close Tabs to the Right：关闭标签栏中此 tab 右侧的全部 tab。没有右侧 tab 时禁用。
+- Close Other Tabs：只保留此 tab。只有一个 tab 时禁用。
+
+批量关闭沿用单个关闭的规则：释放 View 与已提交内容页，不停止服务端任务。当前激活的 tab 被关闭时，激活菜单所属的 tab。正在执行操作（busy）的 tab 保留，其余 tab 照常关闭，并提示稍后再试。
+
+## Session 内容宽度与输入框
+
+- Session 消息、审批卡片和输入控件使用居中列，最大宽度 768px。滚动区域和输入区背景仍铺满整页。New chat 表单的最大宽度同为 768px。
+- 打开或切换到 Session 页面时，焦点进入输入框。隐藏的 tab 不获取焦点。主进程在激活、新建和侧边栏打开 tab 时聚焦对应 View；后台同步不抢焦点。
+- 发送期间输入框暂时禁用。发送或粘贴上传完成后，如果之前焦点在输入框，焦点回到输入框。
+- 发送键：内容为单行时，Enter 发送。内容含换行时，Enter 换行，Cmd+Enter（其他平台 Ctrl+Enter）发送。Shift+Enter 始终换行。输入法组字时不发送。
 
 ## New chat
 
@@ -50,6 +69,15 @@ New chat 打开完整标签页，提供多行正文、附件选择/拖放及 Pro
 - 非 Running Session 使用最近活动窗口；筛选时采用全时段目录，并按 24 条逐批 Show more。
 - 浮动折叠按钮保持 sidebar 边缘位置，折叠后同步调整原生 View bounds。
 
+## 右侧预览栏宽度
+
+- 预览栏（Browser）左边缘有 6px 拖动条，和左侧 sidebar 一样可拖动改变宽度。向左拖变宽，向右拖变窄。
+- 预览页面和对话都是原生 View，会盖住 renderer 元素。所以网页 View 左侧留出 5px，加上 1px 边框，组成没有原生 View 覆盖的拖动条。
+- 未拖动过时保持原自动宽度：窗口宽度的 42%，限制在 280–560px。拖动或用键盘调整后，宽度保存在本机 localStorage `hermes.desktop.browser-width`，重新打开时恢复。
+- 最小 280px。最大值保证对话区至少 360px，并给可见的左侧 sidebar 留出其最小 200px；预览变宽时左侧 sidebar 暂时收窄，不改变它保存的宽度。窗口变窄时宽度自动收紧。
+- 双击拖动条清除保存值，回到自动宽度。拖动条可获得焦点：←/→ 每次 10px，Home 最小，End 最大。保存失败时显示提示，当前宽度仍然生效。
+- 验证：`browser-width.test.mjs` 检查宽度规则和存储容错。Electron/Xvfb 原生测试用真实输入拖动生产拖动条，检查拖动条不被两个原生 View 覆盖、原生 View bounds 跟随、保存、冷启动恢复、键盘、上限和双击重置。Xvfb 的真实指针固定在窗口 x=640；拖动捕获期间，原生 View 边缘跨过该点会触发真实移动事件。因此指针拖动保持边缘在 x=640 右侧，更宽的宽度用键盘检查。macOS 实机手感仍待验收。
+
 ## 隐藏与浮层
 
 隐藏的 Session 页继续接收所属页面的更新，但不确认已读、不自动聚焦，并静音媒体。前台页面恢复时保留读点。主窗口浮层打开时，暂时隐藏原生内容 View，避免原生 View 遮住 renderer 浮层；关闭浮层后恢复。
@@ -70,3 +98,14 @@ HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop
 相关源码：`main/tab-manager.ts`、`main/index.ts`、`renderer/native-workspace.tsx`、`renderer/new-session-page.tsx`。
 
 参考：[Electron WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)、[资源释放](https://www.electronjs.org/docs/latest/api/base-window#resource-management)、[安全规则](https://www.electronjs.org/docs/latest/tutorial/security)。
+
+## Floating Session toolbar candidate
+
+Branch: `feat/desktop-floating-toolbar`; base `origin/main` `0010c74`.
+
+- The Session page has no title bar. The tab already shows the Session title; the Project name is not shown on the page.
+- The tools are one row of icon buttons that floats at the top right over the timeline: Copy link, Edit labels (when supported), Rename, Archive, Settings. Each button has an accessible name and a tooltip. Session labels stay at the left end of the row.
+- The timeline starts at the top of the page. The old header used 76px; the floating row is 36px high and covers only the top right corner. It has a translucent background so text under it stays readable.
+- Error banners stay above the timeline. No change to actions, IPC, drafts, scroll or history.
+
+Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: 124 passed, 0 skipped. New Chromium test `session-toolbar` checks no header or title/Project text, one row, position, timeline top, labels and button actions. Tests that measured the old header now measure the toolbar. macOS visual acceptance is separate. Not merged or released.

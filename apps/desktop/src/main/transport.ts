@@ -1,8 +1,11 @@
-import type { HttpTransport, SocketFactory } from "@hermes-app/client";
+import type { ConditionalHeaders, HttpTransport, SocketFactory } from "@hermes-app/client";
 import WebSocket from "ws";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REPLY_BYTES = 64 * 1024;
+const MAX_AGENTS_REPLY_BYTES = 6 * MAX_ATTACHMENT_BYTES + 4096;
+const MAX_WORKSPACE_REPLY_BYTES = 1024 * 1024;
+const ETAG = /^"[0-9a-f]{64}"$/;
 
 export const normalizeBaseUrl = (value: string, allowLoopback = false): string => {
   let url: URL;
@@ -54,19 +57,44 @@ const responseBody = async (response: Response, maxBytes = MAX_REPLY_BYTES): Pro
 export const mainTransport = (baseUrl: string, allowLoopback = false): { http: HttpTransport; socket: SocketFactory } => {
   const base = normalizeBaseUrl(baseUrl, allowLoopback);
   const authorization = (token: string) => ({ Authorization: `Bearer ${token}` });
+  // Only the two exact HTTP preconditions used by the workspace API are forwarded.
+  const precondition = (headers: ConditionalHeaders): Record<string, string> => {
+    const match = headers['If-Match'], create = headers['If-None-Match'];
+    if (typeof match === 'string' && create === undefined && ETAG.test(match)) return { 'If-Match': match };
+    if (create === '*' && match === undefined) return { 'If-None-Match': '*' };
+    throw new Error('Invalid file version.');
+  };
+  const json = async (method: string, path: string, token: string, body?: unknown, signal?: AbortSignal, conditions?: ConditionalHeaders) => {
+    const response = await fetch(base + path, {
+      method,
+      headers: { ...authorization(token), ...(conditions ? precondition(conditions) : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "error",
+      signal,
+    });
+    const retry = retryAfterMs(response.headers.get("retry-after"));
+    const historyRead = method === "GET" && /^\/v1\/threads\/[A-Za-z0-9_-]+\/messages(?:\?|$)/.test(path);
+    // AGENTS.md keeps the 10 MiB text guard; escaped JSON can need six bytes per text byte.
+    const agentsRead = method === "GET" && /^\/v1\/channels\/[A-Za-z0-9_-]+\/agents$/.test(path);
+    const workspaceRead = method === "GET" && /^\/v1\/channels\/[A-Za-z0-9_-]+\/(?:files|attachments)(?:\?|$)/.test(path);
+    const maxBytes = !response.ok ? MAX_REPLY_BYTES : historyRead ? MAX_HISTORY_BYTES : agentsRead ? MAX_AGENTS_REPLY_BYTES : workspaceRead ? MAX_WORKSPACE_REPLY_BYTES : MAX_REPLY_BYTES;
+    return { status: response.status, body: await responseBody(response, maxBytes), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
+  };
   const http: HttpTransport = {
-    async request(method, path, token, body, signal) {
+    request: (method, path, token, body, signal) => json(method, path, token, body, signal),
+    conditionalRequest: (method, path, token, headers, body, signal) => json(method, path, token, body, signal, headers),
+    async putBytes(path, token, headers, bytes, signal) {
+      if (!/^\/v1\/channels\/[A-Za-z0-9_-]+\/file\?path=[^&#]+$/.test(path)) throw new Error("Invalid workspace file path.");
+      if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error("File size is unsupported.");
       const response = await fetch(base + path, {
-        method,
-        headers: { ...authorization(token), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        method: "PUT",
+        headers: { ...authorization(token), ...precondition(headers), "Content-Type": "application/octet-stream" },
+        body: bytes as unknown as BodyInit,
         redirect: "error",
         signal,
       });
       const retry = retryAfterMs(response.headers.get("retry-after"));
-      const historyRead = method === "GET" && /^\/v1\/threads\/[A-Za-z0-9_-]+\/messages(?:\?|$)/.test(path);
-      const maxBytes = response.ok && historyRead ? MAX_HISTORY_BYTES : MAX_REPLY_BYTES;
-      return { status: response.status, body: await responseBody(response, maxBytes), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
+      return { status: response.status, body: await responseBody(response), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
     },
     async upload(path, token, name, bytes, signal) {
       if (!name || name.length > 180 || name === "." || name === ".." || /[/\\\x00\r\n]/.test(name)) throw new Error("Invalid attachment name.");

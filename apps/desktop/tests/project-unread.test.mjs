@@ -60,8 +60,8 @@ test('Chromium: flat Project tree shows counts, source and offline hint across t
         ensure('work count is per server',work.querySelector('.project-unread-count').textContent==='1');
         ensure('no zero badge',!alpha.querySelector('.project-unread-count'));
         ensure('accessible count',label(personal)==='Research, personal.example, 2 sessions with unread results');
-        ensure('old unread rows visible',personal.querySelectorAll('.thread-result-unread').length===2&&work.querySelectorAll('.thread-result-unread').length===1);
-        ensure('count matches visible dots',[...document.querySelectorAll('.project-unread-count')].reduce((n,b)=>n+Number(b.textContent),0)===document.querySelectorAll('.thread-result-unread').length);
+        ensure('old unread rows visible',personal.querySelectorAll('.channel-tree .thread-result-unread').length===2&&work.querySelectorAll('.channel-tree .thread-result-unread').length===1);
+        ensure('count matches visible dots',[...document.querySelectorAll('.project-unread-count')].reduce((n,b)=>n+Number(b.textContent),0)===document.querySelectorAll('.channel-tree .thread-result-unread').length);
         ensure('readable badge',getComputedStyle(personal.querySelector('.project-unread-count')).backgroundColor==='rgb(26, 102, 201)');
         // Another device reads one result; the count follows the directory.
         snapshot={...snapshot,threads:snapshot.threads.map(t=>t.id==='t'?{...t,completedUnread:false}:t)};render();await tick();

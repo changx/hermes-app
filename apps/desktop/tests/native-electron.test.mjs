@@ -83,6 +83,7 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await evaluate(ac,'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  await evaluate(shell,'window.hermesDesktop.selectThread("'+b+'")');const second=[...manager.tabs.values()][1],bc=second.view.webContents;
  await until(()=>evaluate(bc,'!!document.querySelector(".message-list")'),'session B');assert.equal(manager.tabs.size,2);
+ await until(()=>evaluate(bc,'document.hasFocus()&&document.activeElement===document.querySelector("[aria-label=Message]")'),'opening session B focuses its composer');
  client.threads.set(a,{...client.threads.get(a),running:true,completed_unread:true,result_version:1,result_ref:200});service.changed();
  await until(()=>evaluate(shell,'document.querySelectorAll(".desktop-tab")[0].querySelectorAll(".desktop-tab-dot").length===3'),'inactive A has running, durable draft and unread dots');
  assert.equal(await evaluate(shell,'document.querySelectorAll(".desktop-tab")[1].querySelectorAll(".desktop-tab-dot").length'),1,'B has only its own running dot');
@@ -122,8 +123,8 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
  await evaluate(shell,'document.querySelector(".sidebar-filter-icon").click()');await until(()=>evaluate(shell,'!!document.querySelector(".labels-filter-popover input")'),'label popover');
- await evaluate(shell,'[...document.querySelectorAll(".labels-filter-candidates input")].find(e=>e.getAttribute("aria-label")==="Label: bug").click()');await until(()=>evaluate(shell,'document.querySelectorAll(".tree-thread").length===1'),'label filter');
- assert.equal(await evaluate(shell,'document.querySelector(".tree-thread").textContent.includes("Session B")'),true);
+ await evaluate(shell,'[...document.querySelectorAll(".labels-filter-candidates input")].find(e=>e.getAttribute("aria-label")==="Label: bug").click()');await until(()=>evaluate(shell,'document.querySelectorAll(".channel-tree .tree-thread").length===1'),'label filter');
+ assert.equal(await evaluate(shell,'document.querySelector(".channel-tree .tree-thread").textContent.includes("Session B")'),true);
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
  // Real input reaches the production host renderer while retained native views resize.
@@ -171,9 +172,13 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await until(()=>evaluate(dc,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font reaches open Session view');
  BrowserWindow.fromWebContents(fc).close();await until(()=>!settingsForTest().isOpen,'Settings window closed');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-native-tabs.png'),(await window.capturePage()).toPNG());}
+ await evaluate(shell,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)');
+ assert.deepEqual(manager.menu(first.id).map(i=>i.enabled),[true,true,true],'first tab menu enables every close action');
+ await assert.rejects(evaluate(ac,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)'),/./,'session views cannot open the tab menu');
  await evaluate(shell,'window.hermesDesktop.closeTab('+JSON.stringify(second.id)+')');await until(()=>bc.isDestroyed(),'closed view released');assert.equal(ac.isDestroyed(),false);assert.equal(dc.isDestroyed(),false);
- manager.dispose();await until(()=>ac.isDestroyed()&&dc.isDestroyed(),'all views released');
- console.log('NATIVE_TABS_OK '+JSON.stringify({independentViews:3,retainedHistoryRows:200,domRetained:true,scopedBackgroundSend:true,newTabPromotedInPlace:true,attachmentTargetVerified:true,labelFilterVerified:true,modalAndBoundsVerified:true,viewsReleased:true,transport:'controlled fixture'}));app.exit(0);
+ manager.menuAction(first.id,'close-right');await until(()=>dc.isDestroyed(),'close tabs to the right releases the new chat view');assert.equal(ac.isDestroyed(),false);assert.equal(manager.activeTabId,first.id);
+ manager.dispose();await until(()=>ac.isDestroyed(),'all views released');
+ console.log('NATIVE_TABS_OK '+JSON.stringify({independentViews:3,retainedHistoryRows:200,domRetained:true,scopedBackgroundSend:true,newTabPromotedInPlace:true,attachmentTargetVerified:true,labelFilterVerified:true,modalAndBoundsVerified:true,viewsReleased:true,composerFocusOnOpen:true,tabMenuCloseRight:true,transport:'controlled fixture'}));app.exit(0);
 })().catch(error=>{console.error(error.stack);app.exit(1)});
 `;
     await writeFile(join(folder,'harness.cjs'),harness);

@@ -13,7 +13,7 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
     import { createRoot } from 'react-dom/client';
     import { flushSync } from 'react-dom';
     import { NativeWorkspace } from './src/renderer/native-workspace';
-    window.hermesDesktop={setContentBounds:async()=>{},activateTab:async id=>actions.push(['activate',id]),closeTab:async id=>actions.push(['close',id])};
+    window.hermesDesktop={setContentBounds:async()=>{},activateTab:async id=>actions.push(['activate',id]),closeTab:async id=>actions.push(['close',id]),showTabMenu:async(id,x,y)=>actions.push(['menu',id,x>=0&&y>=0])};
     const actions=[],checks=[];
     const ensure=(name,value)=>{if(!value)throw Error(name);checks.push(name);};
     const title='六个汉字标题 A very long session title '.repeat(30);
@@ -40,6 +40,7 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
         document.documentElement.style.setProperty('--app-font-size',size+'px');
         const strip=document.querySelector('.desktop-tabs');
         ensure('horizontal overflow '+width+' '+size,strip.scrollWidth>strip.clientWidth&&getComputedStyle(strip).overflowX==='auto');
+        ensure('no scrollbar '+width+' '+size,getComputedStyle(strip).scrollbarWidth==='none'&&strip.offsetHeight-strip.clientHeight-1<=0);
         ensure('no page overflow '+width+' '+size,document.querySelector('.native-workspace-main').getBoundingClientRect().right<=document.getElementById('root').getBoundingClientRect().right);
         for(let i=0;i<tabs.length;i++) {
           const text=tab(i).querySelector('.desktop-tab-title');
@@ -66,6 +67,19 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
           ensure('color '+dot.className,color===(dot.classList.contains('desktop-tab-dot-running')?'rgb(22, 163, 74)':dot.classList.contains('desktop-tab-dot-draft')?'rgb(220, 38, 38)':'rgb(77, 163, 255)'));
         }
       }
+      document.getElementById('root').style.width='720px';
+      const strip=document.querySelector('.desktop-tabs');strip.scrollLeft=0;
+      const wheel=new WheelEvent('wheel',{deltaY:200,bubbles:true,cancelable:true});strip.dispatchEvent(wheel);
+      ensure('vertical wheel scrolls tab strip sideways',strip.scrollLeft>0&&wheel.defaultPrevented);
+      strip.scrollLeft=0;snapshot={...snapshot,activeTabId:'tab6'};render();
+      const shown=document.querySelector('.desktop-tab.active').getBoundingClientRect(),bar=strip.getBoundingClientRect();
+      ensure('active tab revealed without scrollbar',strip.scrollLeft>0&&shown.left>=bar.left-1&&shown.right<=bar.right+1);
+      snapshot={...snapshot,activeTabId:'tab7'};render();
+      const menuEvent=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:20});tab(3).dispatchEvent(menuEvent);
+      ensure('right click opens tab menu',menuEvent.defaultPrevented&&JSON.stringify(actions.at(-1))===JSON.stringify(['menu','tab3',true]));
+      tab(2).dispatchEvent(new KeyboardEvent('keydown',{key:'ContextMenu',bubbles:true,cancelable:true}));
+      ensure('keyboard opens tab menu',JSON.stringify(actions.at(-1))===JSON.stringify(['menu','tab2',true]));
+      actions.length=0;
       const original=tab(7);
       snapshot={...snapshot,activeTabId:'tab0',threads:threads.map(t=>({...t,running:false,completedUnread:false}))};drafts=new Set();render();
       ensure('cleared without replacing tab',tab(7)===original&&!document.querySelector('.desktop-tab-dot'));

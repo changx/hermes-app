@@ -46,7 +46,7 @@ test('Chromium: native sidebar tree indentation, pointer hover, selection and co
     const call = (method,params) => send(method,params,sessionId);
     const evaluate = async expression => { const result = await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true}); assert.equal(result.exceptionDetails,undefined,JSON.stringify(result.exceptionDetails)); return result.result.value; };
     await call('Page.navigate',{url:pathToFileURL(file).href});
-    await evaluate(`new Promise(resolve=>{const wait=()=>document.querySelector('.tree-thread')?resolve(true):setTimeout(wait,10);wait()})`);
+    await evaluate(`new Promise(resolve=>{const wait=()=>document.querySelector('.channel-tree .tree-thread')?resolve(true):setTimeout(wait,10);wait()})`);
     const hover = async selector => {
       const point = await evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
       await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
@@ -56,35 +56,35 @@ test('Chromium: native sidebar tree indentation, pointer hover, selection and co
     for (const width of [230,280]) {
       await evaluate(`document.querySelector('aside').style.width='${width}px'`);
       await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:600,y:600});
-      const geometry = await evaluate(`(()=>{const title=document.querySelector('.channel-toggle strong').getBoundingClientRect(),row=document.querySelector('.thread-title').getBoundingClientRect(),children=getComputedStyle(document.querySelector('.thread-children'));return {indent:row.left-title.left,guide:children.borderLeftWidth,overflow:document.querySelector('aside').scrollWidth>${width}}})()`);
+      const geometry = await evaluate(`(()=>{const title=document.querySelector('.channel-toggle strong').getBoundingClientRect(),row=document.querySelector('.channel-tree .thread-title').getBoundingClientRect(),children=getComputedStyle(document.querySelector('.thread-children'));return {indent:row.left-title.left,guide:children.borderLeftWidth,overflow:document.querySelector('aside').scrollWidth>${width}}})()`);
       assert.ok(geometry.indent >= 16, `visible child indentation: ${JSON.stringify(geometry)}`);
       assert.equal(geometry.guide,'1px'); assert.equal(geometry.overflow,false);
-      const idle = await background('.tree-thread:not(.selected)');
-      await hover('.tree-thread:not(.selected)');
-      const active = await background('.tree-thread:not(.selected)');
+      const idle = await background('.channel-tree .tree-thread:not(.selected)');
+      await hover('.channel-tree .tree-thread:not(.selected)');
+      const active = await background('.channel-tree .tree-thread:not(.selected)');
       const sidebar = await background('.native-sidebar');
       assert.notEqual(active,idle); assert.notEqual(active,sidebar);
-      const selected = await background('.tree-thread.selected');
-      await hover('.tree-thread.selected'); assert.equal(await background('.tree-thread.selected'),selected); assert.notEqual(selected,active);
+      const selected = await background('.channel-tree .tree-thread.selected');
+      await hover('.channel-tree .tree-thread.selected'); assert.equal(await background('.channel-tree .tree-thread.selected'),selected); assert.notEqual(selected,active);
       await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:600,y:600});
       const channelIdle = await background('.channel-toolbar');
       await hover('.channel-toggle'); const channelHover = await background('.channel-toolbar');
       assert.notEqual(channelIdle,channelHover); assert.notEqual(channelHover,sidebar);
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.channel-options')).opacity`),'1');
-      assert.equal(await evaluate(`document.querySelectorAll('.thread-draft,.thread-status,.thread-result-unread').length`),3);
+      assert.equal(await evaluate(`document.querySelectorAll('.channel-tree :is(.thread-draft,.thread-status,.thread-result-unread)').length`),3);
       evidence.push({width,geometry,idle,active,sidebar,selected,channelIdle,channelHover});
     }
-    await evaluate(`document.querySelector('.tree-thread:not(.selected)').click()`);
+    await evaluate(`document.querySelector('.channel-tree .tree-thread:not(.selected)').click()`);
     assert.deepEqual(await evaluate('window.selected'),['two']);
     await evaluate(`document.querySelector('.channel-toggle').click()`);
-    assert.equal(await evaluate(`document.querySelectorAll('.tree-thread').length`),0);
+    assert.equal(await evaluate(`document.querySelectorAll('.channel-tree .tree-thread').length`),0);
     assert.equal(await evaluate(`document.querySelector('.channel-toggle').getAttribute('aria-expanded')`),'false');
     await evaluate(`document.querySelector('.channel-toggle').click()`);
-    assert.equal(await evaluate(`document.querySelectorAll('.tree-thread').length`),2);
+    assert.equal(await evaluate(`document.querySelectorAll('.channel-tree .tree-thread').length`),2);
     if (process.env.HERMES_SIDEBAR_EVIDENCE) {
       await mkdir(process.env.HERMES_SIDEBAR_EVIDENCE,{recursive:true});
       await writeFile(join(process.env.HERMES_SIDEBAR_EVIDENCE,'computed-styles.json'),JSON.stringify(evidence,null,2)+'\n');
-      await hover('.tree-thread:not(.selected)');
+      await hover('.channel-tree .tree-thread:not(.selected)');
       const {data} = await call('Page.captureScreenshot',{format:'png'});
       await writeFile(join(process.env.HERMES_SIDEBAR_EVIDENCE,'sidebar.png'),Buffer.from(data,'base64'));
     }

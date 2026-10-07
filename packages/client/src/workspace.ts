@@ -46,9 +46,10 @@ const nameOrder = (a: string, b: string): number => {
   return left.length - right.length;
 };
 type Call = (method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: ConditionalHeaders) => Promise<Record<string, unknown>>;
+type PutBytes = (path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal) => Promise<Record<string, unknown>>;
 
 /** Small route-owned details, never added to the directory/chat caches. */
-export function createWorkspaceApi(call: Call, download: (path: string, signal?: AbortSignal) => Promise<Uint8Array>, error: (message: string) => Error) {
+export function createWorkspaceApi(call: Call, download: (path: string, signal?: AbortSignal) => Promise<Uint8Array>, error: (message: string) => Error, put?: PutBytes) {
   const fail = (message = 'Invalid workspace response'): never => { throw error(message); };
   const object = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== 'object' || Array.isArray(v)) return fail(); return v as Record<string, unknown>; };
   const id = (v: unknown): string => typeof v === 'string' && ID.test(v) ? v : fail('Invalid workspace identity');
@@ -116,6 +117,17 @@ export function createWorkspaceApi(call: Call, download: (path: string, signal?:
     async mkdir(cid: string, directory: string): Promise<void> {
       const result = await call('POST', root(cid) + '/directories', { path: path(directory) });
       if (result.channel_id !== cid || result.path !== directory || result.kind !== 'directory') return fail('Directory creation not confirmed');
+    },
+    /** Conditional file write. `previous === null` creates only; an existing file is never replaced. */
+    async writeFile(cid: string, file: string, bytes: Uint8Array, previous: string | null, signal?: AbortSignal): Promise<string> {
+      if (!put) return fail('Workspace file writes unavailable');
+      const target = path(file);
+      if (target === 'AGENTS.md') return fail('Use the guidelines editor for AGENTS.md');
+      if (!(bytes instanceof Uint8Array) || bytes.byteLength < 1 || bytes.byteLength > MAX_FILE) return fail('Workspace file exceeds limit');
+      const headers: ConditionalHeaders = previous === null ? { 'If-None-Match': '*' } : { 'If-Match': etag(previous) };
+      const saved = await put(root(cid) + '/file?path=' + encodeURIComponent(target), headers, bytes, signal);
+      if (saved.channel_id !== cid || saved.path !== target) return fail('Workspace file save identity mismatch');
+      return etag(saved.etag);
     },
     async readFile(cid: string, file: string, signal?: AbortSignal): Promise<Uint8Array> {
       const value = await download(root(cid) + '/file?path=' + encodeURIComponent(path(file)), signal);

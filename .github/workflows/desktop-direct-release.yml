@@ -92,3 +92,16 @@ jobs:
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      # Keep the new release and the one before it (rollback). Git tags stay.
+      # Older tags do not contain the script; the step reports that and skips.
+      - name: Remove older releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! -f scripts/prune-releases.sh ]]; then
+            echo "::warning::This tag has no scripts/prune-releases.sh; older releases were not removed."
+            exit 0
+          fi
+          bash scripts/prune-releases.sh "$GITHUB_REPOSITORY" 2 --protect "$TAG"

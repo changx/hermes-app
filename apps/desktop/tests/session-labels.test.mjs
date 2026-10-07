@@ -30,21 +30,21 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
       const close=()=>{closes++;flushSync(()=>editorRoot.render(null));};
       const edit=thread=>{target=thread;flushSync(()=>editorRoot.render(<LabelsEditor thread={thread} snapshot={snapshot} close={close}/>));};
       const render=()=>flushSync(()=>root.render(<NavigationPanel snapshot={snapshot} onNewSession={()=>{}} onEditLabels={edit}/>));
-      const button=(container,text)=>[...container.querySelectorAll('button')].find(n=>n.textContent===text);
+      const button=(container,text)=>[...container.querySelectorAll('button')].find(n=>n.textContent===text||n.getAttribute('aria-label')===text);
       const inputValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
       (async()=>{try{
-        render();await tick();ensure('running survives recent cutoff',document.querySelectorAll('.tree-thread').length===2);
+        render();await tick();ensure('running survives recent cutoff',document.querySelectorAll('.channel-tree .tree-thread').length===2);
         document.querySelector('[aria-label="Filter sessions"]').click();await tick();document.querySelector('input[aria-label="Label: Foo"]').click();await tick();
-        ensure('running plus 24 batch',document.querySelectorAll('.tree-thread').length===25);ensure('hide empty channels',document.querySelectorAll('.channel-branch').length===1);
+        ensure('running plus 24 batch',document.querySelectorAll('.channel-tree .tree-thread').length===25);ensure('hide empty channels',document.querySelectorAll('.channel-branch').length===1);
         ensure('matching branch expanded',document.querySelector('.channel-toggle').getAttribute('aria-expanded')==='true');
         ensure('current session unchanged',selected===0&&snapshot.selectedThreadId==='current');
-        button(document,'Show more').click();await tick();ensure('running plus 48 batch',document.querySelectorAll('.tree-thread').length===49);
-        ensure('running dot intact',document.querySelectorAll('.thread-status').length===1&&document.querySelectorAll('.thread-result-unread').length===1);
-        const pillRow=document.querySelector('.tree-thread .label-pills');const full=()=>[...pillRow.querySelectorAll('.label-pills-visible .label-pill')];
+        button(document,'Show more').click();await tick();ensure('running plus 48 batch',document.querySelectorAll('.channel-tree .tree-thread').length===49);
+        ensure('running dot intact',document.querySelectorAll('.channel-tree .thread-status').length===1&&document.querySelectorAll('.channel-tree .thread-result-unread').length===1);
+        const pillRow=document.querySelector('.channel-tree .tree-thread .label-pills');const full=()=>[...pillRow.querySelectorAll('.label-pills-visible .label-pill')];
         const widths=[];for(const width of [180,260,420]){document.getElementById('nav').style.width=width+'px';window.dispatchEvent(new Event('resize'));await tick();const box=pillRow.getBoundingClientRect();const pills=full();widths.push(pills.filter(n=>!n.classList.contains('label-overflow')).length);ensure('contained '+width,pills.every(n=>n.getBoundingClientRect().right<=box.right+.5));ensure('one line '+width,new Set(pills.map(n=>n.getBoundingClientRect().top)).size===1);}
         ensure('overflow measured',widths[0]<widths.at(-1)&&full().some(n=>n.scrollWidth>n.clientWidth));
-        document.querySelector('.tree-thread .label-pill').click();await tick();ensure('chips route row click',selected===1);
-        document.querySelector('.tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();
+        document.querySelector('.channel-tree .tree-thread .label-pill').click();await tick();ensure('chips route row click',selected===1);
+        document.querySelector('.channel-tree .tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();
         document.querySelector('[role="menuitem"]').click();await tick();
         const dialog=document.querySelector('dialog');ensure('accessible modal',dialog.open&&dialog.getAttribute('aria-labelledby')==='labels-editor-title');ensure('input focused on opening',document.activeElement===dialog.querySelector('[aria-label="Label text"]'));
         button(dialog,'Clear labels').click();await tick();inputValue(dialog.querySelector('[aria-label="Label text"]'),' Foo ');await tick();button(dialog,'Add').click();await tick();
@@ -59,7 +59,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         gate.reject(Error('Synthetic failure'));await tick();ensure('failed save draft retained',closes===0&&dialog.querySelector('.labels-draft').textContent==='FooEditRemove'&&dialog.textContent.includes('Could not confirm'));
         mode='stale';button(dialog,'Save').click();await tick();ensure('stale save draft retained',closes===0&&dialog.textContent.includes('changed on another device'));
         mode='success';button(dialog,'Save').click();await tick();ensure('confirmed save closes',closes===1);
-        snapshot={...snapshot,connectionKey:'two'};render();await tick();ensure('connection reset',document.querySelectorAll('.tree-thread').length===2&&document.querySelector('input[aria-label="Label: Foo"]').checked===false);
+        snapshot={...snapshot,connectionKey:'two'};render();await tick();ensure('connection reset',document.querySelectorAll('.channel-tree .tree-thread').length===2&&document.querySelector('input[aria-label="Label: Foo"]').checked===false);
         snapshot={...snapshot,supportsSessionLabels:false};render();await tick();ensure('capability gated',!document.querySelector('.labels-filter'));
         window.hermesDesktop.getRuntimeInfo=()=>({platform:'linux',versions:{}});
         const messages=Array.from({length:40},(_,i)=>({id:'synthetic'+i,role:'assistant',text:'Synthetic shell row '+i,toolCalls:[],attachments:[]}));
@@ -73,7 +73,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         ensure('header editor entry',document.querySelector('dialog').open);
         button(document.querySelector('dialog'),'Cancel').click();await tick();
         const updated={...shell,threads:shell.threads.map(t=>t.id==='row0'?{...t,markers:['Updated header']}:t)};shellRender(updated);await tick();
-        ensure('authoritative header labels',document.querySelector('.conversation-header .label-pills').getAttribute('aria-label')==='Labels: Updated header');
+        ensure('authoritative header labels',document.querySelector('.session-toolbar .label-pills').getAttribute('aria-label')==='Labels: Updated header');
         ensure('composer and page retained',page===document.querySelector('.session-tab-page')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
         button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();shellRender({...updated,connectionKey:'shell-two'});
         ensure('no old dialog on new connection',!document.querySelector('dialog'));
