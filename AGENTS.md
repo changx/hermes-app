@@ -116,6 +116,7 @@
 - [docs/desktop-browser-control-release-0.1.42.md](docs/desktop-browser-control-release-0.1.42.md)
 - [docs/desktop-recents-indent-release-0.1.43.md](docs/desktop-recents-indent-release-0.1.43.md)
 - [docs/desktop-recents-indent-release-0.1.44.md](docs/desktop-recents-indent-release-0.1.44.md)
+- [docs/desktop-browser-window-release-0.1.45.md](docs/desktop-browser-window-release-0.1.45.md)
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
