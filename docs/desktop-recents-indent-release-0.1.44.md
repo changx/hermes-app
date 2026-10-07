@@ -15,4 +15,7 @@ Publication: desktop tag `v0.1.44` through the release workflow; version metadat
 
 ## Results
 
-Pending.
+- `origin/main` and annotated tag `v0.1.44` point at `410fb96` (fix `fix/desktop-recents-indent-one`, fast-forward).
+- Tag run `37626504389` succeeded, including Release publication and pruning. `Hermes Desktop v0.1.44` is Latest; v0.1.43 kept.
+- Downloaded `Hermes-0.1.44-macOS-arm64.zip` (130,254,657 bytes) matches its `.sha256`. `Info.plist` and `app.asar` versions are `0.1.44`. Packaged CSS: `.recent-list { margin: 0 0 6px 12px; padding-left: 6px; ... }`.
+- No Expo, Gateway or plugin change. macOS install and visual acceptance remain with Jamie.
