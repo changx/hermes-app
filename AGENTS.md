@@ -104,6 +104,7 @@
 - [docs/desktop-session-composer.md](docs/desktop-session-composer.md)
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
 - [docs/desktop-tabs.md](docs/desktop-tabs.md)
+- [docs/desktop-browser-control.md](docs/desktop-browser-control.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
 - [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
