@@ -21,3 +21,7 @@ Jamie asked to copy the default and focused input area from two ChatGPT iPhone s
 
 - Mobile TypeScript passes. Mobile tests pass in the worktree (107 total, 0 failed, 1 skipped). The new test checks the 48pt pill styles, the expansion on focus, the identical input node after focus, and the gray/black Send states.
 - iPhone appearance, focus animation with the Chinese keyboard and Android keyboard dismissal (which can keep focus and so keep the card expanded) need device acceptance.
+
+## Development release
+
+Released `a833e89` to `exps://agent.tuly.space` (fast-forward from `ec21215`, lockfile unchanged). Only `hermes-app-expo.service` was restarted (PID 4134099 → 1292938). The `hermes-gateway.service` PID 1180321 and the hermes-app-dev plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each exact launchAsset returns HTTP 200 and contains the new card markers, and the old blue square Send is absent. Evidence: private `workspace/hermes-app/mobile-chatgpt-composer/`. Rollback baseline: `ec21215`. iPhone acceptance is pending.
