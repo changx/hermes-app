@@ -107,11 +107,13 @@
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
 - [docs/desktop-tabs.md](docs/desktop-tabs.md)
 - [docs/desktop-browser-control.md](docs/desktop-browser-control.md)
+- [docs/desktop-sidebar-release-0.1.37.md](docs/desktop-sidebar-release-0.1.37.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
 - [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
 - [docs/desktop-browser-resize-release-0.1.40.md](docs/desktop-browser-resize-release-0.1.40.md)
 - [docs/desktop-file-preview-release-0.1.41.md](docs/desktop-file-preview-release-0.1.41.md)
+- [docs/desktop-browser-control-release-0.1.42.md](docs/desktop-browser-control-release-0.1.42.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布
