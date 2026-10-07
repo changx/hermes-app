@@ -9,7 +9,17 @@ const require = createRequire(import.meta.url);
 const root = new URL('..', import.meta.url).pathname;
 const compiled = await build({ stdin: { resolveDir: root, loader: 'ts', contents: `export * from './src/shared/browser-policy'; export { localPreview } from './src/main/local-preview'; export { DesktopConnectionService } from './src/main/connection-service';` }, bundle: true, format: 'cjs', platform: 'node', external: ['electron'], write: false });
 const mod = { exports: {} }; new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(name => name === 'electron' ? {} : require(name), mod, mod.exports);
-const { chromeUserAgent, browserUrl, previewMime, previewResponse, localPreview, DesktopConnectionService } = mod.exports;
+const { chromeUserAgent, browserUrl, previewMime, previewResponse, pdfViewerResource, localPreview, DesktopConnectionService } = mod.exports;
+test('chrome://resources is allowed only for subresources of the built-in PDF viewer frame', () => {
+  const viewer = { url: 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html' };
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/js/assert.js', resourceType: 'script', frame: viewer }), true);
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/css/text_defaults_md.css', resourceType: 'stylesheet', frame: viewer }), true);
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/js/assert.js', resourceType: 'script', frame: { url: 'https://example.com/' } }), false);
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/js/assert.js', resourceType: 'script', frame: null }), false);
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/js/assert.js', resourceType: 'script', frame: { get url() { throw new Error('destroyed'); } } }), false);
+  assert.equal(pdfViewerResource({ url: 'chrome://resources/page.html', resourceType: 'subFrame', frame: viewer }), false);
+  assert.equal(pdfViewerResource({ url: 'chrome://settings/', resourceType: 'script', frame: viewer }), false);
+});
 const bytes = value => new TextEncoder().encode(value);
 
 test('browser uses reduced standard Chrome UA for real engine and platform, with no application markers', () => {
