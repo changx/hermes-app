@@ -21,4 +21,8 @@ On this release line: desktop typecheck, build and 111/111 tests pass with real 
 
 ## Results
 
-Pending.
+- `main` moved to `c8ed4d6` and was pushed atomically with annotated tag `v0.1.41`.
+- Tag run [37596973466](https://github.com/changx/hermes-app/actions/runs/37596973466) passed checks, audit, packaging, archive validation, publication and **Remove older releases**.
+- Release `v0.1.41` is not a draft or prerelease. The downloaded ZIP passed the sidecar SHA-256 check (`3eb97d413c5e49e941a232530583c80e15ae4501bf688a86aa1c3f975e2378a5`) and the ZIP CRC check. Info.plist and ASAR report `0.1.41`, and the executable is Mach-O arm64. Packaged main, preload, renderer script, HTML and stylesheet are byte-identical to the verified local build. Retention now keeps v0.1.41 and v0.1.40. Evidence: channel workspace `file-preview/desktop-release/`.
+- Mobile: published to the Expo Go test entry (only `hermes-app-expo` restarted; public iOS/Android manifests and bundles HTTP 200, SDK 57).
+- No Gateway restart, plugin or core change. The app is unsigned and not notarized. macOS checks of each file type remain pending. Rollback: reinstall v0.1.40.
