@@ -4,7 +4,7 @@ import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
-  viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
+  viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
   platform: process.platform,
   versions: Object.freeze({ chrome: process.versions.chrome, electron: process.versions.electron }),
 });
@@ -20,6 +20,7 @@ const api: HermesDesktopApi = Object.freeze({
   browserAction: (action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void> => ipcRenderer.invoke('desktop:browser-action', action),
   browserControl: (action: 'stop' | 'resume' | 'done'): Promise<void> => ipcRenderer.invoke('desktop:browser-control', action),
   setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:browser-bounds', bounds),
+  setBrowserMode: (mode: 'sidebar' | 'window'): Promise<void> => ipcRenderer.invoke('desktop:set-browser-mode', mode),
   newTab: (channelId?: string): Promise<void> => ipcRenderer.invoke('desktop:new-tab', channelId),
   activateTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:activate-tab', id),
   closeTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:close-tab', id),

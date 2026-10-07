@@ -302,7 +302,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   </footer>;
 };
 
-export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' | 'settings' }) => {
+export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' | 'settings' | 'browser' }) => {
   // The Settings window renders SettingsPage from index.tsx and never mounts this shell.
   const viewRole: 'workspace' | 'tab' = requestedRole === 'workspace' ? 'workspace' : 'tab';
   const [sendVersion, setSendVersion] = useState(0);

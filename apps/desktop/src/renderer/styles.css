@@ -701,3 +701,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-tab-page .timeline-content { max-width: var(--session-content-max); margin-inline: auto; }
 .session-tab-page .interaction-card { margin-inline: max(18px, calc((100% - var(--session-content-max)) / 2)); }
 .session-tab-page .composer > * { max-width: var(--session-content-max); margin-inline: auto; }
+
+/* Browser: built-in sidebar or a Session's separate window. */
+.browser-mode-toggle { display: inline-flex; align-items: center; justify-content: center; }
+.browser-mode-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.browser-window-page { display: flex; height: 100vh; height: 100dvh; min-height: 0; }
+.browser-window-page .browser-sidebar.browser-window { flex: 1; min-width: 0; border-left: 0; }
+.browser-window .browser-view-slot { margin-left: 0; } /* No resize strip in a separate window. */

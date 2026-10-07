@@ -17,7 +17,8 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
   const [dragging, setDragging] = useState<'sidebar' | 'browser' | null>(null);
   const shell = useRef<HTMLDivElement>(null);
   const drag = useRef<{ kind: 'sidebar' | 'browser'; pointerId: number; startX: number; startWidth: number } | null>(null);
-  const browserOpen = !!snapshot.browser?.open;
+  // In separate-window mode the Session's browser has its own window; the main window keeps its full width.
+  const browserActive = !!snapshot.browser?.open, browserOpen = browserActive && snapshot.browserMode !== 'window';
   const sidebarHidden = collapsed || browserOpen && availableWidth < 1100;
   // The preview may grow until the conversation keeps its reserve beside a minimum-width left sidebar.
   const browserAvailable = availableWidth - (sidebarHidden ? 0 : MIN_SIDEBAR_WIDTH);
@@ -139,7 +140,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
           </button>
           <button type="button" className="desktop-tab-close" aria-label={`Close tab: ${tab.title}`} onClick={() => invoke(window.hermesDesktop.closeTab(tab.id))}>×</button>
         </div>;
-      })}<button type="button" className="desktop-tab-add" aria-label="New chat tab" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>＋</button><button type="button" className="desktop-browser-toggle" aria-label="Toggle preview sidebar" aria-expanded={browserOpen} disabled={!snapshot.activeTabId} onClick={() => invoke(browserOpen ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}>Browser</button></div>
+      })}<button type="button" className="desktop-tab-add" aria-label="New chat tab" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>＋</button><button type="button" className="desktop-browser-toggle" aria-label={snapshot.browserMode === 'window' ? 'Toggle browser window' : 'Toggle preview sidebar'} aria-expanded={browserActive} disabled={!snapshot.activeTabId} onClick={() => invoke(browserActive ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}>Browser</button></div>
       <main ref={content} className="native-view-slot">{snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{!snapshot.activeTabId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="empty-session" role="status" aria-live="polite" aria-busy="true"><h1>Loading your conversations…</h1></div> : <div className="empty-session"><h1>Start a conversation</h1><p>Open a recent session or create a new chat.</p>{snapshot.phase === 'connected' && <button type="button" onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>New chat</button>}</div>)}</main>
     </section>
     {browserOpen && <div className="browser-resize-handle" role="separator" tabIndex={0} aria-label="Resize preview sidebar" aria-orientation="vertical" aria-valuemin={MIN_BROWSER_WIDTH} aria-valuemax={browserMaximum(browserAvailable)} aria-valuenow={browserWidth}
