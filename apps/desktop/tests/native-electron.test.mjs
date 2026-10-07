@@ -123,8 +123,8 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
  await evaluate(shell,'document.querySelector(".sidebar-filter-icon").click()');await until(()=>evaluate(shell,'!!document.querySelector(".labels-filter-popover input")'),'label popover');
- await evaluate(shell,'[...document.querySelectorAll(".labels-filter-candidates input")].find(e=>e.getAttribute("aria-label")==="Label: bug").click()');await until(()=>evaluate(shell,'document.querySelectorAll(".tree-thread").length===1'),'label filter');
- assert.equal(await evaluate(shell,'document.querySelector(".tree-thread").textContent.includes("Session B")'),true);
+ await evaluate(shell,'[...document.querySelectorAll(".labels-filter-candidates input")].find(e=>e.getAttribute("aria-label")==="Label: bug").click()');await until(()=>evaluate(shell,'document.querySelectorAll(".channel-tree .tree-thread").length===1'),'label filter');
+ assert.equal(await evaluate(shell,'document.querySelector(".channel-tree .tree-thread").textContent.includes("Session B")'),true);
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
  // Real input reaches the production host renderer while retained native views resize.

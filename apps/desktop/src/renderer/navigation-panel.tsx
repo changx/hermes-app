@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
-import { threadWindow } from "./thread-navigation";
+import { recentWindow, threadWindow } from "./thread-navigation";
 import { emptyLabelFilter, labelFilterActive, matchesLabels } from '../../../../packages/client/src/sessionLabels';
 import { LabelPills, LabelsFilter } from './session-labels';
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
@@ -11,7 +11,7 @@ const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnectin
 // Snapshot deltas rebuild the connection array; compare only what the tree shows.
 const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ?? []).map(row => `${row.connectionKey ?? ''}=${row.state}`).join('|');
 
-const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels}: {thread:DesktopThread;selected:boolean;draft:boolean;showLabels?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
+const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels,hint}: {thread:DesktopThread;selected:boolean;draft:boolean;showLabels?:boolean;hint?:string;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} title={hint} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
@@ -19,8 +19,12 @@ const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels}: {thread:Deskt
   </span>{showLabels && <LabelPills markers={thread.markers} />}
 </button>);
 
+const RECENTS_KEY = 'hermes.sidebar.recents-collapsed';
+const loadRecentsCollapsed = () => { try { return window.localStorage.getItem(RECENTS_KEY) === '1'; } catch { return false; } };
+
 /**
- * Sidebar content: top actions, then one flat Project tree across every
+ * Sidebar content, top to bottom: New chat, Recents (Sessions active in the
+ * last 24 hours across every Project), then one flat Project tree across every
  * connection. A Project shows its Hermes name only when several exist.
  */
 export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onChannelOptions, onCreateProject }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void }) => {
@@ -35,6 +39,8 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const [now, setNow] = useState(() => Date.now());
   const [filter, setFilter] = useState(emptyLabelFilter);
   const [menu, setMenu] = useState<{ thread: DesktopThread; x: number; y: number } | null>(null);
+  const [recentsCollapsed, setRecentsCollapsed] = useState(loadRecentsCollapsed);
+  const [recentBatches, setRecentBatches] = useState(0);
   const filtering = snapshot.supportsSessionLabels === true && labelFilterActive(filter);
   const available = snapshot.threads.filter(thread => snapshot.channels.some(channel => channel.id === thread.channelId));
   // Counts use every listed session, independent of the label filter and the
@@ -44,7 +50,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const multiple = (snapshot.connections?.length ?? 0) > 1;
   const stateFor = (key?: string) => key ? snapshot.connections?.find(row => row.connectionKey === key)?.state : undefined;
   const anyOnline = snapshot.connections ? snapshot.connections.some(row => row.state === 'online') : snapshot.phase === 'connected';
-  useEffect(() => { setFilter(emptyLabelFilter()); setBatches({}); setMenu(null); }, [snapshot.connectionKey]);
+  useEffect(() => { setFilter(emptyLabelFilter()); setBatches({}); setRecentBatches(0); setMenu(null); }, [snapshot.connectionKey]);
   useEffect(() => {
     if (!menu) return;
     const dismiss = () => setMenu(null), key = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
@@ -58,14 +64,30 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   useEffect(() => {
     if (snapshot.selectedChannelId) setExpanded((old) => new Set([...old, snapshot.selectedChannelId!]));
   }, [snapshot.selectedChannelId]);
+  const projectName = new Map(snapshot.channels.map(channel => [channel.id, channel.name]));
+  const recents = recentWindow(available, now, recentBatches);
+  const labelsFor = (thread: DesktopThread) => thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true;
+  const row = (thread: DesktopThread, hint?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={labelsFor(thread)} onMenu={labelsFor(thread) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />;
   return <div className="sidebar-scroll">
     <nav className="sidebar-actions" aria-label="Create">
       <button type="button" className="sidebar-action" onClick={() => onNewSession(snapshot.selectedChannelId ?? projects[0]?.id ?? '')}><Icon name="compose" /><span>New chat</span></button>
-      {onCreateProject && <button type="button" className="sidebar-action" disabled={!anyOnline} onClick={onCreateProject}><Icon name="plus" /><span>New project</span></button>}
     </nav>
+    <section className="sidebar-recents" aria-labelledby="sidebar-recents-title">
+      <div className="sidebar-section-header">
+        <h2 className="sidebar-section-title"><button type="button" className="sidebar-section-toggle" id="sidebar-recents-title" aria-expanded={!recentsCollapsed} aria-controls="sidebar-recents-list"
+          onClick={() => setRecentsCollapsed(old => { const next = !old; try { window.localStorage.setItem(RECENTS_KEY, next ? '1' : '0'); } catch { /* Device preference only. */ } return next; })}>
+          <span>Recents</span><Icon name={recentsCollapsed ? 'chevronRight' : 'chevronDown'} className="sidebar-section-chevron" /></button></h2>
+      </div>
+      {!recentsCollapsed && <div className="item-list recent-list" id="sidebar-recents-list">
+        {recents.rows.map(thread => row(thread, projectName.get(thread.channelId)))}
+        {!recents.rows.length && <p className="tree-empty">No sessions in the last 24 hours</p>}
+        {recents.hasMore && <button className="tree-more" type="button" onClick={() => setRecentBatches(value => value + 1)}>Show more</button>}
+      </div>}
+    </section>
     <div className="sidebar-section-header">
       <h2 className="sidebar-section-title" id="sidebar-projects-title">Projects</h2>
       {snapshot.supportsSessionLabels === true && <LabelsFilter rows={available} value={filter} onChange={value => { setFilter(value); setBatches({}); }} />}
+      {onCreateProject && <button type="button" className="sidebar-icon-button sidebar-new-project" aria-label="New project" title="New project" disabled={!anyOnline} onClick={onCreateProject}><Icon name="plus" /></button>}
     </div>
     <div className="item-list channel-tree" aria-labelledby="sidebar-projects-title">
     {projects.map((channel) => {
@@ -82,7 +104,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
           {count > 0 && <span className="project-unread-count" aria-hidden="true">{unreadCountLabel(count)}</span>}
         </button>{onChannelOptions && <button type="button" className="channel-options sidebar-icon-button" aria-label={`Options for ${channel.name}`} title="Project options" onClick={() => onChannelOptions(channel.id)}><Icon name="more" /></button>}<button type="button" className="channel-new-session sidebar-icon-button" aria-label={`New session in ${channel.name}`} title="New session" onClick={() => onNewSession(channel.id)}><Icon name="compose" /></button></div>
         {open ? <div id={`branch-${channel.id}`} className="thread-children">
-          {page.rows.map((thread) => <ThreadRow key={thread.id} thread={thread} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true} onMenu={(thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />)}
+          {page.rows.map(thread => row(thread))}
           {!page.rows.length ? <p className="tree-empty">No recent activity</p> : null}
           {page.hasMore ? <button className="tree-more" type="button" onClick={() => setBatches((old) => ({ ...old, [channel.id]: (old[channel.id] ?? 0) + 1 }))}>Show more</button> : null}
         </div> : null}

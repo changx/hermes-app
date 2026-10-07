@@ -32,7 +32,7 @@ test('Chromium: red draft text uses 16px without decoration, clipping or overlap
       const results=[];
       for(const width of [240,320,480]) {
         document.getElementById('preview').style.width=width+'px';
-        for(const badge of document.querySelectorAll('.thread-draft')) {
+        for(const badge of document.querySelectorAll('.channel-tree .thread-draft')) {
           const s=getComputedStyle(badge),b=badge.getBoundingClientRect(),row=badge.closest('button').getBoundingClientRect(),title=badge.previousElementSibling.getBoundingClientRect();
           results.push({width,color:s.color,background:s.backgroundColor,border:s.borderTopWidth,padding:s.padding,weight:s.fontWeight,size:s.fontSize,contained:b.right<=row.right && b.left>=row.left,nonoverlap:title.right<=b.left,visible:b.width>0&&b.height>0});
         }

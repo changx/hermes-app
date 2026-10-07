@@ -18,7 +18,7 @@ async function fixture(value=snapshot,save=async()=>{}) {
   const close=()=>closed++;
   await act(async()=>{tree=create(React.createElement(NewProjectDialog,{snapshot:value,close}));});
   const update=async value=>{await act(async()=>tree.update(React.createElement(NewProjectDialog,{snapshot:value,close})));};
-  const name=async value=>{await act(async()=>tree.root.findByProps({'aria-label':'Project name'}).props.onChange({target:{value}}));};
+  const name=async value=>{await act(async()=>tree.root.findByProps({'aria-label':'Project title'}).props.onChange({target:{value}}));};
   const choose=async value=>{await act(async()=>tree.root.findByProps({'aria-label':'Project connection'}).props.onChange({target:{value}}));};
   const submit=async()=>{await act(async()=>tree.root.findByType('form').props.onSubmit({preventDefault(){}}));};
   return {tree,calls,name,choose,submit,update,closed:()=>closed,dispose:async()=>{await act(async()=>tree.unmount());}};
@@ -28,7 +28,7 @@ test('multiple connections require explicit choice and active-tab changes retain
     await f.name('Peer Project');assert.equal(f.tree.root.findByProps({'type':'submit'}).props.disabled,true);
     await f.submit();assert.equal(f.calls.length,0);
     await f.choose(b.connectionKey);await f.update({...snapshot,connectionKey:b.connectionKey,selectedThreadId:'different-tab'});
-    assert.equal(f.tree.root.findByProps({'aria-label':'Project name'}).props.value,'Peer Project');
+    assert.equal(f.tree.root.findByProps({'aria-label':'Project title'}).props.value,'Peer Project');
     await f.update(snapshot);await f.submit();assert.deepEqual(f.calls,[{connectionKey:b.connectionKey,name:'Peer Project',description:''}]);assert.equal(f.closed(),1);
   }finally{await f.dispose();}
 });
@@ -37,7 +37,7 @@ test('removing the selected connection leaves an unavailable target, not automat
     await f.choose(b.connectionKey);await f.name('Retain me');await f.update({...snapshot,connections:[a]});
     assert.equal(f.tree.root.findByProps({'aria-label':'Project connection'}).props.value,b.connectionKey);
     assert.equal(f.tree.root.findByProps({'type':'submit'}).props.disabled,true);await f.submit();assert.equal(f.calls.length,0);
-    assert.equal(f.tree.root.findByProps({'aria-label':'Project name'}).props.value,'Retain me');
+    assert.equal(f.tree.root.findByProps({'aria-label':'Project title'}).props.value,'Retain me');
   }finally{await f.dispose();}
 });
 test('offline selected connection cannot submit, even while another connection is online',async()=>{
@@ -49,7 +49,7 @@ test('offline selected connection cannot submit, even while another connection i
 test('ambiguous creation failure preserves values, reports safely and blocks duplicate mutation',async()=>{
   const f=await fixture(snapshot,async()=>{throw Error('private backend detail');});try {
     await f.choose(b.connectionKey);await f.name('Retain me');await f.submit();await f.submit();
-    assert.equal(f.calls.length,1);assert.equal(f.closed(),0);assert.equal(f.tree.root.findByProps({'aria-label':'Project name'}).props.value,'Retain me');
+    assert.equal(f.calls.length,1);assert.equal(f.closed(),0);assert.equal(f.tree.root.findByProps({'aria-label':'Project title'}).props.value,'Retain me');
     assert.equal(f.tree.root.findByProps({'type':'submit'}).props.disabled,true);
     const alert=f.tree.root.findByProps({'role':'alert'}).children.join('');assert.match(alert,/could not be confirmed/);assert.doesNotMatch(alert,/private backend/);
   }finally{await f.dispose();}

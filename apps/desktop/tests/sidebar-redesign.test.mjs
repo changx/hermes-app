@@ -36,8 +36,8 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
         ensure('no emoji or text glyph icons in sidebar',!/[⚙✎＋▸▾‹›]/.test(aside.textContent));
         footer.querySelector('button').click(); ensure('settings opens',settings===1);
         const actions=[...aside.querySelectorAll('.sidebar-actions button span:not(.app-icon)')].map(b=>b.textContent);
-        ensure('top actions',actions.join('|')==='New chat|New project');
-        aside.querySelectorAll('.sidebar-actions button')[1].click(); ensure('new project opens',projects===1);
+        ensure('top actions',actions.join('|')==='New chat');
+        aside.querySelector('.sidebar-section-header [aria-label="New project"]').click(); ensure('new project opens',projects===1);
         const title=aside.querySelector('.sidebar-section-title'), row=aside.querySelector('.tree-thread'), project=aside.querySelector('.channel-toggle strong');
         const cs=e=>getComputedStyle(e);
         ensure('section title matches row size',cs(title).fontSize===cs(row).fontSize&&cs(title).fontSize==='16px');

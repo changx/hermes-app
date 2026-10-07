@@ -20,3 +20,14 @@ export const threadWindow = (threads: readonly DesktopThread[], channelId: strin
   const shown = new Set(others.slice(0, count));
   return { rows: ordered.filter(thread => pinned(thread) || shown.has(thread)), hasMore: others.length > count };
 };
+
+/**
+ * Sidebar Recents: Sessions from every Project and connection with activity in
+ * the trailing 24 hours, plus running Sessions. Newest activity first.
+ */
+export const recentWindow = (threads: readonly DesktopThread[], now: number, batches = 0) => {
+  const rows = threads.filter(thread => thread.running === true || thread.lastMessageAt !== undefined && thread.lastMessageAt >= now / 1000 - DAY)
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+  const count = (Math.max(0, batches) + 1) * THREAD_BATCH;
+  return { rows: rows.slice(0, count), hasMore: rows.length > count };
+};

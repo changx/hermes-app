@@ -77,6 +77,7 @@ export class DesktopConnections {
       if (a.id === 'primary' && !s.connectionKey && s.phase !== 'pairing' && !s.errorMessage) return [];
       return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: s.connectionName ?? (a.server ? new URL(a.server).hostname : 'Saved connection'),
         state: s.phase === 'pairing' ? 'pairing' as const : s.errorMessage && !s.connectionKey ? 'blocked' as const : s.connectionState,
+        ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
         ...(s.statusMessage || s.errorMessage ? { detail: s.statusMessage ?? s.errorMessage } : {}) }];
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,
@@ -148,12 +149,16 @@ export class DesktopConnections {
   deactivateThread(connectionKey?: string): void { if (connectionKey) this.active = this.forIdentity(connectionKey).id; this.current().service.deactivateThread(); }
   closeSessionPage(id: string): void { const r = this.route(id); r.account.service.closeSessionPage(r.raw); }
   closeSessionPages(): void { for (const a of this.accounts.values()) a.service.closeSessionPages(); }
-  async createChannel(connectionKey: string, input: ChannelInput): Promise<void> {
+  async createChannel(connectionKey: string, input: ChannelInput): Promise<string> {
     const account = this.forIdentity(connectionKey);
     if (account.service.snapshot().connectionState !== 'online') throw new Error('The selected connection is unavailable.');
-    await account.service.createChannel(input);
+    const id = await account.service.createChannel(input);
     if (this.forIdentity(connectionKey) !== account) throw new Error('Project creation was not confirmed.');
+    return this.encode(account, id)!;
   }
+  async getProjectWorkspace(id: string) { const r = this.route(id); return r.account.service.getProjectWorkspace(r.raw); }
+  async saveProjectAgents(id: string, content: string, previous: string | null) { const r = this.route(id); return r.account.service.saveProjectAgents(r.raw, content, previous); }
+  async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: r.account.service.snapshot().connectionName }; }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }

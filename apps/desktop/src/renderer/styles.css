@@ -394,10 +394,17 @@ dialog.labels-editor::backdrop { background: #0005; }
    compact rows, section titles at the row size in a muted colour (not
    uppercase or bold), icon-font controls. Text follows the user's text-size
    setting; row height scales with it. */
-.native-sidebar { --sidebar-text: var(--app-font-size); --sidebar-small: calc(var(--app-font-size) * .8125); --sidebar-row: calc(var(--app-font-size) * 2); display: flex; flex-direction: column; min-height: 0; padding-top: 48px; background: var(--app-rail); border-right: 1px solid var(--app-border); }
+.native-sidebar { --sidebar-text: var(--app-font-size); --sidebar-small: calc(var(--app-font-size) * .8125); --sidebar-row: calc(var(--app-font-size) * 2); display: flex; flex-direction: column; min-height: 0; background: var(--app-rail); border-right: 1px solid var(--app-border); }
 .native-sidebar .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 12px; }
 .app-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; font-family: "HermesWorkIcons"; font-size: 17px; font-style: normal; font-weight: 400; line-height: 18px; speak: never; }
-.sidebar-actions { display: grid; gap: 1px; padding: 4px 0 6px; }
+.sidebar-actions { display: grid; gap: 1px; padding: 8px 0 2px; }
+/* No blank band above New chat. The collapse button sits at the right end of the New chat row. */
+.native-sidebar .sidebar-actions .sidebar-action:first-child { width: calc(100% - 34px); }
+.native-sidebar .sidebar-recents .sidebar-section-header { margin-top: 8px; }
+.sidebar-section-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sidebar-section-chevron { width: 14px; height: 14px; font-size: 12px; opacity: 0; }
+.sidebar-section-header:hover .sidebar-section-chevron, .sidebar-section-toggle:focus-visible .sidebar-section-chevron, .sidebar-section-toggle[aria-expanded="false"] .sidebar-section-chevron { opacity: 1; }
+.native-sidebar .sidebar-new-project:disabled { opacity: .5; cursor: default; }
 .sidebar-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--sidebar-row); padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--app-text); font: inherit; font-size: var(--sidebar-text); text-align: left; cursor: pointer; }
 .sidebar-action .app-icon { color: var(--app-label); }
 .sidebar-action:disabled { opacity: .5; cursor: default; }
@@ -438,7 +445,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-filter-chip button { border: 0; background: transparent; padding: 4px 6px; color: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-filter-chip button:first-child { flex: 1; }
 .labels-filter-popover { box-shadow: 0 8px 24px #0002; }
-.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 36px); top: 10px; background: var(--app-rail); }
+.sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 36px); top: calc(8px + (var(--app-font-size, 16px) * 2 - 28px) / 2); background: var(--app-rail); }
 .sidebar-edge-toggle:hover { background: var(--app-border); }
 .sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -628,6 +635,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-files button { border: 0; padding: 4px; background: transparent; }
 .session-hint { color: #50647b; font-size: var(--app-font-size); line-height: 1.5; }
 .editor-dialog textarea { min-height: 100px; resize: vertical; }
+/* Project modal: same for New project and Project settings. Body scrolls; actions stay visible. */
+.project-dialog { width: min(620px, 100%); max-height: calc(100dvh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.project-dialog h2 { margin: 0; }
+.project-dialog-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.project-dialog .field-hint { color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); font-weight: 400; line-height: 1.4; }
+.project-dialog .project-agents { min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--app-font-size) * .875); }
+.project-files { display: grid; gap: 6px; border: 1px dashed var(--app-field-border); border-radius: 10px; padding: 10px 12px; }
+.project-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.project-section-title { color: var(--app-label); font-size: var(--app-font-size); font-weight: 650; }
+.project-section-header button { border: 1px solid var(--app-field-border); border-radius: 8px; padding: 5px 10px; color: var(--app-label); background: #fff; font: inherit; font-size: calc(var(--app-font-size) * .875); cursor: pointer; }
+.project-section-header button:disabled { opacity: .5; cursor: default; }
+.project-file-list { display: grid; gap: 2px; max-height: 180px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.project-file-list li { display: flex; align-items: center; gap: 8px; min-height: 30px; border-radius: 6px; padding: 2px 8px; font-size: calc(var(--app-font-size) * .875); }
+.project-file-list li:hover { background: var(--app-hover); }
+.project-file-list .project-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-file-list .project-file-size { color: var(--app-muted); white-space: nowrap; }
+.project-file-list li.staged .project-file-size { color: var(--app-accent); }
+.project-file-list button { border: 0; padding: 2px 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
+.project-files-empty { margin: 0; color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); }
+.dialog-actions .danger { margin-right: auto; color: #9d1b32; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: var(--app-accent); }
 .dialog-actions .secondary { border: 1px solid var(--app-field-border); color: var(--app-label); background: #fff; }

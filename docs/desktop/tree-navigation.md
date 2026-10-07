@@ -73,3 +73,27 @@ Icons use the bundled icon font (`assets/work-icons.ttf`, built by `scripts/buil
 Verification (Linux): desktop TypeScript, build and full suite with Chromium and Electron/Xvfb **101/101**. New Chromium test `sidebar-redesign` renders the production `NativeWorkspace` with two connections and checks: no server in the footer, one Settings action, icon font loaded and used, no emoji/text glyph icons, action order, section title size/colour/weight, row height, connection names under Projects, filter placement, and text-size scaling. Existing tests updated for the moved *New project* button, the renamed font-size selector and the child indentation (Session titles stay 17px right of Project names). The first full run failed two Electron tests on a corrupt Electron download (`resources.pak`); reinstalling Electron fixed both. Mobile tests 106 pass / 1 existing skip and iOS export pass with the rebuilt font. Evidence: Channel workspace `desktop-sidebar/` (`desktop-check.log`, `sidebar-redesign.png`, `sidebar-redesign.json`).
 
 Not verified: Mac window appearance. The reference screenshot and the rendered screenshot were measured by pixel analysis, not reviewed visually in this session.
+
+## Recents and unified Project modal candidate
+
+Branch: `feat/desktop-recents`; card: `t_bd2f924e`; base `origin/main` `d786452`.
+
+Confirmed behavior:
+- The sidebar has no blank band at the top. Order: New chat, Recents, Projects. The collapse button sits at the right end of the New chat row.
+- Recents lists Sessions from every Project and connection with activity in the last 24 hours, plus running Sessions. Newest activity first, 24 rows per batch with Show more. The row tooltip names its Project. The Recents title collapses the list; the choice is a device-local preference.
+- New project is a `+` icon in the Projects header, beside the label filter. The old New project row is removed.
+- New project and Project `...` open the same modal: Title, Context, Files, AGENTS.md. New project also has the existing explicit connection choice.
+- Files and AGENTS.md appear only when the connection reports `channel_workspace`, `channel_files` and `channel_agents`. They use the existing plugin workspace routes. No plugin or Hermes core change.
+- Nothing is written before Save. Order: create or update Title/Context, then AGENTS.md, then new files. A created Project is never created again. A later failure keeps the modal open in edit mode, and Save writes only the remaining parts.
+- AGENTS.md saves are conditional on the loaded version (`If-Match`, or `If-None-Match: *` when absent). A version conflict keeps the text and disables Save.
+- Files are added create-only (`If-None-Match: *`). An existing name is refused, locally or by the server. The modal lists root entries; it does not delete, rename or replace files.
+
+Client changes: the desktop transport gains `conditionalRequest` and raw-byte `putBytes`, and a larger reply bound for AGENTS.md reads. The shared client gains optional `HttpTransport.putBytes` and `workspace.writeFile`. Mobile is unchanged.
+
+Verification:
+- `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: TypeScript, build, 123 tests passed, 0 skipped.
+- New tests: production ProjectDialog flows (create order, no-capability, partial failure without duplicate creation, edit diff with loaded version, duplicate file names, AGENTS.md conflict); real desktop transport plus shared client against a local HTTP fixture (create-only bytes, no replacement, conditional AGENTS.md, >64 KiB reply); Recents window rules; Chromium sidebar order, top gap, `+` position, Recents content and collapse.
+- Existing Chromium/Electron sidebar tests now scope row selectors to the Project tree, because Recents shows the same Sessions a second time. The Electron fixture opens New project from the new `+`.
+- Shared client TypeScript and 26 tests passed.
+- `connections-native` failed once on the untouched base and passed on a rerun; it is intermittent, not caused by this change.
+- Not done: live dev-Gateway file/AGENTS round trip, macOS visual and pointer acceptance, merge or release.

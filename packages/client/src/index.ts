@@ -18,7 +18,7 @@ export interface Message { id: string; ref_seq: number; role: string; text: stri
 
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
-export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; conditionalRequest?(method: string, path: string, token: string, headers: ConditionalHeaders, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply> }
+export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; conditionalRequest?(method: string, path: string, token: string, headers: ConditionalHeaders, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; putBytes?(path: string, token: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply> }
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
@@ -183,7 +183,8 @@ export class HermesClient {
     this.channels = directory?.channels ?? new Map();
     this.threads = directory?.threads ?? new Map();
     this.workspace = createWorkspaceApi((method,path,body,signal,headers) => this.call(method,path,body,signal,headers),
-      (path,signal) => this.downloadPath(path,signal), message => new ProtocolError(message));
+      (path,signal) => this.downloadPath(path,signal), message => new ProtocolError(message),
+      (path,headers,bytes,signal) => this.putPath(path,headers,bytes,signal));
   }
 
 
@@ -284,6 +285,13 @@ export class HermesClient {
     this.supportsChannelWorkspace = owner.supportsChannelWorkspace;
     this.supportsAttachmentOrigin = owner.supportsAttachmentOrigin;
     this.supportsSessionLabels = owner.supportsSessionLabels;
+  }
+  /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
+  private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    if(!this.options.http.putBytes)throw new ProtocolError('Binary file writes unavailable');
+    const reply=await bounded(s=>this.options.http.putBytes!(path,this.token(),headers,bytes,s),timeout(this.options.requestTimeoutMs,60000),signal);
+    if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,reply.retryAfterMs,path.split('?')[0]);
+    return obj(reply.body);
   }
   private async downloadPath(path: string, signal?: AbortSignal): Promise<Uint8Array> {
     if(!this.options.http.download)throw new ProtocolError('Binary download unavailable');
