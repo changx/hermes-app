@@ -110,12 +110,32 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
       return { status: response.status, body: await responseBody(response), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
     },
     async download(path, token, signal) {
-      const response = await fetch(base + path, { headers: authorization(token), redirect: "error", signal });
+      // Ask for the original bytes. A proxy (Cloudflare) can still compress text files and then
+      // drops Content-Length; fetch decodes the body, so bound the decoded bytes while reading.
+      // Callers compare the result with the attachment's authoritative size.
+      const response = await fetch(base + path, { headers: { ...authorization(token), "Accept-Encoding": "identity" }, redirect: "error", signal });
       if (!response.ok) return { status: response.status, body: new Uint8Array() };
-      const length = response.headers.get("content-length");
-      if (!length || !/^\d+$/.test(length) || Number(length) > MAX_ATTACHMENT_BYTES) throw new Error("Attachment size is unsupported.");
-      const body = new Uint8Array(await response.arrayBuffer());
-      if (body.byteLength !== Number(length)) throw new Error("Attachment download is incomplete.");
+      const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+      const length = encoding === "identity" ? response.headers.get("content-length") : null;
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_ATTACHMENT_BYTES)) throw new Error("Attachment size is unsupported.");
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      if (reader) {
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            size += chunk.value.byteLength;
+            if (size > MAX_ATTACHMENT_BYTES) { await reader.cancel(); throw new Error("Attachment size is unsupported."); }
+            chunks.push(chunk.value);
+          }
+        } finally { reader.releaseLock(); }
+      }
+      const body = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+      if (length !== null && size !== Number(length)) throw new Error("Attachment download is incomplete.");
       return { status: response.status, body };
     },
   };

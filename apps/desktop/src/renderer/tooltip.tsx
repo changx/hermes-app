@@ -17,11 +17,14 @@ export function TooltipLayer() {
   useEffect(() => {
     if (typeof document.addEventListener !== 'function') return; // non-DOM test renderers
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let current: HTMLElement | null = null;
+    let current: HTMLElement | null = null, at = '';
+    const where = (target: HTMLElement) => { const box = target.getBoundingClientRect(); return `${Math.round(box.left)},${Math.round(box.top)}`; };
     const hide = () => { clearTimeout(timer); current = null; setTip(null); };
+    // Scrolling elsewhere (a code block, the sidebar) keeps the tooltip; it hides only when its control moved.
+    const scroll = () => { if (current && (!current.isConnected || where(current) !== at)) hide(); };
     const show = (target: HTMLElement, delay: number) => {
       if (target === current) return;
-      clearTimeout(timer); current = target; setTip(null);
+      clearTimeout(timer); current = target; at = where(target); setTip(null);
       timer = setTimeout(() => { const text = target.dataset.tooltip?.trim(); if (text && target.isConnected) setTip({ text, target }); }, delay);
     };
     const over = (event: PointerEvent) => { const target = tooltipTarget(event.target); if (target) show(target, SHOW_DELAY_MS); else if (current) hide(); };
@@ -33,7 +36,7 @@ export function TooltipLayer() {
     document.addEventListener('focusin', focus);
     document.addEventListener('focusout', hide);
     document.addEventListener('pointerdown', press, true);
-    document.addEventListener('scroll', hide, true);
+    document.addEventListener('scroll', scroll, true);
     document.addEventListener('keydown', key);
     window.addEventListener('blur', hide);
     document.documentElement.addEventListener('pointerleave', hide);
@@ -43,7 +46,7 @@ export function TooltipLayer() {
       document.removeEventListener('focusin', focus);
       document.removeEventListener('focusout', hide);
       document.removeEventListener('pointerdown', press, true);
-      document.removeEventListener('scroll', hide, true);
+      document.removeEventListener('scroll', scroll, true);
       document.removeEventListener('keydown', key);
       window.removeEventListener('blur', hide);
       document.documentElement.removeEventListener('pointerleave', hide);

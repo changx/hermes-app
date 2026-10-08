@@ -126,3 +126,29 @@ test("main transport authenticates HTTP and WebSocket with headers, never URL cr
   ]);
   assert.equal(observed.some((item) => item.url.includes(token)), false);
 });
+
+// Cloudflare compresses text attachments (Content-Encoding: br/gzip) and drops Content-Length.
+test("attachment download accepts a proxy-compressed reply without Content-Length and asks for identity", async (t) => {
+  const { gzipSync, brotliCompressSync } = await import("node:zlib");
+  const text = Buffer.from("# Report\n\n" + "Markdown body line.\n".repeat(600));
+  const seen = [];
+  const server = createServer((request, response) => {
+    seen.push(request.headers["accept-encoding"]);
+    if (request.url.endsWith("/br")) { response.writeHead(200, { "content-type": "text/markdown", "content-encoding": "br" }); response.end(brotliCompressSync(text)); return; }
+    if (request.url.endsWith("/gzip")) { const body = gzipSync(text); response.writeHead(200, { "content-type": "text/markdown", "content-encoding": "gzip", "content-length": String(body.length) }); response.end(body); return; }
+    if (request.url.endsWith("/plain")) { response.writeHead(200, { "content-type": "text/markdown", "content-length": String(text.length) }); response.end(text); return; }
+    if (request.url.endsWith("/huge")) { response.writeHead(200, { "content-type": "application/octet-stream", "content-encoding": "gzip" }); response.end(gzipSync(Buffer.alloc(10 * 1024 * 1024 + 1))); return; }
+    response.writeHead(404); response.end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  for (const kind of ["br", "gzip", "plain"]) {
+    const reply = await http.download(`/v1/threads/t/attachments/${kind}`, "token");
+    assert.equal(reply.status, 200);
+    assert.equal(Buffer.from(reply.body).equals(text), true, kind);
+  }
+  assert.ok(seen.every((value) => value === "identity"), JSON.stringify(seen));
+  await assert.rejects(http.download("/v1/threads/t/attachments/huge", "token"), /size is unsupported/);
+  assert.equal((await http.download("/v1/threads/t/attachments/missing", "token")).status, 404);
+});

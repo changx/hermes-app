@@ -1127,6 +1127,7 @@ export class DesktopConnectionService {
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
     const bytes = await client.download(threadId, attachmentId);
+    if (attachment.size !== undefined && bytes.byteLength !== attachment.size) throw new Error("The attachment is incomplete. Try again.");
     const safeName = (attachment.name ?? "Attachment").replace(/[\x00-\x1f\x7f/\\:]/g, "_").slice(0, 180) || "Attachment";
     let target: string;
     if (action === "save") {

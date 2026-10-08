@@ -38,13 +38,13 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
         const vw=document.documentElement.clientWidth;
         for(const name of ['Copy link','Archive','Settings']){const b=bar.querySelector('[aria-label="'+name+'"]'),tip=await hover(b);ensure('tooltip shows: '+name,tip&&tip.textContent===b.dataset.tooltip);const t=tip.getBoundingClientRect(),bb=b.getBoundingClientRect();ensure('tooltip below and inside the window: '+name,t.top>=bb.bottom&&t.left>=0&&t.right<=vw);checks['tip '+name]=[t.left,t.top,t.width];await away();ensure('tooltip hides: '+name,!document.querySelector('.app-tooltip'));}
         { const b=bar.querySelector('[aria-label="Rename"]'); await hover(b); b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); await new Promise(r=>setTimeout(r,20)); ensure('press hides tooltip',!document.querySelector('.app-tooltip')); b.querySelector('svg').dispatchEvent(new PointerEvent('pointerover',{bubbles:true})); await new Promise(r=>setTimeout(r,600)); ensure('tooltip stays hidden after press',!document.querySelector('.app-tooltip')); await away(); }
-        const card=page.querySelector('.attachment-card'); card.scrollIntoView();
+        const card=page.querySelector('.attachment-card'); card.scrollIntoView(); await new Promise(r=>{let quiet;const done=()=>{document.removeEventListener('scroll',reset,true);r();};const reset=()=>{clearTimeout(quiet);quiet=setTimeout(done,250);};document.addEventListener('scroll',reset,true);reset();}); // a scroll hides tooltips; wait until the timeline stops scrolling
         const name=card.querySelector('.attachment-name'), acts=[...card.querySelectorAll('.attachment-actions > *')];
         ensure('attachment actions',acts.map(a=>a.textContent).join('|')==='Preview|Open externally|Save|View file');
         ensure('file name on one line',name.getClientRects().length===1&&name.getBoundingClientRect().height<30);
         const mid=a=>{const r=a.getBoundingClientRect();return r.top+r.height/2;};ensure('actions on one row below the name',acts.every(a=>Math.abs(mid(a)-mid(acts[0]))<=2)&&acts[0].getBoundingClientRect().top>=name.getBoundingClientRect().bottom);
         ensure('attachment actions have tooltips',acts.every(a=>a.dataset.tooltip&&!a.title));
-        { const tip=await hover(acts[1]); ensure('attachment tooltip shows',tip&&tip.textContent==='Open in the default app'); checks.attachment={name:name.getBoundingClientRect().toJSON(),actions:acts.map(a=>Math.round(mid(a)))}; await away(); }
+        { const tip=await hover(acts[1]); ensure('attachment tooltip shows',tip&&tip.textContent==='Open in the default app'); { let box=acts[1].parentElement; while(box&&!(box.scrollHeight>box.clientHeight&&/(auto|scroll)/.test(getComputedStyle(box).overflowY)))box=box.parentElement; box.scrollTop=Math.max(0,box.scrollTop-120); box.dispatchEvent(new Event('scroll')); /* headless virtual time does not render frames, so it does not fire scroll events itself */ await new Promise(r=>setTimeout(r,30)); } ensure('scroll that moves the control hides the tooltip',!document.querySelector('.app-tooltip')); checks.attachment={name:name.getBoundingClientRect().toJSON(),actions:acts.map(a=>Math.round(mid(a)))}; await away(); }
         const tops=new Set([...bar.querySelectorAll('button')].map(b=>Math.round(b.getBoundingClientRect().top)));
         ensure('one row',tops.size===1);
         const box=bar.getBoundingClientRect(), pageBox=page.getBoundingClientRect(), listBox=list.getBoundingClientRect();
@@ -63,7 +63,7 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
     await writeFile(join(folder, 'bundle.js'), browser.outputFiles[0].text);
     const file = join(folder, 'check.html');
     await writeFile(file, `<!doctype html><html style="--app-font-size:16px"><style>${css} html,body,#root{height:100%;margin:0}</style><div id="root"></div><pre id="results"></pre><script src="bundle.js"></script></html>`);
-    const args = ['--headless', '--no-sandbox', '--disable-gpu', '--window-size=1100,700', '--virtual-time-budget=4000', '--allow-file-access-from-files', `--user-data-dir=${join(folder, 'profile')}`];
+    const args = ['--headless', '--no-sandbox', '--disable-gpu', '--window-size=1100,700', '--virtual-time-budget=10000', '--allow-file-access-from-files', `--user-data-dir=${join(folder, 'profile')}`];
     const dom = execFileSync(process.env.HERMES_TEST_CHROME, [...args, '--dump-dom', pathToFileURL(file).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 3_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
     const result = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
     assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
