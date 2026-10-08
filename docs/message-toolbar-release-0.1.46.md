@@ -47,3 +47,10 @@ Rollback (client): `git revert` the merge range on `main`, then in one command `
 - Live checks on hermes-app-dev: unauthenticated capabilities 401; authenticated `thread_branch`, `message_sources`, `thread_export`, `relative_session_links` all true; `/v1/live` hello; one real model message completed; same `client_message_id` returned the same receipt; two cold full reads identical; sources returned the cited link; branch 201 and the same `request_id` returned the same Thread; branch Thread shows the "Branched from" link notice, the copied input and the final reply; source Thread ends with the "Branched to" notice; branch session in core has `_branched_from` = source session; export returned Markdown. Both test Threads archived.
 - The startup warning "'hermes_app' is not a valid Platform" for routing entries also appears in earlier restarts (60 times on 2026-10-06/07 before this release); it is not caused by this release.
 - Still open: real-device acceptance (iPhone, Android, macOS).
+
+## Desktop v0.1.47 fix (2026-10-07)
+
+- Symptom: on desktop, References stayed on "Loading references…"; Branch could stay busy; Copy/Export notes did not show.
+- Cause: the toolbar's `mounted` ref was set to false by the effect cleanup and never set back. The desktop renderer bundles React's development build (esbuild without `NODE_ENV`) inside `<StrictMode>`, which replays effects once at mount, so every async result was dropped. The server endpoint answered normally (200).
+- Fix `5755e8f`: the effect sets `mounted.current = true` before returning the cleanup (mobile and desktop). New mobile test renders the toolbar in StrictMode; it fails without the fix.
+- Mobile (Expo `--no-dev`, no StrictMode) was not affected; the fix is applied there for consistency.
