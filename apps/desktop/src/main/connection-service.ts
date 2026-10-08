@@ -7,7 +7,7 @@ import { HttpError, ProtocolError, isRetryableError, type Attachment, type Conne
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
-import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { workspacePath } from "../../../../packages/client/src/workspace";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
@@ -183,6 +183,7 @@ export class DesktopConnectionService {
   }
   /** True when this server offers Project Files and AGENTS.md and this transport can write them safely. */
   supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
+  supportsPrimaryPath(): boolean { return this.client?.supportsChannelPrimaryPath === true; }
 
   snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;
@@ -712,6 +713,22 @@ export class DesktopConnectionService {
     }
   }
 
+  /** Bind or remove the primary folder. Readback confirms the server state. */
+  async setProjectFolder(channelId: string, path: string | null): Promise<ProjectFolderResult> {
+    const client = this.requireClient();
+    if (!client.channels.has(channelId) || !client.supportsChannelPrimaryPath) return { ok: false, reason: 'failed' };
+    try {
+      await client.updateChannel(channelId, { primary_path: path });
+      const saved = await client.getChannelInfo(channelId);
+      if (this.client !== client || (saved.bound_primary_path ?? null) !== path) throw new Error('Folder readback mismatch');
+      return { ok: true };
+    } catch (error) {
+      this.stopIfUnauthorized(error);
+      const status = error instanceof HttpError ? error.status : 0;
+      return { ok: false, reason: status === 400 ? 'invalid' : status === 409 ? 'taken' : 'failed' };
+    }
+  }
+
   async addProjectFiles(channelId: string, inputs: readonly AttachmentInput[]): Promise<ProjectFilesResult> {
     const client = this.workspaceClient(channelId);
     const uploaded: string[] = [];
@@ -775,8 +792,10 @@ export class DesktopConnectionService {
   }
 
   async getChannelInfo(channelId: string): Promise<DesktopSnapshot["channels"][number]> {
-    const channel = await this.requireClient().getChannelInfo(channelId);
-    return { id: channel.id, name: channel.name, ...(channel.description ? { description: channel.description } : {}) };
+    const client = this.requireClient(), channel = await client.getChannelInfo(channelId);
+    return { id: channel.id, name: channel.name, ...(channel.description ? { description: channel.description } : {}),
+      ...(typeof channel.bound_primary_path === 'string' ? { primaryPath: channel.bound_primary_path } : {}),
+      ...(client.supportsChannelPrimaryPath ? { primaryPathSupported: true } : {}) };
   }
 
   async updateChannel(channelId: string, input: ChannelInput): Promise<void> {

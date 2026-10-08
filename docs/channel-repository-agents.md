@@ -7,6 +7,8 @@ Client branch: `feat/channel-repository-agents`; plugin branch: `feat/plugin-rep
 
 ## Confirmed behavior
 
+> **Superseded in part (2026-10-08):** clients can now bind a Channel primary path inside `/opt/projects`, and AGENTS.md follows it. The `Channel AGENTS source` label remains a fallback. See [Channel primary path](channel-primary-path.md).
+
 - Channel workspace and code repository remain separate. Workspace files and task outputs keep their existing managed root.
 - An explicitly bound Channel's AGENTS.md editor reads and conditionally writes the repository's actual root `AGENTS.md`. No document copy, directory symlink, whole-repository file browser, or additional authority store.
 - The root generic `file?path=AGENTS.md` route resolves the same bound file. The root Files listing presents that target once; an old workspace copy is preserved on disk but is not selected or displayed as a second authority. Other relative files still belong to the workspace.

@@ -86,6 +86,7 @@ export class DesktopConnections {
       return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: s.connectionName ?? (a.server ? new URL(a.server).hostname : 'Saved connection'),
         state: s.phase === 'pairing' ? 'pairing' as const : s.errorMessage && !s.connectionKey ? 'blocked' as const : s.connectionState,
         ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
+        ...(a.service.supportsPrimaryPath() ? { supportsPrimaryPath: true } : {}),
         ...(s.statusMessage || s.errorMessage ? { detail: s.statusMessage ?? s.errorMessage } : {}) }];
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,
@@ -166,6 +167,7 @@ export class DesktopConnections {
   }
   async getProjectWorkspace(id: string) { const r = this.route(id); return r.account.service.getProjectWorkspace(r.raw); }
   async saveProjectAgents(id: string, content: string, previous: string | null) { const r = this.route(id); return r.account.service.saveProjectAgents(r.raw, content, previous); }
+  async setProjectFolder(id: string, path: string | null) { const r = this.route(id); return r.account.service.setProjectFolder(r.raw, path); }
   async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: r.account.service.snapshot().connectionName }; }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }

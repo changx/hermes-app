@@ -1,4 +1,4 @@
-import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type Message } from './index';
+import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message } from './index';
 import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
@@ -222,8 +222,8 @@ export class LiveSessionClient extends HermesClient {
     }
     this.storeReceipt(receipt,false);this.changed();
   }
-  override async createChannel(name:string,description=''){const result=await super.createChannel(name,description);await this.refreshDirectory(this.attempt?.signal);return result}
-  override async updateChannel(id:string,patch:{name?:string;description?:string}){const result=await super.updateChannel(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async createChannel(name:string,description='',primaryPath?:string){const result=await super.createChannel(name,description,primaryPath);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async updateChannel(id:string,patch:ChannelPatch){const result=await super.updateChannel(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
   override async deleteChannel(id:string){await super.deleteChannel(id);await this.refreshDirectory(this.attempt?.signal)}
   override async createThread(id:string,title:string,clientId?:string){const result=await super.createThread(id,title,clientId);await this.refreshDirectory(this.attempt?.signal);return result}
   override async updateThread(id:string,patch:{title?:string;archived?:boolean}){const result=await super.updateThread(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}

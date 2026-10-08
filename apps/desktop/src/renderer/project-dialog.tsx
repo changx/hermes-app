@@ -4,10 +4,16 @@ import type { DesktopProjectFile, DesktopProjectWorkspace, DesktopSnapshot } fro
 const MAX_FILES = 8;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+/** Trailing slashes are not part of the folder name the server expects. */
+const folderValue = (text: string): string => text.trim().replace(/\/+$/, '');
+const folderError = (reason: 'invalid' | 'taken' | 'failed'): string => reason === 'invalid' ? 'This folder cannot be used. Choose an existing folder inside /opt/projects on the server.'
+  : reason === 'taken' ? 'Another project already uses this folder.' : 'The primary folder change could not be confirmed. Try Save again.';
+
 const fileSize = (bytes: number | null): string => bytes === null ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /**
- * One modal for New project and Project options: Title, Context, Files and AGENTS.md.
+ * One modal for New project and Project options: Title, Context, Primary folder, Files and AGENTS.md.
+ * AGENTS.md follows the primary folder, so a folder change and an AGENTS.md edit are never saved together.
  * Files and AGENTS.md appear only when the connection supports Project files.
  * Nothing is written before Save. A created Project is never created a second time;
  * a later partial failure keeps the form open in edit mode so Save can finish the rest.
@@ -20,9 +26,11 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [agents, setAgents] = useState('');
+  const [folder, setFolder] = useState('');
+  const [folderSupportedOnServer, setFolderSupportedOnServer] = useState(false);
   const [staged, setStaged] = useState<readonly File[]>([]);
   // Last confirmed server values. Save writes only what differs from them.
-  const saved = useRef({ name: '', description: '', agents: '', etag: null as string | null });
+  const saved = useRef({ name: '', description: '', agents: '', folder: '', etag: null as string | null });
   const [details, setDetails] = useState<'loading' | 'ready' | 'failed'>(channelId ? 'loading' : 'ready');
   const [workspace, setWorkspace] = useState<DesktopProjectWorkspace | 'loading' | 'failed' | null>(channelId ? 'loading' : null);
   const [files, setFiles] = useState<readonly DesktopProjectFile[]>([]);
@@ -40,7 +48,9 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
     void window.hermesDesktop.getChannelInfo(channelId).then(value => {
       if (!alive.current) return;
       saved.current.name = value.name; saved.current.description = value.description ?? '';
-      setName(value.name); setDescription(value.description ?? ''); setDetails('ready');
+      saved.current.folder = value.primaryPath ?? '';
+      setName(value.name); setDescription(value.description ?? ''); setFolder(value.primaryPath ?? '');
+      setFolderSupportedOnServer(value.primaryPathSupported === true); setDetails('ready');
     }, () => { if (alive.current) setDetails('failed'); });
     void window.hermesDesktop.getProjectWorkspace(channelId).then(value => {
       if (!alive.current) return;
@@ -57,7 +67,10 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
   const filesSupported = channelId ? typeof workspace === 'object' && workspace?.supported === true : selected?.supportsProjectFiles === true;
   const workspaceReady = !channelId || typeof workspace === 'object' && workspace !== null;
   const locked = busy || creationFailed || details !== 'ready';
-  const changed = name.trim() !== saved.current.name || description.trim() !== saved.current.description || (filesSupported && agents !== saved.current.agents) || staged.length > 0;
+  const folderSupported = channelId ? folderSupportedOnServer : selected?.supportsPrimaryPath === true;
+  const folderChanged = folderSupported && folderValue(folder) !== saved.current.folder;
+  const agentsChanged = filesSupported && agents !== saved.current.agents;
+  const changed = name.trim() !== saved.current.name || description.trim() !== saved.current.description || folderChanged || agentsChanged || staged.length > 0;
   // After an AGENTS.md conflict, Save stays off: the user must reopen to see the other version.
   const canSave = online && !!name.trim() && !locked && !agentsConflict && (!editing || changed);
 
@@ -96,7 +109,15 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
         catch { if (alive.current) setError('The title and context could not be saved. They may have changed on another device.'); return; }
         saved.current.name = name.trim(); saved.current.description = description.trim();
       }
-      if (filesSupported && agents !== saved.current.agents) {
+      if (folderChanged) {
+        const value = folderValue(folder);
+        if (!value && !window.confirm('Remove the primary folder? New sessions will use this project’s own AGENTS.md. Files in the folder do not change.')) return;
+        const result = await window.hermesDesktop.setProjectFolder(id, value || null);
+        if (!result.ok) { if (alive.current) setError(projectId ? folderError(result.reason) : `The project was created. ${folderError(result.reason)}`); return; }
+        saved.current.folder = value;
+        if (alive.current) setFolder(value);
+      }
+      if (agentsChanged) {
         const result = await window.hermesDesktop.saveProjectAgents(id, agents, saved.current.etag);
         if (!result.ok) {
           if (!alive.current) return;
@@ -139,6 +160,8 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
         {details === 'failed' && <p role="alert">Project details could not be loaded. Close this form and open it again.</p>}
         <label>Title<input aria-label="Project title" autoFocus={!!channelId} required maxLength={120} value={name} disabled={locked} onChange={event => setName(event.target.value)} /></label>
         <label>Context<span className="field-hint">Shared background for every new session in this project.</span><textarea aria-label="Project context" maxLength={4000} value={description} disabled={locked} onChange={event => setDescription(event.target.value)} /></label>
+        {folderSupported && <label>Primary folder<span className="field-hint">A folder inside /opt/projects on the server. New sessions read AGENTS.md from this folder. Leave empty to use this project’s own AGENTS.md.</span><input aria-label="Project primary folder" placeholder="/opt/projects/…" spellCheck={false} autoCapitalize="off" autoCorrect="off" maxLength={4096} value={folder} disabled={locked || agentsChanged} onChange={event => setFolder(event.target.value)} /></label>}
+        {folderSupported && agentsChanged && <p className="field-hint">Save your AGENTS.md changes before changing the primary folder.</p>}
         {channelId && workspace === 'loading' && <p className="field-hint" role="status">Loading files…</p>}
         {channelId && workspace === 'failed' && <p role="alert">Files and AGENTS.md could not be loaded. Close this form and open it again.</p>}
         {filesSupported && workspaceReady && <>
@@ -152,7 +175,8 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
             </ul> : <p className="project-files-empty">No files yet. Drop files here or choose Add files.</p>}
             {typeof workspace === 'object' && workspace?.moreFiles && <p className="field-hint">More files are in this project than are shown here.</p>}
           </section>
-          <label>AGENTS.md<span className="field-hint">Working rules for new sessions in this project. Existing sessions keep their rules.</span><textarea className="project-agents" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked} onChange={event => setAgents(event.target.value)} /></label>
+          <label>AGENTS.md<span className="field-hint">Working rules for new sessions in this project. Existing sessions keep their rules.</span><textarea className="project-agents" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked || folderChanged} onChange={event => setAgents(event.target.value)} /></label>
+          {folderChanged && <p className="field-hint">Save the primary folder first. Then reopen this project to edit the AGENTS.md from that folder.</p>}
         </>}
         {error && <p role="alert">{error}</p>}
       </div>

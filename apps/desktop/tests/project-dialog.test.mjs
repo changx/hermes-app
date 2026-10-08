@@ -97,7 +97,7 @@ test('Project settings loads details and files, and saves only changed parts wit
     assert.equal(f.saveButton().props.disabled, true, 'nothing changed');
     await f.type('Project AGENTS.md', '# Rules\nNew rule');
     await f.submit();
-    assert.deepEqual(f.calls.filter(c => !['info', 'workspace'].includes(c[0])), [['agents', 'p1', '# Rules\nNew rule', etag]]);
+    assert.deepEqual(f.calls.filter(c => !['info', 'getChannelInfo', 'workspace'].includes(c[0])), [['agents', 'p1', '# Rules\nNew rule', etag]]);
     assert.equal(f.closed(), 1);
   } finally { await f.dispose(); }
 });
@@ -123,4 +123,60 @@ test('An AGENTS.md version conflict keeps the text and stops further saves', asy
     assert.equal(f.field('Project AGENTS.md').props.value, 'Mine');
     assert.equal(f.saveButton().props.disabled, true);
   } finally { await f.dispose(); }
+});
+
+// Primary folder: AGENTS.md follows it, so a folder change and an AGENTS.md edit never save together.
+const folderInfo = (primaryPath) => ({ id: 'p1', name: 'Research', description: 'Old context', primaryPathSupported: true, ...(primaryPath ? { primaryPath } : {}) });
+
+test('Project settings binds a primary folder, strips a trailing slash and leaves AGENTS.md alone', async () => {
+  const f = await fixture({ channelId: 'p1', api: { getChannelInfo: folderInfo(), setProjectFolder: { ok: true } } });
+  try {
+    assert.equal(f.field('Project primary folder').props.value, '');
+    await f.type('Project primary folder', ' /opt/projects/jamie/app/ ');
+    assert.equal(f.field('Project AGENTS.md').props.disabled, true, 'AGENTS.md is locked while the folder changes');
+    await f.submit();
+    assert.deepEqual(f.calls.filter(c => !['info', 'getChannelInfo', 'workspace'].includes(c[0])), [['setProjectFolder', 'p1', '/opt/projects/jamie/app']]);
+    assert.equal(f.closed(), 1);
+  } finally { await f.dispose(); }
+});
+
+test('An AGENTS.md edit locks the folder field; clearing the folder asks first and sends null', async () => {
+  const f = await fixture({ channelId: 'p1', api: { getChannelInfo: folderInfo('/opt/projects/x'), setProjectFolder: { ok: true } } });
+  try {
+    await f.type('Project AGENTS.md', 'Changed');
+    assert.equal(f.field('Project primary folder').props.disabled, true);
+    await f.type('Project AGENTS.md', '# Rules');
+    assert.equal(f.field('Project primary folder').props.disabled, false);
+    let asked = 0; globalThis.window.confirm = () => { asked++; return false; };
+    await f.type('Project primary folder', '');
+    await f.submit();
+    assert.equal(asked, 1); assert.equal(f.calls.some(c => c[0] === 'setProjectFolder'), false); assert.equal(f.closed(), 0);
+    globalThis.window.confirm = () => true;
+    await f.submit();
+    assert.deepEqual(f.calls.find(c => c[0] === 'setProjectFolder'), ['setProjectFolder', 'p1', null]);
+    assert.equal(f.closed(), 1);
+  } finally { await f.dispose(); }
+});
+
+test('Folder rejections keep the form open with a plain reason', async () => {
+  for (const [reason, text] of [['invalid', /inside \/opt\/projects/], ['taken', /Another project already uses this folder/], ['failed', /could not be confirmed/]]) {
+    const f = await fixture({ channelId: 'p1', api: { getChannelInfo: folderInfo(), setProjectFolder: { ok: false, reason } } });
+    try {
+      await f.type('Project primary folder', '/opt/projects/bad'); await f.submit();
+      assert.match(f.alert(), text); assert.equal(f.closed(), 0);
+      assert.equal(f.field('Project primary folder').props.value, '/opt/projects/bad');
+    } finally { await f.dispose(); }
+  }
+});
+
+test('New project sets the folder after creation and skips AGENTS.md; older servers hide the field', async () => {
+  const f = await fixture({ value: { ...snapshot, connections: [{ ...connection, supportsPrimaryPath: true }] }, api: { setProjectFolder: { ok: true } } });
+  try {
+    await f.type('Project title', 'Repo'); await f.type('Project primary folder', '/opt/projects/repo');
+    await f.submit();
+    assert.deepEqual(f.calls.map(c => c[0]), ['create', 'setProjectFolder']);
+    assert.deepEqual(f.calls[1].slice(1), ['p-new', '/opt/projects/repo']);
+  } finally { await f.dispose(); }
+  const old = await fixture({ channelId: 'p1' });
+  try { assert.equal(old.has('Project primary folder'), false); } finally { await old.dispose(); }
 });

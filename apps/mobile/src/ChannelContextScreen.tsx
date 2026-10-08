@@ -1,11 +1,15 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import type { Channel } from '../../../packages/client/src/index';
+import { HttpError, type Channel } from '../../../packages/client/src/index';
 import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { Text, TextInput } from './FontSize';
 import { MessageContent } from './MessageContent';
+
+const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+/** Trailing slashes are not part of the folder name the server expects. */
+const folderValue = (text: string) => text.trim().replace(/\/+$/, '');
 
 function Action({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress}
@@ -20,14 +24,18 @@ export function ChannelContextScreen({ client, channelId }: { client: LiveSessio
   const [retry, setRetry] = useState(0);
   const editingRef = useRef(false), working = useRef(false), generation = useRef(0), focused = useRef(false);
   const navigation = useNavigation();
-  const dirty = editing && draft !== (detail?.description || '');
+  const [folderEditing, setFolderEditing] = useState(false), [folderDraft, setFolderDraft] = useState('');
+  const folderEditingRef = useRef(false);
+  const bound = detail?.bound_primary_path || '';
+  const folderDirty = folderEditing && folderValue(folderDraft) !== bound;
+  const dirty = (editing && draft !== (detail?.description || '')) || folderDirty;
 
   useFocusEffect(useCallback(() => {
     focused.current = true;
     const version = ++generation.current;
     const controller = new AbortController();
     // A temporary navigation interruption must not overwrite an unsaved draft.
-    if (!editingRef.current) {
+    if (!editingRef.current && !folderEditingRef.current) {
       setLoading(true); setError('');
       void client.getChannelInfo(channelId, controller.signal).then(value => {
         if (!focused.current || generation.current !== version) return;
@@ -41,7 +49,10 @@ export function ChannelContextScreen({ client, channelId }: { client: LiveSessio
     return () => { focused.current = false; generation.current++; controller.abort(); };
   }, [client, channelId, retry]));
 
-  const discard = () => { editingRef.current = false; setEditing(false); setDraft(detail?.description || ''); setError(''); };
+  const discard = () => {
+    editingRef.current = false; setEditing(false); setDraft(detail?.description || '');
+    folderEditingRef.current = false; setFolderEditing(false); setFolderDraft(detail?.bound_primary_path || ''); setError('');
+  };
   const cancel = () => {
     if (!dirty) { discard(); return; }
     Alert.alert('Discard changes?', 'Your channel context has not been saved.', [
@@ -74,12 +85,54 @@ export function ChannelContextScreen({ client, channelId }: { client: LiveSessio
     } finally { working.current = false; setBusy(false); }
   };
 
+  /** `value` binds a folder; null removes the binding. Readback confirms the server state. */
+  const saveFolder = async (value: string | null) => {
+    if (working.current || !focused.current || !detail) return;
+    working.current = true; setBusy(true); setError('');
+    const version = generation.current;
+    try {
+      await client.updateChannel(channelId, { primary_path: value });
+      const saved = await client.getChannelInfo(channelId);
+      if ((saved.bound_primary_path || null) !== value) throw new Error('Folder changed before verification');
+      if (!focused.current || generation.current !== version) return;
+      setDetail(saved); setFolderDraft(saved.bound_primary_path || ''); folderEditingRef.current = false; setFolderEditing(false);
+    } catch (failure) {
+      if (!focused.current || generation.current !== version) return;
+      const status = failure instanceof HttpError ? failure.status : 0;
+      setError(status === 400 ? 'This folder cannot be used. Choose an existing folder inside /opt/projects on the server.'
+        : status === 409 ? 'Another channel already uses this folder.'
+        : 'Could not confirm the folder change. Try again.');
+    } finally { working.current = false; setBusy(false); }
+  };
+  const removeFolder = () => Alert.alert('Remove primary folder?', 'New sessions will use this channel’s own AGENTS.md. Files in the folder do not change.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: () => void saveFolder(null) },
+  ]);
+  const folderSection = client.supportsChannelPrimaryPath === true && detail && <View style={s.folder}>
+    <Text style={s.folderLabel}>Primary folder</Text>
+    {folderEditing ? <>
+      <TextInput accessibilityLabel="Primary folder" placeholder="/opt/projects/…" placeholderTextColor="#65758b"
+        value={folderDraft} onChangeText={setFolderDraft} editable={!busy} autoCapitalize="none" autoCorrect={false}
+        spellCheck={false} maxLength={4096} style={s.folderInput} />
+      <View style={s.actions}>
+        <Action label="Cancel" disabled={busy} onPress={() => { folderEditingRef.current = false; setFolderEditing(false); setFolderDraft(bound); setError(''); }} />
+        <Action label={busy ? 'Saving…' : 'Save'} disabled={busy || !folderValue(folderDraft) || !folderDirty} onPress={() => void saveFolder(folderValue(folderDraft))} />
+      </View>
+    </> : <View style={s.toolbar}>
+      <Text selectable style={[s.folderPath, !bound && s.empty]}>{bound || 'Not set'}</Text>
+      {!editing && <Action label={bound ? 'Change' : 'Set'} disabled={busy} onPress={() => { folderEditingRef.current = true; setFolderDraft(bound); setFolderEditing(true); setError(''); }} />}
+      {!editing && !!bound && <Action label="Remove" disabled={busy} onPress={removeFolder} />}
+    </View>}
+    <Text style={s.hint}>A folder inside /opt/projects on the server. New sessions read AGENTS.md from this folder.</Text>
+  </View>;
+
   return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {loading ? <ActivityIndicator style={s.spinner} /> : !detail ? <Action label="Try again" onPress={() => setRetry(value => value + 1)} /> : <>
+      {folderSection}
       <View style={s.toolbar}>
         <Text style={s.hint}>A short summary of this channel and its goals.</Text>
-        {!editing && <Action label={detail.description ? 'Edit' : 'Add context'} onPress={() => { editingRef.current = true; setEditing(true); setError(''); }} />}
+        {!editing && !folderEditing && <Action label={detail.description ? 'Edit' : 'Add context'} onPress={() => { editingRef.current = true; setEditing(true); setError(''); }} />}
       </View>
       {editing ? <>
         <TextInput accessibilityLabel="Channel context" placeholder="What is this channel for?" placeholderTextColor="#65758b"
@@ -108,4 +161,9 @@ const s = StyleSheet.create({
   actionText: { color: '#2b4e81', fontWeight: '600' }, disabled: { opacity: 0.5 },
   error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10, borderRadius: 8 },
   empty: { color: '#65758b', paddingVertical: 12 },
+  folder: { gap: 8, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#cdd7e3' },
+  folderLabel: { color: '#172a40', fontWeight: '600' },
+  folderPath: { flex: 1, color: '#172a40', fontFamily: MONO, fontSize: 13 },
+  folderInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, paddingHorizontal: 12,
+    paddingVertical: 10, color: '#172a40', fontFamily: MONO, fontSize: 13 },
 });

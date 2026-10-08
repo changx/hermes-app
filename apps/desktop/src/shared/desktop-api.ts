@@ -9,8 +9,9 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
   /** Agent control of this page: Hermes working, the user took over, or Hermes waits for the user. */
   control?: 'agent' | 'user' | 'waiting'; controlMessage?: string }>;
 
-export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string }>;
-export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean }>;
+export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
+  /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean }>;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;
   id: string;
@@ -112,6 +113,8 @@ export type DesktopProjectWorkspace = Readonly<{
   files: readonly DesktopProjectFile[];
   moreFiles: boolean;
 }>;
+/** `invalid`: the server cannot use the folder; `taken`: another project already uses it. */
+export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: 'invalid' | 'taken' | 'failed' }>;
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
 export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?: Readonly<{ name: string; reason: 'exists' | 'invalid' | 'failed' }> }>;
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
@@ -172,6 +175,8 @@ export interface HermesDesktopApi {
   getProjectWorkspace(channelId: string): Promise<DesktopProjectWorkspace>;
   /** `previousEtag === null` creates AGENTS.md only if it does not exist. */
   saveProjectAgents(channelId: string, content: string, previousEtag: string | null): Promise<ProjectAgentsResult>;
+  /** A path binds the primary folder; null removes the binding. */
+  setProjectFolder(channelId: string, path: string | null): Promise<ProjectFolderResult>;
   /** Adds new root files. Never replaces an existing file. Stops at the first failure. */
   addProjectFiles(channelId: string, files: readonly File[]): Promise<ProjectFilesResult>;
   createThread(input: ThreadInput): Promise<string>;

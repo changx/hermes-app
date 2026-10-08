@@ -18,6 +18,7 @@
 - [apps/mobile/README.md](apps/mobile/README.md)
 - [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
 - [docs/channel-repository-agents.md](docs/channel-repository-agents.md)
+- [docs/channel-primary-path.md](docs/channel-primary-path.md)
 
 ### M1 手机聊天、交互与验收
 
@@ -236,7 +237,7 @@
 - 不重建权威消息数据库；沿用 P0/P1 验证后的插件与共享客户端，新增代码只补当前目标所需的实际缺口。
 - 已确认需求与建议/待决项分开记录。架构、接口、平台范围变更同时更新相关文档。
 - 项目仓库在 /opt/projects/jamie/hermes-app；隔离 worktree 在 /opt/projects/jamie/_worktrees/hermes-app/<task>。
-- 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。仓库 AGENTS.md 独立绑定已由插件实现并在开发 Gateway 中运行（`channel_agents` capability 为 true），见 docs/channel-repository-agents.md。该绑定不意味着客户端可访问整个仓库。
+- 已确认目录要求：Channel workspace 与代码仓库保持分开。仓库为 /opt/projects/jamie/hermes-app；Channel workspace 用于频道资料与任务输出。此项目 Channel 的 AGENTS.md 入口应读取仓库根目录下同一真实 AGENTS.md，不复制另一份规则，也不通过软链接合并目录。仓库 AGENTS.md 独立绑定已由插件实现并在开发 Gateway 中运行（`channel_agents` capability 为 true），见 docs/channel-repository-agents.md。该绑定不意味着客户端可访问整个仓库。Channel 可在 App 中绑定 `/opt/projects` 下的 primary path；AGENTS.md 跟随该路径，Agent cwd 不变，见 docs/channel-primary-path.md。
 - 仓库内的项目临时文件使用 tmp/，由根 .gitignore 的 /tmp/ 排除；权威文档留在 docs/，不放入临时目录。运行时工具 scratch 仍遵守 Hermes 提供的 TMPDIR，不擅自修改全局临时目录或其他 profile。
 - 新增服务端能力默认通过 Hermes plugin 实现，优先调用已有接口和正式扩展点。不得用 monkey patch 或复制修改核心模块绕过此约束。
 - 插件代码在独立仓库 /opt/projects/jamie/hermes-app-plugin（远端 changx/hermes-app-plugin）维护，本仓库不再包含 plugins/hermes_app、scripts/pack-plugin.sh 或 tests/p1。扩展点不足时先报告限制和替代方案，不擅自修改核心。Jamie 明确同意后才可修改核心，并遵守下方「Hermes 核心本地分支」。

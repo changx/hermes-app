@@ -196,6 +196,7 @@ const registerDesktopApi = (): void => {
   handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); return service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
   handle("desktop:get-project-workspace", async (event, id: unknown) => { shellSender(event); return service.getProjectWorkspace(text(id, 200)); });
   handle("desktop:save-project-agents", async (event, id: unknown, content: unknown, previous: unknown) => { shellSender(event); return service.saveProjectAgents(text(id, 200), text(content, 10 * 1024 * 1024), previous === null ? null : text(previous, 80)); });
+  handle("desktop:set-project-folder", async (event, id: unknown, path: unknown) => { shellSender(event); return service.setProjectFolder(text(id, 200), path === null ? null : text(path, 4096)); });
   handle("desktop:add-project-files", async (event, id: unknown, files: unknown) => { shellSender(event); return service.addProjectFiles(text(id, 200), attachmentInputs(files)); });
   handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
   handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
