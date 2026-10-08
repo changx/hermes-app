@@ -1,8 +1,9 @@
-import { app, dialog, ipcMain, session as electronSession, WebContentsView, type BrowserWindow, type Session, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, session as electronSession, WebContentsView, type Session, type WebContents } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import type { DesktopBrowserState } from '../shared/desktop-api';
+import type { DesktopBrowserMode, DesktopBrowserState, DesktopSnapshot } from '../shared/desktop-api';
+import { snapshotDelta } from '../shared/snapshot-delta';
 import { browserUrl, chromeUserAgent, pdfExtension, pdfViewerResource, previewResponse, type PreviewDocument } from '../shared/browser-policy';
 import { BrowserControlError, blockedSubresource, clientHints, CONTROL_TEXT, InputLedger, keyFor, navigable, validUserAgentData, withClientHints, type BrowserAction, type BrowserControlState, type UserAgentData } from '../shared/browser-control';
 
@@ -12,6 +13,8 @@ type Pane = {
   id: string; view: WebContentsView; state: DesktopBrowserState; document?: PreviewState; generation: number; previewRequest: number; partition: string;
   control?: BrowserControlState; ledger: InputLedger; idle?: NodeJS.Timeout; resume: Set<() => void>; handoff?: () => void; action?: AbortController;
   requests: Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>;
+  /** Separate-window mode: this Session's own browser window and its page slot. */
+  window?: BrowserWindow; slot?: Bounds; windowBaseline?: DesktopSnapshot; windowRevision: number;
 };
 type SessionState = { session: Session; panes: Set<Pane>; decisions: Map<string, boolean>; asking: Map<string, Promise<boolean>> };
 
@@ -78,7 +81,17 @@ function uniqueDownload(directory: string, name: string): string {
   return candidate;
 }
 
+type WindowPreference = { mode: DesktopBrowserMode; bounds?: { x: number; y: number; width: number; height: number } };
+const DEFAULT_WINDOW = { width: 1100, height: 820 };
+const CASCADE = 28;
+
 export type BrowserSidebarOptions = {
+  /** Separate browser windows: their toolbar renderer (index.html) and its preload. */
+  windowRenderer?: { html: string; preload: string; secure?: (contents: WebContents) => void };
+  /** Device-local mode and window placement. Tests replace it. */
+  preferenceFile?: () => string | undefined;
+  /** Called when a separate browser window gains or loses focus. */
+  focusChanged?: () => void;
   /** Resolves the persistent partition for a tab (per Project). */
   partitionFor?: (tabId: string) => string;
   /** Asks the user about a site permission. Tests replace it. */
@@ -93,8 +106,130 @@ export class DesktopBrowserSidebar {
   private active?: string;
   private visible = false;
   private closed = false;
-  constructor(private readonly window: BrowserWindow, private readonly changed: () => void, private readonly shortcuts?: (contents: WebContents) => void, private readonly options: BrowserSidebarOptions = {}) {
-    owner = this; registerIpc();
+  private preference: WindowPreference;
+  private saveTimer?: NodeJS.Timeout;
+  constructor(private readonly window: BrowserWindow, private readonly notify: () => void, private readonly shortcuts?: (contents: WebContents, skip?: () => boolean) => void, readonly options: BrowserSidebarOptions = {}) {
+    owner = this; registerIpc(); this.preference = this.loadPreference();
+  }
+  private changed(): void { this.notify(); this.publishWindows(); }
+
+  // -- Built-in sidebar or one separate window per Session ------------------------------------
+
+  get mode(): DesktopBrowserMode { return this.preference.mode; }
+  private preferenceFile(): string | undefined {
+    if (this.options.preferenceFile) return this.options.preferenceFile();
+    try { return join(app.getPath('userData'), 'browser-window.json'); } catch { return undefined; }
+  }
+  private loadPreference(): WindowPreference {
+    try {
+      const file = this.preferenceFile(), saved = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+      const bounds = saved?.bounds, valid = bounds && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(bounds[key])) && bounds.width >= 320 && bounds.height >= 240;
+      return { mode: saved?.mode === 'window' ? 'window' : 'sidebar', ...(valid ? { bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } } : {}) };
+    } catch { return { mode: 'sidebar' }; }
+  }
+  private savePreference(): void {
+    clearTimeout(this.saveTimer); this.saveTimer = undefined;
+    try { const file = this.preferenceFile(); if (file) writeFileSync(file, JSON.stringify(this.preference)); } catch { /* Kept for this run. */ }
+  }
+  /** Moves every open page between the main window and separate windows. Pages are never reloaded. */
+  setMode(mode: DesktopBrowserMode): void {
+    if (mode !== 'sidebar' && mode !== 'window') throw new Error('Invalid browser mode');
+    if (this.closed || mode === this.preference.mode) return;
+    this.preference = { ...this.preference, mode }; this.savePreference();
+    for (const pane of this.panes.values()) {
+      if (mode === 'window') this.openWindow(pane);
+      else this.closeWindow(pane, true);
+    }
+    this.layout(this.active, this.visible); this.changed();
+  }
+  private host(pane: Pane): BrowserWindow { return pane.window && !pane.window.isDestroyed() ? pane.window : this.window; }
+  /** Placement for a new window: the remembered one, cascaded past windows already open, kept on a screen. */
+  private placement(): { x?: number; y?: number; width: number; height: number } {
+    const saved = this.preference.bounds, open = [...this.panes.values()].filter(pane => pane.window && !pane.window.isDestroyed()).length;
+    if (!saved) return { ...DEFAULT_WINDOW };
+    const shifted = { ...saved, x: saved.x + open * CASCADE, y: saved.y + open * CASCADE };
+    try {
+      const area = screen.getDisplayMatching(shifted).workArea;
+      if (shifted.x + 80 > area.x + area.width || shifted.y + 80 > area.y + area.height) return { ...saved };
+    } catch { /* Screen information is unavailable before ready; use the saved place. */ }
+    return shifted;
+  }
+  private openWindow(pane: Pane): void {
+    if (pane.window && !pane.window.isDestroyed()) return;
+    const renderer = this.options.windowRenderer;
+    const win = new BrowserWindow({ ...this.placement(), minWidth: 420, minHeight: 320, show: false, title: pane.state.title || 'Browser', backgroundColor: '#f3f4f6', autoHideMenuBar: true,
+      webPreferences: { ...(renderer ? { preload: renderer.preload } : {}), additionalArguments: ['--hermes-browser-view'], nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, allowRunningInsecureContent: false } });
+    pane.window = win; pane.slot = undefined; pane.windowBaseline = undefined;
+    this.window.contentView.removeChildView(pane.view); win.contentView.addChildView(pane.view);
+    renderer?.secure?.(win.webContents);
+    // The page title belongs to the window title bar; the toolbar page never renames it.
+    win.on('page-title-updated', event => event.preventDefault());
+    win.webContents.on('before-input-event', (event, input) => this.windowShortcut(pane, event, input));
+    win.webContents.on('did-start-loading', () => { pane.windowBaseline = undefined; });
+    // Shown without focus: Agent work and previews never take the keyboard from the user.
+    win.once('ready-to-show', () => { if (!win.isDestroyed() && pane.window === win) win.showInactive(); });
+    const remember = () => { if (win.isDestroyed() || win.isMinimized() || win.isFullScreen() || win.isMaximized()) return; this.preference = { ...this.preference, bounds: win.getBounds() }; clearTimeout(this.saveTimer); this.saveTimer = setTimeout(() => this.savePreference(), 400); };
+    win.on('resize', remember); win.on('move', remember);
+    win.on('focus', () => this.options.focusChanged?.()); win.on('blur', () => this.options.focusChanged?.());
+    // Closing the window closes this Session's browser, like the sidebar's close button.
+    win.on('close', event => { if (pane.window === win && this.panes.get(pane.id) === pane) { event.preventDefault(); this.remove(pane.id); this.changed(); } });
+    if (renderer) void win.loadFile(renderer.html); else win.showInactive();
+  }
+  /** Ends separate-window hosting. With `keep`, the page moves back into the main window. */
+  private closeWindow(pane: Pane, keep: boolean): void {
+    const win = pane.window; pane.window = undefined; pane.slot = undefined; pane.windowBaseline = undefined;
+    if (!win || win.isDestroyed()) return;
+    win.contentView.removeChildView(pane.view);
+    if (keep && !this.window.isDestroyed()) { this.window.contentView.addChildView(pane.view); pane.view.setVisible(false); }
+    win.destroy();
+  }
+  private windowShortcut(pane: Pane, event: Electron.Event, input: Electron.Input): void {
+    if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat) return;
+    // Cmd/Ctrl+W in a separate browser window closes only that window, never a workspace tab.
+    if (input.key.toLowerCase() === 'w' && pane.window) { event.preventDefault(); pane.window.close(); }
+  }
+  /** Shows a Session's separate window without taking focus. */
+  reveal(id: string): void {
+    const win = this.panes.get(id)?.window;
+    if (win && !win.isDestroyed() && !win.isVisible() && !win.webContents.isLoading()) win.showInactive();
+  }
+  ownsWindow(contents: WebContents): boolean { return !!this.paneForWindow(contents); }
+  paneForWindow(contents: WebContents): string | undefined {
+    for (const pane of this.panes.values()) if (pane.window && !pane.window.isDestroyed() && pane.window.webContents === contents) return pane.id;
+    return undefined;
+  }
+  focusedPane(): string | undefined {
+    for (const pane of this.panes.values()) if (pane.window && !pane.window.isDestroyed() && pane.window.isFocused()) return pane.id;
+    return undefined;
+  }
+  /** Page area reported by a separate window's toolbar renderer. */
+  setWindowBounds(contents: WebContents, bounds: Bounds): void {
+    const id = this.paneForWindow(contents), pane = id ? this.panes.get(id) : undefined;
+    if (!pane?.window) throw new Error('Browser window unavailable');
+    for (const key of ['x', 'y', 'width', 'height'] as const) if (!Number.isFinite(bounds[key]) || bounds[key] < 0) throw new Error('Invalid browser bounds');
+    const [width, height] = pane.window.getContentSize(), x = Math.min(width, Math.round(bounds.x)), y = Math.min(height, Math.round(bounds.y));
+    pane.slot = { x, y, width: Math.min(width - x, Math.round(bounds.width)), height: Math.min(height - y, Math.round(bounds.height)), visible: true };
+    this.layout(this.active, this.visible);
+  }
+  /** The separate window's renderer sees only its own browser state, never conversation content. */
+  windowSnapshot(contents: WebContents): DesktopSnapshot {
+    const id = this.paneForWindow(contents), pane = id ? this.panes.get(id) : undefined;
+    if (!pane) throw new Error('Browser window unavailable');
+    if (!pane.windowBaseline) pane.windowBaseline = this.nextWindowSnapshot(pane);
+    return pane.windowBaseline;
+  }
+  private nextWindowSnapshot(pane: Pane): DesktopSnapshot {
+    return { revision: ++pane.windowRevision, phase: 'connected', connectionState: 'online', connectionLabel: '', channels: [], threads: [], messages: [], interactions: [], canLoadOlder: false, browser: pane.state, browserMode: this.preference.mode };
+  }
+  private publishWindows(): void {
+    for (const pane of this.panes.values()) {
+      const win = pane.window;
+      if (!win || win.isDestroyed()) continue;
+      if (win.getTitle() !== (pane.state.title || 'Browser')) win.setTitle(pane.state.title || 'Browser');
+      if (!pane.windowBaseline || win.webContents.isDestroyed()) continue;
+      const next = this.nextWindowSnapshot(pane);
+      win.webContents.send('desktop:snapshot', snapshotDelta(pane.windowBaseline, next)); pane.windowBaseline = next;
+    }
   }
   state(id?: string): DesktopBrowserState | undefined { return id ? this.panes.get(id)?.state : undefined; }
   private update(id: string, patch: Partial<DesktopBrowserState>): void {
@@ -176,11 +311,14 @@ export class DesktopBrowserSidebar {
     if (this.closed) throw new Error('Browser is closed');
     const partition = this.options.partitionFor?.(id) ?? browserPartition(undefined, undefined), shared = this.sessionFor(partition);
     const view = new WebContentsView({ webPreferences: { session: shared.session, ...(this.options.preload ? { preload: this.options.preload } : {}), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, allowRunningInsecureContent: false, navigateOnDragDrop: false } });
-    const pane: Pane = { id, view, partition, state: { open: true, url: '', title: 'Browser', loading: false, canGoBack: false, canGoForward: false }, generation: 0, previewRequest: 0, ledger: new InputLedger(), resume: new Set(), requests: new Map() };
+    const pane: Pane = { id, view, partition, state: { open: true, url: '', title: 'Browser', loading: false, canGoBack: false, canGoForward: false }, generation: 0, previewRequest: 0, ledger: new InputLedger(), resume: new Set(), requests: new Map(), windowRevision: 0 };
     this.panes.set(id, pane); shared.panes.add(pane); this.window.contentView.addChildView(view); view.setVisible(false);
     const contents = view.webContents;
     byContents.set(contents.id, { owner: this, pane });
-    this.shortcuts?.(contents);
+    // In a separate window, workspace shortcuts (Cmd+W closes a tab, Ctrl+Tab, ...) do not apply.
+    this.shortcuts?.(contents, () => !!pane.window);
+    contents.on('before-input-event', (event, input) => this.windowShortcut(pane, event, input));
+    if (this.preference.mode === 'window') this.openWindow(pane);
     contents.setUserAgent(chromeUserAgent(process.platform, process.versions.chrome));
     const allowed = (value: string) => {
       if (navigable(value)) return true;
@@ -192,7 +330,7 @@ export class DesktopBrowserSidebar {
     contents.setWindowOpenHandler(({ url, disposition }) => {
       if (!allowed(url) || url === 'about:blank') return { action: 'deny' };
       // Sign-in popups need a real window with an opener; ordinary new-tab links stay in this pane.
-      if (disposition === 'new-window') return { action: 'allow', overrideBrowserWindowOptions: { parent: this.window, width: 520, height: 720, autoHideMenuBar: true,
+      if (disposition === 'new-window') return { action: 'allow', overrideBrowserWindowOptions: { parent: this.host(pane), width: 520, height: 720, autoHideMenuBar: true,
         webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, allowRunningInsecureContent: false } } };
       void this.navigate(id, url); return { action: 'deny' };
     });
@@ -222,7 +360,7 @@ export class DesktopBrowserSidebar {
     this.update(id, { loading: true, title: 'Loading attachment…', error: undefined });
     return { current, failed: () => { if (current()) this.update(id, { loading: false, error: 'The attachment could not be previewed. Try Save or Open externally.' }); } };
   }
-  async open(id: string, url?: string): Promise<void> { if (url !== undefined) browserUrl(url); this.create(id); await this.navigate(id, url === undefined ? 'about:blank' : browserUrl(url)); }
+  async open(id: string, url?: string): Promise<void> { if (url !== undefined) browserUrl(url); this.create(id); this.reveal(id); await this.navigate(id, url === undefined ? 'about:blank' : browserUrl(url)); }
   private async navigate(id: string, url: string, retainPreview = false): Promise<void> {
     const pane = this.panes.get(id); if (!pane) return;
     if (!retainPreview) pane.previewRequest++;
@@ -259,6 +397,12 @@ export class DesktopBrowserSidebar {
     this.active = active; this.visible = visible;
     const usable = this.bounds.width > 0 && this.bounds.height > 0;
     for (const [id, pane] of this.panes) {
+      if (pane.window && !pane.window.isDestroyed()) {
+        // A separate window shows its page whenever the window is open; Agent work keeps a real size before the slot is known.
+        const slot = pane.slot && pane.slot.width > 0 && pane.slot.height > 0 ? pane.slot : undefined;
+        pane.view.setBounds(slot ?? { x: 0, y: 0, ...BACKGROUND_SIZE }); pane.view.setVisible(!!slot); pane.view.webContents.setAudioMuted(false);
+        continue;
+      }
       const show = id === active && visible && this.bounds.visible && usable;
       // A page Hermes works on in the background keeps a real size, so layout and screenshots stay meaningful.
       pane.view.setBounds(show || usable || !pane.control ? this.bounds : { x: 0, y: 0, ...BACKGROUND_SIZE });
@@ -269,6 +413,7 @@ export class DesktopBrowserSidebar {
     const pane = this.panes.get(id); if (!pane) return;
     this.panes.delete(id); pane.document = undefined; sessions.get(pane.partition)?.panes.delete(pane);
     this.endControl(pane); this.failRequests(pane, 'The browser closed.');
+    this.closeWindow(pane, false);
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(pane.view);
     if (!pane.view.webContents.isDestroyed()) {
       byContents.delete(pane.view.webContents.id);
@@ -276,7 +421,7 @@ export class DesktopBrowserSidebar {
       pane.view.webContents.close({ waitForBeforeUnload: false });
     }
   }
-  dispose(): void { this.closed = true; for (const id of [...this.panes.keys()]) this.remove(id); if (owner === this) owner = undefined; }
+  dispose(): void { this.closed = true; if (this.saveTimer) this.savePreference(); for (const id of [...this.panes.keys()]) this.remove(id); if (owner === this) owner = undefined; }
 
   // -- Agent control ("your browser") ---------------------------------------------------------
 
@@ -466,14 +611,15 @@ export class DesktopBrowserSidebar {
   }
   private async handoff(pane: Pane, message: string, stop: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> {
     this.setControl(pane, 'waiting', message.slice(0, 300));
-    if (!this.window.isDestroyed() && !this.window.isFocused()) { this.window.flashFrame(true); app.dock?.bounce('informational'); }
+    const attention = this.host(pane);
+    if (!attention.isDestroyed() && !attention.isFocused()) { attention.flashFrame(true); app.dock?.bounce('informational'); }
     try {
       const done = await this.wait(pane, stop, finish => { pane.handoff = finish; return () => { if (pane.handoff === finish) pane.handoff = undefined; }; }, Math.max(1000, timeoutMs - 2000));
       if (stop.aborted) throw new BrowserControlError('cancelled', 'Stopped.');
       if (!done) throw new BrowserControlError('handoff_timeout', 'The user has not finished yet. Ask in chat whether they still need time.');
       return { done: true, ...this.page(pane) };
     } finally {
-      if (!this.window.isDestroyed()) this.window.flashFrame(false);
+      if (!attention.isDestroyed()) attention.flashFrame(false);
       if (pane.control === 'waiting') this.setControl(pane, undefined);
     }
   }

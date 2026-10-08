@@ -81,6 +81,7 @@ Branch: `feat/desktop-recents`; base `origin/main` `d786452`.
 Confirmed behavior:
 - The sidebar has no blank band at the top. Order: New chat, Recents, Projects. The collapse button sits at the right end of the New chat row.
 - Recents lists Sessions from every Project and connection with activity in the last 24 hours, plus running Sessions. Newest activity first, 24 rows per batch with Show more. The row tooltip names its Project. The Recents title collapses the list; the choice is a device-local preference.
+- Recents rows are indented one level: titles sit 17px right of the Recents label, the same step as Session titles under a Project name, with a guide line.
 - New project is a `+` icon in the Projects header, beside the label filter. The old New project row is removed.
 - New project and Project `...` open the same modal: Title, Context, Files, AGENTS.md. New project also has the existing explicit connection choice.
 - Files and AGENTS.md appear only when the connection reports `channel_workspace`, `channel_files` and `channel_agents`. They use the existing plugin workspace routes. No plugin or Hermes core change.

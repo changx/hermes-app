@@ -29,10 +29,11 @@ export class DesktopTabManager {
     const tab = this.create('session', threadId); this.publish(); return tab;
   }
 
-  attachShortcuts(contents: WebContents): void { this.shortcuts(contents); }
-  private shortcuts(contents: WebContents): void {
+  /** `skip` turns workspace shortcuts off while it returns true (a page in a separate browser window). */
+  attachShortcuts(contents: WebContents, skip?: () => boolean): void { this.shortcuts(contents, skip); }
+  private shortcuts(contents: WebContents, skip?: () => boolean): void {
     contents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat || this.closed) return;
+      if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat || this.closed || skip?.()) return;
       const key = input.key.toLowerCase();
       if (key === ',' && this.openSettings) { event.preventDefault(); this.openSettings(); return; }
       if ((key === 't' || key === 'n') && this.service.snapshot().phase === 'connected') {
@@ -190,7 +191,7 @@ export class DesktopTabManager {
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId };
     }
-    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, title: tab.kind === 'new' ? 'New chat' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }

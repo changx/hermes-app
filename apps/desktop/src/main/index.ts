@@ -49,10 +49,14 @@ const trustedSender = (event: Electron.IpcMainInvokeEvent): void => {
   if (event.senderFrame !== event.sender.mainFrame) throw new Error("Untrusted desktop request");
   // Reached only through the Settings channel allowlist in registerDesktopApi.
   if (settingsWindow.owns(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
+  // A separate browser window's toolbar; reached only through BROWSER_WINDOW_CHANNELS.
+  if (browser?.ownsWindow(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
   if (!mainWindow) throw new Error("Untrusted desktop request");
   if (tabs) { tabs.authorize(event.sender, event.senderFrame?.url); return; }
   if (event.sender !== mainWindow.webContents || event.senderFrame?.url !== mainWindow.webContents.getURL()) throw new Error('Untrusted desktop request');
 };
+/** The main window, or a separate browser window acting on its own Session's page. */
+const browserSender = (event: Electron.IpcMainInvokeEvent): void => { trustedSender(event); if (event.sender !== mainWindow?.webContents && !browser?.ownsWindow(event.sender)) throw new Error('Browser action required'); };
 const shellSender = (event: Electron.IpcMainInvokeEvent): void => { trustedSender(event); if (event.sender !== mainWindow?.webContents) throw new Error('Shell action required'); };
 const settingsSender = (event: Electron.IpcMainInvokeEvent): void => { trustedSender(event); if (!settingsWindow.owns(event.sender) && event.sender !== mainWindow?.webContents) throw new Error('Settings action required'); };
 const target = (event: Electron.IpcMainInvokeEvent): string => { trustedSender(event); if (!tabs) throw new Error('Window unavailable'); return tabs.target(event.sender); };
@@ -73,10 +77,13 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
 const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection']);
+// A separate browser window may use only its own browser controls.
+const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 const registerDesktopApi = (): void => {
   const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown): void => {
     ipcMain.handle(channel, (event, ...args) => {
       if (settingsWindow.owns(event.sender) && !SETTINGS_CHANNELS.has(channel)) throw new Error('Settings action unavailable');
+      if (browser?.ownsWindow(event.sender) && !BROWSER_WINDOW_CHANNELS.has(channel)) throw new Error('Browser window action unavailable');
       return listener(event, ...args);
     });
   };
@@ -98,20 +105,29 @@ const registerDesktopApi = (): void => {
   });
   const browserTab = (event: Electron.IpcMainInvokeEvent) => {
     trustedSender(event);
+    const owned = browser?.paneForWindow(event.sender);
+    if (owned !== undefined) { const tab = tabs?.tabs.get(owned); if (!tab) throw new Error('Open a conversation or new chat first.'); return tab; }
     const tab = tabs?.sender(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
     if (!tab) throw new Error('Open a conversation or new chat first.');
     return tab;
   };
   handle('desktop:open-browser', (event, url: unknown) => browser?.open(browserTab(event).id, url === undefined ? undefined : text(url, 4096)));
-  handle('desktop:browser-bounds', (event, value: unknown) => { shellSender(event); const b = object(value); browser?.setBounds({ x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true }); });
+  handle('desktop:browser-bounds', (event, value: unknown) => {
+    browserSender(event); const b = object(value), bounds = { x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true };
+    if (browser?.ownsWindow(event.sender)) browser.setWindowBounds(event.sender, bounds); else browser?.setBounds(bounds);
+  });
   handle('desktop:browser-action', (event, action: unknown) => {
-    shellSender(event); const tab = browserTab(event);
+    browserSender(event); const tab = browserTab(event), fromShell = event.sender === mainWindow?.webContents;
     if (!['back', 'forward', 'reload', 'stop', 'close'].includes(action as string)) throw new Error('Invalid browser action');
     browser?.action(tab.id, action as 'back' | 'forward' | 'reload' | 'stop' | 'close');
-    if (action === 'close') tab.view.webContents.focus();
+    if (action === 'close' && fromShell) tab.view.webContents.focus();
+  });
+  handle('desktop:set-browser-mode', (event, mode: unknown) => {
+    browserSender(event); if (mode !== 'sidebar' && mode !== 'window') throw new Error('Invalid browser mode');
+    browser?.setMode(mode);
   });
   handle('desktop:browser-control', (event, action: unknown) => {
-    shellSender(event); const tab = browserTab(event);
+    browserSender(event); const tab = browserTab(event);
     if (!['stop', 'resume', 'done'].includes(action as string)) throw new Error('Invalid browser action');
     browser?.control(tab.id, action as 'stop' | 'resume' | 'done');
   });
@@ -156,7 +172,7 @@ const registerDesktopApi = (): void => {
   handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
   handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
   handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
-  handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
+  handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
   handle("desktop:pair", async (event, value: unknown) => {
     shellSender(event);
     if (!value || typeof value !== "object") throw new Error("Invalid desktop request");
@@ -228,8 +244,10 @@ const createMainWindow = (): BrowserWindow => {
   });
   mainWindow = window;
   publishedSnapshot = undefined;
-  browser = new DesktopBrowserSidebar(window, () => tabs?.publish(), contents => tabs?.attachShortcuts(contents), {
+  browser = new DesktopBrowserSidebar(window, () => tabs?.publish(), (contents, skip) => tabs?.attachShortcuts(contents, skip), {
     preload: join(__dirname, '../preload/browser-page.cjs'),
+    windowRenderer: { html: join(__dirname, '../renderer/index.html'), preload: join(__dirname, '../preload/index.cjs'), secure: secureSettings },
+    focusChanged: () => browserControl?.sync(),
     // One persistent login partition per Project (Channel) and server.
     partitionFor: tabId => {
       const tab = tabs?.tabs.get(tabId);
@@ -299,8 +317,9 @@ app.whenReady().then(async () => {
   browserControl = new DesktopBrowserControl({
     accounts: () => service.browserAccounts(),
     tabs: () => [...(tabs?.tabs.values() ?? [])],
-    activeTabId: () => tabs?.activeTabId,
-    windowFocused: () => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized(),
+    // A focused separate browser window counts as the user's current Session.
+    activeTabId: () => browser?.focusedPane() ?? tabs?.activeTabId,
+    windowFocused: () => !!browser?.focusedPane() || !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized(),
     channels: () => new Map(service.snapshot(undefined, false).threads.map(thread => [thread.id, thread.channelId] as const)),
     ensureTab: async threadId => {
       if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();

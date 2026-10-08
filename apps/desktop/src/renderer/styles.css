@@ -9,6 +9,7 @@
 .settings-nav { display: flex; flex-direction: column; gap: 6px; padding: 18px 12px; background: var(--app-background); border-right: 1px solid var(--app-border); overflow-y: auto; }
 .settings-nav button { border: 0; background: transparent; color: var(--app-label); text-align: left; padding: 10px 12px; flex-shrink: 0; }
 .settings-nav button:hover { background: var(--app-border); }
+.settings-nav button:focus-visible { outline-offset: -2px; } /* Ring stays inside its row; rows are 2px apart. */
 .settings-nav button[aria-selected="true"] { color: var(--app-accent); background: var(--app-selected); font-weight: 600; }
 .settings-content { min-width: 0; overflow: auto; padding: 28px 32px; }
 .settings-content h3 { margin: 0 0 14px; font-size: var(--app-font-size); font-weight: 650; }
@@ -430,6 +431,8 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-sidebar .channel-toolbar:hover .channel-options, .native-sidebar .channel-toolbar:focus-within .channel-options { opacity: 1; }
 /* Guide line under the chevron centre; Session titles sit at least 16px right of the Project name. */
 .native-sidebar .thread-children { margin: 0 0 6px 12px; padding-left: 22px; border-left: 1px solid var(--app-field-border); }
+/* Recents rows sit one level in: titles 17px right of the Recents label, the same step as Sessions under a Project name. */
+.native-sidebar .recent-list { margin: 0 0 6px 12px; padding-left: 6px; border-left: 1px solid var(--app-field-border); }
 .native-sidebar .tree-thread { min-height: var(--sidebar-row); padding: 6px 8px; border-radius: 8px; font-size: var(--sidebar-text); }
 .native-sidebar .tree-more, .native-sidebar .tree-empty { padding: 6px 8px; border-radius: 8px; color: var(--app-muted); font-size: var(--sidebar-text); }
 .native-sidebar .empty-state { padding: 8px 10px; color: var(--app-muted); font-size: var(--sidebar-text); }
@@ -699,3 +702,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-tab-page .timeline-content { max-width: var(--session-content-max); margin-inline: auto; }
 .session-tab-page .interaction-card { margin-inline: max(18px, calc((100% - var(--session-content-max)) / 2)); }
 .session-tab-page .composer > * { max-width: var(--session-content-max); margin-inline: auto; }
+
+/* Browser: built-in sidebar or a Session's separate window. */
+.browser-mode-toggle { display: inline-flex; align-items: center; justify-content: center; }
+.browser-mode-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.browser-window-page { display: flex; height: 100vh; height: 100dvh; min-height: 0; }
+.browser-window-page .browser-sidebar.browser-window { flex: 1; min-width: 0; border-left: 0; }
+.browser-window .browser-view-slot { margin-left: 0; } /* No resize strip in a separate window. */

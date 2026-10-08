@@ -68,11 +68,17 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const fallback = rows.find(row => row.connectionKey && row.connectionKey === snapshot.connectionKey) ?? rows.find(row => row.connectionKey);
   // Unknown, removed or former ("model") pages resolve to the current connection, else the overview.
   const page: Page = known(chosen) ? chosen : fallback && (chosen === undefined || chosen === 'model') ? `connection:${fallback.id}` : 'connection';
-  const setPage = (value: Page) => { updatePage(value); try { window.localStorage.setItem(PAGE_KEY, value); } catch { /* Navigation still works for this window. */ } };
+  // After the user picks a page, later snapshots never move focus.
+  const userChose = useRef(false);
+  const setPage = (value: Page) => { userChose.current = true; updatePage(value); try { window.localStorage.setItem(PAGE_KEY, value); } catch { /* Navigation still works for this window. */ } };
   const shown = page;
+  // The first snapshot can be empty, so the default page can change once the real one
+  // arrives. Until the user chooses, keep focus on the page actually shown; otherwise the
+  // old tab keeps a focus ring beside the new selection.
   useEffect(() => {
+    if (userChose.current) return;
     root.current?.querySelector<HTMLElement>(shown === 'font' ? '[aria-label="Text size"]' : '[role="tab"][aria-selected="true"]')?.focus();
-  }, []);
+  }, [shown]);
   const navigationKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
     if (!delta && event.key !== 'Home' && event.key !== 'End') return;

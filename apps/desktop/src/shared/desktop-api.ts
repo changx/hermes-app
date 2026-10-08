@@ -3,6 +3,7 @@ import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
+export type DesktopBrowserMode = 'sidebar' | 'window';
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string;
   /** Saved download and similar one-line results. */ notice?: string;
   /** Agent control of this page: Hermes working, the user took over, or Hermes waits for the user. */
@@ -60,6 +61,8 @@ export type DesktopSnapshot = Readonly<{
   connections?: readonly DesktopConnection[];
   connectionsError?: string;
   browser?: DesktopBrowserState;
+  /** Built-in sidebar or one separate window per Session. */
+  browserMode?: DesktopBrowserMode;
   tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
   activeTabId?: string;
   tabId?: string;
@@ -110,7 +113,7 @@ export type ThreadInput = Readonly<{ title: string; clientThreadId: string; chan
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 export type DesktopRuntimeInfo = Readonly<{
-  viewRole?: 'workspace' | 'tab' | 'settings';
+  viewRole?: 'workspace' | 'tab' | 'settings' | 'browser';
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
 }>;
@@ -127,6 +130,8 @@ export interface HermesDesktopApi {
   /** Stop Hermes, let Hermes continue after a takeover, or tell Hermes the user finished. */
   browserControl(action: 'stop' | 'resume' | 'done'): Promise<void>;
   setBrowserBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
+  /** Built-in sidebar or separate windows; moves open pages without reloading them. */
+  setBrowserMode(mode: DesktopBrowserMode): Promise<void>;
   newTab(channelId?: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   closeTab(tabId: string): Promise<void>;
