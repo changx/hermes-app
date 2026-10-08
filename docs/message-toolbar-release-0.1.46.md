@@ -23,4 +23,19 @@ Design, decisions and limits: [Thread branch](thread-branch.md). Link format: [s
 
 ## Verification
 
-Recorded below after publication.
+Candidate `c4e59da` (= `integrate/message-toolbar`: local `main` + `origin/main` + `feat/message-toolbar`):
+
+- `npm run client:check`: 40/40. Mobile `npm run check` and `npm test`: 133 pass, 1 skipped (Chromium table test), 0 fail. `expo export` iOS and Android: OK.
+- `desktop:check` (Chrome + Electron): first run 135/136 — `browser-window-native` failed at its last CHECK ("window placement saved"); the same test also fails intermittently on untouched `origin/main` (1 of 3 runs, same CHECK). Rerun after the version bump: 136/136.
+- Plugin: real-runner branch test (real GatewayRunner, HTTP API, local synthetic model) and the full `tests/p1` suite with no new failures against plugin main.
+
+## Results (2026-10-07)
+
+- Git: `main` `f81de79..c4e59da` pushed with tag `v0.1.46`; local runtime checkout fast-forwarded from `e8e4479`.
+- Expo: `hermes-app-expo.service` restarted (PID 2127634 → 3466388, 18:14:14 PDT). Public iOS and Android manifests HTTP 200, SDK 57.0.0; launch assets 200 (12,466,161 / 12,799,601 bytes); markers `No web pages were used for this reply`, `Export conversation`, `message-toolbar` found on both. Mobile lockfile unchanged; no `npm ci`.
+- Desktop: tag run 37711911497 succeeded. Release `Hermes-0.1.46-macOS-arm64.zip`: checksum OK, ZIP OK, Info.plist 0.1.46, `hermesapp` scheme, arm64 executable; ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js`, `dist/renderer/styles.css` byte-identical to the verified local build.
+- Gateway untouched (PID 3315581). Plugin 0.2.9 installed, not yet active (needs the operator restart with backup).
+- Evidence: channel workspace `message-toolbar-release/` (`release.log`, `m_ios.json`, `m_android.json`).
+- Not yet done: plugin activation; real-device acceptance on iPhone, Android and macOS.
+
+Rollback (client): `git revert` the merge range on `main`, then in one command `git -C /opt/projects/jamie/hermes-app checkout -q --detach <reverted sha> && systemctl --user restart hermes-app-expo.service`; the previous desktop release is `v0.1.45`.
