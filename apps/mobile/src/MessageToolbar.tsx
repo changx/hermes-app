@@ -30,7 +30,7 @@ export function MessageToolbar({ row, actions, canRetry, running }: { row: Timel
   const [branching, setBranching] = useState(false);
   const [sources, setSources] = useState<{ open: boolean; items?: MessageSource[]; loading?: boolean; failed?: boolean }>({ open: false });
   const mounted = useRef(true);
-  React.useEffect(() => () => { mounted.current = false; }, []);
+  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const loadSources = async () => {
     if (!actions.sources) return;
     if (sources.open) { setSources(old => ({ ...old, open: false })); return; }

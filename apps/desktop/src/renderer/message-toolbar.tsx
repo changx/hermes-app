@@ -20,7 +20,7 @@ export const MessageToolbar = ({ message, canRetry, running, branch, sources }: 
   const [note, setNote] = useState("");
   const [list, setList] = useState<{ open: boolean; items?: readonly DesktopMessageSource[]; loading?: boolean; failed?: boolean }>({ open: false });
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const refSeq = message.refSeq!;
   const say = (text: string) => { if (mounted.current) setNote(text); };
   const onBranch = async () => {

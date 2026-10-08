@@ -83,3 +83,15 @@ test('References loads once, expands inline and opens a source', async () => {
   assert.ok(empty.root.findAll(n => n.type === 'Text').some(n => n.props.children === 'No web pages were used for this reply.'));
   empty.unmount();
 });
+
+test('References and Branch finish under StrictMode effect replay', async () => {
+  const actions = { branch: async () => {}, sources: async () => [{ url: 'https://example.org/', kind: 'cited' }] };
+  let root;
+  await act(async () => { root = create(React.createElement(React.StrictMode, null, React.createElement(MessageToolbar, { row, canRetry: false, running: false, actions }))); });
+  await act(async () => { button(root, 'References').props.onPress(); });
+  assert.equal(root.root.findAll(n => n.type === 'Text').some(n => n.props.children === 'Loading references…'), false, 'loading must end');
+  assert.deepEqual(root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityRole === 'link').map(n => n.props.accessibilityLabel), ['https://example.org/']);
+  await act(async () => { button(root, 'Branch').props.onPress(); });
+  assert.equal(button(root, 'Branch').props.accessibilityState.busy, false, 'Branch busy state must clear');
+  root.unmount();
+});
