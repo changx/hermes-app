@@ -217,13 +217,14 @@ export class DesktopConnectionService {
       ? [...(this.client?.messages.get(pageId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (pageState?.start === undefined || ref_seq >= pageState.start))
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
-    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
+    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, notice_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
       const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
       return {
         id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
         role: role === "assistant" || role === "commentary" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
         text,
         ...(display_kind ? { displayKind: display_kind } : {}),
+        ...(notice_kind ? { noticeKind: notice_kind } : {}),
         refSeq: ref_seq,
         ...(client_message_id ? { clientMessageId: client_message_id } : {}),
         ...(receipt ? { receiptId: receipt.id } : {}),
@@ -265,6 +266,9 @@ export class DesktopConnectionService {
       connectionKey: this.connection?.id,
       connectionName: this.connection?.baseUrl ? new URL(this.connection.baseUrl).hostname : undefined,
       supportsSessionLabels: this.client?.supportsSessionLabels === true,
+      supportsThreadBranch: this.client?.supportsThreadBranch === true,
+      supportsMessageSources: this.client?.supportsMessageSources === true,
+      supportsThreadExport: this.client?.supportsThreadExport === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
@@ -914,6 +918,63 @@ export class DesktopConnectionService {
   async retryMessage(clientMessageId: string, threadId = this.selectedThreadId): Promise<void> {
     const pending = this.outbox.find(item => item.id === clientMessageId && item.threadId === threadId);
     if (pending) { this.checkedReceipts.delete(pending.id); await this.deliver(pending.state === "blocked" && !pending.receiptId ? { ...pending, state: "pending" } : pending); }
+  }
+
+  // One request ID per tapped reply until the server answers definitely, so a lost
+  // reply never creates a second branch.
+  private branchRequests = new Map<string, string>();
+  /** Full session link of the new Thread, or the reason the branch did not start. */
+  async branchFromMessage(refSeq: number, threadId = this.selectedThreadId): Promise<{ ok: true; link: string } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }> {
+    const client = this.requireClient(), connection = this.connection;
+    if (!threadId || !connection || !Number.isSafeInteger(refSeq) || refSeq <= 0) return { ok: false, reason: 'unavailable' };
+    const key = `${threadId}:${refSeq}`;
+    const requestId = this.branchRequests.get(key) ?? `br_${randomUUID()}`;
+    this.branchRequests.set(key, requestId);
+    try {
+      const created = await client.branchThread(threadId, refSeq, requestId);
+      this.branchRequests.delete(key);
+      return { ok: true, link: buildSessionLink(connection.baseUrl, created.id) };
+    } catch (error) {
+      const code = error instanceof HttpError ? error.code : undefined;
+      if (code) this.branchRequests.delete(key);
+      return { ok: false, reason: code === 'busy' || code === 'branch_in_progress' ? 'busy' : code === 'anchor_unavailable' || code === 'anchor_not_final' ? 'unavailable' : 'failed' };
+    }
+  }
+
+  async messageSources(refSeq: number, threadId = this.selectedThreadId): Promise<readonly { url: string; kind: 'read' | 'cited' }[]> {
+    const client = this.requireClient();
+    if (!threadId || !client.supportsMessageSources) return [];
+    return client.messageSources(threadId, refSeq);
+  }
+
+  private async saveText(title: string, name: string, text: string): Promise<{ ok: true; saved: boolean }> {
+    const safeName = name.replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g, "_").trim().slice(0, 120) || "Conversation";
+    const selected = await dialog.showSaveDialog({ title, defaultPath: `${safeName}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] });
+    if (selected.canceled || !selected.filePath) return { ok: true, saved: false };
+    const temporary = `${selected.filePath}.partial`;
+    await writeFile(temporary, text, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, selected.filePath);
+    return { ok: true, saved: true };
+  }
+
+  async exportMessage(text: string, threadId = this.selectedThreadId): Promise<{ ok: true; saved: boolean } | { ok: false }> {
+    if (!threadId) return { ok: false };
+    const title = this.client?.threads.get(threadId)?.title ?? "Message";
+    return this.saveText("Export Hermes message", `${title} - message`, text.endsWith("\n") ? text : `${text}\n`);
+  }
+
+  async exportConversation(threadId = this.selectedThreadId): Promise<{ ok: true; saved: boolean } | { ok: false }> {
+    const client = this.requireClient();
+    if (!threadId || !client.supportsThreadExport) return { ok: false };
+    try {
+      const text = await client.exportThread(threadId);
+      return await this.saveText("Export Hermes conversation", client.threads.get(threadId)?.title ?? "Conversation", text);
+    } catch { return { ok: false }; }
+  }
+
+  /** Native /retry through the normal durable send path. */
+  async retryLatest(threadId = this.selectedThreadId): Promise<void> {
+    await this.sendMessage({ text: "/retry", attachmentIds: [] }, threadId);
   }
 
   private async persistOutbox(record: OutboxRecord): Promise<void> {

@@ -5,7 +5,7 @@ import type { GestureResponderEvent } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useIsFocused } from 'expo-router';
 import { useSessionNavigation } from './sessionNavigation';
-import { sessionLinkRoute } from '../../../packages/client/src/sessionLinks';
+import { isSessionLinkHref } from '../../../packages/client/src/sessionLinks';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import WebView from 'react-native-webview';
 import { parseMessageMarkdown } from './messageMarkdown';
@@ -37,9 +37,9 @@ const stopTouch = (event: GestureResponderEvent) => event.stopPropagation();
 
 function InlineText({ nodes, tone, onInteraction, inLink = false }: { nodes: Inline[]; tone: Tone; onInteraction: () => void; inLink?: boolean }) {
   const router = useSessionNavigation();
-  const openLink = (href: string) => {
-    const route = sessionLinkRoute(href);
-    if (route) router.link(href);
+  // Named apart from the imported openLink, which handles ordinary web links.
+  const follow = (href: string) => {
+    if (isSessionLinkHref(href)) router.link(href);
     else openLink(href);
   };
   return <>{nodes.map((node, index) => {
@@ -60,7 +60,7 @@ function InlineText({ nodes, tone, onInteraction, inLink = false }: { nodes: Inl
       case 'link': return node.href
         ? <AnimatedText key={key} accessibilityRole="link" style={[styles.link, tone('#215ca7')]}
             onPressIn={onInteraction}
-            onPress={() => { onInteraction(); openLink(node.href!); }}>
+            onPress={() => { onInteraction(); follow(node.href!); }}>
             <InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink />
           </AnimatedText>
         : <AnimatedText key={key}><InlineText nodes={node.children} tone={tone} onInteraction={onInteraction} inLink={inLink} /></AnimatedText>;
@@ -363,8 +363,7 @@ function ArticleContent({ text, blocks, toolCalls, onExpand, tone, allowed }: { 
       } else {
         const href = page.links[index];
         if (href && safeLinkUrl(href) === href) {
-          const route = sessionLinkRoute(href);
-          if (route) router.link(href);
+          if (isSessionLinkHref(href)) router.link(href);
           else openLink(href);
         }
       }

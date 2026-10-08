@@ -21,6 +21,8 @@ const mocks = {
   './MessageContent': `export const MessageContent='MessageContent',copyMessageText=()=>{};`,
   './WorkChevron': `export const WorkChevron='WorkChevron';`,
   './MessageTime': `export const MessageTime='MessageTime';`,
+  './MessageToolbar': `export const MessageToolbar='MessageToolbar';`,
+  './sessionNavigation': `const s=globalThis.__entryTest; export const useSessionNavigation=()=>({link:h=>{(s.links||(s.links=[])).push(h)},thread(){}});`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/ChatTimeline.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'native-test-boundary', setup(b) {
   b.onResolve({filter: /.*/}, args => mocks[args.path] ? {path:args.path,namespace:'mock'} : undefined);
@@ -214,4 +216,36 @@ test('ChatGPT-style composer: collapsed pill, focus expands in place, round send
   await act(async()=>root.root.findByProps({accessibilityLabel:'Message text'}).props.onBlur());
   assert.equal(card().marginHorizontal,36);
   await act(async()=>root.unmount());
+});
+
+test('final replies carry the message toolbar; Retry only on the latest reply with no later input',async()=>{
+  const actions={branch:async()=>{},exportMessage(){},retry(){}};
+  const turn=(n,final=true)=>[{key:`u${n}`,role:'user',text:`Q${n}`,refSeq:n*10},{key:`f${n}`,role:'assistant',displayKind:final?'final':undefined,text:`A${n}`,refSeq:n*10+1}];
+  const root=await mount({rows:[...turn(1),...turn(2)],messageActions:actions});
+  try{
+    const bars=root.root.findAllByType('MessageToolbar');
+    assert.deepEqual(bars.map(b=>[b.props.row.key,b.props.canRetry,b.props.actions===actions]),[['f1',false,true],['f2',true,true]]);
+    // A later input (queued follow-up) moves Retry away from the old reply.
+    await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows:[...turn(1),...turn(2),{key:'u3',role:'user',text:'next',refSeq:30}],messageActions:actions})));
+    assert.deepEqual(root.root.findAllByType('MessageToolbar').map(b=>b.props.canRetry),[false,false]);
+    // Interim (non-final) assistant rows get no toolbar; no actions, no toolbar.
+    await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows:[...turn(1,false)],messageActions:actions})));
+    assert.equal(root.root.findAllByType('MessageToolbar').length,0);
+    await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,rows:[...turn(1)]})));
+    assert.equal(root.root.findAllByType('MessageToolbar').length,0);
+  }finally{await act(async()=>root.unmount());}
+});
+
+test('branch notices render their session link as a tappable span',async()=>{
+  state.links=[];
+  const notice={key:'n',role:'system',displayKind:'system_notice',text:'Branched to [Plan (branch)](hermesapp://session/th_abc123) now',refSeq:5};
+  const root=await mount({rows:[notice]});
+  try{
+    const link=root.root.findAll(n=>n.type==='Text'&&n.props.accessibilityRole==='link');
+    assert.equal(link.length,1);assert.equal(link[0].props.children,'Plan (branch)');
+    link[0].props.onPress();
+    assert.deepEqual(state.links,['hermesapp://session/th_abc123']);
+    const box=root.root.find(n=>typeof n.props.accessibilityLabel==='string'&&n.props.accessibilityLabel.startsWith('System notice'));
+    assert.equal(box.props.accessibilityLabel,'System notice: Branched to Plan (branch) now');
+  }finally{await act(async()=>root.unmount());}
 });

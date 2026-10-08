@@ -4,7 +4,7 @@ import { getMermaid } from "./mermaid-engine";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { parseSessionLink, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
+import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 
 const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br"]);
 const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "class", "id", "role", "aria-label"]);
@@ -44,7 +44,8 @@ const MermaidDiagram = ({ source }: { source: string }) => {
 
 const allowedLink = (href: string | undefined): string | undefined => {
   if (!href) return undefined;
-  if (parseSessionLink(href)) return href;
+  // Full links name their server; short ones resolve against this tab's Session in main.
+  if (isSessionLinkHref(href)) return href;
   try {
     const url = new URL(href);
     return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
@@ -56,7 +57,7 @@ const markdownComponents: Components = {
   table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
   a: ({ href, children }) => {
     const safe = allowedLink(href);
-    if (safe && parseSessionLink(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop.openSessionLink(safe).catch(() => {}); }}>{children}</a>;
+    if (safe && isSessionLinkHref(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop.openSessionLink(safe).catch(() => {}); }}>{children}</a>;
     return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
   },
   img: ({ alt }) => <span className="blocked-image">[Image: {alt || "attachment"}]</span>,

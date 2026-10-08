@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
+import { MessageIcon, MessageToolbar } from "./message-toolbar";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
@@ -74,7 +75,7 @@ const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; 
   </form></div>;
 };
 
-const MessageRow = memo(({ message, continuation, hidden = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean }) => {
+const MessageRow = memo(({ message, continuation, hidden = false, toolbar = false, canRetry = false, running = false, branch = false, sources = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean; toolbar?: boolean; canRetry?: boolean; running?: boolean; branch?: boolean; sources?: boolean }) => {
   const revealed = useRef(false);
   if (!hidden) revealed.current = true;
   // A never-opened process does not parse Markdown or initialize attachments.
@@ -97,6 +98,7 @@ const MessageRow = memo(({ message, continuation, hidden = false }: { message: D
       </section>;
     })}</div>
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
+    {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} />}
     {message.feedback && <div className="receipt">{message.feedback}</div>}
     {warning || message.receiptState === "queued" && message.receiptId ? <div className="receipt message-warning">{warning}{message.clientMessageId && warning ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
     {message.role === "user" && <div className="user-message-time"><time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
@@ -111,6 +113,9 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
   const callbackEnded = lastUser?.processing != null && lastUser.processing !== 'running';
   const running = !snapshot.interactions.length && ((!callbackEnded && !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running) || hasWaitingRequest(workMessages));
   const groups = workGroups(workMessages, running);
+  // Retry re-runs only the latest turn (core /retry): the last final reply with no later input.
+  const retryId = (() => { for (let i = snapshot.messages.length - 1; i >= 0; i--) { const m = snapshot.messages[i]; if (m.role === 'user') return undefined; if (m.role === 'assistant' && m.displayKind === 'final') return m.id; } return undefined; })();
+  const busyTurn = running || snapshot.interactions.length > 0;
   const dates = chatDateSeparators(workMessages);
   const awaitingWork = !snapshot.loadingMessages && !snapshot.interactions.length && needsWorkPlaceholder(workMessages, groups, running);
   const choiceKey = (group: WorkGroup) => `${snapshot.selectedThreadId}:${group.key}`;
@@ -195,7 +200,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
         return <div className="timeline-entry" key={message.id}>
           {dates.has(message.id) && <div className="chat-date-separator">{dates.get(message.id)}</div>}
           {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
-          <MessageRow message={message} continuation={continuation} hidden={!expanded} />
+          <MessageRow message={message} continuation={continuation} hidden={!expanded} toolbar canRetry={message.id === retryId} running={busyTurn}
+            branch={snapshot.supportsThreadBranch === true} sources={snapshot.supportsMessageSources === true} />
         </div>;
       }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
       {awaitingWork && <div className="work-heading awaiting-agent-work" role="status"><span className="work-toggle">Working<span className="work-chevron" aria-hidden="true">{'\ue001'}</span></span></div>}
@@ -203,7 +209,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div>;
-}, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage);
+}, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage
+  && before.snapshot.interactions.length === after.snapshot.interactions.length && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
 
 // Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
 const COMPOSER_INPUT_MIN = 48;
@@ -370,6 +377,8 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
         {snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}
         <div className="conversation-actions">
           <button type="button" aria-label="Copy link" title="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
+          {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" title="Export conversation"
+            onClick={() => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."))}><MessageIcon name="export" /></button>}
           {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" title="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
           <button type="button" aria-label="Rename" title="Rename" onClick={() => setEditor('rename-thread')}><ToolIcon name="rename" /></button>
           <button type="button" aria-label="Archive" title="Archive" onClick={archive}><ToolIcon name="archive" /></button>
