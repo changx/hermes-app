@@ -57,7 +57,7 @@ const markdownComponents: Components = {
   table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
   a: ({ href, children }) => {
     const safe = allowedLink(href);
-    if (safe && isSessionLinkHref(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop.openSessionLink(safe).catch(() => {}); }}>{children}</a>;
+    if (safe && isSessionLinkHref(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop?.openSessionLink?.(safe)?.catch(() => {}); }}>{children}</a>;
     return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
   },
   img: ({ alt }) => <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
@@ -68,13 +68,22 @@ const markdownComponents: Components = {
   },
   pre: ({ children }) => <pre className="code-block">{children}</pre>,
 };
+// A Markdown file preview shows its images: web images and plain sibling file names,
+// which the preview page resolves only against the same Session's image attachments.
+const documentImage = (url: string): string | undefined => allowedLink(url) ?? (/^[^/\\:?#]+\.(png|jpe?g|gif|webp)$/i.test(url) ? url : undefined);
+const documentComponents: Components = {
+  ...markdownComponents,
+  img: ({ src, alt }) => typeof src === "string" && src ? <img src={src} alt={alt ?? ""} loading="lazy" /> : <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
+};
 const remarkPlugins = [remarkGfm, remarkMath, remarkSessionLinks];
 const rehypePlugins = [rehypeKatex];
 const transformUrl = (url: string) => allowedLink(url) ?? "";
+const transformDocumentUrl = (url: string, key: string) => (key === "src" ? documentImage(url) : allowedLink(url)) ?? "";
 
-export const MessageContent = memo(({ text }: { text: string }) => (
+/** `document`: a Markdown file preview (images allowed); otherwise a chat message. */
+export const MessageContent = memo(({ text, document = false }: { text: string; document?: boolean }) => (
   <div className="message-markdown">
     <ReactMarkdown skipHtml remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}
-      urlTransform={transformUrl} components={markdownComponents}>{text}</ReactMarkdown>
+      urlTransform={document ? transformDocumentUrl : transformUrl} components={document ? documentComponents : markdownComponents}>{text}</ReactMarkdown>
   </div>
 ));

@@ -1,16 +1,18 @@
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(root, "dist");
+const katexDist = resolve(dirname(createRequire(import.meta.url).resolve("katex/package.json")), "dist");
 
 await rm(dist, { recursive: true, force: true });
 await Promise.all([
   mkdir(resolve(dist, "main"), { recursive: true }),
   mkdir(resolve(dist, "preload"), { recursive: true }),
-  mkdir(resolve(dist, "renderer"), { recursive: true }),
+  mkdir(resolve(dist, "renderer/fonts"), { recursive: true }),
 ]);
 
 await Promise.all([
@@ -47,6 +49,17 @@ await Promise.all([
     sourcemap: true,
   }),
   build({
+    // Markdown attachment preview page; served by the hermes-preview: protocol.
+    entryPoints: [resolve(root, "src/preview/markdown.tsx")],
+    outfile: resolve(dist, "renderer/markdown-preview.js"),
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "chrome132",
+    define: { "process.env.NODE_ENV": '"production"' },
+    minify: true,
+  }),
+  build({
     entryPoints: [resolve(root, "src/renderer/index.tsx")],
     outfile: resolve(dist, "renderer/index.js"),
     bundle: true,
@@ -61,6 +74,10 @@ await Promise.all([
   copyFile(resolve(root, "src/renderer/index.html"), resolve(dist, "renderer/index.html")),
   copyFile(resolve(root, "../../assets/work-icons.ttf"), resolve(dist, "renderer/work-icons.ttf")),
   copyFile(resolve(root, "src/renderer/styles.css"), resolve(dist, "renderer/styles.css")),
+  // KaTeX layout for formulas in replies and Markdown previews. Chromium uses the woff2 fonts.
+  copyFile(resolve(katexDist, "katex.min.css"), resolve(dist, "renderer/katex.css")),
+  ...(await readdir(resolve(katexDist, "fonts"))).filter(name => name.endsWith(".woff2"))
+    .map(name => copyFile(resolve(katexDist, "fonts", name), resolve(dist, "renderer/fonts", name))),
 ]);
 
 console.log("Built desktop main, preload, and renderer into apps/desktop/dist");

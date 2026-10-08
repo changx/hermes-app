@@ -1,8 +1,3 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
 export function chromeUserAgent(platform: string, version: string): string {
   const major = /^\d+/.exec(version)?.[0];
   if (!major) throw new Error('Invalid Chromium version');
@@ -44,14 +39,33 @@ export function previewMime(name: string, mime: string): string {
   if (base.startsWith('text/') || ['application/json', 'application/xml'].includes(base) || /\.(md|txt|json|csv|log|xml|ya?ml|ts|tsx|jsx|py|sh)$/i.test(name)) return 'text/plain';
   return 'application/octet-stream';
 }
-const markdownCss = 'body{margin:0;background:white;color:#1f2937;font:16px/1.6 system-ui}main{max-width:860px;margin:0 auto;padding:24px 28px 48px}'
-  + 'h1,h2{border-bottom:1px solid #e5e7eb;padding-bottom:.3em}a{color:#215ca7}img{max-width:100%}'
-  + 'pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}code{font:13px/1.45 ui-monospace,Menlo,monospace;background:#f6f8fa;padding:.1em .3em;border-radius:4px}pre code{padding:0}'
-  + 'table{border-collapse:collapse;display:block;overflow:auto}th,td{border:1px solid #d0d7de;padding:6px 12px}blockquote{margin:0;padding:0 1em;color:#57606a;border-left:4px solid #d0d7de}';
-/** Markdown becomes static HTML. Raw HTML inside it is escaped and no script can run. */
-export function markdownPage(name: string, text: string): string {
-  const body = renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [remarkGfm] }, text));
-  return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(name)}</title><style>${markdownCss}</style><main>${body}</main>`;
+/** Fixed app files the preview page may load: `hermes-preview://<host>/__hermes_preview__/<name>`.
+ * Attachment names cannot contain `/`, so this path never names an attachment. */
+export const PREVIEW_ASSET_PATH = '/__hermes_preview__/';
+export function previewAssetType(name: string): string | undefined {
+  if (name === 'markdown-preview.js') return 'text/javascript';
+  if (name === 'katex.css' || name === 'styles.css') return 'text/css';
+  if (/^fonts\/KaTeX_[A-Za-z0-9_-]+\.woff2$/.test(name)) return 'font/woff2';
+  return undefined;
+}
+/** Markdown above this size shows as plain text; the full renderer would be too slow. */
+export const MARKDOWN_RENDER_LIMIT = 1024 * 1024;
+const nonce = () => { const value = new Uint8Array(18); globalThis.crypto.getRandomValues(value); return btoa(String.fromCharCode(...value)); };
+/** Markdown becomes a page that renders the file with the chat message renderer (tables, math,
+ * code, Mermaid). Only the app's own script runs (nonce); raw HTML in the file is skipped.
+ * The source text is shown as a fallback if the script cannot run. */
+export function markdownPage(name: string, text: string): { html: string; csp: string } {
+  const key = nonce(), asset = PREVIEW_ASSET_PATH;
+  const json = JSON.stringify(text).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title>`
+    + `<link rel="stylesheet" href="${asset}katex.css"><link rel="stylesheet" href="${asset}styles.css">`
+    + '<style>html,body{height:auto;min-height:0;overflow:auto;background:white}body{min-width:0}'
+    + '.markdown-preview{max-width:900px;margin:0 auto;padding:16px 14px 48px}.markdown-preview .message-markdown img{max-width:100%;height:auto}'
+    + '.markdown-source{visibility:hidden;animation:markdown-fallback 0s 1.5s forwards;white-space:pre-wrap;font:13px/1.5 ui-monospace,Menlo,monospace}@keyframes markdown-fallback{to{visibility:visible}}</style>'
+    + `<main class="message message-assistant markdown-preview"><div id="markdown-root"><pre class="markdown-source">${escapeHtml(text)}</pre></div></main>`
+    + `<script type="application/json" id="hermes-markdown">${json}</script><script nonce="${key}" src="${asset}markdown-preview.js"></script>`;
+  const csp = `default-src 'none'; script-src 'nonce-${key}'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' https: http: data:; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  return { html, csp };
 }
 /** One `bytes=start-end` range inside the body, or undefined when absent or unusable. */
 export function byteRange(header: string | null | undefined, size: number): { start: number; end: number } | undefined {
@@ -66,10 +80,11 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': 
 export function previewResponse(document: PreviewDocument, rawAsset = false, range?: string | null): Response {
   if (!document.bytes.byteLength || document.bytes.byteLength > 10 * 1024 * 1024) throw new Error('The file is too large to preview.');
   const mime = previewMime(document.name, document.mime);
-  let body: Uint8Array | string = document.bytes, contentType = mime;
-  if (!rawAsset && mime === 'text/markdown') {
-    body = markdownPage(document.name, new TextDecoder().decode(document.bytes)); contentType = 'text/html';
-  } else if (!rawAsset && ['text/plain', 'text/css', 'text/javascript', 'application/octet-stream'].includes(mime)) {
+  let body: Uint8Array | string = document.bytes, contentType = mime, markdownCsp: string | undefined;
+  if (!rawAsset && mime === 'text/markdown' && document.bytes.byteLength <= MARKDOWN_RENDER_LIMIT) {
+    const page = markdownPage(document.name, new TextDecoder().decode(document.bytes));
+    body = page.html; contentType = 'text/html'; markdownCsp = page.csp;
+  } else if (!rawAsset && ['text/plain', 'text/markdown', 'text/css', 'text/javascript', 'application/octet-stream'].includes(mime)) {
     const text = mime === 'application/octet-stream' ? 'This file cannot be previewed. Use Save or Open externally.' : new TextDecoder().decode(document.bytes);
     body = `<!doctype html><meta charset="utf-8"><title>${escapeHtml(document.name)}</title><style>body{margin:20px;color:#1f2937;background:white;font:16px/1.5 system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><pre>${escapeHtml(text)}</pre>`;
     contentType = 'text/html';
@@ -77,7 +92,7 @@ export function previewResponse(document: PreviewDocument, rawAsset = false, ran
   const pdfViewer = pdfExtension;
   const csp = mime === 'application/pdf'
     ? `default-src 'none'; style-src ${pdfViewer}; frame-src ${pdfViewer}; object-src 'self'`
-    : !rawAsset && mime === 'text/markdown' ? "default-src 'none'; img-src 'self' https: http: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    : markdownCsp ? markdownCsp
     : "default-src 'self' https: http: data: blob:; connect-src 'self' https: http: ws: wss:; script-src 'self' 'unsafe-inline' https: http:; style-src 'self' 'unsafe-inline' https: http:; object-src 'none'; base-uri 'self'; frame-src https: http:; form-action https: http:";
   const headers: Record<string, string> = { 'Content-Type': contentType + (contentType.startsWith('text/') ? '; charset=utf-8' : ''), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': csp };
   if (typeof body === 'string') return new Response(body, { headers });

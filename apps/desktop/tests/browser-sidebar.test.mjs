@@ -9,14 +9,27 @@ const require = createRequire(import.meta.url);
 const root = new URL('..', import.meta.url).pathname;
 const compiled = await build({ stdin: { resolveDir: root, loader: 'ts', contents: `export * from './src/shared/browser-policy'; export { localPreview } from './src/main/local-preview'; export { DesktopConnectionService } from './src/main/connection-service';` }, bundle: true, format: 'cjs', platform: 'node', external: ['electron'], write: false });
 const mod = { exports: {} }; new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(name => name === 'electron' ? {} : require(name), mod, mod.exports);
-const { chromeUserAgent, browserUrl, previewMime, previewResponse, pdfViewerResource, byteRange, markdownPage, localPreview, DesktopConnectionService } = mod.exports;
-test('Markdown renders as static HTML without scripts', async () => {
-  const response = previewResponse({ name: 'notes.md', mime: 'text/markdown', bytes: bytes('# Title\n\n<script>alert(1)</script>\n\n[x](javascript:alert(1)) | a |\n|---|\n| 1 |') });
-  const html = await response.text();
+const { chromeUserAgent, browserUrl, previewMime, previewResponse, pdfViewerResource, byteRange, markdownPage, previewAssetType, localPreview, DesktopConnectionService } = mod.exports;
+test('Markdown renders through the app renderer page: only the nonce script runs and file HTML stays text', async () => {
+  const source = '# Title\n\n<script>alert(1)</script>\n\n</script><img src=x onerror=alert(1)>\n\n[x](javascript:alert(1))\n\n| a |\n|---|\n| 1 |\n\n$E=mc^2$';
+  const response = previewResponse({ name: 'notes.md', mime: 'text/markdown', bytes: bytes(source) });
+  const html = await response.text(), csp = response.headers.get('content-security-policy');
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
-  assert.match(html, /<h1>Title<\/h1>/); assert.doesNotMatch(html, /<script/); assert.doesNotMatch(html, /href="javascript:/);
-  assert.match(response.headers.get('content-security-policy'), /default-src 'none'/); assert.doesNotMatch(response.headers.get('content-security-policy'), /script-src/);
+  const key = /script-src 'nonce-([A-Za-z0-9+/=]+)'/.exec(csp)?.[1];
+  assert.ok(key, csp); assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*'self'|script-src[^;]*https:/);
+  assert.match(csp, /default-src 'none'/); assert.match(csp, /base-uri 'none'/);
+  const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map(match => match[0]);
+  assert.deepEqual(scripts, ['<script type="application/json" id="hermes-markdown">', `<script nonce="${key}" src="/__hermes_preview__/markdown-preview.js">`]);
+  const json = /<script type="application\/json" id="hermes-markdown">([\s\S]*?)<\/script>/.exec(html)[1];
+  assert.equal(JSON.parse(json), source, 'exact source, escaped so it cannot close the script element');
+  assert.doesNotMatch(json, /</);
+  assert.match(html, /&lt;script&gt;alert\(1\)/, 'fallback text is escaped');
+  assert.notEqual(/nonce-([^']+)/.exec(previewResponse({ name: 'n.md', mime: 'text/markdown', bytes: bytes('a') }).headers.get('content-security-policy'))[1], key, 'fresh nonce per page');
   assert.equal(await previewResponse({ name: 'notes.md', mime: 'text/markdown', bytes: bytes('# raw') }, true).text(), '# raw');
+  const large = await previewResponse({ name: 'big.md', mime: 'text/markdown', bytes: bytes('# big\n' + 'x'.repeat(1024 * 1024)) }).text();
+  assert.match(large, /^<!doctype html><meta charset="utf-8"><title>big\.md<\/title>/); assert.doesNotMatch(large, /<script/);
+  assert.equal(previewAssetType('markdown-preview.js'), 'text/javascript'); assert.equal(previewAssetType('fonts/KaTeX_Main-Regular.woff2'), 'font/woff2');
+  for (const name of ['../main/index.cjs', 'index.js', 'fonts/../index.js', 'fonts/x.ttf', 'katex.css/..']) assert.equal(previewAssetType(name), undefined, name);
 });
 test('media bodies answer Range requests', async () => {
   const media = { name: 'clip.mp4', mime: 'video/mp4', bytes: bytes('0123456789') };

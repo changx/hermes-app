@@ -4,7 +4,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DesktopBrowserMode, DesktopBrowserState, DesktopSnapshot } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
-import { browserUrl, chromeUserAgent, pdfExtension, pdfViewerResource, previewResponse, type PreviewDocument } from '../shared/browser-policy';
+import { browserUrl, chromeUserAgent, pdfExtension, pdfViewerResource, PREVIEW_ASSET_PATH, previewAssetType, previewResponse, type PreviewDocument } from '../shared/browser-policy';
+
+// The app's own preview files (Markdown renderer, KaTeX, styles) next to the main bundle.
+const previewAssets = join(__dirname, '..', 'renderer');
+function previewAsset(path: string): Response {
+  const name = path.slice(PREVIEW_ASSET_PATH.length), type = previewAssetType(name);
+  if (!type) return new Response('Not found', { status: 404 });
+  try { return new Response(readFileSync(join(previewAssets, name)), { headers: { 'Content-Type': type + (type.startsWith('text/') ? '; charset=utf-8' : ''), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } }); }
+  catch { return new Response('Not found', { status: 404 }); }
+}
 import { BrowserControlError, blockedSubresource, clientHints, CONTROL_TEXT, InputLedger, keyFor, navigable, validUserAgentData, withClientHints, type BrowserAction, type BrowserControlState, type UserAgentData } from '../shared/browser-control';
 
 type Bounds = { x: number; y: number; width: number; height: number; visible: boolean };
@@ -282,6 +291,7 @@ export class DesktopBrowserSidebar {
         const url = new URL(request.url);
         const pane = [...state.panes].find(item => item.document?.host === url.host), doc = pane?.document;
         if (!pane || !doc || request.method !== 'GET' || url.username || url.password) return new Response('Preview unavailable', { status: 404 });
+        if (url.pathname.startsWith(PREVIEW_ASSET_PATH)) return previewAsset(url.pathname);
         const name = decodeURIComponent(url.pathname.slice(1));
         if (name.includes('/') || name.includes('\\') || name === '..') return new Response('Not found', { status: 404 });
         if (name === doc.file.name) return previewResponse(doc.file, false, request.headers.get('range'));
