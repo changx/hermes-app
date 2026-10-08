@@ -2,7 +2,7 @@
 
 ## Authorized scope
 
-Jamie authorized merging `feat/desktop-tab-composer-polish` into main and publishing it ("合并主分支，发布", 2026-10-06). Candidate `bfab0ae` is based on main `c4ba924` and fast-forwards into main. Kanban card `t_cb99f559`.
+Jamie authorized merging `feat/desktop-tab-composer-polish` into main and publishing it ("合并主分支，发布", 2026-10-06). Candidate `bfab0ae` is based on main `c4ba924` and fast-forwards into main.
 
 Changes (details: [desktop tabs](desktop-tabs.md#session-内容宽度与输入框)):
 
