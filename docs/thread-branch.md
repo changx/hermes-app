@@ -2,8 +2,8 @@
 
 状态（2026-10-07）：
 
-- 第 1 步（原生 `/branch` 打开新 Thread）：核心提交 `8735238716` 已在 `local/main`；插件 0.2.8 已安装到 hermes-app-dev，等待 Gateway 重启。
-- 第 2–4 步（历史、截断、链接提示、toolbar、来源、导出、短链接）：插件分支 `feat/thread-branch-history`（0.2.9）与客户端分支 `feat/message-toolbar` 已实现并通过隔离测试，尚未合入 main、未安装、未发布。
+- 已合入并发布：客户端 `main` `c4e59da`（桌面 v0.1.46、Expo 测试入口），插件 `main` `62aaafb`（v0.2.8、v0.2.9），核心 `local/main` `8735238716`。发布记录见 [message-toolbar-release-0.1.46](message-toolbar-release-0.1.46.md)。
+- 插件 0.2.9 已安装到 hermes-app-dev，待 Jamie 用运维脚本（先停 Gateway、备份 `metadata.sqlite`、再启动）重启后生效。生效前服务端不报告分支、来源、导出能力，客户端只显示 Copy 和 Export。
 - 真机验收（iPhone、Android、macOS）尚未进行。
 
 ## 已确认的产品决定（Jamie）
@@ -40,8 +40,8 @@
 ## 代码位置
 
 - 核心：`~/.hermes/hermes-agent` `local/main` 提交 `8735238716`。
-- 插件：`/opt/projects/jamie/hermes-app-plugin` 分支 `feat/thread-branch-history`。测试 `tests/p1/test_branch_thread_runner.py`（真实 GatewayRunner + HTTP API + 本地合成模型；需 `HERMES_BRANCH_CORE` 指向带开关的核心）和 `tests/p1/test_branching.py`。
-- 客户端：分支 `feat/message-toolbar`（基于 `origin/main`）。共享 `packages/client`（`branchThread`、`messageSources`、`exportThread`、短链接）；手机 `MessageToolbar.tsx`、`ChatTimeline.tsx`、`SessionOptions.tsx`；桌面 `message-toolbar.tsx`、`shell.tsx` 与主进程 IPC。
+- 插件：`/opt/projects/jamie/hermes-app-plugin` `main`（v0.2.9）。测试 `tests/p1/test_branch_thread_runner.py`（真实 GatewayRunner + HTTP API + 本地合成模型；需 `HERMES_BRANCH_CORE` 指向带开关的核心）和 `tests/p1/test_branching.py`。
+- 客户端：`main`（v0.1.46）。共享 `packages/client`（`branchThread`、`messageSources`、`exportThread`、短链接）；手机 `MessageToolbar.tsx`、`ChatTimeline.tsx`、`SessionOptions.tsx`；桌面 `message-toolbar.tsx`、`shell.tsx` 与主进程 IPC。
 
 ## 已知限制
 
@@ -57,4 +57,5 @@
 2. ✅ 新 Thread 显示复制的历史；按锚点截断；附件授权。
 3. ✅ 分支链接提示、来源、导出、短链接。
 4. ✅ 手机与桌面 toolbar。
-5. 部署：插件 0.2.9 安装到 hermes-app-dev 并重启；客户端合入 main 并发布 Expo；桌面发布；真机验收。上游 PR：以开关替代写死列表。
+5. ✅ 客户端合入 main 并发布 Expo 与桌面 v0.1.46；插件 0.2.9 已安装。
+6. 插件 0.2.9 重启生效（Jamie）；真机验收；上游 PR：以开关替代写死列表。
