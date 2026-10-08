@@ -10,6 +10,14 @@ Canonical format:
 hermesapp://session/<stable-thread-id>?server=<percent-encoded-paired-server-base>
 ```
 
+Short in-message form (confirmed 2026-10-07): plugin notices and Agent replies omit the server, like a scheme-relative web link:
+
+```text
+hermesapp://session/<stable-thread-id>
+```
+
+The App resolves it against the connection that shows the message. It is valid only inside message content. External entries (OS intents, desktop protocol, pasted links) still require the full form, and "Copy session link" still produces the full form.
+
 The earlier multi-Hermes design discussion uses App Thread `th_38efff81320041bdb567624b8d97cbda`. Its physical Hermes Session `20261002_184814_fa5d7246` is not a link target. Compression/rollover must not alter the visible Thread destination.
 
 ## Implementation
