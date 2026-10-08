@@ -109,3 +109,13 @@ Branch: `feat/desktop-floating-toolbar`; base `origin/main` `0010c74`.
 - Error banners stay above the timeline. No change to actions, IPC, drafts, scroll or history.
 
 Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: 124 passed, 0 skipped. New Chromium test `session-toolbar` checks no header or title/Project text, one row, position, timeline top, labels and button actions. Tests that measured the old header now measure the toolbar. macOS visual acceptance is separate. Not merged or released.
+
+## In-app tooltips and attachment card layout
+
+Branch: `feat/desktop-tooltips-attachment`; base `main` `975357e`. Request: Jamie, 2026-10-08.
+
+- Session toolbar buttons (Copy link, Export conversation, Edit labels, Rename, Archive, Settings) and message attachment actions (Preview, Open externally, Save, View file, large image preview) show a tooltip on hover.
+- Native `title` tooltips did not show on the Session page. The page is a `WebContentsView`; that is the likely cause, not confirmed on macOS. The page now draws its own tooltip (`renderer/tooltip.tsx`): controls set `data-tooltip`, and one layer per Session page shows it after 450 ms, below the control (above it at the bottom edge), kept inside the window. Keyboard focus shows it at once. Click, scroll, Escape and window blur hide it. Accessible names stay on `aria-label`.
+- Attachment card: the thumbnail is at the left. The file name has its own line, with the size under it. All actions are on one line below, aligned with the name. Only a very narrow window wraps the actions.
+
+Verification: the Chromium test `session-toolbar` checks tooltip text, position and hiding for toolbar buttons, the hide after a click, and the attachment layout (name on one line, actions in one row below it, tooltips present). macOS visual acceptance is separate.

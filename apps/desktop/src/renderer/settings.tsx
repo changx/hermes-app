@@ -108,7 +108,8 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
 }
 
 /** Opens (or focuses) the native Settings window. The current page stays visible and usable. */
-export function SettingsButton({ className, icon }: { className?: string; icon?: ReactNode }) {
+// `tooltip`: the page draws an in-app tooltip (TooltipLayer) instead of the native title.
+export function SettingsButton({ className, icon, tooltip }: { className?: string; icon?: ReactNode; tooltip?: boolean }) {
   const [error, setError] = useState('');
-  return <><button type="button" className={className} title="Settings" aria-label="Settings" onClick={() => { setError(''); void window.hermesDesktop.openSettings().catch(() => setError('Settings could not be opened. Try again.')); }}>{icon ?? '⚙'}</button>{error && <span role="alert" className="settings-open-error">{error}</span>}</>;
+  return <><button type="button" className={className} title={tooltip ? undefined : "Settings"} data-tooltip={tooltip ? "Settings" : undefined} aria-label="Settings" onClick={() => { setError(''); void window.hermesDesktop.openSettings().catch(() => setError('Settings could not be opened. Try again.')); }}>{icon ?? '⚙'}</button>{error && <span role="alert" className="settings-open-error">{error}</span>}</>;
 }

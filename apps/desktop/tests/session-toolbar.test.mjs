@@ -18,7 +18,7 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
       const calls=[];
       window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),copySessionLink:async()=>{calls.push('copy')},openSettings:async()=>{calls.push('settings')},archiveThread:async()=>{calls.push('archive')},renameThread:async()=>{},markResultRead:async()=>{},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{}};
       window.confirm=()=>true;
-      const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:[]}));
+      const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:i===29?[{id:'a1',name:'REPORT.md',mime:'text/markdown',size:12000,state:'available',publicUrl:'https://example.test/r'}]:[]}));
       const snapshot={phase:'connected',connectionState:'online',connectionKey:'one',supportsSessionLabels:true,tabActive:true,tabKind:'session',
         channels:[{id:'p',name:'Project Alpha'}],threads:[{id:'t',channelId:'p',title:'Session Title Beta',markers:['urgent'],running:false}],
         selectedChannelId:'p',selectedThreadId:'t',selectedThreadTitle:'Session Title Beta',messages,interactions:[],canLoadOlder:false};
@@ -32,7 +32,19 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
         ensure('no title or project text',!outside.includes('Session Title Beta')&&!outside.includes('Project Alpha'));
         const names=[...bar.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'));
         ensure('tools present',names.join('|')==='Copy link|Edit labels|Rename|Archive|Settings');
-        ensure('icon buttons have tooltips',[...bar.querySelectorAll('button')].every(b=>b.title&&b.querySelector('svg')&&!b.textContent.trim()));
+        ensure('icon buttons have in-app tooltips, not native titles',[...bar.querySelectorAll('button')].every(b=>b.dataset.tooltip&&!b.title&&b.querySelector('svg')&&!b.textContent.trim()));
+        const hover=async(el)=>{el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,600));return document.querySelector('.app-tooltip');};
+        const away=async()=>{list.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,30));};
+        const vw=document.documentElement.clientWidth;
+        for(const name of ['Copy link','Archive','Settings']){const b=bar.querySelector('[aria-label="'+name+'"]'),tip=await hover(b);ensure('tooltip shows: '+name,tip&&tip.textContent===b.dataset.tooltip);const t=tip.getBoundingClientRect(),bb=b.getBoundingClientRect();ensure('tooltip below and inside the window: '+name,t.top>=bb.bottom&&t.left>=0&&t.right<=vw);checks['tip '+name]=[t.left,t.top,t.width];await away();ensure('tooltip hides: '+name,!document.querySelector('.app-tooltip'));}
+        { const b=bar.querySelector('[aria-label="Rename"]'); await hover(b); b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); await new Promise(r=>setTimeout(r,20)); ensure('press hides tooltip',!document.querySelector('.app-tooltip')); b.querySelector('svg').dispatchEvent(new PointerEvent('pointerover',{bubbles:true})); await new Promise(r=>setTimeout(r,600)); ensure('tooltip stays hidden after press',!document.querySelector('.app-tooltip')); await away(); }
+        const card=page.querySelector('.attachment-card'); card.scrollIntoView();
+        const name=card.querySelector('.attachment-name'), acts=[...card.querySelectorAll('.attachment-actions > *')];
+        ensure('attachment actions',acts.map(a=>a.textContent).join('|')==='Preview|Open externally|Save|View file');
+        ensure('file name on one line',name.getClientRects().length===1&&name.getBoundingClientRect().height<30);
+        const mid=a=>{const r=a.getBoundingClientRect();return r.top+r.height/2;};ensure('actions on one row below the name',acts.every(a=>Math.abs(mid(a)-mid(acts[0]))<=2)&&acts[0].getBoundingClientRect().top>=name.getBoundingClientRect().bottom);
+        ensure('attachment actions have tooltips',acts.every(a=>a.dataset.tooltip&&!a.title));
+        { const tip=await hover(acts[1]); ensure('attachment tooltip shows',tip&&tip.textContent==='Open in the default app'); checks.attachment={name:name.getBoundingClientRect().toJSON(),actions:acts.map(a=>Math.round(mid(a)))}; await away(); }
         const tops=new Set([...bar.querySelectorAll('button')].map(b=>Math.round(b.getBoundingClientRect().top)));
         ensure('one row',tops.size===1);
         const box=bar.getBoundingClientRect(), pageBox=page.getBoundingClientRect(), listBox=list.getBoundingClientRect();

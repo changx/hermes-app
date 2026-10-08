@@ -1,6 +1,7 @@
 import { AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
 import { SettingsButton } from './settings';
+import { TooltipLayer } from './tooltip';
 import { ProjectDialog } from './project-dialog';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
@@ -376,19 +377,19 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       <div className="session-toolbar" role="toolbar" aria-label="Session tools">
         {snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}
         <div className="conversation-actions">
-          <button type="button" aria-label="Copy link" title="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
-          {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" title="Export conversation"
+          <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
+          {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation"
             onClick={() => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."))}><MessageIcon name="export" /></button>}
-          {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" title="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
-          <button type="button" aria-label="Rename" title="Rename" onClick={() => setEditor('rename-thread')}><ToolIcon name="rename" /></button>
-          <button type="button" aria-label="Archive" title="Archive" onClick={archive}><ToolIcon name="archive" /></button>
-          <SettingsButton icon={<ToolIcon name="settings" />} />
+          {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
+          <button type="button" aria-label="Rename" data-tooltip="Rename session" onClick={() => setEditor('rename-thread')}><ToolIcon name="rename" /></button>
+          <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={archive}><ToolIcon name="archive" /></button>
+          <SettingsButton icon={<ToolIcon name="settings" />} tooltip />
         </div>
       </div>
       <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
     </div>
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-    <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />{overlays}
+    <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />{overlays}<TooltipLayer />
   </main>;
 };
 
