@@ -39,3 +39,11 @@ Candidate `c4e59da` (= `integrate/message-toolbar`: local `main` + `origin/main`
 - Not yet done: plugin activation; real-device acceptance on iPhone, Android and macOS.
 
 Rollback (client): `git revert` the merge range on `main`, then in one command `git -C /opt/projects/jamie/hermes-app checkout -q --detach <reverted sha> && systemctl --user restart hermes-app-expo.service`; the previous desktop release is `v0.1.45`.
+
+## Plugin activation (2026-10-07 18:22 PDT)
+
+- Jamie ran the operator script: Gateway PID 3315581 → 3478727. Stopped-state backup `metadata-before-0.2.9-20261007-182230.sqlite` (integrity ok) in the private workspace.
+- Migration: `system_notices` accepts `branch`; `branches`, `branch_inputs`, `attachment_grants` exist; integrity ok; no foreign-key issues; existing notices kept (70).
+- Live checks on hermes-app-dev: unauthenticated capabilities 401; authenticated `thread_branch`, `message_sources`, `thread_export`, `relative_session_links` all true; `/v1/live` hello; one real model message completed; same `client_message_id` returned the same receipt; two cold full reads identical; sources returned the cited link; branch 201 and the same `request_id` returned the same Thread; branch Thread shows the "Branched from" link notice, the copied input and the final reply; source Thread ends with the "Branched to" notice; branch session in core has `_branched_from` = source session; export returned Markdown. Both test Threads archived.
+- The startup warning "'hermes_app' is not a valid Platform" for routing entries also appears in earlier restarts (60 times on 2026-10-06/07 before this release); it is not caused by this release.
+- Still open: real-device acceptance (iPhone, Android, macOS).

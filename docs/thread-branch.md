@@ -3,7 +3,7 @@
 状态（2026-10-07）：
 
 - 已合入并发布：客户端 `main` `c4e59da`（桌面 v0.1.46、Expo 测试入口），插件 `main` `62aaafb`（v0.2.8、v0.2.9），核心 `local/main` `8735238716`。发布记录见 [message-toolbar-release-0.1.46](message-toolbar-release-0.1.46.md)。
-- 插件 0.2.9 已安装到 hermes-app-dev，待 Jamie 用运维脚本（先停 Gateway、备份 `metadata.sqlite`、再启动）重启后生效。生效前服务端不报告分支、来源、导出能力，客户端只显示 Copy 和 Export。
+- 插件 0.2.9 已在 hermes-app-dev 生效（2026-10-07 18:22 重启；迁移与线上验收通过，见发布记录）。
 - 真机验收（iPhone、Android、macOS）尚未进行。
 
 ## 已确认的产品决定（Jamie）
@@ -58,4 +58,5 @@
 3. ✅ 分支链接提示、来源、导出、短链接。
 4. ✅ 手机与桌面 toolbar。
 5. ✅ 客户端合入 main 并发布 Expo 与桌面 v0.1.46；插件 0.2.9 已安装。
-6. 插件 0.2.9 重启生效（Jamie）；真机验收；上游 PR：以开关替代写死列表。
+6. ✅ 插件 0.2.9 生效。
+7. 真机验收；上游 PR：以开关替代写死列表。
