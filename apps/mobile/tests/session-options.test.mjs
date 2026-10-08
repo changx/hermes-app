@@ -8,10 +8,10 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // The Session header has one entry; this page holds labels, link and Settings.
-const state = { pushed: [], copied: [], app: null, focused: true };
+const state = { pushed: [], copied: [], shared: [], alerts: [], app: null, focused: true };
 globalThis.__sessionOptionsTest = state;
 const mocks = {
-  'react-native': `export const Pressable='Pressable',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
+  'react-native': `const s=globalThis.__sessionOptionsTest; export const Pressable='Pressable',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1}; export const Share={share:async v=>{s.shared.push(v);return {action:'sharedAction'}}}; export const Alert={alert:(...a)=>s.alerts.push(a)};`,
   'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r)}); export const useIsFocused=()=>s.focused;`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   './FontSize': `export const Text='Text';`,
@@ -29,7 +29,7 @@ const thread = (extra = {}) => ({ id: 'th_1', title: 'Plan', project_id: 'p', ma
 const app = (threads, supportsSessionLabels = true) => ({ slot: 'second', config: { id: 'primary-id', baseUrl: 'https://agent.example' }, client: { threads: new Map(threads.map(t => [t.id, t])), supportsSessionLabels } });
 const labels = root => root.root.findAll(node => node.type === 'Pressable').map(node => node.props.accessibilityLabel);
 const press = async (root, label) => { const node = root.root.findAll(n => n.type === 'Pressable').find(n => n.props.accessibilityLabel === label); assert.ok(node, 'missing ' + label + ' in ' + labels(root)); await act(async () => { node.props.onPress(); await Promise.resolve(); }); };
-const reset = () => Object.assign(state, { pushed: [], copied: [], focused: true });
+const reset = () => Object.assign(state, { pushed: [], copied: [], shared: [], alerts: [], focused: true });
 
 test('Session options lists labels, link and Settings in that order; Labels pushes the editor page', async () => {
   reset(); state.app = app([thread()]);
@@ -58,5 +58,23 @@ test('an unavailable session shows a plain notice and no actions', async () => {
   let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
   assert.deepEqual(labels(root), []);
   assert.equal(root.root.findByType('Notice').props.text, 'This conversation is unavailable.');
+  root.unmount();
+});
+
+test('Export conversation shares the server Markdown; a failure explains itself', async () => {
+  reset(); state.app = app([thread()]);
+  const exported = [];
+  Object.assign(state.app.client, { supportsThreadExport: true, exportThread: async id => { exported.push(id); return '# Plan\n\nhello\n'; } });
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Copy session link', 'Export conversation', 'Settings']);
+  await press(root, 'Export conversation');
+  await act(async () => { await Promise.resolve(); });
+  assert.deepEqual(exported, ['th_1']);
+  assert.deepEqual(state.shared, [{ message: '# Plan\n\nhello\n', title: 'Plan' }]);
+  state.app.client.exportThread = async () => { throw new Error('HTTP 503'); };
+  await press(root, 'Export conversation');
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(state.alerts.length, 1);
+  assert.equal(state.alerts[0][0], 'Could not export this conversation');
   root.unmount();
 });

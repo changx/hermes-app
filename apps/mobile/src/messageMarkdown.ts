@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { parseSessionLink, sessionLinksInText } from '../../../packages/client/src/sessionLinks.ts';
+import { isSessionLinkHref, sessionLinksInText } from '../../../packages/client/src/sessionLinks.ts';
 import type Token from 'markdown-it/lib/token.mjs';
 
 type InlineKind = 'em' | 'strong' | 'strike' | 'link';
@@ -99,7 +99,7 @@ markdown.block.ruler.before('fence', 'message_display_math', (state, start, end,
 
 /** Web URLs and strict App session links. Media uses a separate web-only gate. */
 export function safeLinkUrl(href: string): string | null {
-  if (parseSessionLink(href)) return href;
+  if (isSessionLinkHref(href)) return href;
   if (!/^https?:\/\//i.test(href) || /[\s\p{Cc}\p{Cf}\\]/u.test(href)) return null;
   try {
     const url = new URL(href);

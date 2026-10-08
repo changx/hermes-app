@@ -35,11 +35,28 @@ export function sessionLinkRoute(value: string): string | null {
   return link ? `/threads/${link.threadId}?server=${encodeURIComponent(link.server)}` : null;
 }
 
+/** Short in-message form without a server (`hermesapp://session/<thread-id>`), like a
+ * scheme-relative web link. Valid only inside content shown for one connection, which
+ * supplies the server. External entries (OS intents, clipboard) must use the full form. */
+const relativePattern = /^hermesapp:\/\/session\/(th_[a-zA-Z0-9_-]{1,128})$/;
+export function relativeSessionThread(value: string): string | null {
+  if (value.length > 160 || unsafe.test(value)) return null;
+  return relativePattern.exec(value)?.[1] ?? null;
+}
+export const isSessionLinkHref = (value: string): boolean => !!parseSessionLink(value) || !!relativeSessionThread(value);
+/** Full link for a full or short session link, resolved against the content's own server. */
+export function resolveSessionLink(value: string, server: string | null | undefined): string | null {
+  if (parseSessionLink(value)) return value;
+  const threadId = relativeSessionThread(value);
+  if (!threadId || !server || !sessionServer(server)) return null;
+  return buildSessionLink(server, threadId);
+}
+
 export function sessionLinksInText(text: string): Array<{ start: number; end: number; url: string }> {
   const links: Array<{ start: number; end: number; url: string }> = [];
   for (const match of text.matchAll(/hermesapp:\/\/session\/[^\s<>\[\](){}`]+/g)) {
     const url = match[0].replace(/[.,!?，。！？；：]+$/, '');
-    if (parseSessionLink(url)) links.push({ start: match.index, end: match.index + url.length, url });
+    if (isSessionLinkHref(url)) links.push({ start: match.index, end: match.index + url.length, url });
   }
   return links;
 }

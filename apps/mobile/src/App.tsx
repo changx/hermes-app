@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, KeyboardAvoidingView, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { Text } from './FontSize';
 import { useKeyboardState } from 'react-native-keyboard-controller';
@@ -9,7 +9,8 @@ import * as Crypto from 'expo-crypto';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
-import type { Attachment, Interaction, Message } from '../../../packages/client/src/index';
+import { HttpError, type Attachment, type Interaction, type Message } from '../../../packages/client/src/index';
+import type { MessageActions } from './MessageToolbar';
 import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
@@ -184,6 +185,43 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     if (focusedRef.current) await client.answerInteraction(current, choice);
   });
 
+  const navigation = useSessionNavigation();
+  // One request ID per tapped reply until the server gives a definite answer, so a
+  // lost reply never creates a second branch.
+  const branchRequests = useRef(new Map<number, string>());
+  const latest = useRef({ accountClient, config, outboxRef, threadId, navigation });
+  latest.current = { accountClient, config, outboxRef, threadId, navigation };
+  const messageActions = useMemo<MessageActions>(() => ({
+    ...(accountClient?.supportsThreadBranch ? { branch: async (row: TimelineRow) => {
+      const { accountClient: owner, threadId: source, navigation: nav } = latest.current;
+      if (!owner || row.refSeq === undefined) return;
+      const requests = branchRequests.current;
+      const requestId = requests.get(row.refSeq) ?? 'br_' + Crypto.randomUUID();
+      requests.set(row.refSeq, requestId);
+      setError('');
+      try {
+        const created = await owner.branchThread(source, row.refSeq, requestId);
+        requests.delete(row.refSeq);
+        if (focusedRef.current) nav.thread(created.id);
+      } catch (cause) {
+        if (cause instanceof HttpError && cause.code) requests.delete(row.refSeq);
+        const code = cause instanceof HttpError ? cause.code : undefined;
+        setError(code === 'busy' || code === 'branch_in_progress' ? 'Wait until the current reply finishes, then try again.'
+          : code === 'anchor_unavailable' || code === 'anchor_not_final' ? 'This reply cannot start a branch.'
+          : 'Could not create the branch. Try again.');
+      }
+    } } : {}),
+    ...(accountClient?.supportsMessageSources ? { sources: (row: TimelineRow) => latest.current.accountClient!.messageSources(latest.current.threadId, row.refSeq!) } : {}),
+    exportMessage: (row: TimelineRow) => { void Share.share({ message: row.text }).catch(() => {}); },
+    retry: () => run(async () => {
+      const { config: current, outboxRef: outbox, threadId: id } = latest.current;
+      const box = outbox.current;
+      if (!current || !focusedRef.current || !box || box.storage.connectionId !== current.id) return;
+      await box.enqueue(newSend(current, id, '/retry', 'mob_' + Crypto.randomUUID(), []));
+      timelineRef.current?.followLatest();
+    }, 'Could not retry. Try again.'),
+  }), [accountClient, accountClient?.supportsThreadBranch, accountClient?.supportsMessageSources]);
+
   const messages = client.messages.get(threadId) ?? EMPTY_MESSAGES;
   const visibleMessages = located ? messages : EMPTY_MESSAGES;
   // Scoped receipt/interaction maps mutate in place. Their small signatures are
@@ -277,7 +315,8 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
         await box.retryFailed(threadId, id);
       }, 'Could not retry this message. It is still saved on this device.')}
       onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
-      onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy} />
+      onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy}
+      messageActions={messageActions} />
   </View>;
 }
 

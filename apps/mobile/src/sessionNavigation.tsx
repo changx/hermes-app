@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useRouter } from 'expo-router';
-import { parseSessionLink } from '../../../packages/client/src/sessionLinks';
+import { parseSessionLink, relativeSessionThread } from '../../../packages/client/src/sessionLinks';
 import { Alert } from 'react-native';
 
 /**
@@ -43,6 +43,14 @@ export function useSessionNavigation() {
       navigateSession(router, page => !!connection && scope.hasPage(connection, page), id, threadRoute(connection, id, messageRef));
     },
     link(href: string) {
+      // A short in-message link names no server: it belongs to this page's connection.
+      const short = relativeSessionThread(href);
+      if (short) {
+        const connection = scope.connection;
+        if (!connection) return;
+        navigateSession(router, page => scope.hasPage(connection, page), short, threadRoute(connection, short));
+        return;
+      }
       const target = parseSessionLink(href);
       if (!target) return;
       // A link names its server; open it with the matching saved connection.

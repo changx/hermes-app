@@ -14,7 +14,9 @@ export interface Attachment { id: string; thread_id: string; name?: string; mime
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; notice_kind?: 'review' | 'compression' | 'branch'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+/** A page the agent opened while answering ('read') or a link its reply cites ('cited'). */
+export interface MessageSource { url: string; kind: 'read' | 'cited' }
 
 export interface HttpReply { status: number; body: unknown; retryAfterMs?: number }
 export interface BinaryReply { status: number; body: Uint8Array }
@@ -39,7 +41,7 @@ const diagnosticRoute = (path: string): string => {
 };
 export class HttpError extends ProtocolError {
   readonly route: string;
-  constructor(readonly status: number, readonly retryAfterMs?: number, path = '') {
+  constructor(readonly status: number, readonly retryAfterMs?: number, path = '', readonly code?: string) {
     super('HTTP ' + status + (path ? ' ' + path : '')); this.name = 'HttpError'; this.route=diagnosticRoute(path);
   }
 }
@@ -123,6 +125,7 @@ const validMessage = (v: unknown): Message => {
   return { id: str(x.id), ref_seq: num(x.ref_seq), role, text: str(x.text),
     ...(role === 'assistant' && (x.display_kind === 'direct' || x.display_kind === 'final') ? {display_kind: x.display_kind} : {}),
     ...(role === 'system' ? {display_kind: 'system_notice' as const} : {}),
+    ...(role === 'system' && (x.notice_kind === 'review' || x.notice_kind === 'compression' || x.notice_kind === 'branch') ? {notice_kind: x.notice_kind} : {}),
     ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}),
     ...(role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}),
     ...(x.receipt_id == null ? {} : {receipt_id:str(x.receipt_id)}),
@@ -178,6 +181,10 @@ export class HermesClient {
   supportsChannelWorkspace = false;
   supportsAttachmentOrigin = false;
   supportsSessionLabels = false;
+  /** Server branch endpoint, message sources and conversation export (plugin 0.2.9+). */
+  supportsThreadBranch = false;
+  supportsMessageSources = false;
+  supportsThreadExport = false;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -277,10 +284,14 @@ export class HermesClient {
       : this.options.http.request(method, path, token, body, s),timeout(requestTimeoutMs??this.options.requestTimeoutMs,15000),signal);
     if (signal?.aborted) throw new Error('aborted');
 
-    if (response.status < 200 || response.status >= 300) throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0]);
+    if (response.status < 200 || response.status >= 300) {
+      const body = response.body && typeof response.body === 'object' ? (response.body as Record<string, unknown>) : {};
+      const code = typeof body.error === 'string' && /^[a-z_]{1,64}$/.test(body.error) ? body.error : undefined;
+      throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0],code);
+    }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download); this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -289,6 +300,9 @@ export class HermesClient {
     this.supportsChannelWorkspace = owner.supportsChannelWorkspace;
     this.supportsAttachmentOrigin = owner.supportsAttachmentOrigin;
     this.supportsSessionLabels = owner.supportsSessionLabels;
+    this.supportsThreadBranch = owner.supportsThreadBranch;
+    this.supportsMessageSources = owner.supportsMessageSources;
+    this.supportsThreadExport = owner.supportsThreadExport;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
   private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
@@ -337,6 +351,25 @@ export class HermesClient {
   }
   async updateThread(id: string, patch: {title?: string; archived?: boolean}): Promise<Thread> { const x = await this.call('PATCH','/v1/threads/'+idPath(id),patch); const t = validThread(x.thread); await this.getThread(id); return t }
   async archiveThread(id: string): Promise<Thread> { const x = await this.call('DELETE','/v1/threads/'+idPath(id)); const t=validThread(x.thread); await this.getThread(id); return t }
+  /** New Thread from a final reply; the same requestId returns the same Thread. Failures carry HttpError.code. */
+  async branchThread(threadId: string, anchorRefSeq: number, requestId: string): Promise<Thread> {
+    if (!Number.isSafeInteger(anchorRefSeq) || anchorRefSeq <= 0 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw new ProtocolError('invalid branch');
+    const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/branch',{anchor_ref_seq:anchorRefSeq,request_id:requestId},undefined,undefined,60000);
+    const t = validThread(x.thread);
+    if (t.id === threadId) throw new ProtocolError('branch identity mismatch');
+    await this.getThread(t.id).catch(() => {});
+    return t;
+  }
+  async messageSources(threadId: string, refSeq: number, signal?: AbortSignal): Promise<MessageSource[]> {
+    const x = await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages/'+num(refSeq)+'/sources',undefined,signal);
+    return arr(x.sources).slice(0,50).map(value => { const s = obj(value), url = displayLine(s.url, 2048);
+      if (!/^https?:\/\//i.test(url) || (s.kind !== 'read' && s.kind !== 'cited')) throw new ProtocolError('invalid source');
+      return { url, kind: s.kind }; });
+  }
+  /** The visible conversation as Markdown text. */
+  async exportThread(threadId: string, signal?: AbortSignal): Promise<string> {
+    return new TextDecoder().decode(await this.downloadPath('/v1/threads/'+idPath(threadId)+'/export', signal));
+  }
   async send(threadId: string, clientMessageId: string, text: string, attachments: string[] = [], signal?: AbortSignal): Promise<Receipt> {
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || (!text.trim() && !attachments.length)) throw new ProtocolError('invalid send');
     if(attachments.length>8 || new Set(attachments).size!==attachments.length || attachments.some(a=>!a.startsWith('att_'))) throw new ProtocolError('invalid attachments');

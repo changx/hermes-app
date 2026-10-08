@@ -1,0 +1,74 @@
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
+import { Text } from './FontSize';
+import { openLink } from './openLink';
+import { copyWithToast } from './CopyToast';
+import type { MessageSource } from '../../../packages/client/src/index';
+import type { TimelineRow } from './timeline';
+
+/** Actions under a final reply. Absent handlers hide their button. */
+export interface MessageActions {
+  branch?(row: TimelineRow): Promise<void>;
+  sources?(row: TimelineRow): Promise<MessageSource[]>;
+  exportMessage?(row: TimelineRow): void;
+  retry?(row: TimelineRow): void;
+}
+
+function ToolButton({ label, ios, android, onPress, disabled = false, busy = false, active = false }: { label: string; ios: SFSymbol; android: AndroidSymbol; onPress: () => void; disabled?: boolean; busy?: boolean; active?: boolean }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, busy, expanded: active || undefined }}
+    disabled={disabled || busy} hitSlop={6} onPress={onPress} style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}>
+    {busy ? <ActivityIndicator size="small" color="#7b8794" />
+      : <SymbolView name={{ ios, android }} size={16} tintColor={active ? '#2b4e81' : '#7b8794'} weight="regular" fallback={<Text style={styles.fallback}>{label}</Text>} />}
+  </Pressable>;
+}
+
+const sourceLabel = (url: string) => { try { const u = new URL(url); return u.hostname.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname); } catch { return url; } };
+
+/** Compact, always-visible row under a final reply: Branch, Copy, References, Export, Retry. */
+export function MessageToolbar({ row, actions, canRetry, running }: { row: TimelineRow; actions: MessageActions; canRetry: boolean; running: boolean }) {
+  const [branching, setBranching] = useState(false);
+  const [sources, setSources] = useState<{ open: boolean; items?: MessageSource[]; loading?: boolean; failed?: boolean }>({ open: false });
+  const mounted = useRef(true);
+  React.useEffect(() => () => { mounted.current = false; }, []);
+  const loadSources = async () => {
+    if (!actions.sources) return;
+    if (sources.open) { setSources(old => ({ ...old, open: false })); return; }
+    if (sources.items) { setSources(old => ({ ...old, open: true })); return; }
+    setSources({ open: true, loading: true });
+    try { const items = await actions.sources(row); if (mounted.current) setSources({ open: true, items }); }
+    catch { if (mounted.current) setSources({ open: true, failed: true }); }
+  };
+  return <View testID="message-toolbar">
+    <View style={styles.row}>
+      {!!actions.branch && <ToolButton label="Branch" ios="arrow.triangle.branch" android="call_split" busy={branching} disabled={running}
+        onPress={() => { setBranching(true); void actions.branch!(row).finally(() => { if (mounted.current) setBranching(false); }); }} />}
+      <ToolButton label="Copy" ios="doc.on.doc" android="content_copy" onPress={() => { void copyWithToast(row.text); }} />
+      {!!actions.sources && <ToolButton label="References" ios="link" android="link" active={sources.open} onPress={() => { void loadSources(); }} />}
+      {!!actions.exportMessage && <ToolButton label="Export" ios="square.and.arrow.up" android="ios_share" onPress={() => actions.exportMessage!(row)} />}
+      {canRetry && !!actions.retry && <ToolButton label="Retry" ios="arrow.clockwise" android="refresh" disabled={running} onPress={() => actions.retry!(row)} />}
+    </View>
+    {sources.open && <View style={styles.sources} accessibilityLiveRegion="polite">
+      {sources.loading ? <Text style={styles.note}>Loading references…</Text>
+        : sources.failed ? <Text style={styles.note}>Could not load references. Try again later.</Text>
+        : !sources.items?.length ? <Text style={styles.note}>No web pages were used for this reply.</Text>
+        : sources.items.map(item => <Pressable key={item.url} accessibilityRole="link" accessibilityLabel={item.url} onPress={() => openLink(item.url)} style={styles.source}>
+          <Text numberOfLines={1} style={styles.sourceText}>{sourceLabel(item.url)}</Text>
+          {item.kind === 'cited' && <Text style={styles.kind}>cited</Text>}
+        </Pressable>)}
+    </View>}
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 8, marginLeft: -6 },
+  button: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  pressed: { backgroundColor: '#ebe8df' },
+  disabled: { opacity: 0.4 },
+  fallback: { color: '#7b8794', fontSize: 11 },
+  sources: { marginTop: 4, gap: 2 },
+  source: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5 },
+  sourceText: { color: '#215ca7', fontSize: 13, flexShrink: 1 },
+  kind: { color: '#8a94a0', fontSize: 11 },
+  note: { color: '#697b90', fontSize: 13, paddingVertical: 4 },
+});

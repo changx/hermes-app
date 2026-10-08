@@ -3,7 +3,7 @@ import type { SendRecord } from './send';
 import { validTimestampSeconds } from './messageTime.ts';
 
 export interface Reaction { emoji: string; label: string; source: 'agent' }
-export interface TimelineRow { key: string; role: string; text: string; displayKind?: Message['display_kind']; timestamp?: number; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
+export interface TimelineRow { key: string; role: string; text: string; displayKind?: Message['display_kind']; noticeKind?: Message['notice_kind']; timestamp?: number; toolCalls?: Message['tool_calls']; continuation?: boolean; refSeq?: number; optimistic?: boolean; status?: SendRecord['status']; attachments?: Message['attachments']; reactionSlot?: boolean; reaction?: Reaction; feedback?: string; sendError?: string; receipt?: Receipt }
 
 const agentState: Record<NonNullable<Receipt['processing']>, Reaction | undefined> = {
   running: { emoji: '👀', label: 'Working', source: 'agent' },
@@ -59,6 +59,7 @@ export function projectTimeline(messages: readonly Message[], record: SendRecord
     const timestamp = validTimestampSeconds(serverTime) ? serverTime : item?.createdAt;
     return { key: m.role === 'user' && m.client_message_id ? `local:${m.client_message_id}` : `ref:${m.ref_seq}`, role: m.role, text: m.text, refSeq: m.ref_seq, attachments: m.attachments,
       ...(m.display_kind ? { displayKind: m.display_kind } : {}),
+      ...(m.notice_kind ? { noticeKind: m.notice_kind } : {}),
       ...(validTimestampSeconds(timestamp) ? { timestamp } : {}),
       ...(m.role === 'assistant' ? { toolCalls: m.tool_calls, continuation: !m.display_kind && index > 0 && messages[index - 1].role === 'assistant' && !messages[index - 1].display_kind } : {}),
       ...(m.role === 'user' && !!m.client_message_id ? { reactionSlot: true } : {}),
