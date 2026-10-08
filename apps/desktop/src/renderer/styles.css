@@ -699,6 +699,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-toolbar .conversation-actions button:hover { background: var(--app-hover); color: var(--app-text); }
 .session-toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .session-toolbar .settings-open-error { position: absolute; top: calc(100% + 4px); right: 0; white-space: nowrap; }
+/* Always-visible actions under a final reply; quiet until hovered. */
+.message-toolbar { display: flex; align-items: center; gap: 2px; margin: 8px 0 0 -6px; }
+.message-toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--app-label); cursor: pointer; }
+.message-toolbar button:hover:not(:disabled), .message-toolbar button[aria-expanded="true"] { background: var(--app-hover); color: var(--app-text); }
+.message-toolbar button:disabled { opacity: 0.4; cursor: default; }
+.message-toolbar button[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+.message-toolbar svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.message-toolbar-note { margin-left: 6px; color: var(--app-label); font-size: calc(var(--app-font-size) - 2px); }
+.message-sources { margin: 4px 0 0; font-size: calc(var(--app-font-size) - 1px); }
+.message-sources p { margin: 4px 0; color: var(--app-label); }
+.message-sources ul { margin: 0; padding: 0; list-style: none; }
+.message-sources li { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; min-width: 0; }
+.message-sources a { color: var(--app-link); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-sources small { color: var(--app-label); }
 .session-tab-page .timeline-content { max-width: var(--session-content-max); margin-inline: auto; }
 .session-tab-page .interaction-card { margin-inline: max(18px, calc((100% - var(--session-content-max)) / 2)); }
 .session-tab-page .composer > * { max-width: var(--session-content-max); margin-inline: auto; }

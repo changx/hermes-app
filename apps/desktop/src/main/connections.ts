@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { ChannelInput, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from '../shared/desktop-api';
 import type { AttachmentInput } from '../shared/attachment-input';
-import { parseSessionLink, sessionServer } from '../../../../packages/client/src/sessionLinks';
+import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
 import { DesktopConnectionService, deviceName, normalizeCode } from './connection-service';
 import { CredentialStore } from './credential-store';
 import { ConnectionIndex, type ConnectionEntry } from './connection-index';
@@ -193,7 +193,15 @@ export class DesktopConnections {
   }
   async flushLocalDrafts(): Promise<void> { await this.drafts.flush(); }
   sessionLink(id?: string): string { if (!id) return this.current().service.sessionLink(); const r = this.route(id); return r.account.service.sessionLink(r.raw); }
-  openSessionLink(value: string): void {
+  openSessionLink(value: string, contextThread?: string): void {
+    // A short in-message link belongs to the connection of the Session that shows it.
+    const short = relativeSessionThread(value);
+    if (short) {
+      if (!contextThread) return;
+      const r = this.route(contextThread), server = r.account.server ?? r.account.service.serverAddress();
+      if (!server) return;
+      value = buildSessionLink(server, short);
+    }
     const target = parseSessionLink(value);
     const owner = target && [...this.accounts.values()].find(a => { const server = a.server ?? a.service.serverAddress(); return server && sessionServer(server) === target.server; });
     if (owner) this.active = owner.id;
@@ -206,6 +214,19 @@ export class DesktopConnections {
   async loadOlder(id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.loadOlder(r.raw); }
   async sendMessage(input: SendMessageInput, id?: string): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.sendMessage(input, r.raw); }
   async retryMessage(clientId: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.retryMessage(clientId, r.raw); }
+  /** Branches, then opens the new Session like a link click on its connection. */
+  async branchFromMessage(refSeq: number, id?: string): Promise<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }> {
+    if (!id) return { ok: false, reason: 'unavailable' };
+    const r = this.route(id), result = await r.account.service.branchFromMessage(refSeq, r.raw);
+    if (!result.ok) return result;
+    this.active = r.account.id;
+    r.account.service.openSessionLink(result.link);
+    return { ok: true };
+  }
+  async messageSources(refSeq: number, id?: string) { if (!id) return []; const r = this.route(id); return r.account.service.messageSources(refSeq, r.raw); }
+  async exportMessage(text: string, id?: string) { if (!id) return { ok: false as const }; const r = this.route(id); return r.account.service.exportMessage(text, r.raw); }
+  async exportConversation(id?: string) { if (!id) return { ok: false as const }; const r = this.route(id); return r.account.service.exportConversation(r.raw); }
+  async retryLatest(id?: string): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.retryLatest(r.raw); }
   async stopThread(id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.stopThread(r.raw); }
   async cancelQueued(receipt: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.cancelQueued(receipt, r.raw); }
   async answerInteraction(interaction: string, choice: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.answerInteraction(interaction, choice, r.raw); }

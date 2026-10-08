@@ -45,6 +45,7 @@ export type DesktopMessage = Readonly<{
   id: string;
   role: "user" | "assistant" | "system";
   displayKind?: "direct" | "final" | "system_notice";
+  noticeKind?: "review" | "compression" | "branch";
   text: string;
   refSeq?: number;
   clientMessageId?: string;
@@ -78,6 +79,10 @@ export type DesktopSnapshot = Readonly<{
   connectionLabel: string;
   connectionKey?: string;
   supportsSessionLabels?: boolean;
+  /** Server reports the branch endpoint, message sources and conversation export. */
+  supportsThreadBranch?: boolean;
+  supportsMessageSources?: boolean;
+  supportsThreadExport?: boolean;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
   loadingHistory?: boolean;
@@ -112,6 +117,10 @@ export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
+/** A page the agent opened ('read') or a link its reply cites ('cited'). */
+export type DesktopMessageSource = Readonly<{ url: string; kind: 'read' | 'cited' }>;
+export type BranchResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
+export type ExportResult = Readonly<{ ok: true; saved: boolean } | { ok: false }>;
 export type DesktopRuntimeInfo = Readonly<{
   viewRole?: 'workspace' | 'tab' | 'settings' | 'browser';
   platform: NodeJS.Platform;
@@ -173,6 +182,15 @@ export interface HermesDesktopApi {
   getChannelInfo(channelId: string): Promise<DesktopChannel>;
   sendMessage(input: SendMessageInput): Promise<void>;
   retryMessage(clientMessageId: string): Promise<void>;
+  /** New Session from this tab's final reply; opens it on success. */
+  branchFromMessage(refSeq: number): Promise<BranchResult>;
+  messageSources(refSeq: number): Promise<readonly DesktopMessageSource[]>;
+  copyText(text: string): Promise<void>;
+  /** Save dialogs; `saved: false` when the user cancels. */
+  exportMessage(text: string): Promise<ExportResult>;
+  exportConversation(): Promise<ExportResult>;
+  /** Re-run this tab's latest turn (native /retry). */
+  retryLatest(): Promise<void>;
   stopThread(): Promise<void>;
   cancelQueued(receiptId: string): Promise<void>;
   answerInteraction(interactionId: string, choice: string): Promise<void>;

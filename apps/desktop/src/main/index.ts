@@ -170,7 +170,12 @@ const registerDesktopApi = (): void => {
   });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
   handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
-  handle("desktop:open-session-link", (event, value: unknown) => { trustedSender(event); service.openSessionLink(text(value, 4096)); });
+  handle("desktop:open-session-link", (event, value: unknown) => {
+    trustedSender(event);
+    // A tab's message can hold a short link; it resolves against that tab's Session.
+    const context = tabs?.sender(event.sender) ? target(event) : undefined;
+    service.openSessionLink(text(value, 4096), context);
+  });
   handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
   handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
   handle("desktop:pair", async (event, value: unknown) => {
@@ -213,6 +218,18 @@ const registerDesktopApi = (): void => {
   handle("desktop:get-channel-info", async (event, id: unknown) => { trustedSender(event); return service.getChannelInfo(text(id, 200)); });
   handle("desktop:send-message", async (event, value: unknown) => { const threadId = target(event), input = object(value), tab = tabs?.sender(event.sender), manager = tabs; if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { await service.sendMessage({ text: text(input.text, 100_000), attachmentIds: texts(input.attachmentIds, 8, 200), ...(input.clientMessageId === undefined ? {} : { clientMessageId: text(input.clientMessageId, 100) }) } satisfies SendMessageInput, threadId); if (manager === tabs) { manager?.draftThreads.delete(threadId); manager?.publish(); } } finally { if (tab) tab.busy = false; } });
   handle("desktop:retry-message", async (event, id: unknown) => { await service.retryMessage(text(id, 128), target(event)); });
+  const refSeq = (value: unknown): number => { if (!Number.isSafeInteger(value) || (value as number) <= 0) throw new Error('Invalid desktop request'); return value as number; };
+  handle("desktop:branch-message", async (event, ref: unknown) => {
+    const threadId = target(event), tab = tabs?.sender(event.sender);
+    if (tab?.busy) return { ok: false, reason: 'busy' };
+    if (tab) tab.busy = true;
+    try { return await service.branchFromMessage(refSeq(ref), threadId); } finally { if (tab) tab.busy = false; }
+  });
+  handle("desktop:message-sources", async (event, ref: unknown) => service.messageSources(refSeq(ref), target(event)));
+  handle("desktop:copy-text", (event, value: unknown) => { trustedSender(event); clipboard.writeText(text(value, 1_000_000)); });
+  handle("desktop:export-message", async (event, value: unknown) => service.exportMessage(text(value, 1_000_000), target(event)));
+  handle("desktop:export-conversation", async (event) => service.exportConversation(target(event)));
+  handle("desktop:retry-latest", async (event) => { await service.retryLatest(target(event)); });
   handle("desktop:stop-thread", async (event) => { await service.stopThread(target(event)); });
   handle("desktop:cancel-queued", async (event, id: unknown) => { await service.cancelQueued(text(id, 200), target(event)); });
   handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { await service.answerInteraction(text(id, 200), text(choice, 4000), target(event)); });
