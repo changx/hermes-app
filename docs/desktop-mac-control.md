@@ -94,3 +94,11 @@ Agent（Gateway，hermes-app-dev profile）
 - 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/20261008-213422-desktop-mac/`、`…/20261008-220441-desktop-mac-jamie/`。
 - 回滚：插件用证据目录中的 `backup-hermes-app-<版本>` 换回后重启 Gateway；桌面版重新安装 v0.1.51。
 - 待完成：jamie 的 Gateway 重启；第 7、8 节的 macOS 真机验收。
+
+## 11. v0.1.53（2026-10-08）：常驻驱动会话
+
+- 真机测试 v0.1.52：读取窗口成功，点击被驱动拒绝（快照不跨进程）。修复见第 5 节。插件不变（v0.2.12）。
+- 检查：`desktop:check`（Chrome + Electron）149/149；Xvfb + 真实驱动 0.34.0：同一会话中读取窗口后像素点击、输入文字成功。
+- 发布：`origin/main` `a9f0b3f..8bac06a`，标签 `v0.1.53`，打包任务 37892183847 成功。`Hermes-0.1.53-macOS-arm64.zip`：校验和正确，ZIP 完整，Info.plist 0.1.53，arm64；ASAR 四个构建文件与本地构建逐字节相同。Expo 和运行目录未动（只有桌面改动）。
+- 回滚：重新安装 v0.1.52（只能读，不能点击）。
+- 待完成：真机上读取后点击、输入文字。
