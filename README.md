@@ -33,23 +33,31 @@
 - 文档建立：2026-09-24（PDT）。
 - 当前开发环境与既有验收状态见 [开发环境](docs/dev-environment.md)。仓库建立不代表授权生产发布、签名、notarization、其他 profile 变更或正式 App 发布。
 
-## macOS 自动构建与 Release
+## macOS 构建与 Release
 
-GitHub Actions 工作流 `.github/workflows/desktop-release.yml` 在 `main`、Pull Request 和手动触发时使用 Apple Silicon macOS runner 执行锁定依赖安装、桌面完整检查、依赖审计和 arm64 打包，并保留 14 天构建产物。
+桌面安装包在项目 Mac mini（`ssh macmini`）上构建。GitHub Actions 因账户付款问题无法启动 job，2026-10-09 起改用此方式。
 
-推送与 `apps/desktop/package.json` 版本一致的 tag（例如 `v0.1.36`）会在相同门禁通过后自动创建 GitHub Release，上传：
+1. 推送与 `apps/desktop/package.json` 版本一致的 tag：
+
+```bash
+git tag v0.1.58
+git push origin main v0.1.58
+```
+
+2. 在本机仓库根目录运行：
+
+```bash
+scripts/macmini-desktop-release.sh v0.1.58
+```
+
+脚本把 tag 源码（`git archive`）传到 Mac mini，执行锁定依赖安装、桌面检查、依赖审计、arm64 打包、zip 和 SHA-256 校验，再取回安装包，由本机 `gh` 创建 GitHub Release，上传：
 
 - `Hermes-<version>-macOS-arm64.zip`
 - 对应的 `.sha256` 校验文件
 
-发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。创建 release 的示例：
+加 `--no-publish` 只构建，不发布。同名 Release 已存在时脚本拒绝发布。发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。
 
-```bash
-git tag v0.1.36
-git push origin v0.1.36
-```
-
-同名 Release 已存在时，工作流会拒绝替换已发布资产。
+`.github/workflows/desktop-release.yml` 保留为手动运行（workflow_dispatch），不再随 push 触发。
 
 ## 下一步
 

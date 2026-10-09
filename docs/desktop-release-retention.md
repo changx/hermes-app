@@ -4,8 +4,8 @@ Jamie authorized this policy on 2026-10-06: old desktop builds have no value at 
 
 ## Workflow
 
-- Branch and pull request runs (`desktop-release.yml`, job `build-macos-arm64`) run checks, audit and packaging with a read-only token. They do not store an Actions artifact.
-- A `v*` tag run (job `release`) runs the same checks and packaging, then publishes the GitHub Release from the same job. No Actions artifact is uploaded, so the Actions storage quota cannot block a release.
+- Since 2026-10-09, releases are built on the project Mac mini. GitHub Actions cannot start jobs because of an account payment problem. Push the `vX.Y.Z` tag, then run `scripts/macmini-desktop-release.sh vX.Y.Z` on the Hermes host. The script runs the same checks, audit and packaging as the `release` job, then publishes the Release with `gh` and prunes old Releases.
+- `desktop-release.yml` now runs only on demand (`workflow_dispatch`); push, tag and pull request triggers are removed. A manual run on a tag ref still uses the `release` job. A manual run on a branch uses the `build-macos-arm64` job, which runs checks, audit and packaging with a read-only token and stores no Actions artifact.
 - `desktop-direct-release.yml` stays available for a manual, source-pinned publication of an existing tag.
 
 ## Retention

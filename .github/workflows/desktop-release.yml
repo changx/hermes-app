@@ -1,12 +1,8 @@
 name: Desktop Build and Release
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
-  pull_request:
+  # Releases are built on the project Mac mini (scripts/macmini-desktop-release.sh).
+  # This workflow runs only on demand.
   workflow_dispatch:
 
 concurrency:

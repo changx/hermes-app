@@ -113,10 +113,14 @@ test('cancel stops waiting; a timeout or a crash replaces the session', async ()
   try {
     const abort = new AbortController();
     const running = h.driver.run({ tool: 'slow' }, abort.signal, 5000);
-    setTimeout(() => abort.abort(), 100);
+    // Abort only after the call reaches the driver. A new executable can start slowly on macOS (first-run scan),
+    // so a fixed 100 ms delay can abort before the request is sent, and then no cancel notice is due.
+    const until = async (line) => { for (const end = Date.now() + 5000; !h.log().includes(line) && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 20)); };
+    await until('tools/call slow');
+    abort.abort();
     await assert.rejects(running, { code: 'cancelled' });
     // The fake driver writes its log from another process; under full-suite load that can take more than 200 ms.
-    for (const end = Date.now() + 5000; !h.log().includes('notifications/cancelled') && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 50));
+    await until('notifications/cancelled');
     assert.ok(h.log().includes('notifications/cancelled'), 'the driver is told about the cancel');
     assert.match((await h.driver.run({ tool: 'list_apps' }, signal(), 5000)).output, /^ok list_apps/, 'the session survives a cancel');
     await assert.rejects(h.driver.run({ tool: 'slow' }, signal(), 300), { code: 'unknown' });
