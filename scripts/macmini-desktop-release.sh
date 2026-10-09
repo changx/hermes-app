@@ -2,7 +2,11 @@
 # Build the unsigned Apple Silicon desktop package for a pushed tag on the Mac mini,
 # then publish it as a GitHub Release from this host.
 #
-# Usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish]
+# Usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish | --publish-built]
+#
+# --no-publish     build and copy the package to tmp/release/<tag>/ only.
+# --publish-built  skip the build; publish the package already in tmp/release/<tag>/
+#                  (use after checking a --no-publish build).
 #
 # Same steps as the `release` job in .github/workflows/desktop-release.yml:
 # npm ci, desktop:check, npm audit, desktop:package:mac, ditto zip, SHA-256.
@@ -13,9 +17,14 @@
 # - `gh` on this host can write Releases to the repository.
 set -euo pipefail
 
-tag="${1:?usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish]}"
-publish=true
-[[ "${2:-}" == "--no-publish" ]] && publish=false
+tag="${1:?usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish | --publish-built]}"
+publish=true; build=true
+case "${2:-}" in
+  "") ;;
+  --no-publish) publish=false ;;
+  --publish-built) build=false ;;
+  *) echo "Unknown option: $2" >&2; exit 2 ;;
+esac
 host="${MACMINI_HOST:-macmini}"
 node_version="v24.14.1"
 root="$(git rev-parse --show-toplevel)"
@@ -40,6 +49,9 @@ fi
 archive="Hermes-$version-macOS-arm64.zip"
 remote_dir="hermes-desktop-build/$tag"
 out="$root/tmp/release/$tag"
+
+if $build; then
+# Build on the Mac mini (the heredoc below must stay unindented).
 echo "Building $tag ($sha) on $host in ~/$remote_dir"
 
 ssh "$host" "rm -rf ~/$remote_dir && mkdir -p ~/$remote_dir"
@@ -68,6 +80,7 @@ REMOTE
 
 rm -rf "$out"; mkdir -p "$out"
 scp -q "$host:$remote_dir/release/$archive" "$host:$remote_dir/release/$archive.sha256" "$out/"
+fi
 (cd "$out" && sha256sum -c "$archive.sha256")
 echo "Package: $out/$archive"
 

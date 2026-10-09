@@ -55,7 +55,7 @@ scripts/macmini-desktop-release.sh v0.1.58
 - `Hermes-<version>-macOS-arm64.zip`
 - 对应的 `.sha256` 校验文件
 
-加 `--no-publish` 只构建，不发布。同名 Release 已存在时脚本拒绝发布。发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。
+加 `--no-publish` 只构建，不发布；检查包后，用 `--publish-built` 发布 `tmp/release/<tag>/` 中这同一个包，不重新构建。同名 Release 已存在时脚本拒绝发布。发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。
 
 `.github/workflows/desktop-release.yml` 保留为手动运行（workflow_dispatch），不再随 push 触发。
 
