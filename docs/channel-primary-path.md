@@ -1,6 +1,6 @@
 # Channel primary path（客户端）
 
-分支：App `feat/channel-primary-path`，插件 `feat/channel-primary-path`。状态：本地候选，未合并，未发布。
+状态（2026-10-08）：已合并并发布。App main `d5a8913`（桌面 v0.1.51），插件 main `b3799c0`（v0.2.11）。插件已安装到 hermes-app-dev，待 Gateway 重启后生效。
 
 ## 已确认需求（Jamie，2026-10-08）
 
@@ -41,6 +41,13 @@
 - 桌面：`xvfb-run -a npm run desktop:check`（含 Electron 和 Chrome 测试）141 项中 140 passed。失败的 `browser-window-native` 是已知的不稳定测试，单独重跑 3 次都通过，与本改动无关。
 - 插件全量 P1（`env -u HERMES_HOME`）：169 passed，1 failed，2 skipped。失败的 `test_runner[midturn]` 单独重跑 3 次都通过，与本改动无关。
 - 真实互通：插件测试通过 `HERMES_APP_SDK_ROOT` 运行 `tests/client/primary-path-interop.mjs`，使用共享 SDK 和手机原生 transport，经 loopback HTTP 访问真实插件。绑定、读取、AGENTS.md 来源、拒绝 `/etc`、拒绝重复文件夹和解除绑定都通过。
+
+## 发布记录（2026-10-08，Jamie 授权「merge and redeploy」）
+
+- 插件：tag `v0.2.11`，归档 sha256 `c60b4123009b591458fe21bea77c8118abae35eea8ff92c6a23c809d73b40553`。只安装文件到 hermes-app-dev；回读 22 个文件，`*.py` 与插件 main 一致。变更模块都在启动时导入，所以运行中的 Gateway 仍使用 v0.2.10，重启后才生效。jamie profile 未改动。
+- 手机：main 合入后只重启 `hermes-app-expo.service`（PID 1490287）。lockfile 未变，未执行 npm ci。公网 iOS/Android manifest HTTP 200、SDK 57.0.0；launchAsset HTTP 200，含 `Primary folder`、`channel_primary_path`、`bound_primary_path`。bundle sha256：iOS `7ce0ed4fb979264ad2dac3c5ecd80acc25ad90eb0643f2739f15558aaaba551c`，Android `2d4166bf5b5f7c9daba50b446bba7fa894359939db30f94cadd7aa9a125c7f7a`。
+- 桌面：tag `v0.1.51`，CI run `37865708523` 成功并发布 `Hermes-0.1.51-macOS-arm64.zip`。下载后 sha256 校验通过，Info.plist 版本 0.1.51，arm64；ASAR `dist` 与本地验证构建逐字节一致（source map 不打包）。
+- 回滚：插件恢复备份目录后重启 Gateway；App 对 `d5a8913`、`703aeb6` 做 git revert 后重启 Expo。不恢复聊天数据。
 
 ## 尚未完成
 
