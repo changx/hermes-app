@@ -5,7 +5,7 @@
 
 ## Desktop v0.1.54: session toolbar labels wrap and are clickable
 
-The floating Session toolbar has a variable height. The tool buttons stay on the first row at the top right. All labels are below the buttons and wrap onto as many rows as necessary; there is no `+N` overflow. The toolbar is at most 420px wide, so labels wrap instead of covering the timeline width. Each label is a button with the in-app tooltip "Edit label". A click opens Edit labels with that label already in edit mode. The sidebar tree keeps its single-row measured pills. Plugin, mobile and Gateway are unchanged.
+The floating Session toolbar has a variable height. The tool buttons stay on the first row at the top right. All labels are below the buttons and wrap onto as many rows as necessary; there is no `+N` overflow. The toolbar is at most 420px wide, so labels wrap instead of covering the timeline width. Each label is a button. (In v0.1.54 a click opened Edit labels; this was corrected: a click now searches the sidebar for that label, see [desktop-session-search.md](desktop-session-search.md).) The sidebar tree keeps its single-row measured pills. Plugin, mobile and Gateway are unchanged.
 
 Source `89e38c2` and release commit `e523091`, tag `v0.1.54`. Local checks: TypeScript and build passed; the desktop suite had 143 passed, 5 skipped. One failure, `mac-control.test.mjs` "cancel stops waiting", also occurs on unchanged v0.1.53 under full-suite load and passes alone; it is not related to this change. The tag workflow passed its desktop checks on the macOS runner. The downloaded `Hermes-0.1.54-macOS-arm64.zip` passed its SHA-256 check, Info.plist reports 0.1.54, and the executable is arm64. All ASAR `dist/` runtime files are byte-identical to the verified local build; only source maps differ. Real-device acceptance on Jamie's Mac is pending.
 
@@ -46,6 +46,8 @@ The shared SDK requires negotiated capability, an online connection and an avail
 ## Desktop and mobile behavior
 
 Desktop extends the current Channel → Thread tree. A single line of small pills sits below the title and disappears when empty. Hidden labels become `+N` using actual rendered text and available-width measurements; long pills truncate. Pills cannot intercept the row click. Existing running and completed-unread indicators retain their behavior and styles. Right-click or keyboard context menu offers Edit labels, and the Session header has the same entry.
+
+> **Replaced on desktop:** the Projects label filter below is removed. Desktop label filtering is now part of session search (labels combine with AND); see [desktop-session-search.md](desktop-session-search.md).
 
 The top Labels popover searches unique exact labels from available Threads on the current connection. Multi-selection uses OR, with a separate No labels choice and Clear filters. Filtering occurs before display batching. An active filter includes all time, starts with 24 matches and adds 24 per Load more. Empty Channels disappear and matching branches expand. Filtering never closes the current page. Connection changes reset the filter and immediately discard any old connection's label dialog.
 

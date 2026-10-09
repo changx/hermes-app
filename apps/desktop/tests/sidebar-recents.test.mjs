@@ -28,7 +28,7 @@ test('Recents shows one batch, then more on request', () => {
 });
 
 // Production NativeWorkspace sidebar in real Chromium.
-test('Chromium: sidebar starts with New chat, then Recents, then Projects with filter and plus', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: sidebar starts with New chat, then the search box, Recents, then Projects with plus', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'sidebar-recents-'));
   try {
     const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
@@ -67,8 +67,10 @@ test('Chromium: sidebar starts with New chat, then Recents, then Projects with f
         checks.indent={recents:recentTitle-recentsLabel,project:projectStep};
         ensure('recents rows indented exactly one level, the Project step',Math.abs((recentTitle-recentsLabel)-projectStep)<=1&&list.borderLeftWidth==='1px');
         const header=[...scroll.querySelectorAll('.sidebar-section-header')].find(e=>e.textContent.includes('Projects'));
-        const filter=header.querySelector('[aria-label="Filter sessions"]'), plus=header.querySelector('[aria-label="New project"]');
-        ensure('plus beside filter in Projects header',filter&&plus&&plus.getBoundingClientRect().left>filter.getBoundingClientRect().left&&Math.abs(plus.getBoundingClientRect().top-filter.getBoundingClientRect().top)<=2);
+        const plus=header.querySelector('[aria-label="New project"]'), search=scroll.querySelector('.sidebar-search');
+        ensure('no label filter icon in Projects header',!header.querySelector('[aria-label="Filter sessions"]'));
+        ensure('plus at the right of the Projects header',plus&&header.getBoundingClientRect().right-plus.getBoundingClientRect().right<=8);
+        ensure('search box below New chat and above Recents',search&&search.getBoundingClientRect().top>=first.getBoundingClientRect().bottom&&search.getBoundingClientRect().bottom<=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().top&&search.querySelector('input[aria-label="Search sessions"]'));
         ensure('plus uses icon font',plus.querySelector('.app-icon').textContent==='\\ue012');
         plus.click(); ensure('plus opens New project',projects===1);
         scroll.querySelector('#sidebar-recents-list .tree-thread').click(); await new Promise(r=>setTimeout(r,10));

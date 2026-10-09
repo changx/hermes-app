@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { emptyLabelFilter, labelCandidates, labelFilterActive, labelPillLayout, validateLabels, type LabelFilter } from '../../../../packages/client/src/sessionLabels';
+import { labelCandidates, labelPillLayout, validateLabels } from '../../../../packages/client/src/sessionLabels';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
-import { Icon } from './icons';
 
 export function LabelPills({ markers = [] }: { markers?: readonly string[] }) {
   const root = useRef<HTMLSpanElement>(null);
@@ -31,45 +30,17 @@ export function LabelPills({ markers = [] }: { markers?: readonly string[] }) {
   </span>;
 }
 
-/** Session toolbar labels: every label is shown, wrapping onto more rows; each one opens the editor on that label. */
-export function ToolbarLabels({ markers = [], onOpen }: { markers?: readonly string[]; onOpen: (label: string) => void }) {
+/** Session toolbar labels: every label is shown, wrapping onto more rows; each one searches the sidebar for that label. */
+export function ToolbarLabels({ markers = [], onSearch }: { markers?: readonly string[]; onSearch: (label: string) => void }) {
   if (!markers.length) return null;
   return <div className="toolbar-labels" role="group" aria-label={`Labels: ${markers.join(', ')}`}>
-    {markers.map(label => <button key={label} type="button" className="label-pill toolbar-label" aria-label={`Edit label ${label}`} data-tooltip="Edit label" onClick={() => onOpen(label)}>{label}</button>)}
+    {markers.map(label => <button key={label} type="button" className="label-pill toolbar-label" aria-label={`Find sessions labeled ${label}`} data-tooltip="Find sessions with this label" onClick={() => onSearch(label)}>{label}</button>)}
   </div>;
 }
 
-export function LabelsFilter({ rows, value, onChange }: { rows: readonly DesktopThread[]; value: LabelFilter; onChange: (filter: LabelFilter) => void }) {
-  const [search, setSearch] = useState('');
-  const [open, setOpen] = useState(false), [allChips, setAllChips] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); root.current?.querySelector<HTMLButtonElement>('[aria-label="Filter sessions"]')?.focus(); } };
-    document.addEventListener('mousedown', dismiss); document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('mousedown', dismiss); document.removeEventListener('keydown', key); };
-  }, [open]);
-  const candidates = labelCandidates(rows).filter(label => label.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  const clear = () => { onChange(emptyLabelFilter()); setSearch(''); setAllChips(false); };
-  const shown = allChips ? value.labels : value.labels.slice(0, 2);
-  return <div className="labels-filter" ref={root}>
-    <button type="button" className="sidebar-filter-icon sidebar-icon-button" aria-label="Filter sessions" title="Filter sessions" aria-expanded={open} aria-pressed={labelFilterActive(value)} onClick={() => setOpen(old => !old)}><Icon name="filter" /></button>
-    {labelFilterActive(value) && <div className="sidebar-filter-chips">{shown.map(label => <span className="sidebar-filter-chip" key={label}><button type="button" title={label} onClick={() => setOpen(true)}>{label}</button><button type="button" aria-label={`Remove filter label ${label}`} onClick={() => onChange({ ...value, labels: value.labels.filter(item => item !== label) })}>×</button></span>)}{!allChips && value.labels.length > shown.length && <button type="button" onClick={() => setAllChips(true)}>+{value.labels.length - shown.length}</button>}{value.noLabels && <span className="sidebar-filter-chip">No labels<button type="button" aria-label="Remove no-label filter" onClick={() => onChange({ ...value, noLabels: false })}>×</button></span>}<button type="button" aria-label="Add label filter" onClick={() => setOpen(true)}>＋</button><button type="button" className="text-button" onClick={clear}>Clear</button></div>}
-    {open && <div className="labels-filter-popover" role="group" aria-label="Filter sessions by labels">
-      <input autoFocus aria-label="Search labels" placeholder="Search labels" value={search} onChange={event => setSearch(event.target.value)} />
-      <label><input type="checkbox" checked={value.noLabels} onChange={event => onChange({ ...value, noLabels: event.target.checked })} />No labels</label>
-      <div className="labels-filter-candidates">{candidates.map(label => <label key={label} title={label}><input type="checkbox" aria-label={`Label: ${label}`} checked={value.labels.includes(label)} onChange={event => onChange({ ...value, labels: event.target.checked ? [...value.labels, label] : value.labels.filter(s => s !== label) })} /><span>{label}</span></label>)}</div>
-      {!candidates.length && <p>No matching labels</p>}
-      <button type="button" className="text-button" disabled={!labelFilterActive(value)} onClick={clear}>Clear filters</button>
-    </div>}
-  </div>;
-}
-
-export function LabelsEditor({ thread, snapshot, close, focusLabel }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void; focusLabel?: string }) {
+export function LabelsEditor({ thread, snapshot, close }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void }) {
   const [draft, setDraft] = useState(() => [...(thread.markers ?? [])]);
-  const focusIndex = focusLabel === undefined ? -1 : (thread.markers ?? []).indexOf(focusLabel);
-  const [entry, setEntry] = useState(focusIndex >= 0 ? focusLabel! : ''), [editing, setEditing] = useState<number | null>(focusIndex >= 0 ? focusIndex : null);
+  const [entry, setEntry] = useState(''), [editing, setEditing] = useState<number | null>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const working = useRef(false), dialog = useRef<HTMLDialogElement>(null), input = useRef<HTMLInputElement>(null);
   const alive = useRef(true);

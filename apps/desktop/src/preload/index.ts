@@ -45,6 +45,12 @@ const api: HermesDesktopApi = Object.freeze({
   closeSessionPage: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:close-session-page", threadId),
   openSessionLink: (url: string): Promise<void> => ipcRenderer.invoke("desktop:open-session-link", url),
   copySessionLink: (): Promise<void> => ipcRenderer.invoke("desktop:copy-session-link"),
+  searchLabel: (label: string): Promise<void> => ipcRenderer.invoke("desktop:search-label", label),
+  onSearchLabel(listener: (label: string) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, label: unknown) => { if (typeof label === 'string') listener(label); };
+    ipcRenderer.on("desktop:search-label", receive);
+    return () => ipcRenderer.removeListener("desktop:search-label", receive);
+  },
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
   createChannel: (input: ProjectCreationInput): Promise<string> => ipcRenderer.invoke("desktop:create-channel", input),

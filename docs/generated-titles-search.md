@@ -8,7 +8,7 @@ The plugin owns metadata on the stable Thread. A transaction saves title and alp
 
 Catalogue readers carry `title_alphabet` through the shared client and desktop snapshot. Older servers may omit it. Search reads directory metadata only; it does not open message bodies or build another authoritative history store.
 
-The desktop Session picker serves Cmd+K and Find a session. It matches original titles, Latin transliteration with or without separators, initials and Channel names. Matching folds case and Latin accent marks. Results prioritize title matches, full transliteration, then initials. Result labels remain original titles. There is no separate mobile Session search UI in this change.
+The desktop Session picker serves Cmd+K and Find a session. (It now also searches labels; see [desktop-session-search.md](desktop-session-search.md).) It matches original titles, Latin transliteration with or without separators, initials and Channel names. Matching folds case and Latin accent marks. Results prioritize title matches, full transliteration, then initials. Result labels remain original titles. There is no separate mobile Session search UI in this change.
 
 The input retains focus while Up/Down select a result. Selection is visibly highlighted and scrolls into view. Enter opens the selected Session and closes only after successful selection. Escape closes without switching. Queries reset selection; empty results do not activate anything. IME composition leaves arrows, Enter and Escape to the input method. Pointer and keyboard share one selection state. The picker exposes combobox/listbox/option semantics.
 

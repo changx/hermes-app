@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { NavigationPanel } from './navigation-panel';
+import { addQueryLabel, emptySessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
@@ -11,6 +12,9 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
   onCreateProject: () => void; onProjectOptions: (id: string) => void; onSettings: () => void; overlayOpen: boolean; children?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [error, setError] = useState('');
+  // The sidebar search lives here: it survives collapsing the sidebar, and a Session page's label click adds to it.
+  const [search, setSearch] = useState(emptySessionQuery);
+  useEffect(() => window.hermesDesktop.onSearchLabel?.(label => { setCollapsed(false); setSearch(old => addQueryLabel(old, label)); }), []);
   const [preferredWidth, setPreferredWidth] = useState(loadSidebarWidth);
   const [availableWidth, setAvailableWidth] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
   const [preferredBrowserWidth, setPreferredBrowserWidth] = useState(loadBrowserWidth);
@@ -104,7 +108,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
   return <div ref={shell} style={{ '--sidebar-width': `${sidebarWidth}px`, '--browser-width': `${browserWidth}px` } as CSSProperties} className={`desktop-shell native-workspace ${sidebarHidden ? 'sidebar-collapsed' : ''} ${browserOpen ? 'browser-open' : ''} ${dragging === 'sidebar' ? 'sidebar-resizing' : ''} ${dragging === 'browser' ? 'browser-resizing' : ''}`}>
     <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} onClick={() => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); }}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
-      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} />
+      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} search={search} onSearch={setSearch} />
       {/* Connections are managed in Settings; the footer no longer names one server. */}
       <div className="native-sidebar-footer"><button type="button" className="sidebar-action" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /><span>Settings</span></button></div>
     </aside>}

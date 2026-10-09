@@ -187,6 +187,12 @@ const registerDesktopApi = (): void => {
     service.openSessionLink(text(value, 4096), context);
   });
   handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
+  // A Session page's toolbar label: the main window's sidebar searches for it. Only the label text crosses windows.
+  handle("desktop:search-label", (event, label: unknown) => {
+    trustedSender(event); const value = text(label, 1024);
+    if (!value.trim() || !mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send("desktop:search-label", value);
+  });
   handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
   handle("desktop:pair", async (event, value: unknown) => {
     shellSender(event);

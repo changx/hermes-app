@@ -122,9 +122,12 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  const create=calls.find(x=>x[0]==='create'),upload=calls.filter(x=>x[0]==='upload').at(-1),send=calls.filter(x=>x[0]==='send').at(-1);
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
- await evaluate(shell,'document.querySelector(".sidebar-filter-icon").click()');await until(()=>evaluate(shell,'!!document.querySelector(".labels-filter-popover input")'),'label popover');
- await evaluate(shell,'[...document.querySelectorAll(".labels-filter-candidates input")].find(e=>e.getAttribute("aria-label")==="Label: bug").click()');await until(()=>evaluate(shell,'document.querySelectorAll(".channel-tree .tree-thread").length===1'),'label filter');
- assert.equal(await evaluate(shell,'document.querySelector(".channel-tree .tree-thread").textContent.includes("Session B")'),true);
+ // A toolbar label in Session B's own page searches the main window's sidebar through the real IPC route.
+ await until(()=>evaluate(bc,'!!document.querySelector(".toolbar-labels button[aria-label=\'Find sessions labeled bug\']")'),'session B toolbar label');
+ await evaluate(bc,'document.querySelector(".toolbar-labels button").click()');
+ await until(()=>evaluate(shell,'document.querySelectorAll(".search-result-list .tree-thread").length===1&&[...document.querySelectorAll(".session-query-chip > span")].map(e=>e.textContent).join()==="bug"'),'label search in the sidebar');
+ assert.equal(await evaluate(shell,'document.querySelector(".search-result-list .tree-thread").textContent.includes("Session B")'),true);
+ await evaluate(shell,'document.querySelector(".sidebar-search-clear").click()');await until(()=>evaluate(shell,'!!document.querySelector(".channel-tree")'),'search cleared');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
  // Real input reaches the production host renderer while retained native views resize.

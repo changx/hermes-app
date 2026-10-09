@@ -166,6 +166,10 @@ export interface HermesDesktopApi {
   closeSessionPage(threadId: string): Promise<void>;
   openSessionLink(url: string): Promise<void>;
   copySessionLink(): Promise<void>;
+  /** A Session page asks the main window's sidebar to search for sessions with this label. */
+  searchLabel(label: string): Promise<void>;
+  /** The main window receives label searches requested by Session pages. */
+  onSearchLabel(listener: (label: string) => void): () => void;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
   /** Resolves with the new Project's identity after server readback. */

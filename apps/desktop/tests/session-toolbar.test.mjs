@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 
 // Production DesktopShellView Session page in real Chromium.
-test('Chromium: Session page has no title bar; tools float at the top right with all labels wrapped below as clickable pills', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: Session page has no title bar; tools float at the top right with all labels wrapped below; a label click searches the sidebar', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'session-toolbar-'));
   try {
     const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
@@ -16,7 +16,7 @@ test('Chromium: Session page has no title bar; tools float at the top right with
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
       const calls=[];
-      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),copySessionLink:async()=>{calls.push('copy')},openSettings:async()=>{calls.push('settings')},archiveThread:async()=>{calls.push('archive')},renameThread:async()=>{},markResultRead:async()=>{},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},saveThreadLabels:async()=>{throw Error('offline')}};
+      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),copySessionLink:async()=>{calls.push('copy')},openSettings:async()=>{calls.push('settings')},archiveThread:async()=>{calls.push('archive')},renameThread:async()=>{},markResultRead:async()=>{},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},saveThreadLabels:async()=>{throw Error('offline')},searchLabel:async label=>{calls.push('search:'+label)}};
       window.confirm=()=>true;
       const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:i===29?[{id:'a1',name:'REPORT.md',mime:'text/markdown',size:12000,state:'available',publicUrl:'https://example.test/r'}]:[]}));
       const snapshot={phase:'connected',connectionState:'online',connectionKey:'one',supportsSessionLabels:true,tabActive:true,tabKind:'session',
@@ -59,9 +59,10 @@ test('Chromium: Session page has no title bar; tools float at the top right with
         ensure('toolbar height follows the labels',box.height>labelsBox.bottom-actBox.top&&box.height>60&&box.width<=420);
         ensure('floats over the timeline, which starts at the top',Math.abs(listBox.top-pageBox.top)<=1&&getComputedStyle(bar).position==='absolute');
         ensure('labels group named',labels.getAttribute('aria-label')?.startsWith('Labels: urgent, review needed'));
-        ensure('labels are buttons with tooltips',pills.every(p=>p.tagName==='BUTTON'&&p.dataset.tooltip==='Edit label'&&p.getAttribute('aria-label')==='Edit label '+p.textContent));
-        labels.querySelector('[aria-label="Edit label design"]').click(); await new Promise(r=>setTimeout(r,20));
-        { const dialog=document.querySelector('dialog.labels-editor'); ensure('label click opens the editor',dialog&&dialog.open); ensure('editor starts editing that label',dialog.querySelector('[aria-label="Label text"]').value==='design'&&[...dialog.querySelectorAll('button')].some(b=>b.textContent==='Update')); [...dialog.querySelectorAll('button')].find(b=>b.textContent==='Cancel').click(); await new Promise(r=>setTimeout(r,20)); ensure('editor closes',!document.querySelector('dialog.labels-editor')); }
+        ensure('labels are buttons with tooltips',pills.every(p=>p.tagName==='BUTTON'&&p.dataset.tooltip==='Find sessions with this label'&&p.getAttribute('aria-label')==='Find sessions labeled '+p.textContent));
+        labels.querySelector('[aria-label="Find sessions labeled design"]').click(); labels.querySelector('[aria-label="Find sessions labeled iOS"]').click(); await new Promise(r=>setTimeout(r,20));
+        ensure('label clicks ask the sidebar to search, in order',calls.join('|')==='search:design|search:iOS'); calls.length=0;
+        ensure('label click opens no editor',!document.querySelector('dialog.labels-editor'));
         checks.labelRows=rows.size;
         bar.querySelector('[aria-label="Copy link"]').click(); bar.querySelector('[aria-label="Archive"]').click(); bar.querySelector('[aria-label="Settings"]').click();
         await new Promise(r=>setTimeout(r,20));

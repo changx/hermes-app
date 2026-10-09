@@ -63,7 +63,7 @@ Branch: `feat/desktop-sidebar`. Requested by Jamie (2026-10-06): the sidebar sti
 
 Layout, top to bottom:
 - **Actions:** *New chat* and *New project* as icon rows. *New project* moved from the footer and is enabled while any connection is online.
-- **Projects** section title, with the label filter icon on the right of the title. Then the flat Project tree across all connections; the Hermes name appears under a Project only when several connections are saved.
+- **Projects** section title, with the label filter icon on the right of the title (later replaced by the session search box below New chat; see [desktop-session-search.md](../desktop-session-search.md)). Then the flat Project tree across all connections; the Hermes name appears under a Project only when several connections are saved.
 - **Footer:** one *Settings* row with a gear icon. The single server name is removed; connections are listed and managed in Settings.
 
 Typography and spacing, measured from the reference (2x screenshot): rows about 31px high, section titles the same size as rows in a muted colour, no uppercase or bold, regular-weight Project names. In this app the sidebar text follows the user's text-size setting (default 16px); rows are 2× the text size.
@@ -82,7 +82,7 @@ Confirmed behavior:
 - The sidebar has no blank band at the top. Order: New chat, Recents, Projects. The collapse button sits at the right end of the New chat row.
 - Recents lists Sessions from every Project and connection with activity in the last 24 hours, plus running Sessions. Newest activity first, 24 rows per batch with Show more. The row tooltip names its Project. The Recents title collapses the list; the choice is a device-local preference.
 - Recents rows are indented one level: titles sit 17px right of the Recents label, the same step as Session titles under a Project name, with a guide line.
-- New project is a `+` icon in the Projects header, beside the label filter. The old New project row is removed.
+- New project is a `+` icon in the Projects header, beside the label filter (the filter was later removed for session search). The old New project row is removed.
 - New project and Project `...` open the same modal: Title, Context, Files, AGENTS.md. New project also has the existing explicit connection choice.
 - Files and AGENTS.md appear only when the connection reports `channel_workspace`, `channel_files` and `channel_agents`. They use the existing plugin workspace routes. No plugin or Hermes core change.
 - Nothing is written before Save. Order: create or update Title/Context, then AGENTS.md, then new files. A created Project is never created again. A later failure keeps the modal open in edit mode, and Save writes only the remaining parts.
