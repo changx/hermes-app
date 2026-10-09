@@ -83,3 +83,12 @@ Agent（Gateway，hermes-app-dev profile）
 | `apps/desktop/src/main/browser-control.ts` | 按驱动是否存在声明 `mac`；`mac` 指令不打开标签页 |
 | `apps/desktop/src/main/index.ts` | 创建 `MacDriver`，用 `nativeImage` 转换截图 |
 | 测试 | 桌面 `tests/mac-control.test.mjs`（假驱动）、`tests/browser-control.test.mjs`（控制连接）；插件 `tests/p1/test_desktop_browser.py` |
+
+## 10. 发布结果（2026-10-08）
+
+- Jamie 授权：插件安装到 hermes-app-dev 和 jamie；桌面版“合并代码打包”。
+- 插件 v0.2.12（`changx/hermes-app-plugin` 本地 `main` `0b5dd69`，未推送）。安装包 `hermes-app-plugin-0.2.12-b21139e6….tar.gz` 安装到 hermes-app-dev（21:34）和 jamie（22:04，从 v0.2.10 升级，同时带上 v0.2.11 的 Channel 主目录）。Gateway 22:03:31 重启（PID 1894908）后，hermes-app-dev 运行新代码；jamie 的安装晚于这次重启，`/v1/capabilities` 仍没有 `channel_primary_path`，需要再重启一次才生效。
+- 桌面版：`origin/main` `a914ef9..20935e2`，标签 `v0.1.52`。打包任务 37887064797 成功。发布文件 `Hermes-0.1.52-macOS-arm64.zip`：校验和正确，ZIP 完整，Info.plist 0.1.52，arm64 可执行文件；ASAR 中 `dist/main/index.cjs`、`dist/preload/index.cjs`、`dist/renderer/index.js`、`dist/renderer/styles.css` 与本地验证的构建逐字节相同。没有手机端改动，Expo 和运行目录未动。
+- 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/20261008-213422-desktop-mac/`、`…/20261008-220441-desktop-mac-jamie/`。
+- 回滚：插件用证据目录中的 `backup-hermes-app-<版本>` 换回后重启 Gateway；桌面版重新安装 v0.1.51。
+- 待完成：jamie 的 Gateway 重启；第 7、8 节的 macOS 真机验收。
