@@ -403,10 +403,12 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-action .app-icon { color: var(--app-label); }
 .sidebar-action:disabled { opacity: .5; cursor: default; }
 /* Session search (sidebar box and Cmd+K): selected labels as chips, then the keyword. */
-.sidebar-search { display: flex; align-items: center; gap: 6px; min-height: var(--sidebar-row); margin: 4px 0 6px; padding: 0 4px 0 9px; border: 1px solid var(--app-border); border-radius: 8px; background: #fff; }
-.sidebar-search:focus-within { border-color: var(--app-accent); }
+.sidebar-search { display: flex; align-items: center; gap: 6px; min-height: var(--sidebar-row); margin: 4px 0 6px; padding: 0 4px 0 9px; border: 1px solid var(--app-border); border-radius: 8px; background: #fff; transition: border-color .12s, box-shadow .12s; }
+/* Focus: neutral border and soft shadow, as in the composer. No blue ring. */
+.sidebar-search:focus-within { border-color: #d4d4d4; box-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 4px 12px rgb(0 0 0 / 6%); }
 .search-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--app-label); stroke-width: 1.6; stroke-linecap: round; }
 .session-query { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 3px 0; cursor: text; }
+.session-query input:focus, .session-query input:focus-visible { outline: none; }
 .session-query input { flex: 1; min-width: 60px; padding: 2px 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: var(--app-text); font: inherit; font-size: var(--sidebar-text, var(--app-font-size)); }
 .session-query-chip { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; border-radius: 6px; background: #edf2f7; color: #42566f; font-size: var(--sidebar-text, var(--app-font-size)); font-weight: 500; line-height: 1.15; }
 .session-query-chip > span { min-width: 0; padding: 2px 0 2px 7px; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
@@ -671,8 +673,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: var(--app-accent); }
 .dialog-actions .secondary { border: 1px solid var(--app-field-border); color: var(--app-label); background: #fff; }
 .palette { align-self: start; margin-top: 10vh; padding: 12px; }
-.palette .palette-query { margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--app-field-border); border-radius: 9px; background: #fff; }
-.palette .palette-query:focus-within { border-color: var(--app-accent); }
+.palette .palette-query { margin: -4px -2px 8px; padding: 4px 4px 10px; border-bottom: 1px solid var(--app-border); }
 .palette .palette-query input { padding: 3px 0; border: 0; border-radius: 0; font-size: var(--app-font-size); }
 .palette-results .palette-label-option { display: flex; align-items: center; gap: 8px; }
 .palette-option-kind { color: var(--app-muted); font-size: .85em; }

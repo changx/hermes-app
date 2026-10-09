@@ -74,7 +74,12 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
         labelListener('iOS'); labelListener('bug'); await tick();
         ensure('second label narrows (AND), no duplicate chip',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug|iOS'&&titles('.search-result-list').join('|')==='Login crash');
         const input=q('.sidebar-search input[aria-label="Search sessions"]');
-        input.focus(); key(input,'Backspace'); await tick();
+        input.focus(); await tick();
+        { const accent=getComputedStyle(document.documentElement).getPropertyValue('--app-accent').trim(), rgb=c=>{const d=document.createElement('i');d.style.color=c;document.body.append(d);const v=getComputedStyle(d).color;d.remove();return v;};
+          const box=getComputedStyle(q('.sidebar-search')), field=getComputedStyle(input), blue=rgb(accent);
+          ensure('focused sidebar search: no outline on the input',field.outlineStyle==='none'||field.outlineWidth==='0px');
+          ensure('focused sidebar search: no accent border',box.borderTopColor!==blue&&!box.boxShadow.includes(blue)&&box.boxShadow!=='none'); checks.sidebarFocus={border:box.borderTopColor,shadow:box.boxShadow}; }
+        key(input,'Backspace'); await tick();
         ensure('Backspace in an empty box removes the last label',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug');
         setValue(input,'sync'); await tick();
         ensure('keyword plus label',titles('.search-result-list').join('|')==='Slow sync');
@@ -90,6 +95,9 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
         // Cmd+K: same search.
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
         const box=q('.palette input[aria-label="Find a session"]'); ensure('Cmd+K opens the picker',!!box&&document.activeElement===box);
+        { const f=getComputedStyle(box), wrap=getComputedStyle(q('.palette .palette-query'));
+          ensure('Cmd+K input: no outline or border',(f.outlineStyle==='none'||f.outlineWidth==='0px')&&f.borderTopWidth==='0px'&&f.borderLeftWidth==='0px');
+          ensure('Cmd+K query: only a bottom divider',wrap.borderTopWidth==='0px'&&wrap.borderLeftWidth==='0px'&&wrap.borderBottomWidth==='1px'); }
         setValue(box,'ur'); await tick();
         const opts=()=>qa('.palette-results [role="option"]');
         ensure('label option first, then sessions by title or label',opts()[0].classList.contains('palette-label-option')&&opts()[0].textContent==='Labelurgent'&&opts().slice(1).map(o=>o.firstChild.textContent).sort().join('|')==='Payment flow|Urgent fix plan');

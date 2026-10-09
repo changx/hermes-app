@@ -13,6 +13,10 @@ Requested by Jamie: a toolbar label in a Session page is a search, not an edit. 
 - **Toolbar label click.** In a Session page, each toolbar label is a button ("Find sessions with this label"). A click sends only the label text through the main process to the main window (`desktop:search-label`). The sidebar opens if the user collapsed it, and the label is added to the sidebar query. A label that is already selected is not added again. The current Session page does not change. Edit labels stays available from the toolbar button and the session context menu.
 - **Cmd+K.** Same matching; up to 24 sessions. Session rows show the project name and the labels. Enter opens the highlighted session. Escape closes the picker.
 
+## Focus style
+
+Neither search field shows a blue focus ring. The sidebar box keeps a light gray border; on focus the border gets slightly darker and a soft shadow appears, as in the message composer. In Cmd+K the keyword field has no box; a thin divider separates it from the results. The input's own outline is removed by `.session-query input:focus-visible`, which outranks the global `input:focus-visible` ring.
+
 ## Limits
 
 - Search uses directory metadata only (titles, labels, project names). It does not search message text.
