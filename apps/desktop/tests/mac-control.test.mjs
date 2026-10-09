@@ -115,7 +115,8 @@ test('cancel stops waiting; a timeout or a crash replaces the session', async ()
     const running = h.driver.run({ tool: 'slow' }, abort.signal, 5000);
     setTimeout(() => abort.abort(), 100);
     await assert.rejects(running, { code: 'cancelled' });
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // The fake driver writes its log from another process; under full-suite load that can take more than 200 ms.
+    for (const end = Date.now() + 5000; !h.log().includes('notifications/cancelled') && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 50));
     assert.ok(h.log().includes('notifications/cancelled'), 'the driver is told about the cancel');
     assert.match((await h.driver.run({ tool: 'list_apps' }, signal(), 5000)).output, /^ok list_apps/, 'the session survives a cancel');
     await assert.rejects(h.driver.run({ tool: 'slow' }, signal(), 300), { code: 'unknown' });
