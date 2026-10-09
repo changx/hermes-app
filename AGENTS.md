@@ -108,6 +108,7 @@
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
 - [docs/desktop-tabs.md](docs/desktop-tabs.md)
 - [docs/desktop-browser-control.md](docs/desktop-browser-control.md)
+- [docs/desktop-mac-control.md](docs/desktop-mac-control.md)
 - [docs/desktop-sidebar-release-0.1.37.md](docs/desktop-sidebar-release-0.1.37.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)

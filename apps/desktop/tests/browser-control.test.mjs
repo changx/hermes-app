@@ -78,6 +78,7 @@ async function harness(options = {}) {
     channels: () => new Map([['acct:th_a', 'acct:p']]),
     ensureTab: async threadId => { const tab = tabs.find(t => t.threadId === threadId); if (tab) return tab; const created = { id: 'tab-2', threadId, connectionKey: 'key', kind: 'session' }; tabs.push(created); return created; },
     execute: options.execute ?? (async (tabId, command) => { executed.push([tabId, command.action, command.args]); return { url: 'https://example.com/' }; }),
+    ...(options.mac ? { mac: options.mac } : {}),
     deviceName: 'Test Mac',
   });
   const until = async (check, label) => { const end = Date.now() + 3000; while (Date.now() < end) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } throw new Error('Timed out: ' + label); };
@@ -126,6 +127,29 @@ test('control connection: cancel aborts the running action; a dropped connection
     h.sockets[0].terminate();
     await h.until(() => signals[1].aborted, 'disconnect aborts');
     await h.until(() => h.sockets.length === 2, 'reconnect');
+  } finally { h.close(); }
+});
+
+test('control connection: Mac app control is offered only with the driver and runs without a tab', async () => {
+  const calls = [];
+  let installed = true;
+  const mac = { available: () => installed, run: async (args, _signal, timeoutMs) => { calls.push([args, timeoutMs]); return { output: 'Finder' }; } };
+  const h = await harness({ mac });
+  try {
+    h.control.sync();
+    await h.until(() => h.received.some(f => f.type === 'bindings'), 'bindings');
+    assert.deepEqual(h.received[0].actions.at(-1), 'mac');
+    h.sockets[0].send(JSON.stringify({ type: 'command', id: 'm1', thread_id: 'th_closed', action: 'mac', args: { tool: 'list_apps', arguments: {} }, timeout_ms: 90000, open_tab: false }));
+    await h.until(() => h.received.some(f => f.type === 'result'), 'mac result');
+    assert.deepEqual(h.received.find(f => f.type === 'result'), { type: 'result', id: 'm1', ok: true, result: { output: 'Finder' } });
+    assert.deepEqual(calls, [[{ tool: 'list_apps', arguments: {} }, 90000]]);
+    assert.equal(h.tabs.length, 1, 'no conversation tab is opened for Mac control');
+    assert.deepEqual(h.executed, []);
+    // After the driver is removed, a new connection no longer offers it.
+    installed = false;
+    h.sockets[0].terminate();
+    await h.until(() => h.received.filter(f => f.type === 'hello').length === 2, 'second hello');
+    assert.equal(h.received.filter(f => f.type === 'hello')[1].actions.includes('mac'), false);
   } finally { h.close(); }
 });
 

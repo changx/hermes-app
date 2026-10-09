@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
+import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, MAC_ACTION, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
 
 /** One paired server the desktop may receive browser commands from. */
 export type BrowserAccount = Readonly<{
@@ -18,6 +18,8 @@ export type BrowserControlDeps = Readonly<{
   /** Returns the tab for a conversation, opening it in the background when needed. */
   ensureTab(threadId: string): Promise<BrowserTab>;
   execute(tabId: string, command: BrowserCommand, signal: AbortSignal): Promise<Record<string, unknown>>;
+  /** Native Mac app control; offered to the server only while the driver is installed. */
+  mac?: Readonly<{ available(): boolean; run(args: BrowserCommand['args'], signal: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> }>;
   deviceName: string;
   connect?: (url: string, token: string) => WebSocket;
 }>;
@@ -91,7 +93,7 @@ export class DesktopBrowserControl {
       if (!frame) return;
       if (frame.type === 'hello') {
         if (frame.protocol !== BROWSER_PROTOCOL) { link.blocked = true; ws.close(1000); return; }
-        ws.send(JSON.stringify({ type: 'hello', protocol: BROWSER_PROTOCOL, device_name: this.deps.deviceName.slice(0, 64), actions: BROWSER_ACTIONS }));
+        ws.send(JSON.stringify({ type: 'hello', protocol: BROWSER_PROTOCOL, device_name: this.deps.deviceName.slice(0, 64), actions: this.deps.mac?.available() ? [...BROWSER_ACTIONS, MAC_ACTION] : BROWSER_ACTIONS }));
         link.ready = true; link.attempt = 0;
         this.sendBindings(link, this.deps.windowFocused(), this.deps.activeTabId(), this.deps.channels());
       } else if (frame.type === 'cancel') this.running.get(frame.id)?.abort.abort();
@@ -131,12 +133,18 @@ export class DesktopBrowserControl {
     this.running.set(command.id, { abort, link });
     let frame: Record<string, unknown>;
     try {
-      const tab = await this.deps.ensureTab(link.account.qualify(command.threadId));
-      if (abort.signal.aborted) throw new BrowserControlError('cancelled', 'Stopped.');
-      frame = { type: 'result', id: command.id, ok: true, result: await this.deps.execute(tab.id, command, abort.signal) };
+      if (command.action === MAC_ACTION) {
+        // Mac app control needs no conversation tab.
+        if (!this.deps.mac) throw new BrowserControlError('no_driver', 'Cua Driver is not installed on this Mac.');
+        frame = { type: 'result', id: command.id, ok: true, result: await this.deps.mac.run(command.args, abort.signal, command.timeoutMs) };
+      } else {
+        const tab = await this.deps.ensureTab(link.account.qualify(command.threadId));
+        if (abort.signal.aborted) throw new BrowserControlError('cancelled', 'Stopped.');
+        frame = { type: 'result', id: command.id, ok: true, result: await this.deps.execute(tab.id, command, abort.signal) };
+      }
     } catch (error) {
       const failure = error instanceof BrowserControlError ? error : new BrowserControlError('failed', 'The browser action failed.');
-      frame = { type: 'result', id: command.id, ok: false, error: { code: failure.code, message: failure.message.slice(0, 300) } };
+      frame = { type: 'result', id: command.id, ok: false, error: { code: failure.code, message: failure.message.slice(0, 2000) } };
     } finally { this.running.delete(command.id); }
     const body = JSON.stringify(frame);
     this.finished.set(command.id, body);

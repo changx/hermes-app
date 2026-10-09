@@ -1,7 +1,8 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
 import { DesktopBrowserControl } from './browser-control';
-import { BrowserControlError } from '../shared/browser-control';
+import { MacDriver } from './mac-control';
+import { BrowserControlError, MAC_ACTION } from '../shared/browser-control';
 import { hostname } from 'node:os';
 import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
@@ -346,8 +347,18 @@ app.whenReady().then(async () => {
     },
     execute: (tabId, command, signal) => {
       if (!browser) throw new BrowserControlError('not_ready', 'Hermes is starting on the computer. Try again in a moment.');
+      if (command.action === MAC_ACTION) throw new BrowserControlError('failed', 'Not a browser action.');
       return browser.command(tabId, command.action, command.args, signal, command.timeoutMs);
     },
+    mac: new MacDriver({
+      scratch: app.getPath('temp'),
+      encodeImage: path => {
+        const image = nativeImage.createFromPath(path);
+        if (image.isEmpty()) return undefined;
+        const { width, height } = image.getSize();
+        return { jpegBase64: image.toJPEG(80).toString('base64'), width, height };
+      },
+    }),
     deviceName: hostname(),
   });
   await service.initialize();

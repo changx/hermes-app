@@ -4,8 +4,11 @@
 export const BROWSER_PROTOCOL = 1;
 export const BROWSER_ACTIONS = ['navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'back', 'screenshot', 'handoff'] as const;
 export type BrowserAction = typeof BROWSER_ACTIONS[number];
+/** Native macOS app control through the user's installed Cua Driver. Declared only when the driver is present. */
+export const MAC_ACTION = 'mac';
+export type ControlAction = BrowserAction | typeof MAC_ACTION;
 export type BrowserControlState = 'agent' | 'user' | 'waiting';
-export type BrowserCommand = Readonly<{ id: string; threadId: string; channelId?: string; action: BrowserAction; args: Readonly<Record<string, unknown>>; timeoutMs: number; openTab: boolean }>;
+export type BrowserCommand = Readonly<{ id: string; threadId: string; channelId?: string; action: ControlAction; args: Readonly<Record<string, unknown>>; timeoutMs: number; openTab: boolean }>;
 export type ServerFrame = Readonly<{ type: 'hello'; protocol: number }> | Readonly<{ type: 'command'; command: BrowserCommand }> | Readonly<{ type: 'cancel'; id: string }>;
 
 /** An error whose `code` the server maps to an explanation for the Agent. */
@@ -26,13 +29,13 @@ export function parseServerFrame(raw: string): ServerFrame | undefined {
   if (frame.type === 'hello' && typeof frame.protocol === 'number') return { type: 'hello', protocol: frame.protocol };
   if (frame.type === 'cancel' && typeof frame.id === 'string' && frame.id.length <= 64) return { type: 'cancel', id: frame.id };
   if (frame.type !== 'command') return undefined;
-  if (!(BROWSER_ACTIONS as readonly string[]).includes(frame.action as string)) throw new Error('Invalid browser command');
+  if (!(BROWSER_ACTIONS as readonly string[]).includes(frame.action as string) && frame.action !== MAC_ACTION) throw new Error('Invalid browser command');
   const args = frame.args && typeof frame.args === 'object' && !Array.isArray(frame.args) ? frame.args as Record<string, unknown> : {};
   const timeoutMs = Number(frame.timeout_ms);
   return { type: 'command', command: {
     id: text(frame.id, 64), threadId: text(frame.thread_id, 200),
     ...(typeof frame.channel_id === 'string' && frame.channel_id ? { channelId: text(frame.channel_id, 200) } : {}),
-    action: frame.action as BrowserAction, args, openTab: frame.open_tab === true,
+    action: frame.action as ControlAction, args, openTab: frame.open_tab === true,
     timeoutMs: Number.isFinite(timeoutMs) ? Math.min(Math.max(timeoutMs, 1000), 15 * 60_000) : 30_000,
   } };
 }

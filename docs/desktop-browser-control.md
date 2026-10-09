@@ -164,6 +164,8 @@ Agent（Gateway 进程，hermes-app-dev profile）
 
 界面文字沿用应用现有的英文界面。
 
+同一通道还承载 Mac 原生 App 控制（`mac` 动作，`desktop_mac` 工具），见 [desktop-mac-control.md](desktop-mac-control.md)。
+
 ## 14. 本地验证（2026-10-07）
 
 - 插件：`tests/p1` 完整套件 141 通过、2 跳过；新增 `test_desktop_browser.py` 覆盖认证、往返、重复应答、设备选择、断线不重发、打断、无效帧、工具说明和截图格式。
