@@ -99,6 +99,7 @@
   --app-label: #4b5563;
   --app-background: #f9fafb;
   --app-rail: #f3f4f6;
+  --app-tab-inactive: #e9ebee;
   --app-border: #e5e7eb;
   --app-field-border: #d1d5db;
   --app-hover: #f3f4f6;
@@ -456,7 +457,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .desktop-tabs::-webkit-scrollbar { display: none; }
 .sidebar-collapsed .desktop-tabs { padding-left: 42px; }
 /* Reserve six full-width characters plus padding, three status dots and the close control. */
-.desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: calc(6em + 90px); max-width: max(240px, calc(6em + 90px)); border-radius: 8px; color: var(--app-muted); }
+.desktop-tab { display: flex; align-items: center; flex: 0 1 220px; min-width: calc(6em + 90px); max-width: max(240px, calc(6em + 90px)); border-radius: 8px; color: var(--app-muted); background: var(--app-tab-inactive); }
 .desktop-tab.active { background: var(--app-background); color: var(--app-text); }
 .desktop-tab button { border: 0; background: transparent; color: inherit; padding: 8px; }
 .desktop-tab [role="tab"] { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }

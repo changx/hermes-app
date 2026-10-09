@@ -73,6 +73,8 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
       ensure('vertical wheel scrolls tab strip sideways',strip.scrollLeft>0&&wheel.defaultPrevented);
       strip.scrollLeft=0;snapshot={...snapshot,activeTabId:'tab6'};render();
       const shown=document.querySelector('.desktop-tab.active').getBoundingClientRect(),bar=strip.getBoundingClientRect();
+      ensure('active tab uses page background',getComputedStyle(document.querySelector('.desktop-tab.active')).backgroundColor==='rgb(249, 250, 251)');
+      ensure('inactive tab is slightly darker than strip',getComputedStyle(document.querySelector('.desktop-tab:not(.active)')).backgroundColor==='rgb(233, 235, 238)'&&getComputedStyle(strip).backgroundColor==='rgb(243, 244, 246)');
       ensure('active tab revealed without scrollbar',strip.scrollLeft>0&&shown.left>=bar.left-1&&shown.right<=bar.right+1);
       snapshot={...snapshot,activeTabId:'tab7'};render();
       const menuEvent=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:20});tab(3).dispatchEvent(menuEvent);
