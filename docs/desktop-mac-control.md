@@ -39,33 +39,35 @@ Agent（Gateway，hermes-app-dev profile）
 - 结果：驱动的 JSON 输出原样返回。有截图时，用多模态格式把图像交给模型，并注明截图尺寸。
 - 工具描述写明规则：这是用户的真实电脑；付款、购买、发送消息、发帖、删除数据或修改系统设置前，先在聊天里征得用户同意。
 
-## 5. 桌面端执行
+## 5. 桌面端执行（v0.1.53 起）
 
-- 每个指令运行一次 `cua-driver call`，参数按“选项在前、位置参数在后”传递，并设置 `CUA_DRIVER_RS_UPDATE_CHECK=false`。
-- 截图写到系统临时目录，读出后转成 JPEG（`nativeImage`，质量 80，**不缩放**），然后删除临时文件。驱动返回的 x/y 坐标就是这张截图的像素，缩放会导致点错位置。
+- 桌面版在一次运行期间保持**一个常驻的 `cua-driver mcp` 会话**（stdio，按行分隔的 JSON-RPC：`initialize` → `notifications/initialized` → `tools/call`）。第一次使用时启动，空闲 10 分钟后关闭，退出 App 时关闭。
+- 原因：驱动的窗口快照只在同一个会话里有效。`click`、`type_text` 等操作使用的 `element_token` 或 x/y 坐标，必须来自同一会话中最近一次 `get_window_state`。v0.1.52 每次操作都启动一个新的 `cua-driver call` 进程，所以在真机上只能读，不能点击（驱动返回 `stale_element_token` 或 `screenshot_context_missing`）。
+- 在 macOS 上，`cua-driver mcp` 代理到 CuaDriver.app 守护进程，并在需要时启动它，所以桌面版不再自己启动守护进程。
+- 返回给 Agent 的文字：驱动的 `structuredContent`（含 `snapshot_id` 和 `element_token`）；没有时用文字块。驱动拒绝执行（`isError`）时，把这段内容原样作为错误交给 Agent。
+- 截图：驱动在结果中返回 PNG 图像块。桌面版用 `nativeImage.createFromBuffer` 转成 JPEG（质量 80，**不缩放**）。驱动的 x/y 坐标就是这张截图的像素，缩放会导致点错位置。
 - 输出中 2000 字符以上的 base64 串替换为 `[binary data omitted]`。输出上限 120,000 字符。
-- 退出码不为 0 时：先运行 `cua-driver status`。守护进程没运行时，用 `open -n -g -a CuaDriver --args serve` 启动它，等 2 秒，然后重试一次（守护进程没运行时，指令还没有执行，所以重试是安全的）。守护进程在运行时，不重试，把驱动的错误原样交给 Agent（例如 `stale_element_token`）。
-- 取消（聊天里的停止或服务器的 `cancel`）和超时（90 秒）都会结束驱动进程。
+- `list_tools` 和 `describe` 读取会话的 `tools/list`。
+- 取消：向驱动发送 `notifications/cancelled`，会话保留。超时（90 秒）或驱动进程退出：结果为“不确定”，会话立即关闭，下一次操作启动新会话。
 - `mac` 指令不需要会话标签页，不调用 `ensureTab`。
 
 ## 6. 已验证事实
 
 | 项目 | 结果 | 依据 |
 |---|---|---|
-| `cua-driver call` 输出 | JSON 文本写到 stdout，不含图像数据 | 真实驱动 0.34.0（Linux） |
-| 截图 | `--screenshot-out-file` 写出 PNG；`get_window_state` 的坐标是这张截图的像素，截图不超过 1.15 百万像素 | 同上，以及驱动返回的 `frame_note` |
-| 拒绝执行 | 退出码 1，stdout 是 `{"status":"refused","refusal":{"code":...}}`，stderr 为空 | 同上 |
-| 守护进程未运行 | `call` 和 `status` 的退出码都是 1 | 同上 |
-| `MacDriver` 端到端 | 自动启动守护进程一次、读取窗口、截图尺寸不变、临时文件删除、拒绝原因原样返回、`describe` 和 `list_tools` 可用 | Xvfb + 真实驱动 |
-| Jamie 的 Mac | 驱动已安装在 `~/.local/bin/cua-driver`，守护进程在运行，两个权限均为 true，归属 `com.trycua.driver` | Jamie 提供的 `check_permissions` 输出 |
+| 快照范围 | 快照只在同一会话内有效：单次 `call` 进程之间不能“先读后点” | Jamie 的 Mac（v0.1.52）：读取成功，点击被拒绝 |
+| `cua-driver mcp` | 协议 `2025-06-18`；`get_window_state` 返回文字块 + `image/png` 图像块 + `structuredContent`；拒绝时 `isError: true` 和 `structuredContent.refusal` | 真实驱动 0.34.0（Linux，Xvfb） |
+| 截图 | 不超过 1.15 百万像素；x/y 坐标是截图像素 | 同上，以及驱动返回的 `frame_note` |
+| `MacDriver` 端到端（v0.1.53） | 同一会话中：列出窗口 → 读取窗口（截图尺寸不变）→ 像素点击成功 → 输入文字成功；`list_tools`、`describe` 可用；结束后没有残留进程 | Xvfb + 真实驱动 |
+| v0.1.52 在 Jamie 的 Mac 上 | 从 Hermes App 调用驱动正常；`list_windows` 和 `get_window_state`（含截图，1568×1066）成功 | 2026-10-08 真机 |
+| Jamie 的 Mac | 驱动在 `~/.local/bin/cua-driver`，守护进程在运行，两个权限均为 true，归属 `com.trycua.driver` | Jamie 提供的 `check_permissions` 输出 |
 
 ## 7. 待验证项（macOS 真机）
 
-1. 从 Hermes App 启动的 `cua-driver call` 能正常连接 CuaDriver 守护进程，权限仍归属 `com.trycua.driver`。
-2. 守护进程没运行时，`open -n -g -a CuaDriver --args serve` 能把它启动起来。
-3. `nativeImage` 能读取驱动写出的 PNG，并转换成 JPEG。
-4. 第一版没有“你已接管”检测。Agent 操作期间，用户同时操作同一个 App 可能互相干扰。
-5. 默认 `standard` 权限模式下，哪些驱动工具需要额外批准。
+1. v0.1.53：在真机上读取后点击、输入文字。
+2. `cua-driver mcp` 在守护进程没运行时能自动启动它。
+3. 第一版没有“你已接管”检测。Agent 操作期间，用户同时操作同一个 App 可能互相干扰。
+4. 默认 `standard` 权限模式下，哪些驱动工具需要额外批准。
 
 ## 8. 验收
 
@@ -79,7 +81,7 @@ Agent（Gateway，hermes-app-dev profile）
 |---|---|
 | 插件 `plugins/hermes_app/desktop_browser.py` | `desktop_mac` 工具、`mac` 动作、参数校验、错误说明、截图结果 |
 | `apps/desktop/src/shared/browser-control.ts` | `MAC_ACTION`，指令解析接受 `mac` |
-| `apps/desktop/src/main/mac-control.ts` | 查找驱动、运行 `cua-driver`、截图转换、守护进程自动启动、取消和超时 |
+| `apps/desktop/src/main/mac-control.ts` | 查找驱动、常驻 `cua-driver mcp` 会话、截图转换、取消和超时 |
 | `apps/desktop/src/main/browser-control.ts` | 按驱动是否存在声明 `mac`；`mac` 指令不打开标签页 |
 | `apps/desktop/src/main/index.ts` | 创建 `MacDriver`，用 `nativeImage` 转换截图 |
 | 测试 | 桌面 `tests/mac-control.test.mjs`（假驱动）、`tests/browser-control.test.mjs`（控制连接）；插件 `tests/p1/test_desktop_browser.py` |

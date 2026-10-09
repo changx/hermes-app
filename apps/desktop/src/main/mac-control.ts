@@ -1,15 +1,16 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { accessSync, constants, rmSync, statSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { accessSync, constants, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { BrowserControlError } from '../shared/browser-control';
 
 /**
  * Native macOS app control for the Agent ("desktop_mac" tool), executed through the user's own
- * Cua Driver install. The driver's daemon (CuaDriver.app) owns the Accessibility and Screen
- * Recording grants, so Hermes App itself needs no macOS permission. Each command is one
- * `cua-driver call` to that daemon. See docs/desktop-mac-control.md.
+ * Cua Driver install. One long-lived `cua-driver mcp` session per app run keeps the driver's
+ * window snapshots between calls (element tokens and pixel clicks need the latest
+ * get_window_state of the same session). On macOS that process proxies to the CuaDriver.app
+ * daemon, which owns the Accessibility and Screen Recording grants and is launched by the
+ * driver when needed; Hermes App itself needs no macOS permission. See docs/desktop-mac-control.md.
  */
 
 export type EncodedImage = Readonly<{ jpegBase64: string; width: number; height: number }>;
@@ -17,17 +18,18 @@ export type MacDriverOptions = Readonly<{
   /** Executable candidates, first existing one wins. */
   candidates?: readonly string[];
   platform?: NodeJS.Platform;
-  /** PNG file -> JPEG. Injected so tests run without Electron. */
-  encodeImage?: (pngPath: string) => EncodedImage | undefined;
+  /** PNG bytes -> JPEG. Injected so tests run without Electron. */
+  encodeImage?: (png: Buffer) => EncodedImage | undefined;
   spawnProcess?: typeof spawn;
-  scratch?: string;
-  /** Starts the driver daemon when it is not running. */
-  startDaemon?: () => Promise<void>;
+  /** The session process is stopped after this long without calls. */
+  idleMs?: number;
 }>;
 
 const TOOL = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_OUTPUT = 120_000;
 const MAX_ARGUMENTS = 100_000;
+const MAX_LINE = 64 * 1024 * 1024;
+const PROTOCOL = '2025-06-18';
 
 export function defaultCandidates(home = homedir()): string[] {
   return [
@@ -55,17 +57,88 @@ export function cleanOutput(text: string): string {
   return cleaned.length > MAX_OUTPUT ? cleaned.slice(0, MAX_OUTPUT) + '\n[output truncated]' : cleaned;
 }
 
-type RunResult = { code: number | null; stdout: string; stderr: string };
+type Content = { type?: string; text?: string; data?: string; mimeType?: string };
+type ToolResult = { content?: Content[]; structuredContent?: unknown; isError?: boolean };
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void };
+
+/** Text the model reads: the full structured result when present (it carries snapshot IDs and element tokens), else the text blocks. */
+export function resultText(result: ToolResult): string {
+  if (result.structuredContent !== undefined && result.structuredContent !== null) return cleanOutput(JSON.stringify(result.structuredContent, null, 1));
+  return cleanOutput((result.content ?? []).filter(c => c.type === 'text' && typeof c.text === 'string').map(c => c.text).join('\n'));
+}
+
+/** One `cua-driver mcp` stdio session (newline-delimited JSON-RPC). */
+class Session {
+  private nextId = 0;
+  private buffer = '';
+  private readonly pending = new Map<number, Pending>();
+  readonly ready: Promise<void>;
+  closed = false;
+  constructor(private readonly child: ChildProcess) {
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => this.read(chunk));
+    child.stderr?.on('data', () => { /* diagnostics only */ });
+    child.on('error', () => this.close());
+    child.on('close', () => this.close());
+    child.stdin?.on('error', () => this.close());
+    this.ready = this.request('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'hermes-app-desktop', version: '1' } }, 30_000)
+      .then(() => { this.notify('notifications/initialized'); });
+  }
+  private read(chunk: string): void {
+    this.buffer += chunk;
+    if (this.buffer.length > MAX_LINE) { this.close(); return; }
+    let end: number;
+    while ((end = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, end).trim(); this.buffer = this.buffer.slice(end + 1);
+      if (!line) continue;
+      let message: { id?: unknown; result?: unknown; error?: { message?: string } };
+      try { message = JSON.parse(line); } catch { continue; }
+      if (typeof message.id !== 'number') continue; // Notifications and server requests are not used.
+      const waiter = this.pending.get(message.id);
+      if (!waiter) continue;
+      if (message.error) waiter.reject(new BrowserControlError('driver_error', String(message.error.message ?? 'Cua Driver error.').slice(0, 2000)));
+      else waiter.resolve(message.result);
+    }
+  }
+  private send(body: Record<string, unknown>): void {
+    if (this.closed || !this.child.stdin?.writable) throw new BrowserControlError('unknown', 'Cua Driver stopped.');
+    this.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...body }) + '\n');
+  }
+  notify(method: string, params?: Record<string, unknown>): void { try { this.send({ method, ...(params ? { params } : {}) }); } catch { /* closed */ } }
+  request(method: string, params: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) { reject(new BrowserControlError('cancelled', 'Stopped.')); return; }
+      const id = ++this.nextId;
+      const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); this.pending.delete(id); };
+      const onAbort = () => { finish(); this.notify('notifications/cancelled', { requestId: id }); reject(new BrowserControlError('cancelled', 'Stopped.')); };
+      // No answer in time: the result is unknown and the session may be stuck, so it is replaced.
+      const timer = setTimeout(() => { finish(); this.close(); reject(new BrowserControlError('unknown', 'Cua Driver did not answer in time.')); }, timeoutMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.pending.set(id, { resolve: value => { finish(); resolve(value); }, reject: error => { finish(); reject(error); } });
+      try { this.send({ id, method, params }); } catch (error) { finish(); reject(error as Error); }
+    });
+  }
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const waiter of [...this.pending.values()]) waiter.reject(new BrowserControlError('unknown', 'Cua Driver stopped during the action.'));
+    this.pending.clear();
+    if (this.child.exitCode === null && !this.child.killed) this.child.kill();
+  }
+}
 
 export class MacDriver {
   private readonly candidates: readonly string[];
   private readonly platform: NodeJS.Platform;
+  private session?: Session;
+  private opening?: Promise<Session>;
+  private idle?: NodeJS.Timeout;
   constructor(private readonly options: MacDriverOptions = {}) {
     this.candidates = options.candidates ?? defaultCandidates();
     this.platform = options.platform ?? process.platform;
   }
 
-  /** The driver executable, or undefined when Cua Driver is not installed. Checked on every call. */
+  /** The driver executable, or undefined when Cua Driver is not installed. */
   executable(): string | undefined {
     if (this.platform !== 'darwin') return undefined;
     for (const path of this.candidates) {
@@ -75,68 +148,57 @@ export class MacDriver {
   }
   available(): boolean { return !!this.executable(); }
 
-  async run(args: Readonly<Record<string, unknown>>, signal: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> {
-    const { tool, input } = macRequest(args);
-    const exe = this.executable();
-    if (!exe) throw new BrowserControlError('no_driver', 'Cua Driver is not installed on this Mac.');
-    if (tool === 'list_tools') return this.textResult(await this.exec(exe, ['list-tools'], signal, timeoutMs));
-    if (tool === 'describe') {
-      const name = input.tool;
-      if (typeof name !== 'string' || !TOOL.test(name)) throw new BrowserControlError('invalid', 'describe needs arguments {"tool": "<name>"}.');
-      return this.textResult(await this.exec(exe, ['describe', name], signal, timeoutMs));
-    }
-    const shot = join(this.options.scratch ?? tmpdir(), `hermes-mac-${randomUUID()}.png`);
-    const callArgs = ['call', '--screenshot-out-file', shot, tool, JSON.stringify(input)];
-    try {
-      let result = await this.exec(exe, callArgs, signal, timeoutMs);
-      // A call fails before running anything when the daemon is down: confirm with `status`,
-      // start the daemon and try once more.
-      if (result.code !== 0 && !signal.aborted && (await this.exec(exe, ['status'], signal, 10_000)).code !== 0) {
-        await (this.options.startDaemon ?? (() => startDriverDaemon(this.options.spawnProcess ?? spawn)))();
-        result = await this.exec(exe, callArgs, signal, timeoutMs);
-      }
-      const output = this.textResult(result);
-      let image: EncodedImage | undefined;
-      try { if (statSync(shot).size > 0) image = this.options.encodeImage?.(shot); } catch { /* no image */ }
-      return image ? { ...output, jpeg_base64: image.jpegBase64, image_width: image.width, image_height: image.height } : output;
-    } finally { rmSync(shot, { force: true }); }
-  }
-
-  private textResult(result: RunResult): Record<string, unknown> {
-    if (result.code !== 0) {
-      const detail = cleanOutput(result.stderr || result.stdout) || `Cua Driver exited with code ${result.code}.`;
-      throw new BrowserControlError('driver_error', detail.slice(0, 2000));
-    }
-    return { output: cleanOutput(result.stdout) };
-  }
-
-  private exec(exe: string, argv: string[], signal: AbortSignal, timeoutMs: number): Promise<RunResult> {
-    return new Promise((resolve, reject) => {
-      if (signal.aborted) { reject(new BrowserControlError('cancelled', 'Stopped.')); return; }
+  /** The current session, started on first use and again after it stops. */
+  private open(): Promise<Session> {
+    if (this.session && !this.session.closed) return Promise.resolve(this.session);
+    if (this.opening) return this.opening;
+    this.opening = (async () => {
+      const exe = this.executable();
+      if (!exe) throw new BrowserControlError('no_driver', 'Cua Driver is not installed on this Mac.');
       let child: ChildProcess;
       try {
-        child = (this.options.spawnProcess ?? spawn)(exe, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUA_DRIVER_RS_UPDATE_CHECK: 'false' } });
-      } catch { reject(new BrowserControlError('no_driver', 'Cua Driver could not be started.')); return; }
-      let stdout = '', stderr = '', done = false;
-      const finish = (fn: () => void) => { if (done) return; done = true; clearTimeout(timer); signal.removeEventListener('abort', onAbort); fn(); };
-      const onAbort = () => { child.kill('SIGTERM'); finish(() => reject(new BrowserControlError('cancelled', 'Stopped.'))); };
-      const timer = setTimeout(() => { child.kill('SIGTERM'); finish(() => reject(new BrowserControlError('unknown', 'Cua Driver did not answer in time.'))); }, timeoutMs);
-      signal.addEventListener('abort', onAbort, { once: true });
-      child.stdout?.on('data', chunk => { if (stdout.length < MAX_OUTPUT * 4) stdout += chunk; });
-      child.stderr?.on('data', chunk => { if (stderr.length < 20_000) stderr += chunk; });
-      child.on('error', () => finish(() => reject(new BrowserControlError('no_driver', 'Cua Driver could not be started.'))));
-      child.on('close', code => finish(() => resolve({ code, stdout, stderr })));
-    });
+        child = (this.options.spawnProcess ?? spawn)(exe, ['mcp'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CUA_DRIVER_RS_UPDATE_CHECK: 'false' } });
+      } catch { throw new BrowserControlError('no_driver', 'Cua Driver could not be started.'); }
+      const session = new Session(child);
+      try { await session.ready; } catch {
+        session.close();
+        throw new BrowserControlError('no_driver', 'Cua Driver could not be started.');
+      }
+      this.session = session;
+      return session;
+    })().finally(() => { this.opening = undefined; });
+    return this.opening;
   }
-}
 
-/** Starts the CuaDriver.app daemon through LaunchServices, so it keeps its own permissions. */
-async function startDriverDaemon(spawnProcess: typeof spawn): Promise<void> {
-  await new Promise<void>(resolve => {
-    try {
-      const child = spawnProcess('/usr/bin/open', ['-n', '-g', '-a', 'CuaDriver', '--args', 'serve'], { stdio: 'ignore' });
-      child.on('error', () => resolve()); child.on('close', () => resolve());
-    } catch { resolve(); }
-  });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  private touch(): void {
+    if (this.idle) clearTimeout(this.idle);
+    this.idle = setTimeout(() => this.close(), this.options.idleMs ?? 10 * 60_000);
+    this.idle.unref?.();
+  }
+
+  async run(args: Readonly<Record<string, unknown>>, signal: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> {
+    const { tool, input } = macRequest(args);
+    const session = await this.open();
+    this.touch();
+    if (tool === 'list_tools' || tool === 'describe') {
+      const listed = await session.request('tools/list', {}, timeoutMs, signal) as { tools?: { name: string; description?: string; inputSchema?: unknown }[] };
+      const tools = listed?.tools ?? [];
+      if (tool === 'list_tools') return { output: tools.map(t => `${t.name}: ${(t.description ?? '').split('\n')[0]}`).join('\n') };
+      const found = tools.find(t => t.name === input.tool);
+      if (!found) throw new BrowserControlError('invalid', 'describe needs arguments {"tool": "<name>"} with a tool from list_tools.');
+      return { output: cleanOutput(`name: ${found.name}\n\ndescription:\n${found.description ?? ''}\n\ninput schema:\n${JSON.stringify(found.inputSchema ?? {}, null, 1)}`) };
+    }
+    const result = await session.request('tools/call', { name: tool, arguments: input }, timeoutMs, signal) as ToolResult;
+    const output = resultText(result ?? {});
+    if (result?.isError) throw new BrowserControlError('driver_error', output.slice(0, 2000) || 'Cua Driver refused the action.');
+    const png = (result?.content ?? []).find(c => c.type === 'image' && typeof c.data === 'string');
+    let image: EncodedImage | undefined;
+    if (png?.data) { try { image = this.options.encodeImage?.(Buffer.from(png.data, 'base64')); } catch { image = undefined; } }
+    return image ? { output, jpeg_base64: image.jpegBase64, image_width: image.width, image_height: image.height } : { output };
+  }
+
+  close(): void {
+    if (this.idle) { clearTimeout(this.idle); this.idle = undefined; }
+    this.session?.close(); this.session = undefined;
+  }
 }

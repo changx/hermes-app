@@ -24,6 +24,15 @@ let publishedSnapshot: DesktopSnapshot | undefined;
 let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
 let browserControl: DesktopBrowserControl | undefined;
+// One Cua Driver session for the app run: window snapshots must survive between Agent actions.
+const macDriver = new MacDriver({
+  encodeImage: png => {
+    const image = nativeImage.createFromBuffer(png);
+    if (image.isEmpty()) return undefined;
+    const { width, height } = image.getSize();
+    return { jpegBase64: image.toJPEG(80).toString('base64'), width, height };
+  },
+});
 protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 const secureSettings = (contents: Electron.WebContents): void => {
@@ -350,15 +359,7 @@ app.whenReady().then(async () => {
       if (command.action === MAC_ACTION) throw new BrowserControlError('failed', 'Not a browser action.');
       return browser.command(tabId, command.action, command.args, signal, command.timeoutMs);
     },
-    mac: new MacDriver({
-      scratch: app.getPath('temp'),
-      encodeImage: path => {
-        const image = nativeImage.createFromPath(path);
-        if (image.isEmpty()) return undefined;
-        const { width, height } = image.getSize();
-        return { jpegBase64: image.toJPEG(80).toString('base64'), width, height };
-      },
-    }),
+    mac: macDriver,
     deviceName: hostname(),
   });
   await service.initialize();
@@ -370,7 +371,7 @@ app.whenReady().then(async () => {
 let readyToQuit = false;
 let flushingDrafts = false;
 app.on("before-quit", event => {
-  if (readyToQuit) { browserControl?.close(); service.close(); return; }
+  if (readyToQuit) { browserControl?.close(); macDriver.close(); service.close(); return; }
   event.preventDefault();
   if (flushingDrafts) return;
   flushingDrafts = true;
