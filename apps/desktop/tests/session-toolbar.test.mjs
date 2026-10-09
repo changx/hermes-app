@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 
 // Production DesktopShellView Session page in real Chromium.
-test('Chromium: Session page has no title bar; tools are one floating row at the top right', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: Session page has no title bar; tools float at the top right with all labels wrapped below as clickable pills', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'session-toolbar-'));
   try {
     const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
@@ -16,11 +16,11 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
       const calls=[];
-      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),copySessionLink:async()=>{calls.push('copy')},openSettings:async()=>{calls.push('settings')},archiveThread:async()=>{calls.push('archive')},renameThread:async()=>{},markResultRead:async()=>{},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{}};
+      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),copySessionLink:async()=>{calls.push('copy')},openSettings:async()=>{calls.push('settings')},archiveThread:async()=>{calls.push('archive')},renameThread:async()=>{},markResultRead:async()=>{},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},saveThreadLabels:async()=>{throw Error('offline')}};
       window.confirm=()=>true;
       const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:i===29?[{id:'a1',name:'REPORT.md',mime:'text/markdown',size:12000,state:'available',publicUrl:'https://example.test/r'}]:[]}));
       const snapshot={phase:'connected',connectionState:'online',connectionKey:'one',supportsSessionLabels:true,tabActive:true,tabKind:'session',
-        channels:[{id:'p',name:'Project Alpha'}],threads:[{id:'t',channelId:'p',title:'Session Title Beta',markers:['urgent'],running:false}],
+        channels:[{id:'p',name:'Project Alpha'}],threads:[{id:'t',channelId:'p',title:'Session Title Beta',markers:['urgent','review needed','design','backend','follow up next week','iOS','long label text here 1234'],running:false}],
         selectedChannelId:'p',selectedThreadId:'t',selectedThreadTitle:'Session Title Beta',messages,interactions:[],canLoadOlder:false};
       const root=createRoot(document.getElementById('root'));
       flushSync(()=>root.render(<DesktopShellView snapshot={snapshot} viewRole="tab" />));
@@ -30,9 +30,10 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
         ensure('no header',!page.querySelector('header'));
         const outside=[...page.childNodes].filter(n=>!n.contains(list)).map(n=>n.textContent).join(' ')+bar.textContent;
         ensure('no title or project text',!outside.includes('Session Title Beta')&&!outside.includes('Project Alpha'));
-        const names=[...bar.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'));
+        const actions=bar.querySelector('.conversation-actions'), labels=bar.querySelector('.toolbar-labels');
+        const names=[...actions.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'));
         ensure('tools present',names.join('|')==='Copy link|Edit labels|Rename|Archive|Settings');
-        ensure('icon buttons have in-app tooltips, not native titles',[...bar.querySelectorAll('button')].every(b=>b.dataset.tooltip&&!b.title&&b.querySelector('svg')&&!b.textContent.trim()));
+        ensure('icon buttons have in-app tooltips, not native titles',[...actions.querySelectorAll('button')].every(b=>b.dataset.tooltip&&!b.title&&b.querySelector('svg')&&!b.textContent.trim()));
         const hover=async(el)=>{el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,600));return document.querySelector('.app-tooltip');};
         const away=async()=>{list.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,30));};
         const vw=document.documentElement.clientWidth;
@@ -45,12 +46,23 @@ test('Chromium: Session page has no title bar; tools are one floating row at the
         const mid=a=>{const r=a.getBoundingClientRect();return r.top+r.height/2;};ensure('actions on one row below the name',acts.every(a=>Math.abs(mid(a)-mid(acts[0]))<=2)&&acts[0].getBoundingClientRect().top>=name.getBoundingClientRect().bottom);
         ensure('attachment actions have tooltips',acts.every(a=>a.dataset.tooltip&&!a.title));
         { const tip=await hover(acts[1]); ensure('attachment tooltip shows',tip&&tip.textContent==='Open in the default app'); { let box=acts[1].parentElement; while(box&&!(box.scrollHeight>box.clientHeight&&/(auto|scroll)/.test(getComputedStyle(box).overflowY)))box=box.parentElement; box.scrollTop=Math.max(0,box.scrollTop-120); box.dispatchEvent(new Event('scroll')); /* headless virtual time does not render frames, so it does not fire scroll events itself */ await new Promise(r=>setTimeout(r,30)); } ensure('scroll that moves the control hides the tooltip',!document.querySelector('.app-tooltip')); checks.attachment={name:name.getBoundingClientRect().toJSON(),actions:acts.map(a=>Math.round(mid(a)))}; await away(); }
-        const tops=new Set([...bar.querySelectorAll('button')].map(b=>Math.round(b.getBoundingClientRect().top)));
+        const tops=new Set([...actions.querySelectorAll('button')].map(b=>Math.round(b.getBoundingClientRect().top)));
         ensure('one row',tops.size===1);
         const box=bar.getBoundingClientRect(), pageBox=page.getBoundingClientRect(), listBox=list.getBoundingClientRect();
-        ensure('floats top right',box.top-pageBox.top<=12&&pageBox.right-box.right<=16&&box.height<=40);
+        ensure('floats top right',box.top-pageBox.top<=12&&pageBox.right-box.right<=16);
+        const pills=[...labels.querySelectorAll('button')], actBox=actions.getBoundingClientRect(), labelsBox=labels.getBoundingClientRect();
+        ensure('every label shown, none collapsed to +N',pills.map(p=>p.textContent).join('|')==='urgent|review needed|design|backend|follow up next week|iOS|long label text here 1234'&&!bar.querySelector('.label-overflow'));
+        ensure('labels below the buttons',labelsBox.top>=actBox.bottom);
+        const rows=new Set(pills.map(p=>Math.round(p.getBoundingClientRect().top)));
+        ensure('labels wrap onto several rows',rows.size>=2);
+        ensure('labels stay inside the toolbar',pills.every(p=>{const r=p.getBoundingClientRect();return r.left>=box.left&&r.right<=box.right&&r.bottom<=box.bottom;}));
+        ensure('toolbar height follows the labels',box.height>labelsBox.bottom-actBox.top&&box.height>60&&box.width<=420);
         ensure('floats over the timeline, which starts at the top',Math.abs(listBox.top-pageBox.top)<=1&&getComputedStyle(bar).position==='absolute');
-        ensure('labels kept in the row',bar.querySelector('.label-pills')?.getAttribute('aria-label')==='Labels: urgent');
+        ensure('labels group named',labels.getAttribute('aria-label')?.startsWith('Labels: urgent, review needed'));
+        ensure('labels are buttons with tooltips',pills.every(p=>p.tagName==='BUTTON'&&p.dataset.tooltip==='Edit label'&&p.getAttribute('aria-label')==='Edit label '+p.textContent));
+        labels.querySelector('[aria-label="Edit label design"]').click(); await new Promise(r=>setTimeout(r,20));
+        { const dialog=document.querySelector('dialog.labels-editor'); ensure('label click opens the editor',dialog&&dialog.open); ensure('editor starts editing that label',dialog.querySelector('[aria-label="Label text"]').value==='design'&&[...dialog.querySelectorAll('button')].some(b=>b.textContent==='Update')); [...dialog.querySelectorAll('button')].find(b=>b.textContent==='Cancel').click(); await new Promise(r=>setTimeout(r,20)); ensure('editor closes',!document.querySelector('dialog.labels-editor')); }
+        checks.labelRows=rows.size;
         bar.querySelector('[aria-label="Copy link"]').click(); bar.querySelector('[aria-label="Archive"]').click(); bar.querySelector('[aria-label="Settings"]').click();
         await new Promise(r=>setTimeout(r,20));
         ensure('buttons act',calls.join('|')==='copy|archive|settings');

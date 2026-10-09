@@ -73,7 +73,7 @@ test('Chromium: actual measured pills, filter/tree interactions, connection rese
         ensure('header editor entry',document.querySelector('dialog').open);
         button(document.querySelector('dialog'),'Cancel').click();await tick();
         const updated={...shell,threads:shell.threads.map(t=>t.id==='row0'?{...t,markers:['Updated header']}:t)};shellRender(updated);await tick();
-        ensure('authoritative header labels',document.querySelector('.session-toolbar .label-pills').getAttribute('aria-label')==='Labels: Updated header');
+        ensure('authoritative header labels',document.querySelector('.session-toolbar .toolbar-labels').getAttribute('aria-label')==='Labels: Updated header');
         ensure('composer and page retained',page===document.querySelector('.session-tab-page')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
         button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();shellRender({...updated,connectionKey:'shell-two'});
         ensure('no old dialog on new connection',!document.querySelector('dialog'));

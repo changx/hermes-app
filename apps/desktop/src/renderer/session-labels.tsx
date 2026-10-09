@@ -31,6 +31,14 @@ export function LabelPills({ markers = [] }: { markers?: readonly string[] }) {
   </span>;
 }
 
+/** Session toolbar labels: every label is shown, wrapping onto more rows; each one opens the editor on that label. */
+export function ToolbarLabels({ markers = [], onOpen }: { markers?: readonly string[]; onOpen: (label: string) => void }) {
+  if (!markers.length) return null;
+  return <div className="toolbar-labels" role="group" aria-label={`Labels: ${markers.join(', ')}`}>
+    {markers.map(label => <button key={label} type="button" className="label-pill toolbar-label" aria-label={`Edit label ${label}`} data-tooltip="Edit label" onClick={() => onOpen(label)}>{label}</button>)}
+  </div>;
+}
+
 export function LabelsFilter({ rows, value, onChange }: { rows: readonly DesktopThread[]; value: LabelFilter; onChange: (filter: LabelFilter) => void }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false), [allChips, setAllChips] = useState(false);
@@ -58,9 +66,10 @@ export function LabelsFilter({ rows, value, onChange }: { rows: readonly Desktop
   </div>;
 }
 
-export function LabelsEditor({ thread, snapshot, close }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void }) {
+export function LabelsEditor({ thread, snapshot, close, focusLabel }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void; focusLabel?: string }) {
   const [draft, setDraft] = useState(() => [...(thread.markers ?? [])]);
-  const [entry, setEntry] = useState(''), [editing, setEditing] = useState<number | null>(null);
+  const focusIndex = focusLabel === undefined ? -1 : (thread.markers ?? []).indexOf(focusLabel);
+  const [entry, setEntry] = useState(focusIndex >= 0 ? focusLabel! : ''), [editing, setEditing] = useState<number | null>(focusIndex >= 0 ? focusIndex : null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const working = useRef(false), dialog = useRef<HTMLDialogElement>(null), input = useRef<HTMLInputElement>(null);
   const alive = useRef(true);

@@ -14,7 +14,7 @@ import { compactToolCaption, toolPresentation } from "../../../../packages/clien
 import { SessionPicker } from './session-picker';
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
-import { LabelPills, LabelsEditor } from './session-labels';
+import { LabelsEditor, ToolbarLabels } from './session-labels';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 
 // Stroke icons for the floating Session toolbar. Decorative: each button carries its accessible name.
@@ -345,8 +345,8 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
   const [projectEditor, setProjectEditor] = useState<ProjectEditor>(null);
-  const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined } | null>(null);
-  const openLabels = useCallback((thread: DesktopSnapshot['threads'][number]) => setLabelTarget({ thread, connectionKey: snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey }), [snapshot.channels, snapshot.connectionKey]);
+  const [labelTarget, setLabelTarget] = useState<{ thread: DesktopSnapshot['threads'][number]; connectionKey: string | undefined; focusLabel?: string } | null>(null);
+  const openLabels = useCallback((thread: DesktopSnapshot['threads'][number], focusLabel?: string) => setLabelTarget({ thread, focusLabel, connectionKey: snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey }), [snapshot.channels, snapshot.connectionKey]);
   useEffect(() => { if (labelTarget && (snapshot.connections ? !snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey !== snapshot.connectionKey)) setLabelTarget(null); }, [snapshot.connections, snapshot.connectionKey, labelTarget]);
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
@@ -364,8 +364,9 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   if (snapshot.draftIdentity && (viewRole === 'workspace' ? draftReady === undefined : draftReady !== snapshot.draftIdentity)) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}</main>;
 
 
+  const currentThread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId);
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} focusLabel={labelTarget.focusLabel} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget}>
     {overlays}
   </NativeWorkspace>;
@@ -373,9 +374,8 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   return <main className="session-tab-page" aria-label="Hermes session">
     {snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{draftError && <div className="error-banner" role="alert">{draftError}</div>}
     <div className="session-main">
-      {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline. */}
+      {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline; all labels wrap below the buttons, so the toolbar height varies. */}
       <div className="session-toolbar" role="toolbar" aria-label="Session tools">
-        {snapshot.supportsSessionLabels && <LabelPills markers={snapshot.threads.find(t => t.id === snapshot.selectedThreadId)?.markers} />}
         <div className="conversation-actions">
           <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
           {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation"
@@ -385,6 +385,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
           <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={archive}><ToolIcon name="archive" /></button>
           <SettingsButton icon={<ToolIcon name="settings" />} tooltip />
         </div>
+        {snapshot.supportsSessionLabels && <ToolbarLabels markers={currentThread?.markers} onOpen={label => { if (currentThread) openLabels(currentThread, label); }} />}
       </div>
       <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
     </div>

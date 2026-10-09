@@ -692,10 +692,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Session content column: messages, interaction cards and composer controls share one centered
    768px column. The scroll area and composer background still span the full page width. */
 .session-tab-page { --session-content-max: 768px; }
-/* Floating Session toolbar: no title bar; one compact row at the top right over the timeline. */
+/* Floating Session toolbar: no title bar; buttons on the first row at the top right over the timeline, all labels wrapped below (variable height). */
 .session-main { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.session-toolbar { position: absolute; z-index: 5; top: 8px; right: 12px; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); padding: 3px; border: 1px solid var(--app-border); border-radius: 10px; background: rgb(255 255 255 / 86%); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgb(0 0 0 / 6%); }
-.session-toolbar .label-pills { min-width: 0; margin: 0 2px 0 6px; overflow: hidden; flex-wrap: nowrap; }
+.session-toolbar { position: absolute; z-index: 5; top: 8px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; box-sizing: border-box; max-width: min(420px, calc(100% - 24px)); padding: 3px; border: 1px solid var(--app-border); border-radius: 10px; background: rgb(255 255 255 / 86%); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgb(0 0 0 / 6%); }
+/* Labels sit below the buttons and wrap onto as many rows as they need; the toolbar grows with them. */
+.session-toolbar .toolbar-labels { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 100%; min-width: 0; padding: 0 3px 3px; font-size: var(--app-font-size); font-weight: 500; }
+.session-toolbar .toolbar-label { border: 0; font: inherit; cursor: pointer; }
+.session-toolbar .toolbar-label:hover { background: #dfe7f1; color: #2b3f57; }
+.session-toolbar .toolbar-label:focus-visible { outline: 2px solid var(--app-accent, #3b82f6); outline-offset: 1px; }
 .session-toolbar .conversation-actions { gap: 2px; }
 .session-toolbar .conversation-actions button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--app-label); font-size: var(--app-font-size); cursor: pointer; }
 .session-toolbar .conversation-actions button:hover { background: var(--app-hover); color: var(--app-text); }
