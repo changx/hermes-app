@@ -49,6 +49,13 @@
 - 桌面：tag `v0.1.51`，CI run `37865708523` 成功并发布 `Hermes-0.1.51-macOS-arm64.zip`。下载后 sha256 校验通过，Info.plist 版本 0.1.51，arm64；ASAR `dist` 与本地验证构建逐字节一致（source map 不打包）。
 - 回滚：插件恢复备份目录后重启 Gateway；App 对 `d5a8913`、`703aeb6` 做 git revert 后重启 Expo。不恢复聊天数据。
 
+## 修复：保存后读取确认（2026-10-10）
+
+- 问题：桌面保存 Primary folder 总是提示「The primary folder change could not be confirmed」。重新打开对话框时，文件夹也显示为空。
+- 原因：共享 SDK `LiveSessionClient.getChannelInfo` 只返回 `id`、`name` 和 `description`，丢弃了 `bound_primary_path`。桌面 `setProjectFolder` 和手机保存都用这个读取结果确认，所以读到 `null`，判定不一致。服务端实际已经保存。
+- 旧的互通测试只用 `HermesClient.listChannels` 读取，没有覆盖 App 使用的 `getChannelInfo`。
+- 修复：`getChannelInfo` 返回 `bound_primary_path`（字符串或 `null`；旧服务端不返回时省略），格式错误时报协议错误。新增 `packages/client/tests/channel-info.test.mjs`；`tests/client/primary-path-interop.mjs` 增加 `getChannelInfo` 的绑定和解除读取确认。
+
 ## 尚未完成
 
 - 插件安装到 hermes-app-dev 和 Gateway 重启后，验证实际加载的版本、HTTP/WS 行为和一条真实模型消息。

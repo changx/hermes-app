@@ -232,7 +232,9 @@ export class LiveSessionClient extends HermesClient {
   async getChannelInfo(id:string,signal?:AbortSignal):Promise<Channel>{
     const body=await this.call('GET','/v1/channels/'+encodeURIComponent(id),undefined,signal),raw=body.channel as Record<string,unknown>;
     if(!raw||raw.id!==id||typeof raw.name!=='string'||raw.description!==undefined&&typeof raw.description!=='string')throw new ProtocolError('channel identity mismatch');
-    return {id,name:raw.name,...(typeof raw.description==='string'?{description:raw.description}:{})};
+    if(raw.bound_primary_path!==undefined&&raw.bound_primary_path!==null&&typeof raw.bound_primary_path!=='string')throw new ProtocolError('invalid channel primary path');
+    // Primary-path saves confirm by this readback, so the bound folder must pass through.
+    return {id,name:raw.name,...(typeof raw.description==='string'?{description:raw.description}:{}),...(raw.bound_primary_path!==undefined?{bound_primary_path:raw.bound_primary_path as string|null}:{})};
   }
   private labelTarget(id: string): string {
     if (!this.supportsSessionLabels || this.connectionState !== 'online' || !this.isThreadAvailable(id)) throw new ProtocolError('Labels are unavailable');
