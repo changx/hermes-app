@@ -90,6 +90,10 @@ jobs:
       # artifacts are unavailable (storage quota blocked by account billing).
       # Publish the checked draft later with `gh release edit <tag> --draft=false`.
       - name: Upload Release (draft unless publishing)
+        id: upload
+        # Uploads go through Surge's TUN on the Mac mini; one test upload
+        # stalled with no progress. Fail fast instead of hanging for 30 min.
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           args=(release create "$TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256"
@@ -112,3 +116,16 @@ jobs:
             exit 0
           fi
           bash scripts/prune-releases.sh "$GITHUB_REPOSITORY" 2 --protect "$TAG"
+
+      # A failed or stalled upload leaves a partial draft that blocks a rerun.
+      # Runs only when the upload step itself failed, so a checked draft from an
+      # earlier run is kept. Deletes only a draft, never a published Release.
+      - name: Remove partial draft after failure
+        if: always() && (steps.upload.outcome == 'failure' || steps.upload.outcome == 'cancelled')
+        run: |
+          set -euo pipefail
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)"
+          if [[ -n "$id" ]]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+            echo "Deleted partial draft Release $id for $TAG."
+          fi
