@@ -131,6 +131,7 @@
 - [docs/file-preview.md](docs/file-preview.md)
 - [docs/multi-connection.md](docs/multi-connection.md)
 - [docs/multi-connection-release-0.1.36.md](docs/multi-connection-release-0.1.36.md)
+- [docs/connection-names.md](docs/connection-names.md)
 - [docs/full-history-loading.md](docs/full-history-loading.md)
 - [docs/generated-titles-search.md](docs/generated-titles-search.md)
 - [docs/unified-settings.md](docs/unified-settings.md)

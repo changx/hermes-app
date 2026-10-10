@@ -12,11 +12,11 @@ const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnectin
 // Snapshot deltas rebuild the connection array; compare only what the tree shows.
 const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ?? []).map(row => `${row.connectionKey ?? ''}=${row.state}`).join('|');
 
-const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels,hint}: {thread:DesktopThread;selected:boolean;draft:boolean;showLabels?:boolean;hint?:string;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} title={hint} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
+const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels,hint,source}: {thread:DesktopThread;selected:boolean;draft:boolean;showLabels?:boolean;hint?:string;source?:string;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} title={hint} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
-  <span className="thread-title">{thread.title}</span>{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}
+  <span className="thread-title">{thread.title}</span>{source ? <span className="thread-connection-name">{source}</span> : null}{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}
   </span>{showLabels && <LabelPills markers={thread.markers} />}
 </button>);
 
@@ -73,9 +73,15 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     if (snapshot.selectedChannelId) setExpanded((old) => new Set([...old, snapshot.selectedChannelId!]));
   }, [snapshot.selectedChannelId]);
   const projectName = new Map(snapshot.channels.map(channel => [channel.id, channel.name]));
+  const connectionName = new Map(snapshot.channels.map(channel => [channel.id, channel.connectionName]));
   const recents = recentWindow(available, now, recentBatches);
   const labelsFor = (thread: DesktopThread) => thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true;
-  const row = (thread: DesktopThread, hint?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={labelsFor(thread)} onMenu={labelsFor(thread) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />;
+  const row = (thread: DesktopThread, hint?: string, source?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={labelsFor(thread)} onMenu={labelsFor(thread) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />;
+  // Recents mixes every connection; with several, each row names its connection.
+  const recentRow = (thread: DesktopThread) => {
+    const source = multiple ? connectionName.get(thread.channelId) : undefined;
+    return row(thread, [projectName.get(thread.channelId), source].filter(Boolean).join(' · ') || undefined, source);
+  };
   return <div className="sidebar-scroll">
     <nav className="sidebar-actions" aria-label="Create">
       <button type="button" className="sidebar-action" onClick={() => onNewSession(snapshot.selectedChannelId ?? projects[0]?.id ?? '')}><Icon name="compose" /><span>New chat</span></button>
@@ -107,7 +113,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
           <span>Recents</span><Icon name={recentsCollapsed ? 'chevronRight' : 'chevronDown'} className="sidebar-section-chevron" /></button></h2>
       </div>
       {!recentsCollapsed && <div className="item-list recent-list" id="sidebar-recents-list">
-        {recents.rows.map(thread => row(thread, projectName.get(thread.channelId)))}
+        {recents.rows.map(recentRow)}
         {!recents.rows.length && <p className="tree-empty">No sessions in the last 24 hours</p>}
         {recents.hasMore && <button className="tree-more" type="button" onClick={() => setRecentBatches(value => value + 1)}>Show more</button>}
       </div>}

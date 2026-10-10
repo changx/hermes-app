@@ -4,7 +4,7 @@ import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
 import { DesktopConnectionService, deviceName, normalizeCode } from './connection-service';
 import { CredentialStore } from './credential-store';
-import { ConnectionIndex, type ConnectionEntry } from './connection-index';
+import { ConnectionIndex, ConnectionNames, normalizeConnectionName, type ConnectionEntry } from './connection-index';
 import { LocalDraftStore } from './local-draft-store';
 import { OutboxStore } from './outbox-store';
 import { normalizeBaseUrl } from './transport';
@@ -17,7 +17,11 @@ export class DesktopConnections {
   private readonly index = new ConnectionIndex();
   private readonly drafts = new LocalDraftStore();
   private readonly outbox = new OutboxStore();
+  private readonly nameStore = new ConnectionNames();
   private entries: ConnectionEntry[] = [];
+  /** Names chosen on this device by slot ID; a missing entry uses the host name. */
+  private names: Record<string, string> = {};
+  private namesError = false;
   private active = 'primary';
   private revision = 0;
   private listError?: string;
@@ -66,8 +70,12 @@ export class DesktopConnections {
         unqualify: (id: string) => { try { const r = this.route(id); return r.account === account ? r.raw : undefined; } catch { return undefined; } } }];
     });
   }
+  private hostName(account: Account, snap = account.service.snapshot(undefined, false)): string | undefined {
+    return snap.connectionName ?? (account.server ? new URL(account.server).hostname : undefined);
+  }
+  private nameOf(account: Account, snap?: DesktopSnapshot): string | undefined { return this.names[account.id] ?? this.hostName(account, snap); }
   private projected(account: Account, thread?: string, pages = true): DesktopSnapshot {
-    const snap = account.service.snapshot(thread, pages), name = snap.connectionName ?? (account.server ? new URL(account.server).hostname : undefined);
+    const snap = account.service.snapshot(thread, pages), name = this.nameOf(account, snap);
     return { ...snap, connectionName: name,
       selectedChannelId: this.encode(account, snap.selectedChannelId), selectedThreadId: this.encode(account, snap.selectedThreadId),
       channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey })),
@@ -83,7 +91,8 @@ export class DesktopConnections {
     const connections: DesktopConnection[] = [...this.accounts.values()].flatMap(a => {
       const s = a.service.snapshot(undefined, false);
       if (a.id === 'primary' && !s.connectionKey && s.phase !== 'pairing' && !s.errorMessage) return [];
-      return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: s.connectionName ?? (a.server ? new URL(a.server).hostname : 'Saved connection'),
+      return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: this.nameOf(a, s) ?? 'Saved connection',
+        defaultName: this.hostName(a, s) ?? 'Saved connection', ...(this.names[a.id] ? { customName: true } : {}),
         state: s.phase === 'pairing' ? 'pairing' as const : s.errorMessage && !s.connectionKey ? 'blocked' as const : s.connectionState,
         ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
         ...(a.service.supportsPrimaryPath() ? { supportsPrimaryPath: true } : {}),
@@ -103,6 +112,8 @@ export class DesktopConnections {
     try { this.entries = await this.index.load(); }
     catch { this.listError = 'The saved connection list could not be loaded. Reopen Hermes to try again. Existing connections are unchanged.'; this.changed(); return; }
     for (const entry of this.entries) this.make(entry.id, entry.server);
+    // A damaged name file falls back to host names and blocks renaming, so it is never overwritten.
+    try { this.names = Object.fromEntries(Object.entries(await this.nameStore.load()).filter(([id]) => this.accounts.has(id))); } catch { this.names = {}; this.namesError = true; }
     this.ready = true; this.changed();
     await Promise.all(this.entries.map(e => this.accounts.get(e.id)!.service.initialize()));
   }
@@ -137,6 +148,11 @@ export class DesktopConnections {
       if (!account || !this.snapshot().connections!.some(c => c.id === id)) throw new Error('Connection unavailable');
       // Each service clears only its own encrypted credential, draft and outbox identity.
       await account.service.forgetConnection();
+      if (this.names[id] && !this.namesError) {
+        // A later pairing in this slot must start with the host name again.
+        const { [id]: _removed, ...rest } = this.names;
+        await this.nameStore.save(rest); this.names = rest;
+      }
       if (id !== 'primary') {
         const next = this.entries.filter(e => e.id !== id);
         await this.index.save(next); this.entries = next; account.service.close(); this.accounts.delete(id);
@@ -144,6 +160,19 @@ export class DesktopConnections {
       if (this.active === id) this.active = this.current().id;
       this.changed();
       if (this.snapshot().connections!.some(c => c.id === id)) throw new Error('Connection removal was not confirmed. Try again.');
+    });
+  }
+  /** Saves this device's name for one connection. An empty name restores the host name. */
+  async renameConnection(id: string, value: string): Promise<void> {
+    const name = normalizeConnectionName(value);
+    return this.change(async () => {
+      if (!this.ready || this.closed) throw new Error('The saved connection list is unavailable. Reopen Hermes.');
+      if (this.namesError) throw new Error('Saved connection names could not be read. Reopen Hermes to try again.');
+      if (!this.snapshot().connections!.some(c => c.id === id)) throw new Error('Connection unavailable');
+      const { [id]: _previous, ...rest } = this.names;
+      const next = name ? { ...rest, [id]: name } : rest;
+      await this.nameStore.save(next); this.names = next;
+      this.changed();
     });
   }
   async pair(request: PairingRequest): Promise<void> {
@@ -169,7 +198,7 @@ export class DesktopConnections {
   async saveProjectAgents(id: string, content: string, previous: string | null) { const r = this.route(id); return r.account.service.saveProjectAgents(r.raw, content, previous); }
   async setProjectFolder(id: string, path: string | null) { const r = this.route(id); return r.account.service.setProjectFolder(r.raw, path); }
   async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
-  async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: r.account.service.snapshot().connectionName }; }
+  async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: this.nameOf(r.account) }; }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }
   async createThread(input: ThreadInput, activate = true): Promise<string> {

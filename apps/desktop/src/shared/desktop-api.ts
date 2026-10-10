@@ -11,7 +11,8 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
   /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean }>;
-export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean }>;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean;
+  /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;
   id: string;
@@ -133,6 +134,8 @@ export type DesktopRuntimeInfo = Readonly<{
 export interface HermesDesktopApi {
   addConnection(request: PairingRequest): Promise<void>;
   removeConnection(connectionId: string): Promise<void>;
+  /** Saves this device's name for a connection; an empty name restores the host name. */
+  renameConnection(connectionId: string, name: string): Promise<void>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;

@@ -17,7 +17,7 @@ const mocks = {
   './FontSize': `const s=globalThis.__settingsTest; export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({choice:s.font}); export const FontSizeSettings='FontSizeSettings';`,
   './AgentSettings': `export const AgentNameSettings='AgentNameSettings';`,
   './ModelSettings': `export const ModelSettings='ModelSettings';`,
-  './connections': `const s=globalThis.__settingsTest; export const useConnections=()=>({connections:s.connections,listError:'',removeConnection:async slot=>{s.removed.push(slot)},addConnection:async (server,code)=>{s.added.push([server,code]);return 'c'.repeat(24)}}); export const useApp=()=>s.app;`,
+  './connections': `const s=globalThis.__settingsTest; export const useConnections=()=>({connections:s.connections,listError:'',removeConnection:async slot=>{s.removed.push(slot)},renameConnection:async (slot,name)=>{if(s.failRename)throw Error('private detail');s.renamed.push([slot,name])},addConnection:async (server,code)=>{s.added.push([server,code]);return 'c'.repeat(24)}}); export const useApp=()=>s.app;`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SettingsScreens.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
   b.onResolve({ filter: /.*/ }, args => mocks[args.path] ? { path: args.path, namespace: 'mock' } : undefined);
@@ -30,7 +30,7 @@ const runtime = (slot, name, extra = {}) => ({ slot, name, server: `https://${na
 const texts = root => root.root.findAllByType('Text').map(node => [].concat(node.props.children).filter(v => typeof v === 'string').join('')).filter(Boolean);
 const buttons = root => root.root.findAll(node => node.type === 'Pressable');
 const press = async (root, label) => { const node = buttons(root).find(b => b.props.accessibilityLabel === label); assert.ok(node, 'missing ' + label + ' in ' + buttons(root).map(b => b.props.accessibilityLabel)); await act(async () => node.props.onPress()); };
-const reset = () => Object.assign(state, { pushed: [], replaced: [], back: 0, alerts: [], removed: [], added: [] });
+const reset = () => Object.assign(state, { pushed: [], replaced: [], back: 0, alerts: [], removed: [], added: [], renamed: [], failRename: false });
 
 test('Settings level 1 groups connections, then This device', async () => {
   reset(); state.font = 'Large';
@@ -99,6 +99,34 @@ test('offline connection explains model settings instead of failing', async () =
   let root; await act(async () => { root = create(React.createElement(ConnectionSettings)); });
   assert.equal(root.root.findAllByType('ModelSettings').length, 0);
   assert.ok(texts(root).includes('Model settings are available when this connection is online.'));
+  root.unmount();
+});
+
+test('connection name: host name as default, save, safe failure, and available while pairing', async () => {
+  reset();
+  state.connections = [runtime('primary', 'personal.example', { customName: null })];
+  state.app = { slot: 'primary', config: { id: 'primary-id' }, client: { connectionState: 'online' }, agentName: { name: 'Agent', ready: true, error: '', saving: false, save: async () => true, reload() {} } };
+  let root; await act(async () => { root = create(React.createElement(ConnectionSettings)); });
+  const field = () => root.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Connection name')[0];
+  assert.equal(field().props.placeholder, 'personal.example'); assert.equal(field().props.value, '');
+  const tree = JSON.stringify(root.toJSON());
+  assert.ok(tree.indexOf('"On this device"') < tree.indexOf('Connection name') && tree.indexOf('Connection name') < tree.indexOf('AgentNameSettings'), 'name sits in device scope, above Agent name');
+  assert.equal(buttons(root).find(b => b.props.accessibilityLabel === 'Save connection name').props.disabled, true, 'unchanged name cannot be saved');
+  await act(async () => field().props.onChangeText('Home'));
+  await press(root, 'Save connection name');
+  assert.deepEqual(state.renamed, [['primary', 'Home']]); assert.ok(texts(root).includes('Saved.'));
+  state.failRename = true;
+  await act(async () => field().props.onChangeText('Office'));
+  await press(root, 'Save connection name');
+  assert.ok(texts(root).includes('Could not save the name. Nothing changed. Try again.')); assert.ok(!texts(root).some(t => t.includes('private detail')));
+  assert.equal(field().props.value, 'Office', 'typed text is kept after a failure');
+  root.unmount();
+  // A connection that is still pairing has no Agent name yet, but can be named.
+  reset();
+  state.connections = [runtime('primary', 'personal.example', { customName: 'Home', name: 'Home', status: 'pairing', config: null })];
+  state.app = { slot: 'primary', config: null, client: null, agentName: { name: 'Agent', ready: false, error: '', saving: false, save: async () => false, reload() {} } };
+  await act(async () => { root = create(React.createElement(ConnectionSettings)); });
+  assert.equal(field().props.value, 'Home'); assert.equal(root.root.findAllByType('AgentNameSettings').length, 0);
   root.unmount();
 });
 

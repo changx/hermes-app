@@ -3,10 +3,11 @@ import { Alert, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontSizeSettings, Text, useFontSize } from './FontSize';
 import { AgentNameSettings } from './AgentSettings';
+import { ConnectionNameSettings } from './ConnectionNameSettings';
 import { ModelSettings } from './ModelSettings';
 import { AddConnectionForm, connectionDetail, connectionNeedsAttention, connectionStateLabel } from './ConnectionScreen';
 import { SettingsBlock, SettingsPage, SettingsRow, SettingsSection } from './SettingsUI';
-import { MAX_CONNECTIONS } from './connectionSlots';
+import { MAX_CONNECTIONS, serverName } from './connectionSlots';
 import { useApp, useConnections } from './connections';
 
 import { connectionSettingsRoute } from './settingsRoutes';
@@ -22,7 +23,7 @@ export function SettingsHome() {
   const full = connections.length >= MAX_CONNECTIONS;
   return <SettingsPage>
     {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
-    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen. Open a connection for its status, Agent, default model and removal.">
+    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen. Open a connection for its name, status, Agent, default model and removal.">
       {connections.map((row, index) => <SettingsRow key={row.slot} first={index === 0} title={row.name} detail={row.server ?? undefined}
         value={connectionStateLabel(row)} issue={connectionNeedsAttention(row)} onPress={() => router.push(connectionSettingsRoute(row.slot))} />)}
       <SettingsRow first={!connections.length} title="Add connection" value={full ? 'Limit reached' : undefined}
@@ -39,7 +40,7 @@ export function SettingsHome() {
  * status, on this Hermes (every device), on this device (this connection only).
  */
 export function ConnectionSettings() {
-  const { removeConnection, connections } = useConnections();
+  const { removeConnection, renameConnection, connections } = useConnections();
   const { slot, config, client, agentName } = useApp();
   const row = connections.find(item => item.slot === slot);
   if (!row) return null;
@@ -71,12 +72,16 @@ export function ConnectionSettings() {
           : <Text style={styles.hint}>Model settings are available when this connection is online.</Text>}
       </SettingsBlock>
     </SettingsSection>}
-    {config && <SettingsSection title="On this device">
+    {/* Connection name works in every state, including pairing; Agent name needs a paired identity. */}
+    <SettingsSection title="On this device">
       <SettingsBlock first>
+        <ConnectionNameSettings key={slot} customName={row.customName} defaultName={serverName(row.server)} onSave={value => renameConnection(slot, value)} />
+      </SettingsBlock>
+      {config && <SettingsBlock>
         <AgentNameSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
           saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} />
-      </SettingsBlock>
-    </SettingsSection>}
+      </SettingsBlock>}
+    </SettingsSection>
     <SettingsSection footer="Removing does not delete conversations on the server or stop running tasks.">
       <Pressable accessibilityRole="button" accessibilityLabel={`${row.status === 'pairing' ? 'Cancel pairing' : 'Remove connection'} ${row.name}`}
         onPress={remove} style={({ pressed }) => [styles.danger, pressed && styles.pressed]}>

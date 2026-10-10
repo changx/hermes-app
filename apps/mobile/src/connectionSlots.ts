@@ -1,5 +1,6 @@
 import { CONFIG_KEY, PAIRING_KEY, restorePairing, type PendingPairing } from './pairing.ts';
 import { connection, type Connection } from './send.ts';
+import { normalizeConnectionName, serverHostName } from '../../../packages/client/src/connectionName.ts';
 
 /**
  * Saved Hermes connections on this device.
@@ -19,21 +20,46 @@ interface Storage {
   deleteItemAsync(key: string): Promise<void>;
 }
 export type SlotKeys = { config: string; pairing: string };
-export type SavedSlot = Readonly<{ slot: string; config: Connection | null; pending: PendingPairing | null; damaged?: boolean }>;
+/** `name` is present only when the user chose one on this device. */
+export type SavedSlot = Readonly<{ slot: string; config: Connection | null; pending: PendingPairing | null; damaged?: boolean; name?: string }>;
 export class ConnectionListError extends Error {}
 
 const slotPattern = /^[0-9a-f]{24}$/;
+const NAME_KEY = 'hermes-app-connection-name';
 export function slotKeys(slot: string): SlotKeys {
   if (slot === PRIMARY) return { config: CONFIG_KEY, pairing: PAIRING_KEY };
   if (!slotPattern.test(slot)) throw new ConnectionListError('Invalid connection slot');
   return { config: `${CONFIG_KEY}.${slot}`, pairing: `${PAIRING_KEY}.${slot}` };
 }
+/** Local name of a slot; separate from its credential. */
+export function slotNameKey(slot: string): string {
+  if (slot === PRIMARY) return NAME_KEY;
+  if (!slotPattern.test(slot)) throw new ConnectionListError('Invalid connection slot');
+  return `${NAME_KEY}.${slot}`;
+}
 /** Stable identity of a slot: the paired device credential, also while pairing. */
 export const slotIdentity = (slot: SavedSlot): string | null => slot.config?.id ?? slot.pending?.config.id ?? null;
 export const slotServer = (slot: SavedSlot): string | null => slot.config?.baseUrl ?? slot.pending?.config.baseUrl ?? null;
 export function serverName(server: string | null): string {
-  if (!server) return 'Saved connection';
-  try { return new URL(server).hostname; } catch { return 'Saved connection'; }
+  return serverHostName(server) ?? 'Saved connection';
+}
+
+/**
+ * Saves this device's name for a slot. An empty name deletes it, so the host
+ * name is used again. Reads back before reporting success.
+ */
+export async function saveSlotName(store: Storage, slot: string, value: string): Promise<string | null> {
+  const name = normalizeConnectionName(value), key = slotNameKey(slot);
+  if (name) await store.setItemAsync(key, name); else await store.deleteItemAsync(key);
+  if ((await store.getItemAsync(key)) !== (name || null)) throw new Error('The name could not be saved.');
+  return name || null;
+}
+async function readSlotName(store: Storage, slot: string): Promise<string | null> {
+  try {
+    const raw = await store.getItemAsync(slotNameKey(slot));
+    // An unreadable or invalid name falls back to the host name; it never hides the connection.
+    return raw && normalizeConnectionName(raw) === raw ? raw : null;
+  } catch { return null; }
 }
 
 async function readIndex(store: Storage): Promise<string[]> {
@@ -73,7 +99,8 @@ async function readSlot(store: Storage, slot: string): Promise<SavedSlot | null>
   // saved connection stays authoritative and the candidate is discarded.
   if (config && pending) { await store.deleteItemAsync(keys.pairing).catch(() => {}); pending = null; }
   if (!config && !pending && !damaged) return null;
-  return { slot, config, pending, ...(damaged ? { damaged } : {}) };
+  const name = await readSlotName(store, slot);
+  return { slot, config, pending, ...(damaged ? { damaged } : {}), ...(name ? { name } : {}) };
 }
 
 /** Reads every slot. A damaged slot is reported, never silently dropped. */
@@ -108,11 +135,13 @@ export async function reserveSlot(store: Storage, current: readonly SavedSlot[],
   return slot;
 }
 
-/** Deletes credentials first, then the index entry. */
+/** Deletes credentials first, then the local name, then the index entry. */
 export async function removeSlot(store: Storage, slot: string): Promise<void> {
   const keys = slotKeys(slot);
   await store.deleteItemAsync(keys.pairing);
   await store.deleteItemAsync(keys.config);
+  // A later pairing in this slot must start with the host name again.
+  await store.deleteItemAsync(slotNameKey(slot));
   if (slot === PRIMARY) return;
   const indexed = await readIndex(store);
   if (indexed.includes(slot)) await writeIndex(store, indexed.filter(item => item !== slot));

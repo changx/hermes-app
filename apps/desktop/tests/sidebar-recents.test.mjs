@@ -40,7 +40,7 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
       const now=Date.now()/1000;
       const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,selectedChannelId:'p',
         connections:[{id:'primary',name:'personal.example',server:'https://personal.example',state:'online',connectionKey:'one'},{id:'w',name:'work.example',server:'https://work.example',state:'online',connectionKey:'two'}],
-        channels:[{id:'p',name:'Research',connectionKey:'one'},{id:'w:q',name:'Hermes App',connectionKey:'two'}],
+        channels:[{id:'p',name:'Research',connectionKey:'one',connectionName:'personal.example'},{id:'w:q',name:'Hermes App',connectionKey:'two',connectionName:'Work'}],
         threads:[{id:'t-old',channelId:'p',title:'Last week',markers:[],running:false,lastMessageAt:now-8*86400},
           {id:'t-hour',channelId:'p',title:'An hour ago',markers:[],running:false,lastMessageAt:now-3600},
           {id:'w:t-now',channelId:'w:q',title:'Just now',markers:[],running:false,lastMessageAt:now-30}],
@@ -61,7 +61,15 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
         ensure('sections in order',titles.join('|')==='Recents|Projects');
         const recents=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread .thread-title')].map(e=>e.textContent);
         ensure('recents: last 24 hours across connections, newest first',recents.join('|')==='Just now|An hour ago');
-        ensure('recent row names its project',scroll.querySelector('#sidebar-recents-list .tree-thread').title==='Hermes App');
+        ensure('recent row names its project and connection',scroll.querySelector('#sidebar-recents-list .tree-thread').title==='Hermes App · Work');
+        const sources=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread')].map(e=>e.querySelector('.thread-connection-name')?.textContent);
+        ensure('each recent row shows its connection name',sources.join('|')==='Work|personal.example');
+        const recentRowEl=scroll.querySelector('#sidebar-recents-list .tree-thread'), source=recentRowEl.querySelector('.thread-connection-name').getBoundingClientRect(), title=recentRowEl.querySelector('.thread-title').getBoundingClientRect();
+        ensure('connection name on the title line, right of the title',source.left>=title.right-1&&source.top<title.bottom&&source.bottom>title.top);
+        const projectRowEl=scroll.querySelector('.channel-tree .tree-thread');
+        checks.rowHeights={recent:recentRowEl.getBoundingClientRect().height,project:projectRowEl.getBoundingClientRect().height};
+        ensure('recent row keeps the one-line row height',Math.abs(recentRowEl.getBoundingClientRect().height-projectRowEl.getBoundingClientRect().height)<=1);
+        ensure('Project tree rows do not repeat the connection name',!scroll.querySelector('.channel-tree .thread-connection-name'));
         const recentTitle=scroll.querySelector('#sidebar-recents-list .thread-title').getBoundingClientRect().left, recentsLabel=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().left;
         const projectStep=scroll.querySelector('.channel-tree .thread-title').getBoundingClientRect().left-scroll.querySelector('.channel-toggle strong').getBoundingClientRect().left, list=getComputedStyle(scroll.querySelector('#sidebar-recents-list'));
         checks.indent={recents:recentTitle-recentsLabel,project:projectStep};

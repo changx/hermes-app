@@ -16,7 +16,7 @@ import { MobileOutbox, OutboxStore, type NetworkState } from './outbox';
 import { reconciledSendNotice } from './sendNotice';
 import { releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { useAgentName } from './AgentSettings';
-import { ConnectionListError, MAX_CONNECTIONS, loadSlots, removeSlot, reserveSlot, serverName, slotKeys, slotServer, type SavedSlot } from './connectionSlots';
+import { ConnectionListError, MAX_CONNECTIONS, loadSlots, removeSlot, reserveSlot, saveSlotName, serverName, slotKeys, slotServer, type SavedSlot } from './connectionSlots';
 import { ConnectionScope as NavigationScope, SessionNavigationProvider } from './sessionNavigation';
 import { ActivityWindow, IDLE_LIVENESS_MS, LIVENESS_MS, LIVE_BACKOFF_JITTER, LIVE_BACKOFF_MS, needsFastLiveness } from './liveness';
 
@@ -25,7 +25,8 @@ import { ActivityWindow, IDLE_LIVENESS_MS, LIVENESS_MS, LIVE_BACKOFF_JITTER, LIV
  * client, outbox, retry state and errors; one failure never stops another.
  */
 export type ConnectionRuntime = Readonly<{
-  slot: string; name: string; server: string | null;
+  /** Shown name: `customName`, else the server's host name. */
+  slot: string; name: string; customName: string | null; server: string | null;
   config: Connection | null; client: LivePageClient | null; outbox: MobileOutbox | null;
   status: NetworkState | 'pairing'; retryAt: number | null; failed: boolean;
   records: SendRecord[]; error: string; loading: boolean; connectionEpoch: number;
@@ -41,6 +42,8 @@ type Shared = {
   draftError: string;
   addConnection(server: string, code: string): Promise<string>;
   removeConnection(slot: string): Promise<void>;
+  /** Saves this device's name for a connection; an empty name restores the host name. */
+  renameConnection(slot: string, name: string): Promise<void>;
   cancelPairing(slot: string): Promise<void>;
   /** Marks recent use; keeps the faster connection check for a short time. */
   noteActivity(): void;
@@ -73,7 +76,7 @@ export function useOptionalApp(): AppContextValue | null { return useContext(App
 type Mutable = { -readonly [K in keyof ConnectionRuntime]: ConnectionRuntime[K] };
 const emptyRuntime = (saved: SavedSlot): Mutable => {
   const server = slotServer(saved);
-  return { slot: saved.slot, name: serverName(server), server, config: saved.config, client: null, outbox: null,
+  return { slot: saved.slot, name: saved.name ?? serverName(server), customName: saved.name ?? null, server, config: saved.config, client: null, outbox: null,
     status: saved.pending ? 'pairing' : 'suspended', retryAt: null, failed: false, records: [], error: saved.damaged ? 'This saved connection could not be read. Remove it and pair again.' : '',
     loading: !!saved.config, connectionEpoch: 0, pairing: saved.pending, pairingStatus: '', damaged: !!saved.damaged };
 };
@@ -287,9 +290,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const cancelPairing = useCallback((slot: string) => removeConnection(slot), [removeConnection]);
 
+  // Local display only: no credential, server or page changes.
+  const renameConnection = useCallback((slot: string, value: string) => serialize(async () => {
+    const runtime = runtimes.current.get(slot);
+    if (!runtime) throw new ConnectionListError('Connection unavailable');
+    const customName = await saveSlotName(SecureStore, slot, value);
+    if (!runtimes.current.has(slot)) return;
+    update(slot, { customName, name: customName ?? serverName(runtime.server) });
+  }), [serialize, update]);
+
   const connections = [...runtimes.current.values()] as readonly ConnectionRuntime[];
   const shared: Shared = { ready, listError, revision, connections, textDrafts, composerDrafts, forgottenConnections, draftError,
-    addConnection, removeConnection, cancelPairing, noteActivity };
+    addConnection, removeConnection, renameConnection, cancelPairing, noteActivity };
   const navigation = useMemo(() => ({ connection: null, owner: null,
     hasPage: (slot: string, id: string) => !!runtimes.current.get(slot)?.client?.page(id),
     connectionForServer: (server: string) => {

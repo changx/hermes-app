@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DesktopConnection, DesktopSnapshot } from '../shared/desktop-api';
 import { ModelSettings } from './model-settings';
 
@@ -45,6 +45,36 @@ export function ConnectionSettings({ snapshot, onOpen }: { snapshot: DesktopSnap
   </div>;
 }
 
+/** This device's name for one connection. Blank restores the server's host name. */
+function ConnectionName({ row, disabled }: { row: DesktopConnection; disabled?: boolean }) {
+  const saved = row.customName ? row.name : '';
+  const [draft, setDraft] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const edited = useRef(false);
+  // A rename from another window updates the field until the user starts typing.
+  useEffect(() => { if (!edited.current) setDraft(saved); }, [saved]);
+  const unchanged = draft.trim() === saved;
+  const save = async () => {
+    if (busy || unchanged) return;
+    setBusy(true); setMessage(null);
+    try {
+      await window.hermesDesktop.renameConnection(row.id, draft);
+      edited.current = false; setDraft(draft.trim()); setMessage({ error: false, text: 'Saved.' });
+    } catch (failure) {
+      const reason = failure instanceof Error ? failure.message : '';
+      setMessage({ error: true, text: /characters/.test(reason) ? reason.replace(/^.*?(Name )/, '$1') : 'Could not save the name. Nothing changed. Try again.' });
+    } finally { setBusy(false); }
+  };
+  return <form className="settings-connection-name" onSubmit={event => { event.preventDefault(); void save(); }}>
+    <label className="settings-field">Name<input aria-label="Connection name" maxLength={80} placeholder={row.defaultName ?? row.name} value={draft} disabled={busy || disabled}
+      onChange={event => { edited.current = true; setMessage(null); setDraft(event.target.value); }} /></label>
+    <p className="settings-description">Shown in the sidebar and in tabs on this device. Leave blank to use {row.defaultName ?? 'the server address'}.</p>
+    <div className="settings-actions"><button type="submit" disabled={busy || disabled || unchanged}>{busy ? 'Saving…' : 'Save name'}</button></div>
+    {message && <p role={message.error ? 'alert' : 'status'} className={message.error ? undefined : 'settings-description'}>{message.text}</p>}
+  </form>;
+}
+
 /**
  * One connection, grouped by where each setting takes effect:
  * its status, its Hermes server (every device), and this device only.
@@ -81,6 +111,7 @@ export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disa
     </section>
     <section className="settings-group" aria-labelledby="settings-group-device">
       <h4 id="settings-group-device">On this device</h4>
+      <ConnectionName key={row.id} row={row} disabled={disabled} />
       <p className="settings-description">Removing does not delete conversations on the server or stop running tasks.</p>
       {confirming ? <div className="settings-danger" role="alert"><h4>Remove {row.name}?</h4><p>This removes this connection, its open tabs, local drafts and queued messages from this device. Other connections and server conversations are unchanged.</p><div className="settings-actions"><button type="button" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Remove connection'}</button><button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep connection</button></div></div>
         : <button type="button" className="secondary settings-remove" aria-label={`${pairing ? 'Cancel pairing' : 'Remove connection'} ${row.server || row.name}`} disabled={busy || disabled} onClick={() => { setConfirming(true); setError(''); }}>{pairing ? 'Cancel pairing' : 'Remove connection'}</button>}

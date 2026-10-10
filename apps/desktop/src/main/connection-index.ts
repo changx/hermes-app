@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { normalizeConnectionName } from '../../../../packages/client/src/connectionName';
 
 export type ConnectionEntry = { id: string; server: string };
 export function validateEntries(raw: unknown): ConnectionEntry[] {
@@ -14,6 +15,38 @@ export function validateEntries(raw: unknown): ConnectionEntry[] {
     return { id: item.id, server: item.server };
   });
 }
+/** Longest connection name, in characters. */
+export { CONNECTION_NAME_MAX, normalizeConnectionName } from '../../../../packages/client/src/connectionName';
+const slotPattern = /^(primary|[0-9a-f]{24})$/;
+export function validateNames(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid connection names');
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length > 8) throw new Error('Invalid connection names');
+  return Object.fromEntries(entries.map(([id, name]) => {
+    if (!slotPattern.test(id) || typeof name !== 'string' || !name || normalizeConnectionName(name) !== name) throw new Error('Invalid connection names');
+    return [id, name];
+  }));
+}
+/** Local display names chosen on this device, by slot ID. No credentials or server data. */
+export class ConnectionNames {
+  private readonly path = join(app.getPath('userData'), 'connection-names.json');
+  async load(): Promise<Record<string, string>> {
+    let text: string;
+    try { text = await readFile(this.path, 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error; }
+    const data = JSON.parse(text);
+    if (data.version !== 1) throw new Error('Invalid connection names');
+    return validateNames(data.names);
+  }
+  async save(names: Readonly<Record<string, string>>): Promise<void> {
+    const verified = validateNames(names);
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    await writeFile(this.path + '.new', JSON.stringify({ version: 1, names: verified }), { mode: 0o600 });
+    await rename(this.path + '.new', this.path);
+    if (JSON.stringify(await this.load()) !== JSON.stringify(verified)) throw new Error('Connection name save was not confirmed');
+  }
+}
+
 /** Only local slot IDs and public server addresses. Credentials remain in safeStorage files. */
 export class ConnectionIndex {
   private readonly path = join(app.getPath('userData'), 'connections.json');

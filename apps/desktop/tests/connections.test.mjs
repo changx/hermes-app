@@ -14,6 +14,8 @@ function fixture() {
   const workspace=new DesktopConnections(s=>published.push(s));
   workspace.ready=true;
   workspace.index={async save(entries){writes.push(structuredClone(entries));},async load(){return [];}};
+  const nameWrites=[];
+  workspace.nameStore={saved:{},async save(names){nameWrites.push(structuredClone(names));this.saved=structuredClone(names);},async load(){return structuredClone(this.saved);}};
   const cleared=[];
   const drafts={async list(id){return records.get(id)??{};},async put(id,key,draft){records.set(id,{...(records.get(id)??{}),[key]:draft});},async clear(id){cleared.push(['drafts',id]);records.delete(id);},async flush(){}};
   const outbox={async list(){return [];},async clear(id){cleared.push(['outbox',id]);},async put(){},async remove(){}};
@@ -34,7 +36,7 @@ function fixture() {
   const a=install(workspace.primary,'a','https://first.example.test');
   const account=workspace.make('b'.repeat(24),request.baseUrl),b=install(account.service,'b',request.baseUrl);
   workspace.entries=[{id:account.id,server:request.baseUrl}];
-  return {workspace,a,b,published,writes,cleared,records,other:'b'.repeat(24)+':th_same0000'};
+  return {workspace,a,b,published,writes,nameWrites,cleared,records,other:'b'.repeat(24)+':th_same0000'};
 }
 test('multi-connection projection isolates equal raw Project/Thread IDs, content, links and model targets',async()=>{
   const f=fixture(),s=f.workspace.snapshot();
@@ -132,4 +134,39 @@ test('connection index read failure does not silently reset the list or permit o
   assert.match(f.workspace.snapshot().connectionsError,/could not be loaded/);
   await assert.rejects(f.workspace.addConnection({...request,baseUrl:'https://third.example.test'}),/unavailable/);
   await assert.rejects(f.workspace.removeConnection('primary'),/unavailable/);assert.equal(f.cleared.length,0);
+});
+test('connection name defaults to the host name; a local rename reaches rows, Projects and channel info, and blank restores it',async()=>{
+  const f=fixture(),peer='b'.repeat(24);
+  let s=f.workspace.snapshot(),row=s.connections.find(c=>c.id===peer);
+  assert.equal(row.name,'second.example.test');assert.equal(row.defaultName,'second.example.test');assert.equal(row.customName,undefined);
+  await f.workspace.renameConnection(peer,'  Work  ');
+  assert.deepEqual(f.nameWrites.at(-1),{[peer]:'Work'});
+  s=f.workspace.snapshot();row=s.connections.find(c=>c.id===peer);
+  assert.equal(row.name,'Work');assert.equal(row.defaultName,'second.example.test');assert.equal(row.customName,true);
+  assert.equal(s.channels.find(c=>c.id===peer+':p').connectionName,'Work');
+  assert.equal(s.channels.find(c=>c.id==='p').connectionName,'first.example.test');
+  assert.equal(f.workspace.snapshot(f.other).connectionName,'Work');
+  f.b.client.getChannelInfo=async id=>f.b.client.channels.get(id);
+  assert.equal((await f.workspace.getChannelInfo(peer+':p')).connectionName,'Work');
+  await f.workspace.renameConnection(peer,'');
+  assert.deepEqual(f.nameWrites.at(-1),{});assert.equal(f.workspace.snapshot().connections.find(c=>c.id===peer).name,'second.example.test');
+});
+test('invalid or unknown rename changes nothing; a damaged name file is never overwritten',async()=>{
+  const f=fixture();
+  await assert.rejects(f.workspace.renameConnection('b'.repeat(24),'x'.repeat(41)),/40 characters/);
+  await assert.rejects(f.workspace.renameConnection('b'.repeat(24),'bad\u202ename'),/unsupported/);
+  await assert.rejects(f.workspace.renameConnection('c'.repeat(24),'Ghost'),/unavailable/);
+  assert.equal(f.nameWrites.length,0);
+  const g=fixture();g.workspace.ready=false;g.workspace.primary.initialize=async()=>{};
+  g.workspace.index.load=async()=>[];
+  g.workspace.nameStore.load=async()=>{throw Error('fixture damaged names');};
+  await g.workspace.initialize();
+  assert.equal(g.workspace.snapshot().connections.find(c=>c.id==='primary').name,'first.example.test');
+  await assert.rejects(g.workspace.renameConnection('primary','Home'),/could not be read/);assert.equal(g.nameWrites.length,0);
+});
+test('removing a renamed connection deletes only its name, so the slot starts with the host name again',async()=>{
+  const f=fixture();await f.workspace.renameConnection('primary','Home');await f.workspace.renameConnection('b'.repeat(24),'Work');
+  await f.workspace.removeConnection('primary');
+  assert.deepEqual(f.nameWrites.at(-1),{['b'.repeat(24)]:'Work'});
+  assert.equal(f.workspace.snapshot().connections[0].name,'Work');
 });

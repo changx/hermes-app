@@ -378,6 +378,9 @@ dialog.labels-editor::backdrop { background: #0005; }
 .labels-reuse { display: flex; gap: 6px; flex-wrap: wrap; max-height: 120px; overflow: auto; }
 .labels-reuse button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--app-font-size); padding: 5px 8px; background: #edf2f7; }
 .thread-title { flex: 1; }
+/* On the title line, so a Recents row keeps one-line height; the title shrinks first. */
+.thread-connection-name { flex: 0 1 auto; max-width: 45%; min-width: 0; color: var(--app-muted); font-size: 0.75em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-thread.selected .thread-connection-name { color: inherit; opacity: 0.75; }
 .tree-thread:hover { background: var(--app-hover); }
 .native-workspace.desktop-shell { position: relative; grid-template-columns: var(--sidebar-width, 280px) minmax(0, 1fr); }
 .sidebar-resize-handle { position: absolute; z-index: 21; left: calc(var(--sidebar-width, 280px) - 6px); top: 48px; bottom: 0; width: 6px; cursor: col-resize; touch-action: none; -webkit-app-region: no-drag; }
@@ -428,7 +431,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-sidebar .channel-toggle strong { font-weight: 400; }
 .native-sidebar .channel-chevron { width: 16px; height: 16px; font-size: 13px; color: var(--app-muted); }
 .native-sidebar .channel-name { gap: 1px; }
-.native-sidebar .channel-connection-name { font-size: var(--sidebar-small); }
+.native-sidebar .channel-connection-name, .native-sidebar .thread-connection-name { font-size: var(--sidebar-small); }
 .native-sidebar .project-unread-count { font-size: 11px; }
 .native-sidebar .channel-new-session, .native-sidebar .channel-options { opacity: 0; }
 .native-sidebar .channel-new-session { margin-right: 2px; }

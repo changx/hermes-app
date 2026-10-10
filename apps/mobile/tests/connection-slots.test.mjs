@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { CONFIG_KEY, PAIRING_KEY, completePairing, newPairing } from '../src/pairing.ts';
-import { INDEX_KEY, MAX_CONNECTIONS, PRIMARY, loadSlots, removeSlot, reserveSlot, serverName, slotIdentity, slotKeys } from '../src/connectionSlots.ts';
+import { INDEX_KEY, MAX_CONNECTIONS, PRIMARY, loadSlots, removeSlot, reserveSlot, saveSlotName, serverName, slotIdentity, slotKeys, slotNameKey } from '../src/connectionSlots.ts';
 
 const storage = () => ({ data: new Map(), async getItemAsync(k) { return this.data.get(k) ?? null; },
   async setItemAsync(k, v) { assert.match(k, /^[\w.-]+$/); this.data.set(k, v); }, async deleteItemAsync(k) { this.data.delete(k); } });
@@ -99,4 +99,32 @@ test('the slot limit is eight including the primary slot', async () => {
   assert.throws(() => slotKeys('../escape'), /Invalid connection slot/);
   assert.equal(serverName('https://work.example'), 'work.example');
   assert.equal(serverName(null), 'Saved connection');
+});
+
+test('a local connection name loads with its slot, blank restores the host name, and removal deletes it', async () => {
+  const store = storage(), slot = hex();
+  store.data.set(CONFIG_KEY, JSON.stringify(pairing('https://one.example', 'p').config));
+  store.data.set(INDEX_KEY, JSON.stringify({ version: 1, slots: [slot] }));
+  store.data.set(slotKeys(slot).config, JSON.stringify(pairing('https://two.example', 'two').config));
+  assert.equal(await saveSlotName(store, PRIMARY, '  Home  '), 'Home');
+  assert.equal(await saveSlotName(store, slot, 'Work'), 'Work');
+  assert.notEqual(slotNameKey(PRIMARY), slotNameKey(slot));
+  assert.deepEqual((await loadSlots(store)).map(s => [s.slot, s.name]), [[PRIMARY, 'Home'], [slot, 'Work']]);
+  assert.equal(await saveSlotName(store, slot, '   '), null);
+  assert.equal(store.data.has(slotNameKey(slot)), false);
+  assert.equal('name' in (await loadSlots(store))[1], false);
+  await removeSlot(store, PRIMARY);
+  assert.equal(store.data.has(slotNameKey(PRIMARY)), false, 'a new pairing in the primary slot starts with the host name');
+});
+
+test('invalid names are rejected before saving; a stored invalid name is ignored, not fatal', async () => {
+  const store = storage();
+  store.data.set(CONFIG_KEY, JSON.stringify(pairing('https://one.example', 'p').config));
+  await assert.rejects(saveSlotName(store, PRIMARY, 'x'.repeat(41)), /40 characters/);
+  await assert.rejects(saveSlotName(store, PRIMARY, 'bad\u202ename'), /unsupported/);
+  assert.throws(() => slotNameKey('../escape'), /Invalid connection slot/);
+  assert.equal(store.data.has(slotNameKey(PRIMARY)), false);
+  store.data.set(slotNameKey(PRIMARY), ' padded');
+  const [slot] = await loadSlots(store);
+  assert.equal(slot.config.id, 'p'); assert.equal('name' in slot, false);
 });

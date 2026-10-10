@@ -86,7 +86,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 const registerDesktopApi = (): void => {
@@ -106,6 +106,9 @@ const registerDesktopApi = (): void => {
     settingsSender(event); const selected = text(id, 40), key = service.snapshot().connections?.find(row => row.id === selected)?.connectionKey;
     if (key && [...tabs?.tabs.values() ?? []].some(tab => tab.connectionKey === key && tab.busy)) throw new Error('Wait for the current action before removing this connection.');
     await service.removeConnection(selected);
+  });
+  handle('desktop:rename-connection', async (event, id: unknown, name: unknown) => {
+    settingsSender(event); await service.renameConnection(text(id, 40), text(name, 200));
   });
   handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
   handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
