@@ -455,7 +455,11 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-edge-toggle:hover { background: var(--app-border); }
 .sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.desktop-tabs { display: flex; flex: 0 0 48px; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+/* Tab bar: tabs scroll in .desktop-tabs and pass under the opaque action panel fixed at the right. */
+.desktop-tabbar { --tab-actions-width: 76px; position: relative; display: flex; flex: 0 0 48px; min-width: 0; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+.desktop-tabs { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; scrollbar-width: none; scroll-padding-inline-end: var(--tab-actions-width); background: var(--app-rail); }
+/* End space as wide as the panel, so the last tab can scroll fully out from under it. */
+.desktop-tabs::after { content: ""; flex: 0 0 calc(var(--tab-actions-width) - 16px); align-self: stretch; }
 /* The strip still scrolls (trackpad, wheel, active tab reveal); it only hides the scrollbar. */
 .desktop-tabs::-webkit-scrollbar { display: none; }
 .sidebar-collapsed .desktop-tabs { padding-left: 42px; }
@@ -472,14 +476,17 @@ dialog.labels-editor::backdrop { background: #0005; }
 .desktop-tab-dot-unread { background: #4DA3FF; }
 .desktop-tab-close { opacity: 0; }
 .desktop-tab:hover .desktop-tab-close, .desktop-tab:focus-within .desktop-tab-close, .desktop-tab.active .desktop-tab-close { opacity: 1; }
-.desktop-tab-add { flex-shrink: 0; border: 0; background: transparent; color: var(--app-muted); padding: 6px; }
+.desktop-tab-actions { position: absolute; z-index: 2; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: var(--tab-actions-width); padding: 0 10px 0 6px; box-sizing: border-box; background: var(--app-rail); }
+.desktop-tab-action { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; -webkit-app-region: no-drag; }
+.desktop-tab-action:not(:disabled):hover, .desktop-tab-action[aria-expanded="true"] { background: var(--app-field-border); color: var(--app-text); }
+.desktop-tab-action:disabled { opacity: 0.4; cursor: default; }
 .native-view-slot { flex: 1; min-height: 0; min-width: 0; }
 .native-workspace.desktop-shell.browser-open { grid-template-columns: var(--sidebar-width, 280px) minmax(0, 1fr) var(--browser-width); }
 .native-workspace.desktop-shell.browser-open.sidebar-collapsed { grid-template-columns: minmax(0, 1fr) var(--browser-width); }
 .browser-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--app-border); background: var(--app-rail); }
 .browser-title { display: flex; align-items: center; gap: 8px; flex: 0 0 48px; padding: 6px 12px; border-bottom: 1px solid var(--app-border); }
 .browser-title > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.browser-title button, .browser-toolbar button, .desktop-browser-toggle { border: 0; border-radius: 6px; padding: 4px 8px; background: transparent; color: var(--app-text); cursor: pointer; -webkit-app-region: no-drag; }
+.browser-title button, .browser-toolbar button { border: 0; border-radius: 6px; padding: 4px 8px; background: transparent; color: var(--app-text); cursor: pointer; -webkit-app-region: no-drag; }
 .browser-toolbar { display: flex; align-items: center; flex: 0 0 44px; padding: 6px; gap: 2px; border-bottom: 1px solid var(--app-border); }
 .browser-toolbar button:disabled { opacity: .4; cursor: default; }
 .browser-toolbar input { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--app-field-border); border-radius: 6px; background: var(--app-surface); color: var(--app-text); font: inherit; }
@@ -500,8 +507,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .browser-control-waiting { background: var(--app-surface); border-left: 3px solid var(--app-accent); }
 @keyframes browser-control-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .browser-control-agent > span::before { animation: none; } }
-.desktop-browser-toggle { flex: 0 0 auto; margin-left: auto; font: inherit; }
-.browser-title button:hover, .browser-toolbar button:not(:disabled):hover, .desktop-browser-toggle:not(:disabled):hover { background: var(--app-border); }
+.browser-title button:hover, .browser-toolbar button:not(:disabled):hover { background: var(--app-border); }
 .composer-attachments > span, .session-files li { gap: 6px; }
 
 .empty-session { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--app-muted); }

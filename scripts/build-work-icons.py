@@ -67,6 +67,15 @@ def filter_lines():
     return [bar(160, 700 - h, 840, 700 + h), bar(270, 500 - h, 730, 500 + h), bar(390, 300 - h, 610, 300 + h)]
 
 
+def panel_right():
+    # Window outline with a right-hand panel: one outer box, two holes split by a divider.
+    x0, y0, x1, y1, divider = 110, 190, 890, 810, 600
+    outer = bar(x0, y0, x1, y1)
+    left = bar(x0 + STROKE, y0 + STROKE, divider, y1 - STROKE)[::-1]
+    right = bar(divider + STROKE, y0 + STROKE, x1 - STROKE, y1 - STROKE)[::-1]
+    return [outer, left, right]
+
+
 shapes = {
     '.notdef': [],
     'chevronDown': polygon([(200, 610), (270, 680), (500, 450), (730, 680), (800, 610), (500, 310)]),
@@ -77,8 +86,9 @@ shapes = {
     'plus': plus(),
     'more': more(),
     'filter': filter_lines(),
+    'panelRight': panel_right(),
 }
-codes = {'chevronDown': 0xE001, 'chevronRight': 0xE002, 'chevronLeft': 0xE003, 'gear': 0xE010, 'compose': 0xE011, 'plus': 0xE012, 'more': 0xE013, 'filter': 0xE014}
+codes = {'chevronDown': 0xE001, 'chevronRight': 0xE002, 'chevronLeft': 0xE003, 'gear': 0xE010, 'compose': 0xE011, 'plus': 0xE012, 'more': 0xE013, 'filter': 0xE014, 'panelRight': 0xE015}
 
 root = Path(__file__).resolve().parents[1]
 font = FontBuilder(1000, isTTF=True)

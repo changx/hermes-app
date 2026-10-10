@@ -51,10 +51,20 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
           ensure('close outside title '+i,text.getBoundingClientRect().right<=close.left);
         }
         ensure('long title clipped',tab(7).querySelector('.desktop-tab-title').scrollWidth>tab(7).querySelector('.desktop-tab-title').clientWidth);
+        const panel=document.querySelector('.desktop-tab-actions'),panelBox=()=>panel.getBoundingClientRect();
+        const addBox=()=>document.querySelector('.desktop-tab-add').getBoundingClientRect(),browserBox=()=>document.querySelector('.desktop-browser-toggle').getBoundingClientRect();
+        strip.scrollLeft=0;const before=[addBox().left,browserBox().left];
+        ensure('actions outside the scrolling tab list '+width+' '+size,!strip.contains(panel)&&panel.contains(document.querySelector('.desktop-tab-add'))&&panel.contains(document.querySelector('.desktop-browser-toggle')));
+        ensure('actions at the right edge, new tab then browser '+width+' '+size,Math.abs(panelBox().right-document.querySelector('.desktop-tabbar').getBoundingClientRect().right)<=1&&addBox().right<=browserBox().left&&panelBox().right-browserBox().right<=12);
+        ensure('opaque panel '+width+' '+size,getComputedStyle(panel).backgroundColor==='rgb(243, 244, 246)');
+        const mid=panelBox(),probe=document.elementFromPoint(mid.left+2,(mid.top+mid.bottom)/2);
+        ensure('a tab extends under the panel '+width+' '+size,[...document.querySelectorAll('.desktop-tab')].some(t=>{const r=t.getBoundingClientRect();return r.right>mid.left&&r.left<mid.right;}));
+        ensure('panel covers the tab under it '+width+' '+size,panel.contains(probe));
         strip.scrollLeft=strip.scrollWidth;
-        const end=strip.getBoundingClientRect(),add=document.querySelector('.desktop-tab-add').getBoundingClientRect();
+        const end=strip.getBoundingClientRect();
         ensure('horizontal scroll moved '+width+' '+size,strip.scrollLeft>0);
-        ensure('last tab and add reachable '+width+' '+size,tab(8).getBoundingClientRect().left>=end.left&&add.right<=end.right);
+        ensure('actions do not move while tabs scroll '+width+' '+size,addBox().left===before[0]&&browserBox().left===before[1]);
+        ensure('last tab clears the panel at the end '+width+' '+size,tab(8).closest('.desktop-tab').getBoundingClientRect().right<=panelBox().left+0.5&&tab(8).getBoundingClientRect().left>=end.left);
         strip.scrollLeft=0;
         ensure('first tab reachable '+width+' '+size,tab(0).getBoundingClientRect().left>=end.left&&tab(0).getBoundingClientRect().right<=end.right);
         for(const dot of document.querySelectorAll('.desktop-tab-dot')) {
@@ -76,6 +86,8 @@ test('Chromium: session tab dots coexist, update and stay visible with narrow lo
       ensure('active tab uses page background',getComputedStyle(document.querySelector('.desktop-tab.active')).backgroundColor==='rgb(249, 250, 251)');
       ensure('inactive tab is slightly darker than strip',getComputedStyle(document.querySelector('.desktop-tab:not(.active)')).backgroundColor==='rgb(233, 235, 238)'&&getComputedStyle(strip).backgroundColor==='rgb(243, 244, 246)');
       ensure('active tab revealed without scrollbar',strip.scrollLeft>0&&shown.left>=bar.left-1&&shown.right<=bar.right+1);
+      ensure('revealed active tab is not hidden under the panel',shown.right<=document.querySelector('.desktop-tab-actions').getBoundingClientRect().left+0.5);
+      ensure('action buttons use icon font glyphs',document.querySelector('.desktop-tab-add .app-icon').textContent==='\\ue012'&&document.querySelector('.desktop-browser-toggle .app-icon').textContent==='\\ue015'&&!/[＋+]|Browser/.test(document.querySelector('.desktop-tab-actions').textContent.replace(/[\\ue000-\\uf8ff]/g,'')));
       snapshot={...snapshot,activeTabId:'tab7'};render();
       const menuEvent=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:20});tab(3).dispatchEvent(menuEvent);
       ensure('right click opens tab menu',menuEvent.defaultPrevented&&JSON.stringify(actions.at(-1))===JSON.stringify(['menu','tab3',true]));

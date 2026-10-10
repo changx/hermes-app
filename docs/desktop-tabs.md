@@ -127,3 +127,13 @@ Release v0.1.48 (2026-10-08, authorized by Jamie: "merge and redeploy"): `main` 
 Inactive tabs use `--app-tab-inactive` (`#e9ebee`), slightly darker than the tab strip (`#f3f4f6`). The active tab keeps the page background (`#f9fafb`). The Chromium test `tab-status` checks both computed colors.
 
 Release v0.1.58 (2026-10-09, authorized by Jamie: "合并发布", then "move package building to mac mini"): fix `efc7098`; release commit `6a5567a`, tag `v0.1.58`. Tag `v0.1.57` (`4527171`) exists but was never published: GitHub Actions refused to start its job (account payment problem), and its `mac-control` cancel test fails on the Mac mini every time. v0.1.58 adds the test fix and Mac mini packaging (`scripts/macmini-desktop-release.sh`; see docs/desktop-release-retention.md). Before the tag, the Linux desktop suite had 147 passed, 0 failed, 5 skipped. On the Mac mini, `desktop:check` had 119 passed, 0 failed, 33 skipped; `npm audit` found 0 vulnerabilities. The package was published with `--publish-built`. The downloaded `Hermes-0.1.58-macOS-arm64.zip` passed its SHA-256 check and is byte-identical to the checked package. Info.plist reports 0.1.58, the executable is arm64, and all 29 ASAR `dist/` files are byte-identical to the Linux build. Release pruning kept v0.1.58 and v0.1.56 and deleted v0.1.55. Plugin, mobile, Expo (PID 1962170) and Gateway are unchanged. Real-device acceptance on Jamie's Mac is pending.
+
+## Fixed tab actions
+
+Jamie (2026-10-09): New tab and Browser are two icon buttons fixed at the right end of the tab bar. They do not scroll with the tabs. Their panel is opaque, and the tabs scroll under it.
+
+- Structure: `.desktop-tabbar` holds the scrolling `.desktop-tabs` (the tablist) and `.desktop-tab-actions`, which is absolutely positioned at the right with the tab bar background (`--app-rail`).
+- The tab list ends with space as wide as the panel, so the last tab can scroll fully clear of it. `scroll-padding-inline-end` keeps an active tab that is scrolled into view out from under the panel.
+- Icons come from the bundled icon font: `plus` (E012) and the new `panelRight` (E015, a window outline with a right panel). Existing glyphs are byte-identical; the unchanged font rebuilds byte for byte before the addition.
+- Labels, disabled rules, `aria-expanded`, the ⌘T shortcut and the click behavior are unchanged. Each button has a tooltip.
+- Chromium test `tab-status` checks, at three widths and three font sizes: buttons outside the tablist, at the right edge in order, unmoved while tabs scroll; opaque panel on top of a tab under it; last tab clear of the panel at the scroll end; active tab not hidden; icon font glyphs. `sidebar-recents` checks that the E015 glyph loads from the font.

@@ -70,6 +70,8 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
         checks.rowHeights={recent:recentRowEl.getBoundingClientRect().height,project:projectRowEl.getBoundingClientRect().height};
         ensure('recent row keeps the one-line row height',Math.abs(recentRowEl.getBoundingClientRect().height-projectRowEl.getBoundingClientRect().height)<=1);
         ensure('Project tree rows do not repeat the connection name',!scroll.querySelector('.channel-tree .thread-connection-name'));
+        const panelIcon=document.querySelector('.desktop-browser-toggle .app-icon');
+        ensure('right panel glyph loads from the icon font',document.fonts.check('17px HermesWorkIcons','\\ue015')&&getComputedStyle(panelIcon).fontFamily.includes('HermesWorkIcons')&&panelIcon.getBoundingClientRect().width>=16);
         const recentTitle=scroll.querySelector('#sidebar-recents-list .thread-title').getBoundingClientRect().left, recentsLabel=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().left;
         const projectStep=scroll.querySelector('.channel-tree .thread-title').getBoundingClientRect().left-scroll.querySelector('.channel-toggle strong').getBoundingClientRect().left, list=getComputedStyle(scroll.querySelector('#sidebar-recents-list'));
         checks.indent={recents:recentTitle-recentsLabel,project:projectStep};

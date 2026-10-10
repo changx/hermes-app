@@ -125,6 +125,8 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
         if (next === undefined) return; event.preventDefault(); const width = clampSidebarWidth(next, availableWidth - browserWidth); setPreferredWidth(width); persistWidth(width);
       }} />}
     <section className="native-workspace-main">
+      {/* Tabs scroll under the opaque action panel; the panel never scrolls. */}
+      <div className="desktop-tabbar">
       <div ref={strip} className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => {
         const thread = tab.kind === 'session' && tab.threadId ? threadsById.get(tab.threadId) : undefined;
         const running = thread?.running === true;
@@ -144,7 +146,12 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onCreate
           </button>
           <button type="button" className="desktop-tab-close" aria-label={`Close tab: ${tab.title}`} onClick={() => invoke(window.hermesDesktop.closeTab(tab.id))}>×</button>
         </div>;
-      })}<button type="button" className="desktop-tab-add" aria-label="New chat tab" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>＋</button><button type="button" className="desktop-browser-toggle" aria-label={snapshot.browserMode === 'window' ? 'Toggle browser window' : 'Toggle preview sidebar'} aria-expanded={browserActive} disabled={!snapshot.activeTabId} onClick={() => invoke(browserActive ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}>Browser</button></div>
+      })}</div>
+      <div className="desktop-tab-actions">
+        <button type="button" className="desktop-tab-add desktop-tab-action" aria-label="New chat tab" title="New tab (⌘T)" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}><Icon name="plus" /></button>
+        <button type="button" className="desktop-browser-toggle desktop-tab-action" aria-label={snapshot.browserMode === 'window' ? 'Toggle browser window' : 'Toggle preview sidebar'} title={snapshot.browserMode === 'window' ? 'Browser window' : 'Preview sidebar'} aria-expanded={browserActive} disabled={!snapshot.activeTabId} onClick={() => invoke(browserActive ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}><Icon name="panelRight" /></button>
+      </div>
+      </div>
       <main ref={content} className="native-view-slot">{snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{!snapshot.activeTabId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="empty-session" role="status" aria-live="polite" aria-busy="true"><h1>Loading your conversations…</h1></div> : <div className="empty-session"><h1>Start a conversation</h1><p>Open a recent session or create a new chat.</p>{snapshot.phase === 'connected' && <button type="button" onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>New chat</button>}</div>)}</main>
     </section>
     {browserOpen && <div className="browser-resize-handle" role="separator" tabIndex={0} aria-label="Resize preview sidebar" aria-orientation="vertical" aria-valuemin={MIN_BROWSER_WIDTH} aria-valuemax={browserMaximum(browserAvailable)} aria-valuenow={browserWidth}
