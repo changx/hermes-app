@@ -35,29 +35,24 @@
 
 ## macOS 构建与 Release
 
-桌面安装包在项目 Mac mini（`ssh macmini`）上构建。GitHub Actions 因账户付款问题无法启动 job，2026-10-09 起改用此方式。
+桌面安装包由项目 Mac mini 上的 GitHub Actions self-hosted runner（`macmini-m4`）构建并直接发布，workflow 为 `.github/workflows/desktop-release.yml`。GitHub 托管 runner 因账户付款问题无法启动 job，self-hosted runner 不受影响。
 
-1. 推送与 `apps/desktop/package.json` 版本一致的 tag：
+推送与 `apps/desktop/package.json` 版本一致的 tag 即触发构建和发布：
 
 ```bash
 git tag v0.1.58
 git push origin main v0.1.58
+gh run watch "$(gh run list -w desktop-release.yml -L1 --json databaseId -q '.[0].databaseId')" --exit-status
 ```
 
-2. 在本机仓库根目录运行：
-
-```bash
-scripts/macmini-desktop-release.sh v0.1.58
-```
-
-脚本把 tag 源码（`git archive`）传到 Mac mini，执行锁定依赖安装、桌面检查、依赖审计、arm64 打包、zip 和 SHA-256 校验，再取回安装包，由本机 `gh` 创建 GitHub Release，上传：
+workflow 在 Mac mini 上执行锁定依赖安装、桌面检查、依赖审计、arm64 打包、zip 和 SHA-256 校验，然后从 Mac mini 创建 GitHub Release，上传：
 
 - `Hermes-<version>-macOS-arm64.zip`
 - 对应的 `.sha256` 校验文件
 
-加 `--no-publish` 只构建，不发布；检查包后，用 `--publish-built` 发布 `tmp/release/<tag>/` 中这同一个包，不重新构建。同名 Release 已存在时脚本拒绝发布。发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。
+只构建不发布：`gh workflow run desktop-release.yml -f tag=v0.1.58 -f publish=false`，安装包上传为 draft Release；检查后用 `gh release edit v0.1.58 --draft=false` 发布同一个包，不重新构建。账户计费问题使 workflow artifact 存储不可用，所以不用 artifact。同名 Release（含 draft）已存在时 workflow 拒绝上传。发布包是未签名、未 notarize 的 Apple Silicon 开发构建，不是 App Store 或公开发行包。
 
-仓库不再包含 GitHub Actions 的 macOS 构建 workflow（2026-10-09 删除）。
+runner 离线时的备用方式：在本机运行 `scripts/macmini-desktop-release.sh v0.1.58`。它经 `ssh macmini`（Cloudflare Access，约 2 Mbps）取回安装包再发布，传输约需 9 分钟。runner 的维护见 [桌面 Release](docs/desktop-release-retention.md)。
 
 ## 下一步
 

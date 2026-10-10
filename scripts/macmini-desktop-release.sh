@@ -8,8 +8,9 @@
 # --publish-built  skip the build; publish the package already in tmp/release/<tag>/
 #                  (use after checking a --no-publish build).
 #
-# Steps (formerly the GitHub Actions `release` job, now removed):
-# npm ci, desktop:check, npm audit, desktop:package:mac, ditto zip, SHA-256.
+# Fallback for when the self-hosted runner (.github/workflows/desktop-release.yml)
+# is offline; the package crosses the slow Cloudflare Access SSH link (~9 min).
+# Steps: npm ci, desktop:check, npm audit, desktop:package:mac, ditto zip, SHA-256.
 # The source is `git archive` of the tag commit, so the Mac mini needs no GitHub login.
 # Prerequisites:
 # - `ssh macmini` works (override with MACMINI_HOST).
