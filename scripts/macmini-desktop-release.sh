@@ -8,7 +8,7 @@
 # --publish-built  skip the build; publish the package already in tmp/release/<tag>/
 #                  (use after checking a --no-publish build).
 #
-# Same steps as the `release` job in .github/workflows/desktop-release.yml:
+# Steps (formerly the GitHub Actions `release` job, now removed):
 # npm ci, desktop:check, npm audit, desktop:package:mac, ditto zip, SHA-256.
 # The source is `git archive` of the tag commit, so the Mac mini needs no GitHub login.
 # Prerequisites:
