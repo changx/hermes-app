@@ -55,6 +55,8 @@
 - 原因：共享 SDK `LiveSessionClient.getChannelInfo` 只返回 `id`、`name` 和 `description`，丢弃了 `bound_primary_path`。桌面 `setProjectFolder` 和手机保存都用这个读取结果确认，所以读到 `null`，判定不一致。服务端实际已经保存。
 - 旧的互通测试只用 `HermesClient.listChannels` 读取，没有覆盖 App 使用的 `getChannelInfo`。
 - 修复：`getChannelInfo` 返回 `bound_primary_path`（字符串或 `null`；旧服务端不返回时省略），格式错误时报协议错误。新增 `packages/client/tests/channel-info.test.mjs`；`tests/client/primary-path-interop.mjs` 增加 `getChannelInfo` 的绑定和解除读取确认。
+- 发布（Jamie 授权）：修复提交 `6dad396`，发布提交 `84f7c38`，tag `v0.1.61`。Mac mini 构建测试 122 passed，0 failed，33 skipped；audit 0。GitHub Release 下载后 sha256 校验通过，与本地产物逐字节一致，Info.plist 版本 0.1.61，ASAR 含修复标记。Expo 重启（PID 452778 → 565742），公网 iOS/Android manifest SDK 57.0.0，launchAsset HTTP 200，均含修复标记。插件和 Gateway 未改动。
+- 待验收：Mac 桌面 v0.1.61 和 iPhone 上保存、重新打开都显示 Primary folder。
 
 ## 尚未完成
 
