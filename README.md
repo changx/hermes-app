@@ -45,7 +45,7 @@ git push origin main v0.1.58
 gh run watch "$(gh run list -w desktop-release.yml -L1 --json databaseId -q '.[0].databaseId')" --exit-status
 ```
 
-workflow 在 Mac mini 上执行锁定依赖安装、桌面检查、依赖审计、arm64 打包、zip 和 SHA-256 校验，然后从 Mac mini 创建 GitHub Release，上传：
+workflow 在 Mac mini 上执行锁定依赖安装、桌面检查、依赖审计、arm64 打包、zip 和 SHA-256 校验，然后从 Mac mini 创建 GitHub Release，上传（先直连，失败或过慢时改走 Surge，见 `.github/scripts/release-upload.sh`）：
 
 - `Hermes-<version>-macOS-arm64.zip`
 - 对应的 `.sha256` 校验文件

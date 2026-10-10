@@ -86,22 +86,34 @@ jobs:
           /usr/bin/shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           /usr/bin/shasum -a 256 -c "$ARCHIVE.sha256"
 
+      # Upload helper from the workflow's own commit (older tags lack it).
+      - name: Check out CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: _ci
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
       # A check build (publish=false) stays as a draft Release: workflow
       # artifacts are unavailable (storage quota blocked by account billing).
       # Publish the checked draft later with `gh release edit <tag> --draft=false`.
+      # Files go up direct first, then through Surge (see release-upload.sh).
       - name: Upload Release (draft unless publishing)
         id: upload
-        # Uploads go through Surge's TUN on the Mac mini; one test upload
-        # stalled with no progress. Fail fast instead of hanging for 30 min.
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           set -euo pipefail
-          args=(release create "$TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256"
+          args=(release create "$TAG"
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes
             --title "Hermes Desktop $TAG"
             --notes "Unsigned Apple Silicon macOS development build, packaged on the project Mac mini. This artifact is not notarized and is not an App Store distribution.")
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)"
+          test -n "$id"
+          echo "### Release upload ($TAG)" >> "$GITHUB_STEP_SUMMARY"
+          bash _ci/.github/scripts/release-upload.sh "$GITHUB_REPOSITORY" "$id" "release/$ARCHIVE" "release/$ARCHIVE.sha256"
           if [[ "$PUBLISH" == "true" ]]; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           fi
