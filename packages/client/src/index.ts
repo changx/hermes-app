@@ -188,6 +188,7 @@ export class HermesClient {
   supportsThreadBranch = false;
   supportsMessageSources = false;
   supportsThreadExport = false;
+  supportsChannelArchive = false;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -294,7 +295,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download); this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -307,6 +308,7 @@ export class HermesClient {
     this.supportsThreadBranch = owner.supportsThreadBranch;
     this.supportsMessageSources = owner.supportsMessageSources;
     this.supportsThreadExport = owner.supportsThreadExport;
+    this.supportsChannelArchive = owner.supportsChannelArchive;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
   private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
@@ -341,6 +343,8 @@ export class HermesClient {
   }
   async createChannel(name: string, description = '', primaryPath?: string): Promise<Channel> { const x = await this.call('POST','/v1/channels',primaryPath===undefined?{name,description}:{name,description,primary_path:primaryPath}); const c = validChannel(x.channel); this.channels.set(c.id,c); this.changed(); return c }
   async updateChannel(id: string, patch: ChannelPatch): Promise<Channel> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),patch); const c = validChannel(x.channel); this.channels.set(id,c); this.changed(); return c }
+  /** Core project archive: the Channel and its Threads leave the directory; nothing is deleted. */
+  async archiveChannel(id: string): Promise<void> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),{archived:true}); if (validChannel(x.channel).archived !== true) throw new ProtocolError('archive not confirmed'); this.channels.delete(id); this.changed() }
   async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.changed() }
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }
   async createThread(channelId: string, title: string, clientThreadId?: string): Promise<Thread> { const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{})}); return validThread(x.thread) }

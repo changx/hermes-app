@@ -201,6 +201,7 @@ export class DesktopConnections {
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: this.nameOf(r.account) }; }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }
+  async archiveChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.archiveChannel(r.raw); }
   async createThread(input: ThreadInput, activate = true): Promise<string> {
     const r = input.channelId ? this.route(input.channelId) : { account: this.current(), raw: undefined };
     if (activate) this.active = r.account.id;

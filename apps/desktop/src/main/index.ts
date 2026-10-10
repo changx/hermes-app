@@ -219,6 +219,7 @@ const registerDesktopApi = (): void => {
   handle("desktop:add-project-files", async (event, id: unknown, files: unknown) => { shellSender(event); return service.addProjectFiles(text(id, 200), attachmentInputs(files)); });
   handle("desktop:update-channel", async (event, id: unknown, value: unknown) => { trustedSender(event); const input = object(value); await service.updateChannel(text(id, 200), { name: text(input.name, 120), description: text(input.description, 4000) }); });
   handle("desktop:delete-channel", async (event, id: unknown) => { trustedSender(event); await service.deleteChannel(text(id, 200)); });
+  handle("desktop:archive-channel", async (event, id: unknown) => { trustedSender(event); await service.archiveChannel(text(id, 200)); });
   handle("desktop:create-thread", async (event, value: unknown) => {
     trustedSender(event); const input = object(value), tab = tabs?.sender(event.sender);
     const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput;

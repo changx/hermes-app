@@ -180,3 +180,27 @@ test('New project sets the folder after creation and skips AGENTS.md; older serv
   const old = await fixture({ channelId: 'p1' });
   try { assert.equal(old.has('Project primary folder'), false); } finally { await old.dispose(); }
 });
+
+test('Project settings archives through the server when supported and never deletes', async () => {
+  const f = await fixture({ channelId: 'p1', api: { getChannelInfo: { id: 'p1', name: 'Research', archiveSupported: true }, archiveChannel: undefined } });
+  try {
+    const buttons = () => f.tree.root.findAllByType('button').map(b => b.children.join(''));
+    assert.ok(buttons().includes('Archive project')); assert.ok(!buttons().includes('Delete project'));
+    await act(async () => f.tree.root.findAllByType('button').find(b => b.children.join('') === 'Archive project').props.onClick());
+    assert.deepEqual(f.calls.filter(c => ['archiveChannel', 'delete'].includes(c[0])), [['archiveChannel', 'p1']]);
+    assert.equal(f.closed(), 1);
+  } finally { await f.dispose(); }
+});
+
+test('Project settings keeps Delete project on a server without archive and shows an archive failure', async () => {
+  const old = await fixture({ channelId: 'p1' });
+  try {
+    const labels = old.tree.root.findAllByType('button').map(b => b.children.join(''));
+    assert.ok(labels.includes('Delete project')); assert.ok(!labels.includes('Archive project'));
+  } finally { await old.dispose(); }
+  const f = await fixture({ channelId: 'p1', api: { getChannelInfo: { id: 'p1', name: 'Research', archiveSupported: true }, archiveChannel: () => { throw new Error('offline'); } } });
+  try {
+    await act(async () => f.tree.root.findAllByType('button').find(b => b.children.join('') === 'Archive project').props.onClick());
+    assert.equal(f.closed(), 0); assert.match(f.alert(), /could not be archived/);
+  } finally { await f.dispose(); }
+});

@@ -138,6 +138,7 @@
 - [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
 - [docs/session-labels.md](docs/session-labels.md)
+- [docs/archive.md](docs/archive.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)
 - [docs/client-layout-tools-blur-release.md](docs/client-layout-tools-blur-release.md)
 - [docs/command-state-order.md](docs/command-state-order.md)

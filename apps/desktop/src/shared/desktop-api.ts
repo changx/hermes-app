@@ -10,7 +10,8 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
   control?: 'agent' | 'user' | 'waiting'; controlMessage?: string }>;
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
-  /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean }>;
+  /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean;
+  /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean;
   /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean }>;
 export type DesktopThread = Readonly<{
@@ -179,6 +180,7 @@ export interface HermesDesktopApi {
   createChannel(input: ProjectCreationInput): Promise<string>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
+  archiveChannel(channelId: string): Promise<void>;
   getProjectWorkspace(channelId: string): Promise<DesktopProjectWorkspace>;
   /** `previousEtag === null` creates AGENTS.md only if it does not exist. */
   saveProjectAgents(channelId: string, content: string, previousEtag: string | null): Promise<ProjectAgentsResult>;

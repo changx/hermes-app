@@ -356,6 +356,7 @@ export function ChannelsScreen({ channelId }: { channelId: string }) {
         onFiles={id => router.push(channelRoute(slot, id, '/files'))}
         onAgents={id => router.push(channelRoute(slot, id, '/agents'))}
         onLabels={id => router.push(labelsRoute(slot, id))}
+        onArchive={async () => { await client.archiveChannel(channelId); if (router.canGoBack()) router.back(); else router.replace('/'); }}
         enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
           const box = outboxRef.current;
           if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');

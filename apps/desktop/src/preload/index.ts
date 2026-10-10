@@ -57,6 +57,7 @@ const api: HermesDesktopApi = Object.freeze({
   createChannel: (input: ProjectCreationInput): Promise<string> => ipcRenderer.invoke("desktop:create-channel", input),
   updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),
   deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),
+  archiveChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:archive-channel", channelId),
   getProjectWorkspace: (channelId: string) => ipcRenderer.invoke("desktop:get-project-workspace", channelId),
   saveProjectAgents: (channelId: string, content: string, previousEtag: string | null) => ipcRenderer.invoke("desktop:save-project-agents", channelId, content, previousEtag),
   setProjectFolder: (channelId: string, path: string | null) => ipcRenderer.invoke("desktop:set-project-folder", channelId, path),

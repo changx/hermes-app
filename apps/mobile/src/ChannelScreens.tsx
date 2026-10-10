@@ -21,6 +21,8 @@ type Props = {
   onFiles: (id: string) => void;
   onAgents: (id: string) => void;
   onLabels: (id: string) => void;
+  /** Archives the Channel and leaves its page. The page unmounts when the Channel disappears. */
+  onArchive: () => Promise<void>;
   enqueueFirstMessage: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
 };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
@@ -33,7 +35,7 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, onLabels, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, onLabels, onArchive, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
   const [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
   const [name, setName] = useState('');
@@ -67,8 +69,14 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
   const filtering = client.supportsSessionLabels && labelFilterActive(labelFilter);
   const threads = filtering ? channelThreads.filter(t => matchesLabels(t.markers, labelFilter)) : channelThreads;
   const startEdit = () => { if (!channel || busy) return; setName(channel.name); setEditing(true); setError(''); };
+  // Core archive: the Channel and its sessions leave every list; nothing is deleted.
+  const archiveChannel = () => Alert.alert(`Archive “${channel?.name ?? 'this channel'}”?`, 'The channel and its sessions will no longer be shown on any device.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Archive', style: 'destructive', onPress: () => void run(onArchive) },
+  ]);
   const channelMenu = () => Alert.alert('Channel', undefined, [
     { text: 'Rename channel', onPress: startEdit },
+    ...(client.supportsChannelArchive ? [{ text: 'Archive channel', style: 'destructive' as const, onPress: archiveChannel }] : []),
     { text: 'Cancel', style: 'cancel' },
   ]);
   const cancelChannelForm = () => { setEditing(false); setError(''); };
@@ -80,6 +88,10 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
   const sessionMenu = (thread: ThreadSummary) => { if (busy) return; Alert.alert(thread.title, undefined, [
     { text: 'Rename session', onPress: () => rename(thread) },
     ...(client.supportsSessionLabels ? [{ text: 'Edit labels', onPress: () => { if (focusedRef.current) onLabels(thread.id); } }] : []),
+    { text: 'Archive session', style: 'destructive' as const, onPress: () => Alert.alert('Archive this session?', 'It will no longer be shown on any device.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Archive', style: 'destructive', onPress: () => void run(async () => { await client.archiveThread(thread.id); }) },
+    ]) },
     { text: 'Cancel', style: 'cancel' },
   ]); };
   const channelForm = editing && <View style={[s.form, { marginHorizontal: 12 }]}>

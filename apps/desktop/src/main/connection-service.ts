@@ -795,7 +795,8 @@ export class DesktopConnectionService {
     const client = this.requireClient(), channel = await client.getChannelInfo(channelId);
     return { id: channel.id, name: channel.name, ...(channel.description ? { description: channel.description } : {}),
       ...(typeof channel.bound_primary_path === 'string' ? { primaryPath: channel.bound_primary_path } : {}),
-      ...(client.supportsChannelPrimaryPath ? { primaryPathSupported: true } : {}) };
+      ...(client.supportsChannelPrimaryPath ? { primaryPathSupported: true } : {}),
+      ...(client.supportsChannelArchive ? { archiveSupported: true } : {}) };
   }
 
   async updateChannel(channelId: string, input: ChannelInput): Promise<void> {
@@ -810,15 +811,28 @@ export class DesktopConnectionService {
     if (!this.client?.channels.has(channelId)) return;
     try {
       await this.client.deleteChannel(channelId);
-      if (this.selectedChannelId === channelId) {
-        this.selectedChannelId = undefined;
-        this.selectedThreadId = undefined;
-        this.listedThreads.clear();
-        this.olderCursor = undefined;
-        await this.selectInitialChannel();
-      }
-      this.changed();
+      await this.leaveChannel(channelId);
     } catch { this.actionError("The channel could not be deleted. Check that it is empty and that you have permission."); }
+  }
+
+  /** Core project archive: the project and its sessions leave the list; nothing is deleted. */
+  async archiveChannel(channelId: string): Promise<void> {
+    if (!this.client?.channels.has(channelId)) return;
+    try {
+      await this.client.archiveChannel(channelId);
+      await this.leaveChannel(channelId);
+    } catch { this.actionError("The project could not be archived. Check the connection and try again."); throw new Error("Project archive was not confirmed."); }
+  }
+
+  private async leaveChannel(channelId: string): Promise<void> {
+    if (this.selectedChannelId === channelId) {
+      this.selectedChannelId = undefined;
+      this.selectedThreadId = undefined;
+      this.listedThreads.clear();
+      this.olderCursor = undefined;
+      await this.selectInitialChannel();
+    }
+    this.changed();
   }
 
   async createThread(input: ThreadInput, activate = true): Promise<string> {
