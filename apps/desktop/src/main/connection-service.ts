@@ -184,6 +184,7 @@ export class DesktopConnectionService {
   /** True when this server offers Project Files and AGENTS.md and this transport can write them safely. */
   supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
   supportsPrimaryPath(): boolean { return this.client?.supportsChannelPrimaryPath === true; }
+  supportsChannelArchive(): boolean { return this.client?.supportsChannelArchive === true; }
 
   snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;

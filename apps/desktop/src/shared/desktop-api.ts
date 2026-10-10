@@ -12,7 +12,7 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
   /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean;
   /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
-export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean;
+export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean; supportsChannelArchive?: boolean;
   /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;

@@ -28,7 +28,7 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
   const [agents, setAgents] = useState('');
   const [folder, setFolder] = useState('');
   const [folderSupportedOnServer, setFolderSupportedOnServer] = useState(false);
-  const [archiveSupported, setArchiveSupported] = useState(false);
+  const [archiveOnServer, setArchiveOnServer] = useState(false);
   const [staged, setStaged] = useState<readonly File[]>([]);
   // Last confirmed server values. Save writes only what differs from them.
   const saved = useRef({ name: '', description: '', agents: '', folder: '', etag: null as string | null });
@@ -51,7 +51,7 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
       saved.current.name = value.name; saved.current.description = value.description ?? '';
       saved.current.folder = value.primaryPath ?? '';
       setName(value.name); setDescription(value.description ?? ''); setFolder(value.primaryPath ?? '');
-      setFolderSupportedOnServer(value.primaryPathSupported === true); setArchiveSupported(value.archiveSupported === true); setDetails('ready');
+      setFolderSupportedOnServer(value.primaryPathSupported === true); setArchiveOnServer(value.archiveSupported === true); setDetails('ready');
     }, () => { if (alive.current) setDetails('failed'); });
     void window.hermesDesktop.getProjectWorkspace(channelId).then(value => {
       if (!alive.current) return;
@@ -69,6 +69,10 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
   const workspaceReady = !channelId || typeof workspace === 'object' && workspace !== null;
   const locked = busy || creationFailed || details !== 'ready';
   const folderSupported = channelId ? folderSupportedOnServer : selected?.supportsPrimaryPath === true;
+  // The connection already knows the capability, so the right removal button shows from the first frame.
+  // Without it, wait for the server answer instead of showing Delete first.
+  const archiveSupported = selected?.supportsChannelArchive === true || archiveOnServer;
+  const removalKnown = archiveSupported || details === 'ready';
   const folderChanged = folderSupported && folderValue(folder) !== saved.current.folder;
   const agentsChanged = filesSupported && agents !== saved.current.agents;
   const changed = name.trim() !== saved.current.name || description.trim() !== saved.current.description || folderChanged || agentsChanged || staged.length > 0;
@@ -183,7 +187,7 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
       </div>
       <div className="dialog-actions">
         {channelId && project && archiveSupported && <button type="button" className="secondary danger" disabled={busy || details !== 'ready'} onClick={() => { if (window.confirm(`Archive “${project.name}”? The project and its sessions will no longer be shown.`)) void window.hermesDesktop.archiveChannel(channelId).then(close, () => { if (alive.current) setError('The project could not be archived. Check the connection and try again.'); }); }}>Archive project</button>}
-        {channelId && project && !archiveSupported && <button type="button" className="secondary danger" disabled={busy || details !== 'ready'} onClick={() => { if (window.confirm(`Delete “${project.name}”? This cannot be undone.`)) void window.hermesDesktop.deleteChannel(channelId).then(close, () => {}); }}>Delete project</button>}
+        {channelId && project && removalKnown && !archiveSupported && <button type="button" className="secondary danger" disabled={busy || details !== 'ready'} onClick={() => { if (window.confirm(`Delete “${project.name}”? This cannot be undone.`)) void window.hermesDesktop.deleteChannel(channelId).then(close, () => {}); }}>Delete project</button>}
         <button type="button" className="secondary" disabled={busy} onClick={close}>{editing && !channelId ? 'Close' : 'Cancel'}</button>
         <button type="submit" disabled={!canSave}>{busy ? 'Saving…' : editing ? 'Save' : 'Create project'}</button>
       </div>

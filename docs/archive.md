@@ -36,3 +36,7 @@ See the plugin repo `docs/archive.md` for server tests. Client tests: `packages/
 - Older servers: the client hides Channel archive without `channel_archive`; Thread archive uses the existing endpoint.
 - Evidence: Channel workspace `archive/`; plugin artifact and before-state in `jamie/workspace/hermes-app/archive/plugin-0.2.17/`.
 - Rollback: client `git revert ae97c04` + Expo restart, next desktop patch; plugin `current` back to `releases/0.2.16` + Gateway restart. No data restore needed (no schema change).
+
+## Fix: no Delete project flash (v0.1.64)
+
+The Project settings dialog showed Delete project until `getChannelInfo` returned, then switched to Archive project. The desktop connection snapshot now carries `supportsChannelArchive`, so Archive project shows from the first frame. When the capability is still unknown, the dialog shows no removal button until the server answers. Mobile reads the capability when the menu opens and was not affected.

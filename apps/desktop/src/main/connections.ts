@@ -96,6 +96,7 @@ export class DesktopConnections {
         state: s.phase === 'pairing' ? 'pairing' as const : s.errorMessage && !s.connectionKey ? 'blocked' as const : s.connectionState,
         ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
         ...(a.service.supportsPrimaryPath() ? { supportsPrimaryPath: true } : {}),
+        ...(a.service.supportsChannelArchive() ? { supportsChannelArchive: true } : {}),
         ...(s.statusMessage || s.errorMessage ? { detail: s.statusMessage ?? s.errorMessage } : {}) }];
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,

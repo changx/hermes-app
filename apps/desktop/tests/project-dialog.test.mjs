@@ -204,3 +204,25 @@ test('Project settings keeps Delete project on a server without archive and show
     assert.equal(f.closed(), 0); assert.match(f.alert(), /could not be archived/);
   } finally { await f.dispose(); }
 });
+
+test('Project settings never shows Delete before the archive capability is known', async () => {
+  // Capability from the connection: Archive from the first frame, before getChannelInfo resolves.
+  let resolveInfo; const pending = new Promise(r => { resolveInfo = r; });
+  const archived = { ...snapshot, connections: [{ ...connection, supportsChannelArchive: true }] };
+  const f = await fixture({ value: archived, channelId: 'p1', api: { getChannelInfo: () => pending } });
+  try {
+    const labels = () => f.tree.root.findAllByType('button').map(b => b.children.join(''));
+    assert.ok(labels().includes('Archive project')); assert.ok(!labels().includes('Delete project'));
+    await act(async () => { resolveInfo({ id: 'p1', name: 'Research' }); await pending; });
+    assert.ok(labels().includes('Archive project')); assert.ok(!labels().includes('Delete project'));
+  } finally { await f.dispose(); }
+  // Capability unknown while loading: no removal button until the server answers.
+  let late; const waiting = new Promise(r => { late = r; });
+  const g = await fixture({ channelId: 'p1', api: { getChannelInfo: () => waiting } });
+  try {
+    const labels = () => g.tree.root.findAllByType('button').map(b => b.children.join(''));
+    assert.ok(!labels().includes('Delete project') && !labels().includes('Archive project'));
+    await act(async () => { late({ id: 'p1', name: 'Research', archiveSupported: true }); await waiting; });
+    assert.ok(labels().includes('Archive project')); assert.ok(!labels().includes('Delete project'));
+  } finally { await g.dispose(); }
+});
