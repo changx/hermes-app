@@ -1,6 +1,6 @@
 # Channel and Thread archive
 
-Status: implemented on branch `feat/archive` (client and plugin). Not merged or released. Device acceptance is pending.
+Status: released 2026-10-10 — client v0.1.63 / Expo, plugin 0.2.17 (installed; active after the Gateway restart). Device acceptance is pending.
 
 ## Confirmed requirement
 
@@ -26,3 +26,13 @@ Nothing is deleted: history, attachments, workspace files and core sessions stay
 ## Verification
 
 See the plugin repo `docs/archive.md` for server tests. Client tests: `packages/client/tests/channel-archive.test.mjs`, `apps/desktop/tests/project-dialog.test.mjs`, `apps/mobile/tests/channel-archive.test.mjs`, `apps/mobile/tests/session-options.test.mjs`.
+
+## Release (2026-10-10)
+
+- Client: feature `ae97c04`, release `c18246b`, tag `v0.1.63` on origin/main. Rebased after v0.1.62; shared client 46/46, mobile 146 pass/0 fail, desktop 157/157, TypeScript and iOS/Android exports pass.
+- Mobile Expo Go: runtime checkout `cbd991c` → `c18246b`, only `hermes-app-expo.service` restarted (PID 599026 → 636237). Public iOS/Android manifests 200, SDK 57.0.0, exact launch assets 200 with `Archive session` and `Archive channel`. Mobile lockfile unchanged.
+- Desktop: Mac mini build 124 pass/0 fail/33 skipped, audit 0. [Release v0.1.63](https://github.com/changx/hermes-app/releases/tag/v0.1.63): sha256 sidecar OK, identical to the build, ZIP intact, Info.plist 0.1.63, arm64, ASAR has `desktop:archive-channel` and `Archive project`. Unsigned, not notarized.
+- Plugin: `hermes-app-plugin` `886e6c3` + `08e5ec1`, local tag `v0.2.17`; artifact sha256 `c8f397d9…4fd56`; shared `current` 0.2.16 → 0.2.17 for `hermes-app-dev` and `jamie`. Running code changes only after `systemctl --user restart hermes-gateway.service` (all profiles).
+- Older servers: the client hides Channel archive without `channel_archive`; Thread archive uses the existing endpoint.
+- Evidence: Channel workspace `archive/`; plugin artifact and before-state in `jamie/workspace/hermes-app/archive/plugin-0.2.17/`.
+- Rollback: client `git revert ae97c04` + Expo restart, next desktop patch; plugin `current` back to `releases/0.2.16` + Gateway restart. No data restore needed (no schema change).
