@@ -276,3 +276,12 @@ Jamie authorized main merge and release. `f748cc9` (hide assistant times) and `6
 - Mobile `exps://agent.tuly.space` is updated at the same code commit. Public iOS/Android SDK57 manifests and their exact launchAssets returned HTTP 200 and contain all changed production presentation paths. iOS SHA-256 `25ba27442f39de4a8ef7c838ad349774c7596acb20015051cfcf0a2e7464a9ff`; Android `e205600b79635eee776afc0510a886a1e672526dab5900816b4cc0de1fa2b84c`. The initial request during restart returned 502; later readiness and both complete asset checks passed. Only Expo restarted (PID 3172610 → 3631682); both Gateway service snapshots, installed development plugin hashes and mobile lockfile remain unchanged.
 
 Evidence: active Channel workspace `collapsible-work/release/`, including baseline snapshots, downloaded archive/ASAR, CI log, packaged verifier and per-platform manifests/exact JS bundles. Device installation, signing/notarization, Gateway/plugin/core changes, App Store and TestFlight are not included. Mac/iPhone visual/keyboard/accessibility acceptance remains pending. Mobile is Expo Go testing, not an independent installer. Desktop rollback: reinstall v0.1.14; source rollback requires scoped reverts of these two client commits and an Expo restart, preserving unrelated main work and all chat data.
+
+## 发布结果：Stop 移到运行文字之后（v0.1.62，2026-10-10）
+
+- 源码 `cbd991c`（功能 `2460252`），tag `v0.1.62`，已推送 origin/main。
+- 候选检查（rebase 到 v0.1.61 之后）：共享客户端 43/43，手机 143 通过/0 失败，桌面 155/155（含 Chromium 与 Electron），手机 TypeScript 与 iOS/Android 导出通过。
+- 手机 Expo Go：运行目录 `77363a9` → `cbd991c`，仅重启 `hermes-app-expo.service`（PID 565742 → 599026）。公网 iOS/Android manifest 200、SDK 57.0.0，精确 launchAsset 200，`statusStopPressed`/`stopText` 均存在。Gateway PID 470028 与插件树哈希不变，手机 lockfile 不变。
+- 桌面：Mac mini 构建 122 通过/0 失败/33 跳过，audit 0。[Release v0.1.62](https://github.com/changx/hermes-app/releases/tag/v0.1.62) 下载包 sha256 sidecar 通过、与构建产物一致、ZIP 完整、Info.plist 0.1.62、arm64，ASAR 含新 Stop 样式与标签。未签名/未 notarize。
+- 证据：Channel workspace `inline-stop/`。iPhone/Mac 真机视觉验收待 Jamie。
+- 回滚：`git revert 2460252`，手机运行目录快进后重启 Expo；桌面发布下一补丁版本。
