@@ -1,6 +1,11 @@
 # Connection names and Recents attribution
 
-Branch `feat/connection-names` in `/opt/projects/jamie/_worktrees/hermes-app/connection-names`, based on main `ecb66de`. Not merged, not published.
+Branch `feat/connection-names`, merged to main as `d2649d2` on 2026-10-09 (Jamie: "merge and push, build desktop release on mac mini").
+
+## Release
+
+- Desktop v0.1.59: release commit `6f50ecd`, tag `v0.1.59`, built on the Mac mini with `scripts/macmini-desktop-release.sh`. Mac mini check: 122 pass, 0 fail, 33 skipped (Chromium/Electron tests that need test variables). `npm audit`: 0 vulnerabilities. The published zip matches its `.sha256` and the built file; Info.plist shows 0.1.59 and `app.asar` contains the new code. Old Release v0.1.56 was pruned; v0.1.58 is kept for rollback.
+- Mobile: `hermes-app-expo.service` restarted (PID 1962170 → 385457). Public iOS and Android manifests report SDK 57.0.0; both launch bundles return HTTP 200 and contain the new connection-name code.
 
 ## Requirement (Jamie, 2026-10-09)
 
