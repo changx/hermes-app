@@ -1,0 +1,118 @@
+name: Desktop Release (Mac mini)
+
+# Builds the unsigned Apple Silicon desktop package on the project Mac mini
+# (self-hosted runner `macmini-m4`) and publishes it from there.
+# - Pushing a vX.Y.Z tag builds and publishes that tag.
+# - Manual run: build any existing tag; publish only when `publish` is true,
+#   otherwise keep the package as a 1-day workflow artifact for checking.
+# Node v24.14.1 and gh come from the runner's .path (~/.local on the Mac mini).
+# Do not add pull_request triggers: this runner must never run untrusted code.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (vX.Y.Z)
+        required: true
+        type: string
+      publish:
+        description: Publish a GitHub Release (false = workflow artifact only)
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: [self-hosted, macOS, ARM64, macmini]
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Verify toolchain and release identity
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          test "$TAG" = "v$VERSION"
+          test "$(uname -m)" = "arm64"
+          test "$(node --version)" = "v24.14.1"
+          test "$(npm --version)" = "11.11.0"
+          echo "ARCHIVE=Hermes-${VERSION}-macOS-arm64.zip" >> "$GITHUB_ENV"
+          if [[ "$PUBLISH" == "true" ]] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace published assets." >&2
+            exit 1
+          fi
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run desktop checks and audit
+        run: |
+          set -euo pipefail
+          node -p 'require("electron")' >/dev/null
+          npm run desktop:check
+          npm audit
+
+      - name: Package unsigned macOS app
+        run: npm run desktop:package:mac
+
+      - name: Verify and archive app
+        run: |
+          set -euo pipefail
+          APP="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
+          test -f "$APP/Contents/Resources/app.asar"
+          /usr/bin/file "$APP/Contents/MacOS/Hermes" | /usr/bin/grep -q arm64
+          rm -rf release && mkdir release
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ARCHIVE"
+          cd release
+          /usr/bin/shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          /usr/bin/shasum -a 256 -c "$ARCHIVE.sha256"
+
+      - name: Keep package as workflow artifact
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARCHIVE }}
+          path: release/
+          retention-days: 1
+
+      - name: Publish GitHub Release
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          args=(release create "$TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256"
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes
+            --title "Hermes Desktop $TAG"
+            --notes "Unsigned Apple Silicon macOS development build, packaged on the project Mac mini. This artifact is not notarized and is not an App Store distribution.")
+          if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh "${args[@]}"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      # Keep the new release and the one before it (rollback). Git tags stay.
+      - name: Remove older releases
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          if [[ ! -f scripts/prune-releases.sh ]]; then
+            echo "::warning::This tag has no scripts/prune-releases.sh; older releases were not removed."
+            exit 0
+          fi
+          bash scripts/prune-releases.sh "$GITHUB_REPOSITORY" 2 --protect "$TAG"
