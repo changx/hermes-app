@@ -44,8 +44,8 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
         document.documentElement.style.width=width+'px';document.body.style.width=width+'px';document.querySelector('.session-tab-page').style.width=width+'px';
         const user=document.querySelector('.message-user'),agent=document.querySelector('.message-assistant'),pane=document.querySelector('.session-tab-page'),row=document.querySelector('.composer-toolbar'),box=document.querySelector('.composer-box'),field=box.querySelector('textarea');
         const bubble=user.getBoundingClientRect(),other=agent.getBoundingClientRect(),bounds=pane.getBoundingClientRect(),controls=[...row.children].map(x=>{const b=x.getBoundingClientRect();return {left:b.left,right:b.right,width:b.width,height:b.height}});
-        const stop=document.querySelector('.running-row .stop-button').getBoundingClientRect();
-        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom},inputTop:box.getBoundingClientRect().top,box:(b=>({left:b.left,right:b.right,height:b.height}))(box.getBoundingClientRect()),boxRadius:getComputedStyle(box).borderTopLeftRadius,fieldHeight:field.getBoundingClientRect().height,fieldBottom:field.getBoundingClientRect().bottom,rowTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
+        const stopButton=document.querySelector('.running-row .stop-button'),stop=stopButton.getBoundingClientRect(),runningText=document.querySelector('.agent-running').getBoundingClientRect(),stopStyle=getComputedStyle(stopButton);
+        results.push({width,bubbleLeft:bubble.left,agentLeft:other.left,bubbleWidth:bubble.width,agentWidth:other.width,background:getComputedStyle(user).backgroundColor,paneLeft:bounds.left,paneRight:bounds.right,controls,stop:{left:stop.left,right:stop.right,bottom:stop.bottom,top:stop.top,height:stop.height,label:stopButton.textContent,radius:stopStyle.borderTopLeftRadius,background:stopStyle.backgroundColor,icon:stopButton.querySelector('svg').getBoundingClientRect().width},runningText:{right:runningText.right,top:runningText.top,bottom:runningText.bottom},inputTop:box.getBoundingClientRect().top,box:(b=>({left:b.left,right:b.right,height:b.height}))(box.getBoundingClientRect()),boxRadius:getComputedStyle(box).borderTopLeftRadius,fieldHeight:field.getBoundingClientRect().height,fieldBottom:field.getBoundingClientRect().bottom,rowTop:row.getBoundingClientRect().top,animations:[...document.querySelectorAll('.running-dots span')].map(x=>getComputedStyle(x).animationName)});
       } document.getElementById('results').textContent=JSON.stringify(results);
     </script></body></html>`);
     for(const reduced of [false,true]) {
@@ -59,6 +59,12 @@ test('Chromium: production shell keeps gray bubbles right aligned and composer c
       assert.equal(result.controls.length,2,'tool row holds plus and send only');
       assert.ok(result.stop.bottom<=result.inputTop,'stop shares running row above input, not send row');
       assert.ok(result.stop.left>=result.paneLeft && result.stop.right<=result.paneRight);
+      // Stop follows the running text as a quiet pill: icon + label, 10px after the text, vertically centered.
+      assert.ok(Math.abs(result.stop.left-result.runningText.right-10)<0.6,'stop sits 10px after the running text');
+      assert.ok(result.paneRight-result.stop.right>200,'stop is no longer pinned to the right edge');
+      assert.equal(result.stop.label,'Stop'); assert.equal(result.stop.icon,10); assert.equal(result.stop.height,26);
+      assert.equal(result.stop.background,'rgba(0, 0, 0, 0)'); assert.equal(parseFloat(result.stop.radius)>=13,true);
+      assert.ok(Math.abs((result.stop.top+result.stop.bottom)/2-(result.runningText.top+result.runningText.bottom)/2)<1,'stop centered on the text row');
       assert.deepEqual(result.animations,Array(3).fill(reduced?'none':'agent-running-dot'));
       for(const control of result.controls){assert.ok(control.width>0);assert.ok(control.left>=result.paneLeft);assert.ok(control.right<=result.paneRight);}
       // ChatGPT-style card: one borderless text line above a tool row with round 32px plus/send.

@@ -402,8 +402,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       <View collapsable={false} style={styles.composerForeground}>
       {hasRunningReceipt(props.threadId, props.receipts) && <View style={styles.runningRow}>
         <View style={styles.runningIndicator}>{props.typingIndicator}</View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Stop" disabled={props.busy} onPress={props.onStop} style={[styles.statusStopButton, props.busy && styles.disabled]}>
-          <Text style={styles.stopIcon}>■</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Stop" hitSlop={8} disabled={props.busy} onPress={props.onStop}
+          style={({ pressed }) => [styles.statusStopButton, pressed && styles.statusStopPressed, props.busy && styles.disabled]}>
+          <View style={styles.stopIcon} />
+          <Text style={styles.stopText}>Stop</Text>
         </Pressable>
       </View>}
       {props.composerAccessory ? props.composerAccessory(composerParts, setComposerHeight)
@@ -471,10 +473,13 @@ const styles = StyleSheet.create({
   interactions: { maxHeight: 170 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
 
-  runningRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', paddingRight: 10 },
-  runningIndicator: { flex: 1, minWidth: 0 },
-  statusStopButton: { width: 34, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#e6edf7' },
-  stopIcon: { color: '#425874', fontSize: 17 },
+  // Stop follows the running text as a quiet outlined pill.
+  runningRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 10 },
+  runningIndicator: { flexShrink: 1, minWidth: 0 },
+  statusStopButton: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 26, paddingLeft: 9, paddingRight: 11, borderRadius: 13, borderWidth: 1, borderColor: '#d3dce8' },
+  statusStopPressed: { backgroundColor: '#eef2f8', borderColor: '#c4d0e0' },
+  stopIcon: { width: 8, height: 8, borderRadius: 2, backgroundColor: '#425874' },
+  stopText: { color: '#425874', fontSize: 12, fontWeight: '600' },
   composeInput: { padding: 0, color: '#1f2329' },
   // One shadow around the shared surface; blur never owns interactive content.
   composerSurface: { backgroundColor: 'rgba(248, 250, 253, 0.78)', boxShadow: '0 -4px 10px -4px rgba(23, 42, 64, 0.16)' },

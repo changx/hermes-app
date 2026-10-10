@@ -249,3 +249,25 @@ test('branch notices render their session link as a tappable span',async()=>{
     assert.equal(box.props.accessibilityLabel,'System notice: Branched to Plan (branch) now');
   }finally{await act(async()=>root.unmount());}
 });
+test('Stop is an icon + label pill right after the running indicator, not pinned to the right', async () => {
+  const receipt = {id:'r',thread_id:'t',client_message_id:'u',state:'running',processing:'running',durable:true};
+  let stops = 0;
+  const root = await mount({rows, receipts:[receipt], onStop(){ stops++; }, typingIndicator: React.createElement('Indicator')});
+  try {
+    const stop = root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityLabel === 'Stop')[0];
+    assert.ok(stop, 'stop button');
+    const row = stop.parent;
+    const order = row.children.map(child => child.type === 'Pressable' ? 'stop' : child.findAllByType('Indicator').length ? 'indicator' : '?');
+    assert.deepEqual(order, ['indicator', 'stop'], 'stop follows the indicator');
+    const style = Object.assign({}, ...[row.props.style].flat());
+    assert.equal(style.justifyContent, undefined); assert.equal(style.gap, 10);
+    const indicator = Object.assign({}, ...[row.children[0].props.style].flat());
+    assert.equal(indicator.flex, undefined, 'indicator no longer fills the row');
+    assert.deepEqual(stop.findAllByType('Text').map(t => t.props.children), ['Stop']);
+    assert.ok(stop.props.hitSlop >= 8);
+    const pill = Object.assign({}, ...stop.props.style({ pressed: false }).filter(Boolean));
+    assert.equal(pill.borderRadius, pill.height / 2); assert.equal(pill.backgroundColor, undefined);
+    await act(async () => stop.props.onPress());
+    assert.equal(stops, 1);
+  } finally { await act(async () => root.unmount()); }
+});

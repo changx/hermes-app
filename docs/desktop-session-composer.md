@@ -206,7 +206,7 @@ No main merge, push, installer release, native installation or service restart. 
 User requested removing `Select channel` and correcting the missing `Agent is running` presentation. Continue from `0d69e5d`.
 
 - Delete the redundant tree action and its unused CSS selector. Expanding/collapsing the Channel still does not forcibly leave the current Session. The Channel plus and Session selection remain unchanged.
-- Match current mobile `runningRow`: a compact 32px row above the input contains three scaling dots and `Agent is running`, with the independent Stop button on the right (34×28px). The input row contains only plus, textarea and send.
+- Match current mobile `runningRow`: a compact 32px row above the input contains three scaling dots and `Agent is running`, followed 10px later by the independent Stop button. 2026-10-10 update (Jamie): Stop moved from the right end to right after the running text, as a quiet outlined pill with a rounded-square icon and the label `Stop` (desktop 26px tall, scales with the text-size setting; mobile 26px with an 8px hit slop; tint only on hover/press). The input row contains only plus, textarea and send.
 - Use the selected Session's authoritative directory running state. Idle, no selection and a different running Session do not create this row. Offline cached state shows `Reconnecting…` with no dots and disabled Stop; pending selected-session interaction shows `Waiting for your response` with no dots. These states do not claim active work.
 - Three CSS dots use mobile colors and staggered scaling. Reduced-motion mode disables their animation. Stop remains available during an in-flight send when connected and does not clear the draft. Running status does not replace or disable the ordinary send action.
 

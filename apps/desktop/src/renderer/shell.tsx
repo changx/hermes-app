@@ -296,7 +296,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
         {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}
         <span>{!online ? "Reconnecting…" : active ? "Agent is running" : "Waiting for your response"}</span>
       </div>
-      <button type="button" className="stop-button" aria-label="Stop agent" title="Stop agent" disabled={!online} onClick={() => safely(window.hermesDesktop.stopThread())}>■</button>
+      <button type="button" className="stop-button" aria-label="Stop agent" disabled={!online} onClick={() => safely(window.hermesDesktop.stopThread())}><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="2" /></svg><span>Stop</span></button>
     </div> : null}
     {/* ChatGPT-style input card: attachments, borderless textarea, then a tool row with plus and a round send button. */}
     <div className="composer-box" onClick={event => { if (event.target === event.currentTarget || event.target === toolbar.current) input.current?.focus(); }}>

@@ -628,15 +628,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .composer-toolbar .send-button:disabled { color: #fff; background: #d7d7d9; cursor: default; }
 .composer-toolbar .attach-button:disabled { color: #b5b6b9; cursor: default; }
 .composer-toolbar > button:focus-visible { outline: 2px solid #285ea5; outline-offset: 2px; }
-.running-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; }
-.agent-running { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: #607187; font-size: var(--app-font-size); }
+.running-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 4px; }
+.agent-running { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: #607187; font-size: var(--app-font-size); }
 .running-dots { display: flex; align-items: center; gap: 3px; flex: 0 0 24px; }
 .running-dots span { width: 6px; height: 6px; border-radius: 50%; background: #748296; transform: scale(.6); animation: agent-running-dot 1.08s ease-in-out infinite; }
 .running-dots span:nth-child(2) { animation-delay: .36s; }
 .running-dots span:nth-child(3) { animation-delay: .72s; }
 @keyframes agent-running-dot { 0%, 33%, 100% { transform: scale(.6); } 16.67% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .running-dots span { animation: none; } }
-.running-row .stop-button { flex: 0 0 34px; height: 28px; padding: 0; border: 0; border-radius: 9px; color: #425874; background: #e6edf7; font-size: 17px; }
+/* Quiet pill right after the running text: outline only, tint on hover. */
+.running-row .stop-button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: calc(var(--app-font-size) + 10px); padding: 0 11px 0 9px; border: 1px solid #d3dce8; border-radius: 999px; color: #425874; background: transparent; font-size: calc(var(--app-font-size) * .8125); font-weight: 500; line-height: 1; cursor: pointer; transition: background-color .12s ease, border-color .12s ease; }
+.running-row .stop-button svg { width: 10px; height: 10px; fill: currentColor; stroke: none; }
+.running-row .stop-button:not(:disabled):hover { background: #eef2f8; border-color: #c4d0e0; }
+.running-row .stop-button:disabled { opacity: .45; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .running-row .stop-button { transition: none; } }
 .composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 10px 10px 0; cursor: default; }
 .composer-attachments > .composer-attachment { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 6px; border-radius: 8px; padding: 5px 8px; background: #f1f5fa; font-size: var(--app-font-size); overflow-wrap: anywhere; }
 .composer-attachments button { border: 0; margin-left: 5px; background: transparent; }

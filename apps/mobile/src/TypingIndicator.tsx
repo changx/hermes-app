@@ -40,7 +40,7 @@ export function TypingIndicator({ active, name = '' }: { active: boolean; name?:
   </View>;
 }
 const styles = StyleSheet.create({
-  status: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 14, paddingRight: 8, height: 32 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32 },
   dots: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 24 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#748296' },
   text: { color: '#607187', fontSize: 12, flexShrink: 1 },
