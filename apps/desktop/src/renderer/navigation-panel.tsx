@@ -6,11 +6,14 @@ import { LabelPills } from './session-labels';
 import { SearchIcon, searchSessions, SessionQueryInput } from './session-search';
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
 import { Icon } from './icons';
+import { AutomationsSection } from './automations';
 
 // Only states that need the user's attention are shown in the tree.
 const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
 // Snapshot deltas rebuild the connection array; compare only what the tree shows.
 const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ?? []).map(row => `${row.connectionKey ?? ''}=${row.state}`).join('|');
+// The job whose tab is in front; its sidebar row is selected.
+const activeAutomation = (snapshot: DesktopSnapshot) => snapshot.tabs?.find(tab => tab.id === snapshot.activeTabId)?.automationId;
 
 const ThreadRow = memo(({thread,selected,draft,onMenu,showLabels,hint,source}: {thread:DesktopThread;selected:boolean;draft:boolean;showLabels?:boolean;hint?:string;source?:string;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} title={hint} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
@@ -24,11 +27,12 @@ const RECENTS_KEY = 'hermes.sidebar.recents-collapsed';
 const loadRecentsCollapsed = () => { try { return window.localStorage.getItem(RECENTS_KEY) === '1'; } catch { return false; } };
 
 /**
- * Sidebar content, top to bottom: New chat, the session search box, Recents
+ * Sidebar content, top to bottom: New chat, the session search box,
+ * Automations (scheduled jobs; hidden when no connection offers them), Recents
  * (Sessions active in the last 24 hours across every Project), then one flat
  * Project tree across every connection. A Project shows its Hermes name only
  * when several exist. While a search is active, one flat result list replaces
- * Recents and the Project tree. The search matches like Cmd+K: a keyword
+ * Automations, Recents and the Project tree. The search matches like Cmd+K: a keyword
  * (title or label text) plus exact labels, all required.
  */
 export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onChannelOptions, onCreateProject, search: controlledSearch, onSearch }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void }) => {
@@ -113,6 +117,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
         </div>
       </section>;
     })() : <>
+    <AutomationsSection connectionStates={connectionStates(snapshot)} threads={snapshot.threads} activeAutomationId={activeAutomation(snapshot)} multiple={multiple} />
     <section className="sidebar-recents" aria-labelledby="sidebar-recents-title">
       <div className="sidebar-section-header">
         <h2 className="sidebar-section-title"><button type="button" className="sidebar-section-toggle" id="sidebar-recents-title" aria-expanded={!recentsCollapsed} aria-controls="sidebar-recents-list"
@@ -154,4 +159,4 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     </>}
     {menu && <div className="session-context-menu" role="menu" aria-label="Session options" style={{ left: Math.max(0, Math.min(menu.x, window.innerWidth - 180)), top: Math.max(0, Math.min(menu.y, window.innerHeight - 60)) }}><button autoFocus type="button" role="menuitem" disabled={(snapshot.connections ? snapshot.connections.find(row => row.connectionKey === snapshot.channels.find(c => c.id === menu.thread.channelId)?.connectionKey)?.state : snapshot.connectionState) !== 'online' || !available.some(thread => thread.id === menu.thread.id)} onClick={() => { const thread = available.find(thread => thread.id === menu.thread.id); if (thread) onEditLabels?.(thread); setMenu(null); }}>Edit labels</button></div>}
   </div>;
-}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot));
+}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot));

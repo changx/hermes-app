@@ -756,3 +756,30 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 /* In-app tooltip (see tooltip.tsx): native `title` tooltips are unreliable in Session tab views. */
 .app-tooltip { position: fixed; z-index: 100; max-width: 260px; padding: 4px 8px; border-radius: 6px; background: #1f2329; color: #fff; font: 500 12px/1.35 system-ui, -apple-system, sans-serif; white-space: normal; pointer-events: none; box-shadow: 0 2px 8px rgb(0 0 0 / 18%); }
+
+/* Automations: sidebar section above Recents, and the Automation tab page. */
+.native-sidebar .sidebar-automations .sidebar-section-header { margin-top: 8px; }
+.automation-row .thread-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automation-row-status { flex: none; color: var(--app-muted); font-size: var(--sidebar-small, 0.8125em); }
+.automation-row-status.automation-running, .automation-status.automation-running { color: #237a35; }
+.automation-row-status.automation-failed, .automation-status.automation-failed { color: #9d1b32; }
+.automation-page { height: 100dvh; overflow-y: auto; padding: clamp(24px, 5vw, 56px); background: var(--app-background); color: var(--app-text); font-size: var(--app-font-size); }
+.automation-column { display: flex; flex-direction: column; gap: 6px; max-width: 768px; margin: 0 auto; }
+.automation-header { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.automation-header h1 { margin: 0 0 4px; font-size: 28px; font-weight: 500; overflow-wrap: anywhere; }
+.automation-header p { margin: 0; }
+.automation-status { color: var(--app-label); font-weight: 600; }
+.automation-line, .automation-notice, .automation-empty { color: var(--app-muted); }
+.automation-link { padding: 0; border: 0; background: transparent; color: var(--app-link); font: inherit; font-weight: 600; cursor: pointer; }
+.automation-link:disabled { opacity: .6; cursor: default; }
+.automation-prompt { align-self: stretch; margin: 4px 0 0; padding: 12px; border: 1px solid var(--app-border); border-radius: 10px; background: #fff; color: var(--app-text); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.automation-error { margin: 0; padding: 10px; border-radius: 8px; background: #fff0f2; color: #9d1b32; }
+.automation-section { margin: 24px 0 4px; color: var(--app-muted); font-size: var(--app-font-size); font-weight: 600; }
+.automation-threads { display: flex; flex-direction: column; gap: 8px; }
+.automation-thread { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--app-border); border-radius: 12px; background: #fff; color: var(--app-text); font: inherit; text-align: left; cursor: pointer; }
+.automation-thread:hover:not(:disabled), .automation-thread:focus-visible { background: var(--app-selected); }
+.automation-thread:disabled { cursor: default; opacity: .65; }
+.automation-thread-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.automation-thread-title { font-weight: 600; overflow-wrap: anywhere; }
+.automation-thread-details { color: var(--app-muted); font-size: 0.875em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automation-more { align-self: center; padding: 8px; }

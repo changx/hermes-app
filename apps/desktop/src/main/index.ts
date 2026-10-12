@@ -182,6 +182,17 @@ const registerDesktopApi = (): void => {
     } }))).popup({ window: mainWindow, ...position });
   });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
+  // Automations: the sidebar lists and opens jobs; an Automation tab reads only its own job.
+  handle('desktop:list-automations', event => { shellSender(event); return service.automations(); });
+  handle('desktop:open-automation', (event, id: unknown, title: unknown) => { shellSender(event); tabs?.openAutomation(text(id, 300), text(title, 400)); });
+  handle('desktop:get-automation', async (event, before: unknown) => {
+    trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
+    const tab = manager.automationTarget(event.sender);
+    if (before !== undefined && (!Number.isSafeInteger(before) || (before as number) < 0)) throw new Error('Invalid desktop request');
+    const page = await service.automation(tab.automationId, before as number | undefined);
+    if (page.state === 'ok' && before === undefined) manager.setTabTitle(tab, page.automation.name);
+    return page;
+  });
   handle('desktop:content-bounds', (event, value: unknown) => { shellSender(event); const bounds = object(value); tabs?.setBounds({ x: Number(bounds.x), y: Number(bounds.y), width: Number(bounds.width), height: Number(bounds.height), visible: bounds.visible === true }); });
   handle("desktop:open-session-link", (event, value: unknown) => {
     trustedSender(event);

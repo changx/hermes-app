@@ -9,6 +9,7 @@ import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadInput } from "../shared/desktop-api";
 import { workspacePath } from "../../../../packages/client/src/workspace";
+import type { Automation, AutomationDetail } from "../../../../packages/client/src/automations";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
@@ -185,6 +186,20 @@ export class DesktopConnectionService {
   supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
   supportsPrimaryPath(): boolean { return this.client?.supportsChannelPrimaryPath === true; }
   supportsChannelArchive(): boolean { return this.client?.supportsChannelArchive === true; }
+  supportsAutomations(): boolean { return this.client?.supportsAutomations === true; }
+  /** This connection's scheduled jobs. Read-only; nothing enters the chat caches. */
+  async automations(): Promise<Automation[]> {
+    const client = this.requireClient();
+    if (!client.supportsAutomations) throw new Error('Automations are unavailable.');
+    return client.automations();
+  }
+  /** One job and a page of the Threads it delivered into; null when the server no longer has it. */
+  async automation(id: string, before?: number): Promise<AutomationDetail | null> {
+    const client = this.requireClient();
+    if (!client.supportsAutomations) throw new Error('Automations are unavailable.');
+    try { return await client.automation(id, before); }
+    catch (error) { if (error instanceof HttpError && error.status === 404) return null; throw error; }
+  }
 
   snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;

@@ -7,7 +7,7 @@ export type BrowserAccount = Readonly<{
   /** Wire Thread/Project ID -> desktop (qualified) ID, and back. */
   qualify(raw: string): string; unqualify(id: string): string | undefined;
 }>;
-export type BrowserTab = Readonly<{ id: string; threadId?: string; connectionKey?: string; kind: 'new' | 'session' }>;
+export type BrowserTab = Readonly<{ id: string; threadId?: string; connectionKey?: string; kind: 'new' | 'session' | 'automation' }>;
 export type BrowserControlDeps = Readonly<{
   accounts(): readonly BrowserAccount[];
   tabs(): readonly BrowserTab[];

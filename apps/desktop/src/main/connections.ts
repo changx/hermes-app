@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import type { ChannelInput, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from '../shared/desktop-api';
+import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from '../shared/desktop-api';
+import type { Automation } from '../../../../packages/client/src/automations';
 import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
 import { DesktopConnectionService, deviceName, normalizeCode } from './connection-service';
@@ -200,6 +201,32 @@ export class DesktopConnections {
   async setProjectFolder(id: string, path: string | null) { const r = this.route(id); return r.account.service.setProjectFolder(r.raw, path); }
   async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: this.nameOf(r.account) }; }
+  /** The connection that owns a qualified Automation ID. */
+  connectionForAutomation(id: string): string | undefined { return this.route(id).account.service.snapshot(undefined, false).connectionKey; }
+  private qualifyAutomation(account: Account, job: Automation): DesktopAutomation {
+    const snap = account.service.snapshot(undefined, false);
+    return { ...job, id: this.encode(account, job.id)!, connectionKey: snap.connectionKey, connectionName: this.nameOf(account, snap),
+      targets: job.targets.map(t => ({ ...t, channelId: this.encode(account, t.channelId)!, ...(t.threadId ? { threadId: this.encode(account, t.threadId)! } : {}) })) };
+  }
+  /** Jobs of every connected server that offers Automations: running first, then latest run, then name. */
+  async automations(): Promise<DesktopAutomationList> {
+    const accounts = [...this.accounts.values()].filter(a => a.service.snapshot(undefined, false).phase === 'connected' && a.service.supportsAutomations());
+    const failed: string[] = [];
+    const rows = (await Promise.all(accounts.map(async account => {
+      try { return (await account.service.automations()).map(job => this.qualifyAutomation(account, job)); }
+      catch { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
+    }))).flat();
+    rows.sort((a, b) => Number(b.running) - Number(a.running) || (b.lastRunAt ?? '').localeCompare(a.lastRunAt ?? '') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return { supported: accounts.length > 0, automations: rows, failed };
+  }
+  async automation(id: string, before?: number): Promise<DesktopAutomationPage> {
+    const r = this.route(id);
+    if (!r.account.service.supportsAutomations()) return { state: 'unsupported' };
+    const page = await r.account.service.automation(r.raw, before);
+    if (!page) return { state: 'missing' };
+    return { state: 'ok', automation: this.qualifyAutomation(r.account, page.automation), nextBefore: page.nextBefore,
+      threads: page.threads.map(t => ({ ...t, id: this.encode(r.account, t.id)!, channelId: this.encode(r.account, t.channelId)! })) };
+  }
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }
   async archiveChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.archiveChannel(r.raw); }

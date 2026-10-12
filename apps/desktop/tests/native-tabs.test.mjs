@@ -23,7 +23,8 @@ function fixture() {
   const service = { snapshot(id){return {...snapshot, selectedThreadId:id ?? snapshot.selectedThreadId, messages:id ? [{id:`${id}-message`,role:'assistant',text:id,toolCalls:[],attachments:[]}] : []};},
     selectThread(id){snapshot.selectedThreadId=id; manager.sync(snapshot); return Promise.resolve();}, deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);},
     closeSessionPage(id){closed.push(id);manager.sync(snapshot);},
-    hasConnection(key){return !!key && key===snapshot.connectionKey;}, connectionForChannel(){return snapshot.connectionKey;} };
+    hasConnection(key){return !!key && key===snapshot.connectionKey;}, connectionForChannel(){return snapshot.connectionKey;},
+    connectionForAutomation(id){if(id.startsWith('gone:'))throw new Error('Connection unavailable');return snapshot.connectionKey;} };
   const manager = new DesktopTabManager(window, service, '/app/main', ()=>{});
   return {manager,service,snapshot,views,closed,window};
 }
@@ -86,4 +87,25 @@ test('opening a session or a new tab focuses its view; a background sync does no
   f.manager.newTab('p');const draft=[...f.manager.tabs.values()][1];assert.equal(draft.view.webContents.focused,true);
   a.view.webContents.focused=false;a.view.webContents.emit('did-finish-load');assert.equal(a.view.webContents.focused,false);
   draft.view.webContents.focused=false;draft.view.webContents.emit('did-finish-load');assert.equal(draft.view.webContents.focused,true);
+});
+test('an automation opens one tab per job without selecting a session; its page targets only its own job', async()=>{
+  const f=fixture();await f.service.selectThread('a');const session=[...f.manager.tabs.values()][0];
+  f.manager.openAutomation('job-1','Daily digest');const tab=[...f.manager.tabs.values()][1];
+  assert.equal(tab.kind,'automation');assert.equal(f.manager.activeTabId,tab.id);assert.equal(f.snapshot.selectedThreadId,undefined);assert.equal(tab.view.webContents.focused,true);
+  const page=f.manager.snapshot(tab.view.webContents);
+  assert.equal(page.tabKind,'automation');assert.equal(page.automationId,'job-1');assert.equal(page.selectedThreadId,undefined);assert.equal(page.messages.length,0);
+  assert.deepEqual(f.manager.snapshot().tabs.map(t=>[t.kind,t.title,t.automationId]),[['session','a',undefined],['automation','Daily digest','job-1']]);
+  // Session actions from the Automation page have no target; only its own job is readable.
+  assert.throws(()=>f.manager.target(tab.view.webContents),/unavailable/);
+  assert.equal(f.manager.automationTarget(tab.view.webContents).automationId,'job-1');
+  assert.throws(()=>f.manager.automationTarget(session.view.webContents),/unavailable/);
+  // Opening the same job again activates the existing tab.
+  f.manager.activate(session.id);f.manager.openAutomation('job-1','Daily digest');
+  assert.equal(f.manager.tabs.size,2);assert.equal(f.manager.activeTabId,tab.id);
+  f.manager.setTabTitle(tab,'Renamed digest');assert.equal(f.manager.snapshot().tabs[1].title,'Renamed digest');
+  // A conversation opened from the page gets its own session tab.
+  await f.service.selectThread('b');assert.equal(f.manager.tabs.size,3);assert.equal(f.manager.tabs.get(f.manager.activeTabId).threadId,'b');
+  assert.throws(()=>f.manager.openAutomation('gone:job','Old'),/unavailable/);assert.equal(f.manager.tabs.size,3);
+  // Removing the connection closes the Automation tab with the others.
+  f.snapshot.connectionKey='another';f.snapshot.selectedThreadId=undefined;f.manager.sync(f.snapshot);assert.equal(tab.view.webContents.destroyed,true);
 });

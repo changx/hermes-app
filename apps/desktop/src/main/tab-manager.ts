@@ -1,13 +1,15 @@
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { DesktopSnapshot } from '../shared/desktop-api';
+import type { DesktopSnapshot, DesktopTabKind } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
 import type { DesktopConnections } from './connections';
 import type { DesktopBrowserSidebar } from './browser-sidebar';
 
 export type TabMenuAction = 'close' | 'close-right' | 'close-others';
-type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session'; busy: boolean; baseline?: DesktopSnapshot };
+type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string;
+  /** Automation tabs: the qualified job ID and the tab title (the job name). */ automationId?: string; title?: string;
+  kind: DesktopTabKind; busy: boolean; baseline?: DesktopSnapshot };
 export class DesktopTabManager {
   readonly tabs = new Map<string, Tab>();
   activeTabId?: string;
@@ -50,11 +52,12 @@ export class DesktopTabManager {
     });
   }
 
-  private create(kind: Tab['kind'], threadId?: string, initialChannelId?: string): Tab {
+  private create(kind: Tab['kind'], threadId?: string, initialChannelId?: string, automationId?: string): Tab {
     const view = new WebContentsView({ webPreferences: { preload: join(this.directory, '../preload/index.cjs'),
       additionalArguments: ['--hermes-tab-view'], nodeIntegration: false, contextIsolation: true, sandbox: true,
       webSecurity: true, webviewTag: false, allowRunningInsecureContent: false } });
-    const tab: Tab = { id: randomUUID(), view, kind, threadId, initialChannelId, connectionKey: threadId ? this.service.snapshot(threadId, false).connectionKey : this.service.connectionForChannel(initialChannelId), busy: false };
+    const connectionKey = automationId ? this.service.connectionForAutomation(automationId) : threadId ? this.service.snapshot(threadId, false).connectionKey : this.service.connectionForChannel(initialChannelId);
+    const tab: Tab = { id: randomUUID(), view, kind, threadId, initialChannelId, automationId, connectionKey, busy: false };
     this.tabs.set(tab.id, tab); this.window.contentView.addChildView(view); view.setVisible(false);
     this.secure(view.webContents);
     this.shortcuts(view.webContents);
@@ -72,6 +75,25 @@ export class DesktopTabManager {
     const tab = this.create('new', undefined, channelId ?? snapshot.selectedChannelId);
     this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
   }
+  /** One tab per job: activates the job's tab, or opens it. No Session is selected while it shows. */
+  openAutomation(automationId: string, title: string): void {
+    const snapshot = this.service.snapshot();
+    if (this.closed || snapshot.phase !== 'connected') throw new Error('Automation unavailable');
+    let tab = [...this.tabs.values()].find(t => t.kind === 'automation' && t.automationId === automationId);
+    if (!tab) {
+      if (!this.service.hasConnection(this.service.connectionForAutomation(automationId))) throw new Error('Automation unavailable');
+      tab = this.create('automation', undefined, undefined, automationId); tab.title = title.trim() || 'Automation';
+    }
+    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
+  }
+  /** The job of an Automation tab's own page; the renderer never names another job. */
+  automationTarget(contents: WebContents): Tab & { automationId: string } {
+    const tab = this.sender(contents);
+    if (!tab || tab.kind !== 'automation' || !tab.automationId || !this.service.hasConnection(tab.connectionKey)) throw new Error('Automation unavailable');
+    return tab as Tab & { automationId: string };
+  }
+  /** The tab shows the job's current name after each page load. */
+  setTabTitle(tab: Tab, title: string): void { if (this.tabs.get(tab.id) === tab && tab.title !== title) { tab.title = title; this.publish(); } }
   sync(snapshot: DesktopSnapshot): void {
     if (this.closed) return;
     this.connectionKey = snapshot.connectionKey;
@@ -189,11 +211,13 @@ export class DesktopTabManager {
         selectedThreadTitle: session ? base.selectedThreadTitle : undefined, selectedChannelId: session ? base.threads.find(t => t.id === tab.threadId)?.channelId : tab.initialChannelId,
         messages: session ? base.messages : [], interactions: session ? base.interactions : [],
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
-        tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId };
+        tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId,
+        ...(tab.automationId ? { automationId: tab.automationId } : {}) };
     }
     return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
-        initialChannelId: tab.initialChannelId, title: tab.kind === 'new' ? 'New chat' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
+        initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}),
+        title: tab.kind === 'new' ? 'New chat' : tab.kind === 'automation' ? tab.title ?? 'Automation' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }
   publish(): void {
     if (this.closed || this.window.isDestroyed()) return;

@@ -124,6 +124,7 @@
 - [docs/message-toolbar-release-0.1.46.md](docs/message-toolbar-release-0.1.46.md)
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop-session-search.md](docs/desktop-session-search.md)
+- [docs/desktop-automations.md](docs/desktop-automations.md)
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布

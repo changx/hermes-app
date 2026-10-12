@@ -1,7 +1,9 @@
 import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
+import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
 
+export type DesktopTabKind = 'new' | 'session' | 'automation';
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserMode = 'sidebar' | 'window';
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string;
@@ -31,6 +33,13 @@ export type DesktopThread = Readonly<{
   origin?: "user" | "automation";
   participated?: boolean;
 }>;
+/** A scheduled job. IDs (job, channels, Threads) are qualified like every other desktop ID. */
+export type DesktopAutomation = Automation & Readonly<{ connectionKey?: string; connectionName?: string }>;
+/** Sidebar Automations: jobs of every connection that offers them. `supported` is false when none does. */
+export type DesktopAutomationList = Readonly<{ supported: boolean; automations: readonly DesktopAutomation[];
+  /** Connections whose list could not be loaded. */ failed: readonly string[] }>;
+export type DesktopAutomationPage = Readonly<{ state: 'ok'; automation: DesktopAutomation; threads: readonly AutomationThread[]; nextBefore: number | null }
+  | { state: 'missing' | 'unsupported' }>;
 export type DesktopToolCall = Readonly<{ id: string; name?: string; label: string; detail?: string; caption?: string; icon?: string }>;
 export type DesktopAttachment = Readonly<{
   id: string;
@@ -71,11 +80,13 @@ export type DesktopSnapshot = Readonly<{
   browser?: DesktopBrowserState;
   /** Built-in sidebar or one separate window per Session. */
   browserMode?: DesktopBrowserMode;
-  tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; kind: 'new' | 'session' }>[];
+  tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; automationId?: string; kind: DesktopTabKind }>[];
   activeTabId?: string;
   tabId?: string;
   tabActive?: boolean;
-  tabKind?: 'new' | 'session';
+  tabKind?: DesktopTabKind;
+  /** The job an Automation tab shows. */
+  automationId?: string;
   initialChannelId?: string;
   connectionName?: string;
   draftThreadIds?: readonly string[];
@@ -158,6 +169,12 @@ export interface HermesDesktopApi {
   /** Show the native Close Tab / Close Tabs to the Right / Close Other Tabs menu at window coordinates. */
   showTabMenu(tabId: string, x: number, y: number): Promise<void>;
   completeNewTab(): Promise<void>;
+  /** Main window: scheduled jobs of every connection, read-only. */
+  listAutomations(): Promise<DesktopAutomationList>;
+  /** Main window: opens the job's tab, or activates it when open. `title` names the tab until the page loads. */
+  openAutomation(automationId: string, title: string): Promise<void>;
+  /** Automation tab: its own job and one page of its conversations; `before` continues the list. */
+  getAutomation(before?: number): Promise<DesktopAutomationPage>;
   setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;
   /** Opens or focuses the single native Settings window. */

@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { build } from 'esbuild';
 const require = createRequire(import.meta.url);
-const bundle = await build({ entryPoints:[new URL('../src/main/connections.ts',import.meta.url).pathname],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false });
+// HttpError comes from the same bundle, so `instanceof` in the service matches the test's errors.
+const bundle = await build({ stdin:{contents:"export * from './src/main/connections'; export { HttpError } from '@hermes-app/client';",resolveDir:new URL('..',import.meta.url).pathname,loader:'ts'},bundle:true,platform:'node',format:'cjs',external:['electron'],write:false });
 const mod={exports:{}};
 new Function('require','module','exports',bundle.outputFiles[0].text)(name=>name==='electron'?{app:{getPath:()=>tmpdir()},safeStorage:{}}:require(name),mod,mod.exports);
-const {DesktopConnections}=mod.exports;
+const {DesktopConnections,HttpError}=mod.exports;
 const request={baseUrl:'https://second.example.test',code:'ABCD-EFGH-JKLM-NPQR',deviceName:'Test desktop'};
 function fixture() {
   const published=[],writes=[],records=new Map();
@@ -169,4 +170,35 @@ test('removing a renamed connection deletes only its name, so the slot starts wi
   await f.workspace.removeConnection('primary');
   assert.deepEqual(f.nameWrites.at(-1),{['b'.repeat(24)]:'Work'});
   assert.equal(f.workspace.snapshot().connections[0].name,'Work');
+});
+test('Automations: jobs of every connection with qualified IDs, sorted; unsupported servers skipped; a lost job is missing', async()=>{
+  const f=fixture();
+  const job=(id,extra={})=>({id,name:id,schedule:'every 60m',state:'scheduled',enabled:true,running:false,failed:false,targets:[{channelId:'p',mode:'new'}],threadCount:1,unreadCount:0,...extra});
+  f.a.client.supportsAutomations=true;f.b.client.supportsAutomations=true;
+  f.a.client.automations=async()=>[job('job-a',{lastRunAt:'2026-10-11T01:00:00Z'})];
+  f.b.client.automations=async()=>[job('job-a',{running:true}),job('job-b',{lastRunAt:'2026-10-11T02:00:00Z',targets:[{channelId:'p',mode:'thread',threadId:'th_same0000'}]})];
+  let list=await f.workspace.automations();
+  assert.equal(list.supported,true);assert.deepEqual(list.failed,[]);
+  const other='b'.repeat(24);
+  assert.deepEqual(list.automations.map(j=>j.id),[other+':job-a',other+':job-b','job-a']);
+  assert.deepEqual(list.automations[1].targets,[{channelId:other+':p',mode:'thread',threadId:other+':th_same0000'}]);
+  assert.equal(list.automations[2].connectionKey,'a'.repeat(24));
+  // One server fails: its name is reported, the other server's jobs stay.
+  f.b.client.automations=async()=>{throw new Error('offline');};
+  list=await f.workspace.automations();
+  assert.deepEqual(list.automations.map(j=>j.id),['job-a']);assert.equal(list.failed.length,1);
+  // A server without the capability is not asked.
+  f.b.client.supportsAutomations=false;f.a.client.supportsAutomations=false;
+  list=await f.workspace.automations();assert.deepEqual(list,{supported:false,automations:[],failed:[]});
+  f.b.client.supportsAutomations=true;
+  const asked=[];
+  f.b.client.automation=async(id,before)=>{asked.push([id,before]);return {automation:job(id),threads:[{id:'th_same0000',channelId:'p',title:'Run',runs:2,completedUnread:true,resultVersion:1,resultRef:3}],nextBefore:7};};
+  const page=await f.workspace.automation(other+':job-b',9);
+  assert.deepEqual(asked,[['job-b',9]]);assert.equal(page.state,'ok');assert.equal(page.automation.id,other+':job-b');
+  assert.deepEqual(page.threads.map(t=>[t.id,t.channelId]),[[other+':th_same0000',other+':p']]);assert.equal(page.nextBefore,7);
+  assert.deepEqual(await f.workspace.automation('job-a'),{state:'unsupported'});
+  f.b.client.automation=async()=>{throw new HttpError(404,undefined,'/v1/automations/x');};
+  assert.deepEqual(await f.workspace.automation(other+':job-b'),{state:'missing'});
+  f.b.client.automation=async()=>{throw new HttpError(503,undefined,'/v1/automations/x');};
+  await assert.rejects(f.workspace.automation(other+':job-b'));
 });
