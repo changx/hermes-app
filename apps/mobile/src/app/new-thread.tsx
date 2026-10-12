@@ -70,7 +70,7 @@ function Composer({ channel, onLock, focus }: { channel: ChannelChoice; onLock: 
   if (!client.channels.has(channel.id)) return <Notice text="This channel is unavailable." />;
   return <FormKeyboardAvoidingView>
     <View style={s.fill} />
-    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} placeholder="What would you like to do?" autoFocus={focus}
+    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} placeholder="What would you like to do?" autoFocus={focus} showModel
       enqueue={async (threadId, messageId, text, attachments) => {
         const box = outboxRef.current;
         if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');

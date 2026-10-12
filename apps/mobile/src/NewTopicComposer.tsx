@@ -1,12 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
-import { connectionFailure, type Attachment, type HermesClient } from '../../../packages/client/src/index';
+import { connectionFailure, threadModelLabel, threadModelRequest, type AgentModelSettings, type Attachment, type HermesClient, type ModelConfirmationRequired, type ThreadModelChoice } from '../../../packages/client/src/index';
+
+// By name and status: the error may come from another bundle copy of the shared client.
+const needsConfirmation = (error: unknown): error is ModelConfirmationRequired => error instanceof Error && error.name === 'ModelConfirmationRequired';
+const rejected = (error: unknown) => error instanceof Error && (error as { status?: unknown }).status === 400;
 import { retryStep } from './retryStep.ts';
 import { Text, TextInput } from './FontSize';
 import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments';
 import { ComposerSendButton } from './ComposerCard';
+import { ThreadModelButton, ThreadModelPicker } from './ThreadModelPicker';
 
 /** Route-owned draft: retained by the native Stack while an existing topic is open.
  * Never share files or IDs across channels. Mount with a connection/channel
@@ -15,12 +20,15 @@ import { ComposerSendButton } from './ComposerCard';
  * first attempt until the durable commit, the Thread and message IDs belong to
  * the current target, so the owner must keep it.
  * First-message dispatch belongs to the existing durable outbox, not this view.
+ * The model control lists the models of `client` (the Channel's own connection); a remount
+ * per connection/Channel resets it to the primary model. `showModel` keeps the control visible;
+ * otherwise it appears while typing or when a model other than the default is chosen.
  */
-export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false }: {
+export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false, showModel = false }: {
   client: HermesClient; channelId: string;
   enqueue: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
   onCreated: (threadId: string) => void; disabled?: boolean;
-  onTargetLock?: (locked: boolean) => void; placeholder?: string; autoFocus?: boolean;
+  onTargetLock?: (locked: boolean) => void; placeholder?: string; autoFocus?: boolean; showModel?: boolean;
 }) {
   const [text, setText] = useState(''), [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false), [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -29,10 +37,14 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   const input = useRef<React.ElementRef<typeof TextInput>>(null);
   const attachments = useRef<AttachmentComposerHandle>(null);
   const selection = useRef<{ start: number; end: number } | null>(null);
-  type Attempt = { threadId: string; messageId: string; created: boolean; payload?: { text: string; attachments: Attachment[] } };
+  // The model is fixed with the Thread ID at the first attempt; retries send the same request.
+  type Attempt = { threadId: string; messageId: string; created: boolean; model?: ThreadModelChoice; confirmModel?: boolean; payload?: { text: string; attachments: Attachment[] } };
+  const [models, setModels] = useState<AgentModelSettings | null>(null), [modelsFailed, setModelsFailed] = useState(false);
+  const [modelChoice, setModelChoice] = useState<ThreadModelChoice | null>(null), [picking, setPicking] = useState(false);
+  const [modelsWanted, setModelsWanted] = useState(0), [locked, setLocked] = useState(false);
   const attempt = useRef<Attempt | null>(null);
   const lockCallback = useRef(onTargetLock); lockCallback.current = onTargetLock;
-  const setAttempt = (value: Attempt | null) => { attempt.current = value; lockCallback.current?.(value !== null); };
+  const setAttempt = (value: Attempt | null) => { attempt.current = value; setLocked(value !== null); lockCallback.current?.(value !== null); };
   const working = useRef(false), mounted = useRef(true);
   const focused = useIsFocused(), focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -40,6 +52,32 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   // Focus when the owner allows it, not at mount: the owner waits for the
   // push animation to end so the keyboard does not compete with it.
   useEffect(() => { if (autoFocus && focusedRef.current) input.current?.focus(); }, [autoFocus]);
+  const supportsModel = client.supportsThreadModel === true;
+  // Another Channel (possibly on another connection) has its own list: reload and use Default.
+  const target = useRef({ client, channelId });
+  useEffect(() => {
+    if (target.current.client === client && target.current.channelId === channelId) return;
+    target.current = { client, channelId };
+    setModels(null); setModelsFailed(false); setModelChoice(null); setPicking(false);
+  }, [client, channelId]);
+  const modelVisible = supportsModel && (showModel || inputFocused || modelChoice !== null || picking);
+  // Load the list once the control is shown, from this composer's own connection only.
+  useEffect(() => {
+    if (!modelVisible || models || (modelsFailed && !modelsWanted)) return;
+    const controller = new AbortController();
+    setModelsFailed(false);
+    client.getModelSettings(controller.signal).then(value => { if (mounted.current && !controller.signal.aborted) setModels(value); })
+      .catch(() => { if (mounted.current && !controller.signal.aborted) setModelsFailed(true); })
+      .finally(() => { if (mounted.current && !controller.signal.aborted) setModelsWanted(0); });
+    return () => controller.abort();
+  }, [client, modelVisible, models, modelsWanted]);
+  const confirmModel = (draft: Attempt, warning: string) => {
+    // Nothing was created. Cancel unlocks the draft so another model can be chosen.
+    Alert.alert('Use this model?', warning, [
+      { text: 'Cancel', style: 'cancel', onPress: () => { if (attempt.current === draft && !draft.created) setAttempt(null); } },
+      { text: 'Use model', onPress: () => { if (attempt.current === draft) { draft.confirmModel = true; void submit(); } } },
+    ]);
+  };
   const paste = (value: string) => {
     if (working.current || disabled || attempt.current?.payload) return;
     setText(old => {
@@ -54,7 +92,8 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
     if (working.current || disabled || !focusedRef.current || attachmentBusy || (!text.trim() && !count)) return;
     working.current = true; setBusy(true); setError('');
     // Creation can be acknowledged ambiguously; every retry uses the same ID.
-    const draft: Attempt = attempt.current ?? { threadId: 'th_' + Crypto.randomUUID().replace(/-/g, ''), messageId: 'mob_' + Crypto.randomUUID(), created: false };
+    const draft: Attempt = attempt.current ?? { threadId: 'th_' + Crypto.randomUUID().replace(/-/g, ''), messageId: 'mob_' + Crypto.randomUUID(), created: false,
+      model: supportsModel ? threadModelRequest(models, modelChoice) : undefined };
     setAttempt(draft);
     const original = text;
     const alive = () => mounted.current;
@@ -62,7 +101,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       if (!draft.created) {
         // Same client thread ID and title on every attempt: the server returns
         // the existing thread, so a temporary failure retries without a duplicate.
-        const made = await retryStep(() => client.createThread(channelId, 'New topic', draft.threadId), alive);
+        const made = await retryStep(() => client.createThread(channelId, 'New topic', draft.threadId, draft.model, draft.confirmModel), alive);
         draft.threadId = made.id; draft.created = true;
       }
       if (!mounted.current) return;
@@ -87,7 +126,17 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
         if (focusedRef.current) onCreated(draft.threadId);
       }
     } catch (failure) {
+      if (needsConfirmation(failure) && !draft.created) {
+        if (mounted.current) confirmModel(draft, failure.warning);
+        return;
+      }
       console.info('[new-topic]', connectionFailure(failure));
+      if (draft.model && !draft.created && rejected(failure)) {
+        // The server rejected the model and created nothing: let the user choose another.
+        setAttempt(null);
+        if (mounted.current) setError('This model is not available. Choose another model and send again.');
+        return;
+      }
       if (mounted.current) setError('Could not start this conversation. Your message is still here. Try sending again.');
     } finally {
       working.current = false;
@@ -96,6 +145,11 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   };
   return <View collapsable={false} style={s.surface} testID="new-topic-composer">
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+    {modelVisible && <ThreadModelButton label={threadModelLabel(models, modelChoice)} disabled={busy || disabled || locked}
+      onPress={() => { if (!attempt.current) setPicking(true); }} />}
+    {supportsModel && <ThreadModelPicker visible={picking} settings={models} failed={modelsFailed} selected={modelChoice}
+      onClose={() => setPicking(false)} onRetry={() => setModelsWanted(n => n + 1)}
+      onPick={choice => { if (!attempt.current) setModelChoice(choice); setPicking(false); }} />}
     <AttachmentComposer client={client} threadId={null} handleRef={attachments} clearKey={clearKey}
       disabled={busy || disabled || sealed} onSelectionChange={setCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={paste}
       expanded={inputFocused} onPressField={() => input.current?.focus()}
