@@ -233,14 +233,22 @@ const registerDesktopApi = (): void => {
   handle("desktop:archive-channel", async (event, id: unknown) => { trustedSender(event); await service.archiveChannel(text(id, 200)); });
   handle("desktop:create-thread", async (event, value: unknown) => {
     trustedSender(event); const input = object(value), tab = tabs?.sender(event.sender);
-    const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies ThreadInput;
+    const model = input.model === undefined ? undefined : object(input.model);
+    if (input.confirmModel !== undefined && (typeof input.confirmModel !== 'boolean' || !model)) throw new Error('Invalid desktop request');
+    const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }),
+      ...(model ? { model: { provider: text(model.provider, 256), model: text(model.model, 256) }, confirmModel: input.confirmModel === true } : {}) } satisfies ThreadInput;
     if (!tab) return service.createThread(request);
     const qualifiedId = service.threadIdentity(request.clientThreadId, request.channelId);
     if (tab.kind !== 'new' || tab.threadId && tab.threadId !== qualifiedId) throw new Error('Tab target mismatch');
     if (tab.busy) throw new Error('Action already in progress');
     tab.connectionKey = service.connectionForChannel(request.channelId); tab.initialChannelId = request.channelId;
     tab.threadId = qualifiedId; tab.busy = true;
-    try { const id = await service.createThread(request, false); if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id; }
+    try {
+      const id = await service.createThread(request, false);
+      // Nothing was created (model needs confirmation or was rejected): the tab keeps its target for the retry.
+      if (typeof id !== 'string') return id;
+      if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id;
+    }
     finally { tab.busy = false; tabs?.publish(); }
   });
   handle("desktop:rename-thread", async (event, id: unknown, title: unknown) => { trustedSender(event); if (tabs?.sender(event.sender) && text(id, 200) !== target(event)) throw new Error('Tab target mismatch'); await service.renameThread(text(id, 200), text(title, 200)); });

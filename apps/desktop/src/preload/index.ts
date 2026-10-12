@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
-import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -65,7 +65,7 @@ const api: HermesDesktopApi = Object.freeze({
   saveProjectAgents: (channelId: string, content: string, previousEtag: string | null) => ipcRenderer.invoke("desktop:save-project-agents", channelId, content, previousEtag),
   setProjectFolder: (channelId: string, path: string | null) => ipcRenderer.invoke("desktop:set-project-folder", channelId, path),
   addProjectFiles: async (channelId: string, files: readonly File[]) => ipcRenderer.invoke("desktop:add-project-files", channelId, await filesForUpload(files, file => webUtils.getPathForFile(file))),
-  createThread: (input: ThreadInput): Promise<string> => ipcRenderer.invoke("desktop:create-thread", input),
+  createThread: (input: ThreadInput): Promise<ThreadCreation> => ipcRenderer.invoke("desktop:create-thread", input),
   renameThread: (threadId: string, title: string): Promise<void> => ipcRenderer.invoke("desktop:rename-thread", threadId, title),
   saveThreadLabels: (threadId: string, markers: string[], timestamp: number, connectionKey: string) => ipcRenderer.invoke('desktop:save-thread-labels', threadId, markers, timestamp, connectionKey),
   archiveThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:archive-thread", threadId),

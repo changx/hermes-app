@@ -524,6 +524,14 @@ dialog.labels-editor::backdrop { background: #0005; }
 .new-chat-form h1 { font-size: 28px; font-weight: 500; margin: 0; }
 .new-chat-project { display: flex; align-items: center; gap: 12px; color: var(--app-muted); }
 .new-chat-project select { min-width: 160px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-background); color: var(--app-text); }
+/* Model sits directly under Project: one settings group, not another section. */
+.new-chat-project + .new-chat-model { margin-top: -8px; }
+.new-chat-model { margin-bottom: 0; }
+.new-chat-model button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--app-border); color: var(--app-text); background: transparent; }
+.new-chat-confirm { padding: 12px 14px; border: 1px solid var(--app-border); border-radius: 10px; background: var(--app-surface, var(--app-background)); }
+.new-chat-confirm p { margin: 0 0 10px; white-space: pre-wrap; }
+.new-chat-confirm > div { display: flex; justify-content: flex-end; gap: 8px; }
+.new-chat-confirm button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--app-border); color: var(--app-text); background: transparent; }
 .new-chat-form > textarea { flex: 1; width: 100%; min-height: 260px; padding: 20px; resize: vertical; border: 1px solid var(--app-field-border); border-radius: 16px; color: var(--app-text); background: var(--app-background); font: inherit; line-height: 1.6; }
 .new-chat-actions { display: flex; align-items: center; gap: 12px; }
 .new-chat-actions > span { flex: 1; color: var(--app-muted); font-size: var(--app-font-size); }

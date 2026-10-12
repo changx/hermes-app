@@ -3,11 +3,11 @@ import { attachmentInputs, MAX_ATTACHMENT_BYTES, type AttachmentInput } from '..
 import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
-import { HttpError, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
+import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
-import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import { workspacePath } from "../../../../packages/client/src/workspace";
 import type { Automation, AutomationDetail } from "../../../../packages/client/src/automations";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
@@ -286,6 +286,7 @@ export class DesktopConnectionService {
       connectionKey: this.connection?.id,
       connectionName: this.connection?.baseUrl ? new URL(this.connection.baseUrl).hostname : undefined,
       supportsSessionLabels: this.client?.supportsSessionLabels === true,
+      supportsThreadModel: this.client?.supportsThreadModel === true,
       supportsThreadBranch: this.client?.supportsThreadBranch === true,
       supportsMessageSources: this.client?.supportsMessageSources === true,
       supportsThreadExport: this.client?.supportsThreadExport === true,
@@ -854,17 +855,23 @@ export class DesktopConnectionService {
     this.changed();
   }
 
-  async createThread(input: ThreadInput, activate = true): Promise<string> {
+  async createThread(input: ThreadInput, activate = true): Promise<ThreadCreation> {
     const client = this.requireClient(), channelId = input.channelId ?? this.selectedChannelId;
     const title = input.title.trim();
     if (!channelId || !client.channels.has(channelId) || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(input.clientThreadId)) throw new Error("Choose a channel and enter a topic title.");
+    if (input.model && !client.supportsThreadModel) throw new Error("This server cannot choose a model for a new session.");
     try {
-      const thread = await client.createThread(channelId, title, input.clientThreadId);
+      const thread = await client.createThread(channelId, title, input.clientThreadId, input.model, input.confirmModel === true);
       if (this.client !== client) throw new Error('Connection changed during creation');
       this.listedThreads.set(thread.id, thread);
       await this.selectThread(thread.id, activate);
       return thread.id;
-    } catch { this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed."); }
+    } catch (error) {
+      // Nothing was created: the user confirms the model warning, then the same request repeats.
+      if (error instanceof ModelConfirmationRequired && input.model) return { confirmation_required: true, warning: error.warning, ...input.model };
+      if (input.model && error instanceof HttpError && error.status === 400) return { model_rejected: true };
+      this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed.");
+    }
   }
 
   async renameThread(threadId: string, titleValue: string): Promise<void> {

@@ -1,4 +1,4 @@
-import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState } from "@hermes-app/client";
+import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -12,6 +12,7 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
   control?: 'agent' | 'user' | 'waiting'; controlMessage?: string }>;
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
+  /** The Channel's server accepts a model when a session is created. */ supportsThreadModel?: boolean;
   /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean;
   /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean; supportsChannelArchive?: boolean;
@@ -96,6 +97,7 @@ export type DesktopSnapshot = Readonly<{
   connectionState: ConnectionState;
   connectionLabel: string;
   connectionKey?: string;
+  supportsThreadModel?: boolean;
   supportsSessionLabels?: boolean;
   /** Server reports the branch endpoint, message sources and conversation export. */
   supportsThreadBranch?: boolean;
@@ -134,7 +136,10 @@ export type DesktopProjectWorkspace = Readonly<{
 export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: 'invalid' | 'taken' | 'failed' }>;
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
 export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?: Readonly<{ name: string; reason: 'exists' | 'invalid' | 'failed' }> }>;
-export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string }>;
+/** `model` applies to the new session only; omit it for the connection's primary model. */
+export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string; model?: ThreadModelChoice; confirmModel?: boolean }>;
+/** A session ID; or nothing created: confirm the model warning, or the server rejected the model. */
+export type ThreadCreation = string | ModelSelectionConfirmation | Readonly<{ model_rejected: true }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 /** A page the agent opened ('read') or a link its reply cites ('cited'). */
@@ -209,7 +214,8 @@ export interface HermesDesktopApi {
   setProjectFolder(channelId: string, path: string | null): Promise<ProjectFolderResult>;
   /** Adds new root files. Never replaces an existing file. Stops at the first failure. */
   addProjectFiles(channelId: string, files: readonly File[]): Promise<ProjectFilesResult>;
-  createThread(input: ThreadInput): Promise<string>;
+  /** Returns the session ID, or a confirmation request (nothing created) for a model with a cost/data warning. */
+  createThread(input: ThreadInput): Promise<ThreadCreation>;
   renameThread(threadId: string, title: string): Promise<void>;
   saveThreadLabels(threadId: string, markers: string[], timestamp: number, connectionKey: string): Promise<LabelDetail>;
   archiveThread(threadId: string): Promise<void>;

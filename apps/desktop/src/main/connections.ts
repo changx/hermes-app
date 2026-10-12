@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadInput } from '../shared/desktop-api';
+import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
 import type { Automation } from '../../../../packages/client/src/automations';
 import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
@@ -79,7 +79,7 @@ export class DesktopConnections {
     const snap = account.service.snapshot(thread, pages), name = this.nameOf(account, snap);
     return { ...snap, connectionName: name,
       selectedChannelId: this.encode(account, snap.selectedChannelId), selectedThreadId: this.encode(account, snap.selectedThreadId),
-      channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey })),
+      channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey, supportsThreadModel: snap.supportsThreadModel })),
       threads: snap.threads.map(t => ({ ...t, id: this.encode(account, t.id)!, channelId: this.encode(account, t.channelId)!, supportsSessionLabels: snap.supportsSessionLabels })),
       ...(snap.sessionPages ? { sessionPages: snap.sessionPages.map(p => ({ ...p, id: this.encode(account, p.id)! })) } : {}),
     };
@@ -230,10 +230,11 @@ export class DesktopConnections {
   async updateChannel(id: string, input: ChannelInput): Promise<void> { const r = this.route(id); await r.account.service.updateChannel(r.raw, input); }
   async deleteChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.deleteChannel(r.raw); }
   async archiveChannel(id: string): Promise<void> { const r = this.route(id); await r.account.service.archiveChannel(r.raw); }
-  async createThread(input: ThreadInput, activate = true): Promise<string> {
+  async createThread(input: ThreadInput, activate = true): Promise<ThreadCreation> {
     const r = input.channelId ? this.route(input.channelId) : { account: this.current(), raw: undefined };
     if (activate) this.active = r.account.id;
-    return this.encode(r.account, await r.account.service.createThread({ ...input, channelId: r.raw }, activate))!;
+    const result = await r.account.service.createThread({ ...input, channelId: r.raw }, activate);
+    return typeof result === 'string' ? this.encode(r.account, result)! : result;
   }
   async getModelSettings(key: string) { return this.forIdentity(key).service.getModelSettings(key); }
   async setModelSettings(key: string, provider: string, model: string, confirm: boolean) { return this.forIdentity(key).service.setModelSettings(key, provider, model, confirm); }
