@@ -30,6 +30,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 桌面和手机每条最终回复的消息工具栏最右侧显示生成它的原始模型 ID，来源为插件在 `post_llm_call` 记录的本轮实际模型（含备用切换）。旧回复不补写；只要求 Hermes App 发出的消息有模型。见 [回复显示生成模型](reply-models.md)。
 
+桌面侧栏搜索框下方显示前 5 个常用 label（使用该 label 的 session 最多者优先，相同时最近使用优先），点击加入搜索、再点移除。手机 Recents 页提供同样的搜索框和 quick label filter，搜索范围为全部 Thread。见 [桌面 Session 搜索](desktop-session-search.md) 与 [手机 Recents](mobile-tabs-recents.md)。
+
 ### R02 Channel / Thread 内容组织
 
 2026-10-10 已确认：桌面和手机的 Stop 按钮从运行状态行最右侧移到 `Agent is running` 文字之后（间距 10px），使用图标＋`Stop` 的低调描边胶囊，悬停/按下才显示浅底，颜色沿用 `#425874`。没有运行文字时 Stop 与文字起点对齐。只改呈现，停止行为不变。详见 [桌面 Session 输入](desktop-session-composer.md)。

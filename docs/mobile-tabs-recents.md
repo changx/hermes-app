@@ -72,3 +72,13 @@ See `docs/cron-threads.md` in the plugin repository (`/opt/projects/jamie/hermes
 - Plugin P1 suite (baseline venv): every failure also fails on `main` in the same session; no new failures.
 - Mobile: Expo service restarted on `7165fa2`; public iOS and Android manifests 200 (SDK 57), both bundles contain the Recents, Automations and native-tabs code.
 - Desktop: built on the Mac mini (126 pass, 0 fail, audit 0), 29 packaged `dist/` files identical to the local build (source maps are excluded by design), published as GitHub Release `v0.1.65`; the downloaded zip equals the checked zip.
+
+## Search and quick label filter (candidate)
+
+Requested by Jamie: the Recents tab gets the same search and quick label filter as the desktop sidebar.
+
+- **Search box** under the Recents header ("Search"). The keyword uses the desktop matching (`sessionQueryScore`): title, label text, transliteration, then channel name. While a keyword or a label is active, the list shows matching conversations from every listed, non-archived Thread of every connection (not only the last 24 hours, automation Threads included). Best match first; ties go running first, then newest activity. The clear button empties the box and the labels and restores Recents. Dragging the list dismisses the keyboard; taps on results work while the keyboard is up.
+- **Quick label filter** under the search box: the 5 labels on the most listed Threads (same rule as the desktop frequent labels, `frequentSessionLabels`; only connections that support labels). A tap adds the label to the search, a second tap removes it; several labels are AND. A selected label stays in the row (shown as selected) even when it is no longer among the five.
+- **Cards** show their labels (`LabelPills`) when the connection supports labels.
+
+Verification: `apps/mobile/tests/recents-search.test.mjs` covers the rules (search beyond 24 hours, AND labels, keyword on title and label text, archived excluded, automation searchable, label support per connection, quick-label ranking) and the production Recents tab with stand-in views (quick label tap, pressed state, AND, second tap, keyword, no-match text, Clear, card labels). The screen check fails on the old screen. Mobile suite 153 passed; TypeScript passed; iOS and Android exports contain the new strings. iPhone acceptance is pending.

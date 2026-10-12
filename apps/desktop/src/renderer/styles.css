@@ -421,6 +421,10 @@ dialog.labels-editor::backdrop { background: #0005; }
 .sidebar-search-clear { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-label); cursor: pointer; }
 .sidebar-search-labels { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 8px; font-size: var(--sidebar-text, var(--app-font-size)); font-weight: 500; }
 .search-label-suggestion { border: 0; font: inherit; cursor: pointer; }
+.sidebar-frequent-labels { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 6px; padding: 0 4px; font-size: var(--sidebar-text, var(--app-font-size)); font-weight: 500; }
+.frequent-label { max-width: 100%; border: 0; font: inherit; cursor: pointer; }
+.frequent-label:hover { background: #dfe7f1; color: #2b3f57; }
+.frequent-label[aria-pressed="true"] { background: #d5e1f0; color: #23384f; }
 .search-label-suggestion:hover { background: #dfe7f1; color: #2b3f57; }
 .sidebar-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
 .sidebar-section-header { position: relative; display: flex; align-items: center; gap: 4px; min-height: var(--sidebar-row); margin-top: 12px; padding: 0 2px 0 10px; }
