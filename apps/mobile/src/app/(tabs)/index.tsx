@@ -20,7 +20,7 @@ type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key
 
 /**
  * Recents tab: a Todo section (every flagged Thread, any age), then the
- * user's own Threads with activity in the last 24 hours. Both lists put
+ * user's own Threads with activity in the last 72 hours. Both lists put
  * running Threads first, then newest activity. A search shows one result list.
  */
 export default function Recents() {
@@ -28,7 +28,7 @@ export default function Recents() {
   const navigation = useSessionNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // The 24-hour window moves with time, not only with directory changes.
+  // The 72-hour window moves with time, not only with directory changes.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), MINUTE); return () => clearInterval(timer); }, []);
   const [query, setQuery] = useState<SessionQuery>(emptySessionQuery);
@@ -88,7 +88,7 @@ export default function Recents() {
           </View>
         </Pressable>;
       }}
-      ListEmptyComponent={loading ? null : <Text style={s.empty}>{searching ? 'No matching conversations' : 'Conversations you take part in during the last 24 hours appear here.'}</Text>} />
+      ListEmptyComponent={loading ? null : <Text style={s.empty}>{searching ? 'No matching conversations' : 'Conversations you take part in during the last 72 hours appear here.'}</Text>} />
   </SafeAreaView>;
 }
 

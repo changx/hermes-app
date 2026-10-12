@@ -20,9 +20,9 @@ const sources = () => [
   { slot: 'w', name: 'work', client: client([{ id: 'p', name: 'Ops' }], [thread('z', 'Bug triage', 5, ['bug'])], false) },
 ];
 
-test('search covers every listed Thread, not only the last 24 hours; labels are AND; archived Threads stay out', () => {
+test('search covers every listed Thread, not only the last 72 hours; labels are AND; archived Threads stay out', () => {
   const s = sources();
-  assert.deepEqual(recentRows(s, now).map(r => r.id), ['z', 'a', 'c'], 'Recents itself still keeps the 24-hour rule');
+  assert.deepEqual(recentRows(s, now).map(r => r.id), ['z', 'a', 'c'], 'Recents itself still keeps the 72-hour rule');
   assert.deepEqual(searchRecentRows(s, { text: '', labels: ['bug'] }).map(r => r.key), ['primary:a', 'primary:b', 'primary:e']);
   assert.deepEqual(searchRecentRows(s, { text: '', labels: ['bug', 'iOS'] }).map(r => r.id), ['a']);
   assert.deepEqual(searchRecentRows(s, { text: 'bug', labels: [] }).map(r => r.key), ['primary:a', 'primary:b', 'primary:e', 'w:z'],
@@ -110,7 +110,7 @@ test('Recents tab: Todo section above Recent lists every flagged Thread, running
     assert.deepEqual(keys.slice(0, 4), ['section:todo', 'todo:primary:t-run', 'todo:primary:t-new', 'todo:primary:t-old'], 'running first, then newest; any age; any case');
     assert.equal(keys[4], 'section:recent');
     assert.deepEqual(keys.slice(5), ['recent:primary:t-run', 'recent:w:z', 'recent:primary:t-new', 'recent:w:t-off', 'recent:primary:a', 'recent:primary:c'],
-      'Recent keeps the 24-hour rule with running first; todo Threads stay in it too');
+      'Recent keeps the 72-hour rule with running first; todo Threads stay in it too');
     const headers = root.root.findAll(n => n.type === 'Text' && n.props.accessibilityRole === 'header').map(n => n.props.children);
     assert.deepEqual(headers, ['Todo', 'Recent']);
     assert.equal(root.root.findAll(n => n.type === 'TodoFlag').length, 5, 'three Todo rows plus two of them again in Recent; none for the connection without labels');

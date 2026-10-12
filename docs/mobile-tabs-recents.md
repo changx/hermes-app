@@ -19,7 +19,7 @@ Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origi
 
 `packages/client/src/recents.ts`:
 
-- A Thread is in Recents when the user owns it AND it had activity in the last 24 hours or is running.
+- A Thread is in Recents when the user owns it AND it had activity in the last 72 hours or is running. The window is `RECENT_WINDOW_SECONDS` in `packages/client/src/recents.ts`, shared with the desktop sidebar (24 hours until 2026-10-12).
 - The user owns a Thread when its `origin` is not `automation`, or when `participated` is true (the user sent at least one message in it).
 - A server older than plugin 0.2.22 sends no origin. Then every Thread counts as the user's, which was the previous behavior.
 - The desktop sidebar Recents (`apps/desktop/src/renderer/thread-navigation.ts`) and the mobile Recents tab (`apps/mobile/src/recentRows.ts`) use this rule.
@@ -35,12 +35,12 @@ Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origi
 ### Recents tab
 
 - Rows from every saved connection, running first, then newest activity (see [todo-flag.md](todo-flag.md); a Todo section is above the list). Each row shows the Thread title, its channel and, with more than one connection, the connection name, then time, Running and the unread dot.
-- The list refreshes with the directory and once per minute, so the 24-hour window moves.
+- The list refreshes with the directory and once per minute, so the 72-hour window moves.
 
 ### New conversation (from Recents)
 
 - Route `/new-thread`. A Channel field at the top opens a list of every channel with its connection name.
-- Preselection: the channel of the user's most recent own activity (any time, not only 24 hours). Automation Threads without a user reply do not count. Without such activity, the first channel in the list.
+- Preselection: the channel of the user's most recent own activity (any time, not only 72 hours). Automation Threads without a user reply do not count. Without such activity, the first channel in the list.
 - The composer is the same `NewTopicComposer` as at the bottom of a channel page, with the same durable first-message path (`MobileOutbox`).
 - Before the first send attempt, the text and the selected files are local only. The user can change the channel or the connection and keep both. From the first send attempt until the durable commit, the attempt's Thread and message IDs belong to the selected channel, so the Channel field is locked. This keeps the composer rule: never share files or IDs across channels.
 - The page opens the keyboard after the push animation ends (`transitionEnd`), not at mount. The first keyboard of the app process is slow to appear; at mount it ran during the push and the push stuttered.
@@ -79,7 +79,7 @@ See `docs/cron-threads.md` in the plugin repository (`/opt/projects/jamie/hermes
 
 Requested by Jamie: the Recents tab gets the same search and quick label filter as the desktop sidebar.
 
-- **Search box** under the Recents header ("Search"). The keyword uses the desktop matching (`sessionQueryScore`): title, label text, transliteration, then channel name. While a keyword or a label is active, the list shows matching conversations from every listed, non-archived Thread of every connection (not only the last 24 hours, automation Threads included). Best match first; ties go running first, then newest activity. The clear button empties the box and the labels and restores Recents. Dragging the list dismisses the keyboard; taps on results work while the keyboard is up.
+- **Search box** under the Recents header ("Search"). The keyword uses the desktop matching (`sessionQueryScore`): title, label text, transliteration, then channel name. While a keyword or a label is active, the list shows matching conversations from every listed, non-archived Thread of every connection (not only the last 72 hours, automation Threads included). Best match first; ties go running first, then newest activity. The clear button empties the box and the labels and restores Recents. Dragging the list dismisses the keyboard; taps on results work while the keyboard is up.
 - **Quick label filter** under the search box: the 5 labels on the most listed Threads (same rule as the desktop frequent labels, `frequentSessionLabels`; only connections that support labels). A tap adds the label to the search, a second tap removes it; several labels are AND. A selected label stays in the row (shown as selected) even when it is no longer among the five.
 - **Cards** show their labels (`LabelPills`) when the connection supports labels. (Later replaced: cards show only the todo flag; see [todo-flag.md](todo-flag.md).)
 

@@ -25,7 +25,7 @@ export const threadWindow = (threads: readonly DesktopThread[], channelId: strin
 
 /**
  * Sidebar Recents: Sessions from every Project and connection with activity in
- * the trailing 24 hours, plus running Sessions, that the user owns (see
+ * the trailing 72 hours, plus running Sessions, that the user owns (see
  * packages/client/src/recents.ts). Running first, then newest activity.
  */
 export const recentWindow = (threads: readonly DesktopThread[], now: number, batches = 0) => {

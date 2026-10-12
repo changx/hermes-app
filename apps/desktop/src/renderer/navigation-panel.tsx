@@ -35,7 +35,7 @@ const saveCollapsed = (key: string, value: boolean) => { try { window.localStora
  * Sidebar content, top to bottom: New chat, the session search box,
  * Automations (scheduled jobs; hidden when no connection offers them), Todo
  * (every flagged Session; hidden when none), Recents (Sessions active in the
- * last 24 hours across every Project; running first), then one flat
+ * last 72 hours across every Project; running first), then one flat
  * Project tree across every connection. A Project shows its Hermes name only
  * when several exist. While a search is active, one flat result list replaces
  * Automations, Todo, Recents and the Project tree. The search matches like Cmd+K: a keyword
@@ -160,7 +160,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
       </div>
       {!recentsCollapsed && <div className="item-list recent-list" id="sidebar-recents-list">
         {recents.rows.map(recentRow)}
-        {!recents.rows.length && <p className="tree-empty">No sessions in the last 24 hours</p>}
+        {!recents.rows.length && <p className="tree-empty">No sessions in the last 72 hours</p>}
         {recents.hasMore && <button className="tree-more" type="button" onClick={() => setRecentBatches(value => value + 1)}>Show more</button>}
       </div>}
     </section>

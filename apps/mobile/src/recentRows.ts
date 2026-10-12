@@ -23,7 +23,7 @@ export type ChannelChoice = Readonly<{ key: string; slot: string; id: string; na
 
 /**
  * Recents across every saved connection: owned by the user, active in the
- * last 24 hours or running. Running first, then newest activity. Same rule as
+ * last 72 hours or running. Running first, then newest activity. Same rule as
  * the desktop sidebar (packages/client/src/recents.ts).
  */
 export function recentRows(connections: readonly RecentSource[], nowSeconds: number): RecentRow[] {
@@ -61,7 +61,7 @@ function listedRows(connections: readonly RecentSource[], keep: (thread: Directo
 }
 
 /**
- * Search from the Recents tab: every listed Thread (not only the last 24
+ * Search from the Recents tab: every listed Thread (not only the last 72
  * hours), the same keyword and AND-label matching as the desktop sidebar.
  * Best match first; ties go running first, then newest activity.
  */
@@ -93,7 +93,7 @@ export function channelChoices(connections: readonly RecentSource[]): ChannelCho
 
 /**
  * Preselected channel: the channel of the Thread the user was most recently
- * active in (any of their Threads, not only the last 24 hours); otherwise the
+ * active in (any of their Threads, not only the last 72 hours); otherwise the
  * first choice.
  */
 export function recentChannel(connections: readonly RecentSource[], choices: readonly ChannelChoice[]): ChannelChoice | null {
