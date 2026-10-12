@@ -29,6 +29,7 @@ Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origi
 - `apps/mobile/src/app/(tabs)/_layout.tsx` defines the tab bar. It also sends a device without connections to the welcome page.
 - Each tab draws its own header (`TabHeader`): title, tab actions, and the Settings gear.
 - Threads, channel pages, settings, the new-conversation page and the automation page are pushed on the root Stack above the tabs. The tab bar is hidden there. Back returns to the same tab and scroll position.
+- Tab lists scroll under the native tab bar. The safe-area inset covers only the home indicator, so Recents, Channels and Automations end with `tabListBottomPadding` (`apps/mobile/src/tabInsets.ts`: 96 pt plus the bottom inset). The last row stays visible above the tab bar.
 - Route ownership: an emptied root stack falls back to `(tabs)`. Automation pages belong to their connection and close when that connection is removed.
 
 ### Recents tab
@@ -42,6 +43,7 @@ Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origi
 - Preselection: the channel of the user's most recent own activity (any time, not only 24 hours). Automation Threads without a user reply do not count. Without such activity, the first channel in the list.
 - The composer is the same `NewTopicComposer` as at the bottom of a channel page, with the same durable first-message path (`MobileOutbox`).
 - Before the first send attempt, the text and the selected files are local only. The user can change the channel or the connection and keep both. From the first send attempt until the durable commit, the attempt's Thread and message IDs belong to the selected channel, so the Channel field is locked. This keeps the composer rule: never share files or IDs across channels.
+- The page opens the keyboard after the push animation ends (`transitionEnd`), not at mount. The first keyboard of the app process is slow to appear; at mount it ran during the push and the push stuttered.
 - After the send, the page is replaced by the new conversation. Back returns to Recents.
 
 ### Channels tab
@@ -62,7 +64,7 @@ See `docs/cron-threads.md` in the plugin repository (`/opt/projects/jamie/hermes
 
 - Shared client: `npm run client:check` (includes `packages/client/tests/automations.test.mjs`).
 - Desktop: `npm run desktop:typecheck`; `apps/desktop/tests/sidebar-recents.test.mjs` covers automation Threads in Recents.
-- Mobile: `npm run check` and `npm test` in `apps/mobile` (`tests/recents-tab.test.mjs`, route ownership in `tests/multi-connection.test.mjs`); `npx expo export --platform ios` builds.
+- Mobile: `npm run check` and `npm test` in `apps/mobile` (`tests/recents-tab.test.mjs`, `tests/tab-list-insets.test.mjs`, route ownership in `tests/multi-connection.test.mjs`); `npx expo export --platform ios` builds.
 - Open: real iPhone check of the native tab bar (Expo Go), list bottom insets above the tab bar, the channel picker sheet, and the keyboard on the new-conversation page.
 
 ## Release record

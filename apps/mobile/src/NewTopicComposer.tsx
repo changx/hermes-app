@@ -36,6 +36,9 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   const focused = useIsFocused(), focusedRef = useRef(focused);
   focusedRef.current = focused;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // Focus when the owner allows it, not at mount: the owner waits for the
+  // push animation to end so the keyboard does not compete with it.
+  useEffect(() => { if (autoFocus && focusedRef.current) input.current?.focus(); }, [autoFocus]);
   const paste = (value: string) => {
     if (working.current || disabled || attempt.current?.payload) return;
     setText(old => {
@@ -92,7 +95,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       disabled={busy || disabled || sealed} onSelectionChange={setCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={paste}
       expanded={inputFocused} onPressField={() => input.current?.focus()}
       send={<ComposerSendButton hint="Starts a new conversation" busy={busy} disabled={busy || disabled || attachmentBusy || (!text.trim() && !count)} onPress={() => void submit()} />}>
-      <TextInput ref={input} accessibilityLabel="First message" placeholder={placeholder} placeholderTextColor="#8e8e93" autoFocus={autoFocus}
+      <TextInput ref={input} accessibilityLabel="First message" placeholder={placeholder} placeholderTextColor="#8e8e93"
         multiline maxLength={16000} editable={!busy && !disabled && !sealed} value={text} onChangeText={value => { if (!working.current && !attempt.current?.payload) setText(value); }}
         numberOfLines={Platform.OS === 'ios' && !text.length ? 1 : undefined}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}

@@ -5,6 +5,7 @@ import { Text } from './FontSize';
 import { unreadCountDescription, unreadCountLabel } from '../../../packages/client/src/projectDirectory';
 import type { ConnectionRuntime } from './connections';
 import { projectRows } from './projectRows';
+import { tabListBottomPadding } from './tabInsets';
 
 export function ProjectList({ connections, revision, onProject, onNewChannel, onConnections }: {
   connections: readonly ConnectionRuntime[]; revision: number;
@@ -14,7 +15,7 @@ export function ProjectList({ connections, revision, onProject, onNewChannel, on
   const { rows, pending } = useMemo(() => projectRows(connections), [connections, revision]);
   return <View style={s.fill}>
     <FlatList keyboardShouldPersistTaps="handled" data={rows} keyExtractor={row => row.key} extraData={revision}
-      contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
+      contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
       renderItem={({ item }) => {
         // Every row names its connection, also with one saved connection.
         const source = [item.connectionName, item.issue].filter(Boolean).join(' · ');

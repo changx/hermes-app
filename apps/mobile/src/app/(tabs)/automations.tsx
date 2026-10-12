@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Notice, useConnections } from '../../App';
 import { Text } from '../../FontSize';
 import { TabHeader } from '../../TabHeader';
+import { tabListBottomPadding } from '../../tabInsets';
 import { automationStatus, automationTiming, scheduleLabel } from '../../automationText';
 import { unreadCountLabel } from '../../../../../packages/client/src/projectDirectory';
 import type { Automation } from '../../../../../packages/client/src/automations';
@@ -16,6 +17,7 @@ type Note = { key: string; connectionName: string; text: string };
 export default function Automations() {
   const { ready, connections, revision } = useConnections();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<Row[]>([]), [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const focused = useRef(false), generation = useRef(0);
@@ -42,7 +44,7 @@ export default function Automations() {
   const multiple = connections.length > 1;
   return <SafeAreaView style={s.fill} edges={['top', 'left', 'right']}>
     <TabHeader title="Automations" />
-    <FlatList data={rows} keyExtractor={row => row.key} contentContainerStyle={s.list}
+    <FlatList data={rows} keyExtractor={row => row.key} contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
       refreshing={false} onRefresh={() => void load()}
       renderItem={({ item }) => {
         const { job } = item, status = automationStatus(job);
@@ -69,7 +71,7 @@ export default function Automations() {
 }
 
 const s = StyleSheet.create({
-  fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
+  fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 12 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8 },
   pressed: { backgroundColor: '#eef3fa' },
   heading: { fontSize: 17, fontWeight: '600', color: '#172a40' },

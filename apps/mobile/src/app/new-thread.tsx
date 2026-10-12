@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConnectionScope, FormKeyboardAvoidingView, Notice, useApp, useConnections } from '../App';
 import { Text } from '../FontSize';
@@ -27,13 +27,20 @@ export default function NewThread() {
   const target = choices.find(choice => choice.key === (picked ?? preselected.current)) ?? null;
   const [locked, setLocked] = useState(false);
   const [choosing, setChoosing] = useState(false);
+  // Open the keyboard only after the push animation. The first keyboard of
+  // the app process is slow to appear; together with the push it stutters.
+  const navigation = useNavigation();
+  const [entered, setEntered] = useState(false);
+  useEffect(() => (navigation as unknown as TransitionEvents).addListener('transitionEnd', event => {
+    if (!event?.data?.closing) setEntered(true);
+  }), [navigation]);
   if (!ready) return <Notice text="" />;
   if (!choices.length) return <Notice text="Create a channel first. Conversations belong to a channel." />;
   if (!target) return <Notice text="This channel is unavailable." />;
   return <SafeAreaView style={s.fill} edges={['bottom', 'left', 'right']}>
     <ChannelField target={target} disabled={locked} onPress={() => setChoosing(true)} />
     <ConnectionScope slot={target.slot} fallback={<Notice text="This channel is unavailable." />}>
-      <Composer channel={target} onLock={setLocked} />
+      <Composer channel={target} onLock={setLocked} focus={entered} />
     </ConnectionScope>
     <ChannelPicker visible={choosing} choices={choices} selected={target.key}
       onClose={() => setChoosing(false)} onPick={key => { setChoosing(false); if (!locked) setPicked(key); }} />
@@ -53,7 +60,9 @@ function ChannelField({ target, disabled, onPress }: { target: ChannelChoice; di
   </Pressable>;
 }
 
-function Composer({ channel, onLock }: { channel: ChannelChoice; onLock: (locked: boolean) => void }) {
+type TransitionEvents = { addListener: (type: 'transitionEnd', listener: (event: { data?: { closing?: boolean } }) => void) => () => void };
+
+function Composer({ channel, onLock, focus }: { channel: ChannelChoice; onLock: (locked: boolean) => void; focus: boolean }) {
   const { client, config, outboxRef } = useApp();
   const router = useRouter();
   useEffect(() => () => onLock(false), [onLock]);
@@ -61,7 +70,7 @@ function Composer({ channel, onLock }: { channel: ChannelChoice; onLock: (locked
   if (!client.channels.has(channel.id)) return <Notice text="This channel is unavailable." />;
   return <FormKeyboardAvoidingView>
     <View style={s.fill} />
-    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} placeholder="What would you like to do?" autoFocus
+    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} placeholder="What would you like to do?" autoFocus={focus}
       enqueue={async (threadId, messageId, text, attachments) => {
         const box = outboxRef.current;
         if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');
