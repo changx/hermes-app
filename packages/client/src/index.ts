@@ -1,6 +1,6 @@
 /** Owner-scoped HTTP operations and projections. Live connection lifecycle is separate. */
 import { createWorkspaceApi, type ConditionalHeaders, type WorkspaceApi } from './workspace';
-import { parseAutomationDetail, parseAutomations, type Automation, type AutomationDetail } from './automations';
+import { parseAutomationDetail, parseAutomationPage, parseAutomationUpdate, parseAutomations, type Automation, type AutomationDetail, type AutomationPage } from './automations';
 export { utf8Size, workspacePath } from './workspace';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
@@ -203,6 +203,10 @@ export class HermesClient {
   supportsChannelArchive = false;
   /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
   supportsAutomations = false;
+  /** Automation editing (plugin 0.2.28): paged list, direct controls, settings Threads. */
+  supportsAutomationsPaged = false;
+  supportsAutomationControls = false;
+  supportsAutomationEditors = false;
   /** Server accepts a model choice when a Thread is created (`thread_model`). */
   supportsThreadModel = false;
   readonly workspace: WorkspaceApi;
@@ -311,7 +315,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsThreadModel=x.thread_model===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -326,6 +330,9 @@ export class HermesClient {
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
     this.supportsAutomations = owner.supportsAutomations;
+    this.supportsAutomationsPaged = owner.supportsAutomationsPaged;
+    this.supportsAutomationControls = owner.supportsAutomationControls;
+    this.supportsAutomationEditors = owner.supportsAutomationEditors;
     this.supportsThreadModel = owner.supportsThreadModel;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
@@ -364,6 +371,22 @@ export class HermesClient {
   /** Core project archive: the Channel and its Threads leave the directory; nothing is deleted. */
   /** This connection's scheduled jobs. Requires `supportsAutomations`. */
   async automations(signal?: AbortSignal): Promise<Automation[]> { return parseAutomations(await this.call('GET','/v1/automations',undefined,signal)) }
+  /** One page of jobs (requires `supportsAutomationsPaged`); `channel` keeps one Channel's jobs. */
+  async automationsPage(options: { limit?: number; after?: string; channel?: string } = {}, signal?: AbortSignal): Promise<AutomationPage> {
+    return parseAutomationPage(await this.call('GET','/v1/automations'+query({limit:options.limit ?? 30, after:options.after, channel:options.channel}),undefined,signal));
+  }
+  /** Pause, Resume or Run now (requires `supportsAutomationControls`). Returns the job after the change. */
+  async automationControl(id: string, control: 'pause' | 'resume' | 'run'): Promise<Automation> {
+    return parseAutomationUpdate(await this.call('POST','/v1/automations/'+idPath(id)+'/'+control,{}));
+  }
+  /** Change the schedule; the server parses the same forms as the agent's cron tool. */
+  async setAutomationSchedule(id: string, schedule: string): Promise<Automation> {
+    return parseAutomationUpdate(await this.call('PATCH','/v1/automations/'+idPath(id),{schedule}));
+  }
+  /** The job's settings conversation, created on first use (requires `supportsAutomationEditors`). */
+  async automationEditor(id: string): Promise<Thread> {
+    return validThread((await this.call('POST','/v1/automations/'+idPath(id)+'/editor',{})).thread);
+  }
   /** One job and the Threads it delivered into, newest first; pass `before` for the next page. */
   async automation(id: string, before?: number, signal?: AbortSignal): Promise<AutomationDetail> {
     return parseAutomationDetail(await this.call('GET','/v1/automations/'+idPath(id)+(before===undefined?'':'?before='+before),undefined,signal));
@@ -374,8 +397,9 @@ export class HermesClient {
   /** Creates a Thread. `model` applies to this Thread only (requires `supportsThreadModel`); omit it for the
    * primary model. A native cost/data warning throws ModelConfirmationRequired and creates nothing; repeat
    * with `confirmModel` after the user agrees. */
-  async createThread(channelId: string, title: string, clientThreadId?: string, model?: ThreadModelChoice, confirmModel = false): Promise<Thread> {
+  async createThread(channelId: string, title: string, clientThreadId?: string, model?: ThreadModelChoice, confirmModel = false, options: { automationEditor?: boolean } = {}): Promise<Thread> {
     const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{}),
+      ...(options.automationEditor?{automation_editor:true}:{}),
       ...(model?{model:{provider:model.provider,model:model.model,...(confirmModel?{confirm_selection:true}:{})}}:{})});
     if (model && x.confirmation_required === true) {
       if (x.provider !== model.provider || x.model !== model.model) throw new ProtocolError('model confirmation identity mismatch');

@@ -1,85 +1,69 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Notice, useConnections } from '../../App';
+import { HeaderIcon, Notice, useConnections } from '../../App';
 import { Text } from '../../FontSize';
 import { TabHeader } from '../../TabHeader';
 import { tabListBottomPadding } from '../../tabInsets';
-import { automationStatus, automationTiming, scheduleLabel } from '../../automationText';
-import { unreadCountLabel } from '../../../../../packages/client/src/projectDirectory';
-import type { Automation } from '../../../../../packages/client/src/automations';
+import { AutomationCard } from '../../AutomationCard';
+import { loadAutomationRows, mergeAutomationRows, type AutomationLoad, type AutomationRow } from '../../automationRows';
 
-type Row = { key: string; slot: string; connectionName: string; job: Automation };
-type Note = { key: string; connectionName: string; text: string };
-
-/** Automations tab: scheduled jobs of every saved connection, read-only. */
+/** Automations tab: scheduled jobs of every saved connection; scrolling to the end loads more. */
 export default function Automations() {
   const { ready, connections, revision } = useConnections();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [rows, setRows] = useState<Row[]>([]), [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<AutomationRow[]>([]), [notes, setNotes] = useState<AutomationLoad['notes']>([]);
+  const [cursors, setCursors] = useState<Map<string, string>>(new Map());
+  const [loading, setLoading] = useState(true), [more, setMore] = useState(false);
   const focused = useRef(false), generation = useRef(0);
+  const sources = useCallback(() => connections.map(runtime => ({ slot: runtime.slot, name: runtime.name, client: runtime.client })), [connections]);
   const load = useCallback(async () => {
     const version = ++generation.current;
-    const found: Row[] = [], missing: Note[] = [];
-    await Promise.all(connections.map(async runtime => {
-      const client = runtime.client;
-      if (!client?.hasCapabilities) { missing.push({ key: runtime.slot, connectionName: runtime.name, text: 'Connecting…' }); return; }
-      if (!client.supportsAutomations) { missing.push({ key: runtime.slot, connectionName: runtime.name, text: 'Automations are not available on this connection yet.' }); return; }
-      try {
-        for (const job of await client.automations())
-          found.push({ key: `${runtime.slot}:${job.id}`, slot: runtime.slot, connectionName: runtime.name, job });
-      } catch { missing.push({ key: runtime.slot, connectionName: runtime.name, text: 'Could not load automations. Pull down to try again.' }); }
-    }));
+    const result = await loadAutomationRows(sources());
     if (version !== generation.current) return;
-    found.sort((a, b) => Number(b.job.running) - Number(a.job.running) || (b.job.lastRunAt ?? '').localeCompare(a.job.lastRunAt ?? '') || a.job.name.localeCompare(b.job.name));
-    setRows(found); setNotes(missing); setLoading(false);
-  }, [connections]);
+    setRows(result.rows); setCursors(result.cursors); setNotes(result.notes); setLoading(false);
+  }, [sources]);
+  const loadMore = async () => {
+    if (more || loading || !cursors.size) return;
+    const version = generation.current;
+    setMore(true);
+    try {
+      const result = await loadAutomationRows(sources(), { cursors });
+      if (version !== generation.current) return;  // a full reload replaced the list
+      setRows(old => mergeAutomationRows(old, result.rows)); setCursors(result.cursors);
+      if (result.notes.length) setNotes(result.notes);
+    } finally { setMore(false); }
+  };
   useFocusEffect(useCallback(() => { focused.current = true; void load(); return () => { focused.current = false; }; }, [load]));
   // New results change the directory; refresh counts while the tab is visible.
   useEffect(() => { if (focused.current) void load(); }, [revision, load]);
   if (!ready) return <Notice text="" />;
   const multiple = connections.length > 1;
+  const canCreate = connections.some(runtime => runtime.client?.supportsAutomationEditors);
   return <SafeAreaView style={s.fill} edges={['top', 'left', 'right']}>
-    <TabHeader title="Automations" />
+    <TabHeader title="Automations">
+      {canCreate && <HeaderIcon label="New automation" ios="plus" android="add" onPress={() => router.push({ pathname: '/new-thread', params: { automation: '1' } })} />}
+    </TabHeader>
     <FlatList data={rows} keyExtractor={row => row.key} contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
-      refreshing={false} onRefresh={() => void load()}
-      renderItem={({ item }) => {
-        const { job } = item, status = automationStatus(job);
-        const details = [scheduleLabel(job.schedule), automationTiming(job), multiple ? item.connectionName : undefined].filter(Boolean).join(' · ');
-        return <Pressable accessibilityRole="button"
-          accessibilityLabel={[job.name, status, details, job.unreadCount ? `${job.unreadCount} unread` : undefined].filter(Boolean).join(', ')}
-          onPress={() => router.push({ pathname: '/automations/[automationId]', params: { automationId: job.id, connection: item.slot } })}
-          style={({ pressed }) => [s.card, pressed && s.pressed]}>
-          <View style={s.fill}>
-            <Text numberOfLines={2} style={s.heading}>{job.name}</Text>
-            <View style={s.meta}>
-              <Text style={[s.status, job.running && s.running, job.failed && !job.running && s.failed]}>{status}</Text>
-              <Text numberOfLines={1} style={s.details}>{details}</Text>
-            </View>
-          </View>
-          {job.unreadCount > 0 && <View style={s.badge}><Text style={s.badgeText}>{unreadCountLabel(job.unreadCount)}</Text></View>}
-        </Pressable>;
-      }}
+      refreshing={false} onRefresh={() => void load()} onEndReachedThreshold={0.5} onEndReached={() => void loadMore()}
+      renderItem={({ item }) => <AutomationCard job={item.job} connectionName={multiple ? item.connectionName : undefined}
+        onPress={() => router.push({ pathname: '/automations/[automationId]', params: { automationId: item.job.id, connection: item.slot } })} />}
       ListHeaderComponent={loading ? <ActivityIndicator style={s.spinner} /> : null}
-      ListFooterComponent={notes.length ? <View style={s.notes}>{notes.map(note =>
-        <Text key={note.key} style={s.note}>{multiple ? `${note.connectionName}: ${note.text}` : note.text}</Text>)}</View> : null}
-      ListEmptyComponent={loading || notes.length ? null : <Text style={s.empty}>No automations yet. Ask the agent in any conversation to run something on a schedule.</Text>} />
+      ListFooterComponent={<>
+        {more && <ActivityIndicator style={s.spinner} />}
+        {notes.length > 0 && <View style={s.notes}>{notes.map(note =>
+          <Text key={note.key} style={s.note}>{multiple ? `${note.connectionName}: ${note.text}` : note.text}</Text>)}</View>}
+      </>}
+      ListEmptyComponent={loading || notes.length ? null : <Text style={s.empty}>{canCreate
+        ? 'No automations yet. Tap + to describe something that should run on a schedule.'
+        : 'No automations yet. Ask the agent in any conversation to run something on a schedule.'}</Text>} />
   </SafeAreaView>;
 }
 
 const s = StyleSheet.create({
   fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 12 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8 },
-  pressed: { backgroundColor: '#eef3fa' },
-  heading: { fontSize: 17, fontWeight: '600', color: '#172a40' },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  status: { fontSize: 13, fontWeight: '600', color: '#42566f' }, running: { color: '#237a35' }, failed: { color: '#9d1b32' },
-  details: { flexShrink: 1, fontSize: 13, color: '#607187' },
-  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a66c9' },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
   spinner: { marginVertical: 12 }, notes: { marginTop: 8, gap: 6, paddingHorizontal: 6 }, note: { fontSize: 13, color: '#607187' },
   empty: { color: '#65758b', textAlign: 'center', padding: 24 },
 });

@@ -24,11 +24,13 @@ import { ThreadModelButton, ThreadModelPicker } from './ThreadModelPicker';
  * per connection/Channel resets it to the primary model. `showModel` keeps the control visible;
  * otherwise it appears while typing or when a model other than the default is chosen.
  */
-export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false, showModel = false }: {
+export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false, showModel = false, automationEditor = false }: {
   client: HermesClient; channelId: string;
   enqueue: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
   onCreated: (threadId: string) => void; disabled?: boolean;
   onTargetLock?: (locked: boolean) => void; placeholder?: string; autoFocus?: boolean; showModel?: boolean;
+  /** The new Thread is the settings conversation of the automation the agent creates in it. */
+  automationEditor?: boolean;
 }) {
   const [text, setText] = useState(''), [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false), [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -101,7 +103,8 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       if (!draft.created) {
         // Same client thread ID and title on every attempt: the server returns
         // the existing thread, so a temporary failure retries without a duplicate.
-        const made = await retryStep(() => client.createThread(channelId, 'New topic', draft.threadId, draft.model, draft.confirmModel), alive);
+        const made = await retryStep(() => client.createThread(channelId, automationEditor ? 'New automation' : 'New topic', draft.threadId,
+          draft.model, draft.confirmModel, automationEditor ? { automationEditor: true } : {}), alive);
         draft.threadId = made.id; draft.created = true;
       }
       if (!mounted.current) return;

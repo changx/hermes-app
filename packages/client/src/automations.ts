@@ -1,18 +1,23 @@
 /**
- * Read-only Automations directory (plugin capability `automations`).
- * GET /v1/automations lists this connection's scheduled jobs;
- * GET /v1/automations/{id} adds the Threads that one job delivered into.
+ * Automations directory (plugin capability `automations`).
+ * GET /v1/automations lists this connection's scheduled jobs (paged with
+ * `automations_paged`); GET /v1/automations/{id} adds the Threads that one job
+ * delivered into, and with `automation_controls` the editing fields.
  */
 export class AutomationProtocolError extends Error {
   constructor() { super('Invalid automations response'); this.name = 'AutomationProtocolError'; }
 }
 
 export type AutomationTarget = Readonly<{ channelId: string; mode: 'new' | 'thread'; threadId?: string }>;
+export type AutomationControl = 'pause' | 'resume' | 'run' | 'schedule';
 export type Automation = Readonly<{
   id: string; name: string; schedule: string; state: string; enabled: boolean; running: boolean;
   nextRunAt?: string; lastRunAt?: string; lastStatus?: string; failed: boolean;
   targets: readonly AutomationTarget[]; threadCount: number; unreadCount: number; prompt?: string;
+  /** Editing (plugin 0.2.28): empty `controls` means read-only here. */
+  controls: readonly AutomationControl[]; editorChannelId?: string; editorThreadId?: string;
 }>;
+export type AutomationPage = Readonly<{ automations: readonly Automation[]; nextAfter: string | null }>;
 export type AutomationThread = Readonly<{
   id: string; channelId: string; title: string; runs: number; completedUnread: boolean; resultVersion: number; resultRef: number;
 }>;
@@ -34,6 +39,14 @@ const count = (value: unknown): number => {
   return value;
 };
 const FAILED = new Set(['error', 'failed', 'delivery_failed', 'timeout']);
+const CONTROLS = new Set<AutomationControl>(['pause', 'resume', 'run', 'schedule']);
+
+function parseControls(value: unknown): AutomationControl[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 8) throw new AutomationProtocolError();
+  // Unknown future controls are ignored, so an older App keeps the ones it knows.
+  return value.filter((item): item is AutomationControl => typeof item === 'string' && CONTROLS.has(item as AutomationControl));
+}
 
 function parseTarget(value: unknown): AutomationTarget {
   const row = object(value);
@@ -57,6 +70,9 @@ export function parseAutomation(value: unknown): Automation {
     failed: (lastStatus !== undefined && FAILED.has(lastStatus)) || row.state === 'error',
     targets: row.targets.map(parseTarget), threadCount: count(row.thread_count), unreadCount: count(row.unread_count),
     ...(prompt === undefined ? {} : { prompt }),
+    controls: row.editable === true ? parseControls(row.controls) : [],
+    ...(optionalText(row.editor_channel_id, 200) ? { editorChannelId: optionalText(row.editor_channel_id, 200) } : {}),
+    ...(optionalText(row.editor_thread_id, 200) ? { editorThreadId: optionalText(row.editor_thread_id, 200) } : {}),
   };
 }
 
@@ -64,6 +80,18 @@ export function parseAutomations(value: unknown): Automation[] {
   const body = object(value);
   if (!Array.isArray(body.automations) || body.automations.length > 500) throw new AutomationProtocolError();
   return body.automations.map(parseAutomation);
+}
+
+export function parseAutomationPage(value: unknown): AutomationPage {
+  const body = object(value);
+  if (!Array.isArray(body.automations) || body.automations.length > 100) throw new AutomationProtocolError();
+  const nextAfter = body.next_after === null || body.next_after === undefined ? null : text(body.next_after, 2000);
+  return { automations: body.automations.map(parseAutomation), nextAfter };
+}
+
+/** Response of a control: the job after the change. */
+export function parseAutomationUpdate(value: unknown): Automation {
+  return parseAutomation(object(value).automation);
 }
 
 export function parseAutomationDetail(value: unknown): AutomationDetail {

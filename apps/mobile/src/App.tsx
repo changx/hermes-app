@@ -34,7 +34,7 @@ export function HeaderIcon({ label, ios, android, onPress }: { label: string; io
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
-export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' = '', extra: Record<string, string> = {}) =>
+export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' | '/automations' = '', extra: Record<string, string> = {}) =>
   ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
 /** Pushed label editor of one Session on one connection. */
 export const labelsRoute = (connection: string, threadId: string) =>

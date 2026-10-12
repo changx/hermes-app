@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
-import { useNavigation, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConnectionScope, FormKeyboardAvoidingView, Notice, useApp, useConnections } from '../App';
 import { Text } from '../FontSize';
@@ -11,18 +11,25 @@ import { threadRoute } from '../sessionNavigation';
 
 /**
  * New conversation from Recents: choose a channel, write the first message.
+ * With `automation=1` (Automations tab or a channel's Automations page) the new
+ * Thread is the settings conversation of an automation that the agent drafts
+ * and creates in it; `channel` + `connection` preselect the channel.
  * The composer and the durable first-message path are the same as at the
  * bottom of a channel page. The channel can change until the first send
  * attempt; from then on the attempt's IDs belong to that channel.
  */
 export default function NewThread() {
   const { ready, connections, revision } = useConnections();
-  const choices = useMemo(() => channelChoices(connections), [connections, revision]);
+  const params = useLocalSearchParams<{ automation?: string; channel?: string; connection?: string }>();
+  const automation = params.automation === '1';
+  const sources = useMemo(() => automation ? connections.filter(c => c.client?.supportsAutomationEditors) : connections, [automation, connections, revision]);
+  const choices = useMemo(() => channelChoices(sources), [sources, revision]);
   const [picked, setPicked] = useState<string | null>(null);
   const preselected = useRef<string | null>(null);
   // Preselect once, when the directory first allows it; never override the user.
   if (picked === null && preselected.current === null && choices.length) {
-    preselected.current = recentChannel(connections, choices)?.key ?? null;
+    const asked = params.channel && params.connection ? `${params.connection}:${params.channel}` : null;
+    preselected.current = (asked && choices.some(c => c.key === asked) ? asked : null) ?? recentChannel(sources, choices)?.key ?? null;
   }
   const target = choices.find(choice => choice.key === (picked ?? preselected.current)) ?? null;
   const [locked, setLocked] = useState(false);
@@ -34,13 +41,17 @@ export default function NewThread() {
   useEffect(() => (navigation as unknown as TransitionEvents).addListener('transitionEnd', event => {
     if (!event?.data?.closing) setEntered(true);
   }), [navigation]);
+  const title = automation ? <Stack.Screen options={{ title: 'New automation' }} /> : null;
   if (!ready) return <Notice text="" />;
-  if (!choices.length) return <Notice text="Create a channel first. Conversations belong to a channel." />;
-  if (!target) return <Notice text="This channel is unavailable." />;
+  if (automation && !connections.some(c => c.client?.supportsAutomationEditors))
+    return <>{title}<Notice text="Creating automations needs a newer server. Ask the agent in any conversation instead." /></>;
+  if (!choices.length) return <>{title}<Notice text="Create a channel first. Conversations belong to a channel." /></>;
+  if (!target) return <>{title}<Notice text="This channel is unavailable." /></>;
   return <SafeAreaView style={s.fill} edges={['bottom', 'left', 'right']}>
+    {title}
     <ChannelField target={target} disabled={locked} onPress={() => setChoosing(true)} />
     <ConnectionScope slot={target.slot} fallback={<Notice text="This channel is unavailable." />}>
-      <Composer channel={target} onLock={setLocked} focus={entered} />
+      <Composer channel={target} onLock={setLocked} focus={entered} automation={automation} />
     </ConnectionScope>
     <ChannelPicker visible={choosing} choices={choices} selected={target.key}
       onClose={() => setChoosing(false)} onPick={key => { setChoosing(false); if (!locked) setPicked(key); }} />
@@ -62,7 +73,7 @@ function ChannelField({ target, disabled, onPress }: { target: ChannelChoice; di
 
 type TransitionEvents = { addListener: (type: 'transitionEnd', listener: (event: { data?: { closing?: boolean } }) => void) => () => void };
 
-function Composer({ channel, onLock, focus }: { channel: ChannelChoice; onLock: (locked: boolean) => void; focus: boolean }) {
+function Composer({ channel, onLock, focus, automation }: { channel: ChannelChoice; onLock: (locked: boolean) => void; focus: boolean; automation: boolean }) {
   const { client, config, outboxRef } = useApp();
   const router = useRouter();
   useEffect(() => () => onLock(false), [onLock]);
@@ -70,7 +81,8 @@ function Composer({ channel, onLock, focus }: { channel: ChannelChoice; onLock: 
   if (!client.channels.has(channel.id)) return <Notice text="This channel is unavailable." />;
   return <FormKeyboardAvoidingView>
     <View style={s.fill} />
-    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} placeholder="What would you like to do?" autoFocus={focus} showModel
+    <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} autoFocus={focus} showModel
+      placeholder={automation ? 'What should run, and when?' : 'What would you like to do?'} automationEditor={automation}
       enqueue={async (threadId, messageId, text, attachments) => {
         const box = outboxRef.current;
         if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');

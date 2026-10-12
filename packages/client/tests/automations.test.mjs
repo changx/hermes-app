@@ -64,3 +64,41 @@ test('Catalogue carries origin and participation; Recents uses them', () => {
   assert.equal(inRecents({ lastMessageAt: 100 }, 100 + 86401), false);
   assert.equal(inRecents({ running: true }, 0), true);
 });
+
+test('Automation editing: capabilities, paging, controls and settings Threads', async () => {
+  const caps = { protocol: 1, automations: true, thread_origin: true, automations_paged: true, automation_controls: true, automation_editors: true };
+  const editable = job({ editable: true, controls: ['pause', 'run', 'schedule', 'future'], editor_channel_id: 'p_a', editor_thread_id: 'th_edit' });
+  const thread = { id: 'th_edit', project_id: 'p_a', title: 'Daily article · 设置', archived: false, created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z', session_id: 's' };
+  const { sdk, calls } = client((method, path) => {
+    if (path === '/v1/capabilities') return { status: 200, body: caps };
+    if (path.startsWith('/v1/automations?')) return { status: 200, body: { automations: [editable], next_after: 'abc' } };
+    if (path.endsWith('/editor')) return { status: 201, body: { thread, created: true } };
+    if (path.startsWith('/v1/channels/')) return { status: 201, body: { thread } };
+    return { status: 200, body: { automation: job({ editable: true, state: 'paused', enabled: false, controls: ['resume', 'schedule'] }) } };
+  });
+  await sdk.capabilities();
+  assert.deepEqual([sdk.supportsAutomationsPaged, sdk.supportsAutomationControls, sdk.supportsAutomationEditors], [true, true, true]);
+  const page = await sdk.automationsPage({ after: 'x y', channel: 'p_a' });
+  assert.equal(page.nextAfter, 'abc');
+  assert.deepEqual(page.automations[0].controls, ['pause', 'run', 'schedule']);
+  assert.equal(page.automations[0].editorThreadId, 'th_edit');
+  const paused = await sdk.automationControl('j1', 'pause');
+  assert.deepEqual(paused.controls, ['resume', 'schedule']);
+  await sdk.setAutomationSchedule('j1', 'every day at 9am');
+  assert.equal((await sdk.automationEditor('j1')).id, 'th_edit');
+  await sdk.createThread('p_a', 'New automation', 'th_client123', undefined, false, { automationEditor: true });
+  const sent = calls.slice(1).map(([method, path, , body]) => [method, path, body]);
+  assert.deepEqual(sent.map(([m, p]) => [m, p]), [
+    ['GET', '/v1/automations?limit=30&after=x%20y&channel=p_a'], ['POST', '/v1/automations/j1/pause'],
+    ['PATCH', '/v1/automations/j1'], ['POST', '/v1/automations/j1/editor'], ['POST', '/v1/channels/p_a/threads']]);
+  assert.deepEqual(sent[2][2], { schedule: 'every day at 9am' });
+  assert.equal(sent[4][2].automation_editor, true);
+});
+
+test('Older servers: no editing fields means read-only', async () => {
+  const { sdk } = client(() => ({ status: 200, body: { protocol: 1, automations: true, thread_origin: true } }));
+  await sdk.capabilities();
+  assert.deepEqual([sdk.supportsAutomationsPaged, sdk.supportsAutomationControls, sdk.supportsAutomationEditors], [false, false, false]);
+  const { sdk: other } = client(() => ({ status: 200, body: { automations: [job({ controls: ['pause'] })] } }));
+  assert.deepEqual((await other.automations())[0].controls, []);  // not editable without editable: true
+});
