@@ -37,3 +37,9 @@ Requested by Jamie: a quick todo flag on the Session page. The flag marks the se
 - Updated: `sidebar-recents.test.mjs` (running first), `session-labels.test.mjs` (no row pills, menu), `session-toolbar.test.mjs` (tool order), `font-settings.test.mjs`.
 - Mobile `tests/todo-flag.test.mjs` (shared rules, limit equals the server limit, toggle messages), `tests/channel-archive.test.mjs` (row flag, long-press toggle), `tests/recents-search.test.mjs` (Todo section, order).
 - Linux only. Mac and iPhone acceptance are pending.
+
+## Release
+
+- 2026-10-12: merged to `main` as `9e66f47` (with the desktop composer focus on app activation, see [desktop-tabs.md](desktop-tabs.md)). Expo restarted on `9e66f47`: iOS and Android manifests 200 (SDK 57), both bundles contain `Mark as todo` and `Remove todo`. Gateway unchanged.
+- Desktop v0.1.69 (`a7736f2`): Mac mini workflow run 38233707670: 170 tests, 130 pass, 0 fail, 40 skipped; audit 0; zip uploaded direct at 85.8 Mbps. Downloaded zip passes sha256; Info.plist 0.1.69; arm64; the ASAR contains the todo and focus code. Two newest Releases kept.
+- Pending: Mac and iPhone acceptance. Rollback: reinstall v0.1.68; for mobile, revert the commits and restart Expo.
