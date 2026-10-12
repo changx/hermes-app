@@ -155,6 +155,7 @@
 - [docs/code-block-wrap.md](docs/code-block-wrap.md)
 - [docs/message-hierarchy.md](docs/message-hierarchy.md)
 - [docs/reply-models.md](docs/reply-models.md)
+- [docs/thread-model.md](docs/thread-model.md)
 - [docs/open-session-live-release-0.1.8.md](docs/open-session-live-release-0.1.8.md)
 - [docs/open-session-live.md](docs/open-session-live.md)
 - [docs/outbound-media-deployment.md](docs/outbound-media-deployment.md)

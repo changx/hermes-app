@@ -30,6 +30,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 桌面和手机每条最终回复的消息工具栏最右侧显示生成它的原始模型 ID，来源为插件在 `post_llm_call` 记录的本轮实际模型（含备用切换）。旧回复不补写；只要求 Hermes App 发出的消息有模型。见 [回复显示生成模型](reply-models.md)。
 
+创建 Thread 时可以选择模型，只对这个 Thread 生效。默认是该连接的 primary model（profile 默认模型），不选就和以前一样。可选模型来自所选 Channel 所属连接；换 Channel 后重新读取，并回到默认。选择不影响 Thread 标题生成，也不在对话中产生 `/model` 命令或切换提示。只在创建时选择，不提供之后修改的入口。见 [创建 Thread 时选择模型](thread-model.md)。
+
 桌面侧栏搜索框下方显示前 5 个常用 label（使用该 label 的 session 最多者优先，相同时最近使用优先），点击加入搜索、再点移除。手机 Recents 页提供同样的搜索框和 quick label filter，搜索范围为全部 Thread。见 [桌面 Session 搜索](desktop-session-search.md) 与 [手机 Recents](mobile-tabs-recents.md)。
 
 ### R02 Channel / Thread 内容组织
