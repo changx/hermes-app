@@ -14,9 +14,9 @@ const { recentWindow, THREAD_BATCH } = mod.exports;
 const now = 2_000_000_000_000, seconds = now / 1000;
 const row = (id, lastMessageAt, extra = {}) => ({ id, channelId: 'p', title: id, markers: [], running: false, lastMessageAt, ...extra });
 
-test('Recents keeps only the last 24 hours plus running sessions; running first, then newest', () => {
-  const threads = [row('old', seconds - 25 * 3600), row('hour', seconds - 3600), row('minute', seconds - 60), row('running-old', seconds - 90 * 3600, { running: true }), row('never', undefined)];
-  assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['running-old', 'minute', 'hour']);
+test('Recents keeps only the last 72 hours plus running sessions; running first, then newest', () => {
+  const threads = [row('old', seconds - 73 * 3600), row('days', seconds - 71 * 3600), row('hour', seconds - 3600), row('minute', seconds - 60), row('running-old', seconds - 90 * 3600, { running: true }), row('never', undefined)];
+  assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['running-old', 'minute', 'hour', 'days']);
 });
 
 test('Recents leaves out automation Threads until the user replies in them', () => {
@@ -66,7 +66,7 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
         const titles=[...scroll.querySelectorAll('.sidebar-section-title')].map(e=>e.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim());
         ensure('sections in order',titles.join('|')==='Recents|Projects');
         const recents=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread .thread-title')].map(e=>e.textContent);
-        ensure('recents: last 24 hours across connections, newest first',recents.join('|')==='Just now|An hour ago');
+        ensure('recents: last 72 hours across connections, newest first',recents.join('|')==='Just now|An hour ago');
         ensure('recent row names its project and connection',scroll.querySelector('#sidebar-recents-list .tree-thread').title==='Hermes App · Work');
         const sources=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread')].map(e=>e.querySelector('.thread-connection-name')?.textContent);
         ensure('each recent row shows its connection name',sources.join('|')==='Work|personal.example');

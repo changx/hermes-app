@@ -21,6 +21,14 @@ test('old sessions with an unread result stay in the default tree window', () =>
   assert.equal(page.hasMore, true);
 });
 
+test('the default tree window uses the 72-hour Recents window', () => {
+  const s = now / 1000;
+  const threads = [row('days', { lastMessageAt: s - 71 * 3600 }), row('stale', { lastMessageAt: s - 73 * 3600 }), row('older', { lastMessageAt: old })];
+  const page = threadWindow(threads, 'p', now);
+  assert.deepEqual(page.rows.map(t => t.id), ['days']);
+  assert.equal(page.hasMore, true);
+});
+
 test('pinned unread and running rows do not consume or duplicate older batches', () => {
   const threads = [row('run', { running: true }), row('unread', { completedUnread: true }), ...Array.from({ length: THREAD_BATCH + 2 }, (_, i) => row('old' + String(i).padStart(2, '0'), { lastMessageAt: old + i }))];
   const first = threadWindow(threads, 'p', now, 1);
