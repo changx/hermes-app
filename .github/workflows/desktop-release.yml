@@ -110,7 +110,13 @@ jobs:
             --notes "Unsigned Apple Silicon macOS development build, packaged on the project Mac mini. This artifact is not notarized and is not an App Store distribution.")
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)"
+          # A new draft appears in the release list only after a short delay; wait up to 30 s.
+          id=""
+          for attempt in $(seq 1 15); do
+            id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)"
+            [[ -n "$id" ]] && break
+            sleep 2
+          done
           test -n "$id"
           echo "### Release upload ($TAG)" >> "$GITHUB_STEP_SUMMARY"
           bash _ci/.github/scripts/release-upload.sh "$GITHUB_REPOSITORY" "$id" "release/$ARCHIVE" "release/$ARCHIVE.sha256"
