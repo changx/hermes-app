@@ -150,6 +150,7 @@
 - [docs/lighter-unread-dot.md](docs/lighter-unread-dot.md)
 - [docs/markdown-table-release-0.1.7.md](docs/markdown-table-release-0.1.7.md)
 - [docs/markdown-table-width.md](docs/markdown-table-width.md)
+- [docs/code-block-wrap.md](docs/code-block-wrap.md)
 - [docs/message-hierarchy.md](docs/message-hierarchy.md)
 - [docs/open-session-live-release-0.1.8.md](docs/open-session-live-release-0.1.8.md)
 - [docs/open-session-live.md](docs/open-session-live.md)

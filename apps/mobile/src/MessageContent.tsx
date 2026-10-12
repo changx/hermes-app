@@ -12,6 +12,7 @@ import { parseMessageMarkdown } from './messageMarkdown';
 import { renderMarkdownHtml } from './markdownWeb';
 import { ARTICLE_TEXT_LIMIT, renderArticleHtml } from './articleHtml';
 import { safeLinkUrl } from './messageMarkdown';
+import { wrapsCodeLines } from '../../../packages/client/src/codeBlocks';
 import type { Block, Inline, TableCell } from './messageMarkdown';
 import type { ToolCall } from '../../../packages/client/src/index';
 import { compactFileDetail, compactToolCaption, toolDisplayLabel, toolPresentation } from '../../../packages/client/src/toolPresentation';
@@ -273,9 +274,11 @@ function RenderBlock({ block, tone, allowed, onExpand, onInteraction, suspended 
           <Text style={styles.codeLanguage} numberOfLines={1}>{block.language || 'Code'}</Text>
           <Text style={styles.copyCode}>Copy</Text>
         </View>
-        <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
-          <AnimatedText selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</AnimatedText>
-        </ScrollView>
+        {wrapsCodeLines(block.language)
+          ? <AnimatedText selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</AnimatedText>
+          : <ScrollView horizontal nestedScrollEnabled style={styles.codeScroll} showsHorizontalScrollIndicator>
+            <AnimatedText selectable style={[styles.codeText, tone('#20314a')]}>{block.text || ' '}</AnimatedText>
+          </ScrollView>}
       </Pressable>;
     case 'math':
       return <OfflineRenderer resourceKey={block} kind="math" source={block.text} enabled={allowed.has(block)} suspended={suspended} />;

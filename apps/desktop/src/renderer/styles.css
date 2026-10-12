@@ -579,6 +579,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .message a { color: var(--app-link); }
 .message code { border-radius: 4px; padding: 1px 4px; color: #20314a; background: rgb(245,245,250); font: var(--app-font-size) ui-monospace, SFMono-Regular, Menlo, monospace; }
 .code-block { overflow: auto; border-radius: 9px; padding: 12px; color: #20314a; background: rgb(245,245,250); white-space: pre; }
+.code-block.code-block-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .code-block code { padding: 0; color: inherit; background: transparent; }
 .code-block small { display: block; margin-top: 8px; color: #52657c; }
 .mermaid-diagram { overflow: auto; margin: 12px 0; text-align: center; white-space: normal; }

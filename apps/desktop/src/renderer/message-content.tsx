@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
+import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
 
 const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br"]);
 const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "class", "id", "role", "aria-label"]);
@@ -66,7 +67,12 @@ const markdownComponents: Components = {
     const source = String(children).replace(/\n$/, "");
     return language === "mermaid" ? <MermaidDiagram source={source} /> : <code className={className} {...props}>{children}</code>;
   },
-  pre: ({ children }) => <pre className="code-block">{children}</pre>,
+  pre: ({ node, children }) => {
+    const code = node?.children?.[0];
+    const classes = code?.type === "element" ? code.properties?.className : undefined;
+    const language = (Array.isArray(classes) ? classes : []).map(String).find(name => name.startsWith("language-"))?.slice(9);
+    return <pre className={wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block"}>{children}</pre>;
+  },
 };
 // A Markdown file preview shows its images: web images and plain sibling file names,
 // which the preview page resolves only against the same Session's image attachments.
