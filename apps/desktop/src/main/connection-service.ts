@@ -219,7 +219,7 @@ export class DesktopConnectionService {
       ? [...(this.client?.messages.get(pageId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (pageState?.start === undefined || ref_seq >= pageState.start))
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
-    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, notice_kind, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
+    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, notice_kind, model, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
       const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
       return {
         id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
@@ -227,6 +227,7 @@ export class DesktopConnectionService {
         text,
         ...(display_kind ? { displayKind: display_kind } : {}),
         ...(notice_kind ? { noticeKind: notice_kind } : {}),
+        ...(model ? { model } : {}),
         refSeq: ref_seq,
         ...(client_message_id ? { clientMessageId: client_message_id } : {}),
         ...(receipt ? { receiptId: receipt.id } : {}),

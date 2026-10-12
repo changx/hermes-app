@@ -731,6 +731,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .message-toolbar button[aria-busy="true"] { opacity: 0.6; cursor: progress; }
 .message-toolbar svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .message-toolbar-note { margin-left: 6px; color: var(--app-label); font-size: calc(var(--app-font-size) - 2px); }
+.message-model { min-width: 0; margin-left: auto; padding-left: 12px; overflow: hidden; color: var(--app-label); font-size: calc(var(--app-font-size) - 2px); text-overflow: ellipsis; white-space: nowrap; }
 .message-sources { margin: 4px 0 0; font-size: calc(var(--app-font-size) - 1px); }
 .message-sources p { margin: 4px 0; color: var(--app-label); }
 .message-sources ul { margin: 0; padding: 0; list-style: none; }

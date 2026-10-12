@@ -16,7 +16,7 @@ export interface Attachment { id: string; thread_id: string; name?: string; mime
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; notice_kind?: 'review' | 'compression' | 'branch'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; notice_kind?: 'review' | 'compression' | 'branch'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string; model?: string }
 /** A page the agent opened while answering ('read') or a link its reply cites ('cited'). */
 export interface MessageSource { url: string; kind: 'read' | 'cited' }
 
@@ -118,6 +118,8 @@ const validToolCalls = (value: unknown): ToolCall[] => {
       ...(x.detail === undefined ? {} : { detail: displayString(x.detail, 4000) }) };
   });
 };
+// The model that produced a final reply. A malformed value is dropped, never shown.
+const replyModel = (value: unknown): string | undefined => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_./:+-]{0,255}$/.test(value) ? value : undefined;
 const validMessage = (v: unknown): Message => {
   const x = obj(v), role = str(x.role);
   if (role === 'system' && x.display_kind !== 'system_notice') throw new ProtocolError('invalid system notice');
@@ -127,6 +129,7 @@ const validMessage = (v: unknown): Message => {
   return { id: str(x.id), ref_seq: num(x.ref_seq), role, text: str(x.text),
     ...(role === 'assistant' && (x.display_kind === 'direct' || x.display_kind === 'final') ? {display_kind: x.display_kind} : {}),
     ...(role === 'system' ? {display_kind: 'system_notice' as const} : {}),
+    ...(role === 'assistant' && x.display_kind === 'final' && replyModel(x.model) ? {model: replyModel(x.model)} : {}),
     ...(role === 'system' && (x.notice_kind === 'review' || x.notice_kind === 'compression' || x.notice_kind === 'branch') ? {notice_kind: x.notice_kind} : {}),
     ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}),
     ...(role === 'assistant' && x.tool_calls !== undefined ? {tool_calls:validToolCalls(x.tool_calls)} : {}),
