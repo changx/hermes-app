@@ -69,11 +69,12 @@ test('Automation editing: capabilities, paging, controls and settings Threads', 
   const caps = { protocol: 1, automations: true, thread_origin: true, automations_paged: true, automation_controls: true, automation_editors: true };
   const editable = job({ editable: true, controls: ['pause', 'run', 'schedule', 'future'], editor_channel_id: 'p_a', editor_thread_id: 'th_edit' });
   const thread = { id: 'th_edit', project_id: 'p_a', title: 'Daily article · 设置', archived: false, created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z', session_id: 's' };
-  const { sdk, calls } = client((method, path) => {
+  const { sdk, calls } = client((method, path, _token, body) => {
     if (path === '/v1/capabilities') return { status: 200, body: caps };
     if (path.startsWith('/v1/automations?')) return { status: 200, body: { automations: [editable], next_after: 'abc' } };
     if (path.endsWith('/editor')) return { status: 201, body: { thread, created: true } };
-    if (path.startsWith('/v1/channels/')) return { status: 201, body: { thread } };
+    // The server creates the Thread with the requested client_thread_id.
+    if (path.startsWith('/v1/channels/')) return { status: 201, body: { thread: { ...thread, id: body.client_thread_id, title: body.title } } };
     return { status: 200, body: { automation: job({ editable: true, state: 'paused', enabled: false, controls: ['resume', 'schedule'] }) } };
   });
   await sdk.capabilities();

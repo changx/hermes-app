@@ -12,7 +12,7 @@ test('live client forwards the automation editor flag when it creates a Thread',
     socket: { connect: async () => { throw Error('no socket expected'); } },
     http: { async request(method, path, _token, body) {
       if (path === '/v1/capabilities') return { status: 200, body: { protocol: 1, automation_editors: true } };
-      if (method === 'POST' && path === '/v1/channels/p_a/threads') { bodies.push(body); return { status: 201, body: { thread: { id: 'th_new', project_id: 'p_a', title: 'New automation', archived: false, created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z', session_id: 's' } } }; }
+      if (method === 'POST' && path === '/v1/channels/p_a/threads') { bodies.push(body); return { status: 201, body: { thread: { id: body.client_thread_id, project_id: 'p_a', title: body.title, archived: false, created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z', session_id: 's' } } }; }
       if (path.startsWith('/v1/catalogue')) return { status: 200, body: { items: [], next_after: null } };
       throw new Error('unexpected ' + method + ' ' + path);
     } } });
