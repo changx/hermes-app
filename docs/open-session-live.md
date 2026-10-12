@@ -41,7 +41,7 @@ Reuse existing authenticated capabilities/history/receipt/interaction/attachment
 
 `GET /v1/catalogue?after=<ordinary page anchor>&limit=30` returns directory items and next_after; full pagination must succeed before applying absence. Ordinary history/catalogue pagination is not a synchronization cursor.
 
-`WS /v1/live`: hello; `{type:watch,thread_id:<id|null>,request_id:<ephemeral request identity>}`; matching watching acknowledgement; directory_changed, session_state (running), conversation_changed scoped to the watched request. Request identity is only to ignore stale subscription responses, not a stored entity version. Ping/pong is health-only. Slow consumers close/reconnect instead of silently dropping required changes.
+`WS /v1/live`: hello; `{type:watch,thread_id:<id|null>,request_id:<ephemeral request identity>}`; matching watching acknowledgement; directory_changed (with `thread_ids` when only Thread rows changed; see [core data flow](core-dataflow.md)), session_state (running), conversation_changed scoped to the watched request. Request identity is only to ignore stale subscription responses, not a stored entity version. Ping/pong is health-only. Slow consumers close/reconnect instead of silently dropping required changes.
 
 The candidate hello adds `multi_session_live:true`. `watch` without `mode` still replaces all subscriptions, including clearing them with `thread_id:null`. `mode:add` installs/replaces the given Thread's subscription without touching others. `mode:remove` removes only the matching Thread/request identity and needs no acknowledgement. Each command carries one Thread, not an unbounded batch. The server validates existence/access on subscription and retains authentication, input-size, buffer and scoped-state limits.
 
