@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import * as Crypto from 'expo-crypto';
-import type { Attachment, HermesClient } from '../../../packages/client/src/index';
+import { connectionFailure, type Attachment, type HermesClient } from '../../../packages/client/src/index';
+import { retryStep } from './retryStep.ts';
 import { Text, TextInput } from './FontSize';
 import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments';
 import { ComposerSendButton } from './ComposerCard';
@@ -56,16 +57,19 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
     const draft: Attempt = attempt.current ?? { threadId: 'th_' + Crypto.randomUUID().replace(/-/g, ''), messageId: 'mob_' + Crypto.randomUUID(), created: false };
     setAttempt(draft);
     const original = text;
+    const alive = () => mounted.current;
     try {
       if (!draft.created) {
-        const made = await client.createThread(channelId, 'New topic', draft.threadId);
+        // Same client thread ID and title on every attempt: the server returns
+        // the existing thread, so a temporary failure retries without a duplicate.
+        const made = await retryStep(() => client.createThread(channelId, 'New topic', draft.threadId), alive);
         draft.threadId = made.id; draft.created = true;
       }
       if (!mounted.current) return;
       if (!draft.payload) {
         // Hydrate the summary before enqueue: opening needs its channel. Once
         // sealed, queue retries do not depend on another network read.
-        await client.getThread(draft.threadId);
+        await retryStep(() => client.getThread(draft.threadId), alive);
         if (!mounted.current) return;
         const uploaded = await attachments.current!.uploadTo(draft.threadId);
         if (!mounted.current) return;
@@ -82,7 +86,8 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
         setText(''); setCount(0); setSealed(false); selection.current = null; setClearKey(key => key + 1);
         if (focusedRef.current) onCreated(draft.threadId);
       }
-    } catch {
+    } catch (failure) {
+      console.info('[new-topic]', connectionFailure(failure));
       if (mounted.current) setError('Could not start this conversation. Your message is still here. Try sending again.');
     } finally {
       working.current = false;
