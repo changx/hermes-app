@@ -230,6 +230,18 @@ export class HermesClient {
     if (this.notificationDepth) { this.notificationPending = true; return }
     this.options.onChange?.();
   }
+  /** A directory row (`thread:<id>` / `channel:<id>`) was set from a confirmed
+   * mutation response. A live directory keeps it over an older catalogue walk. */
+  protected directoryAdopted(_key: string): void {}
+  /** Apply a server-confirmed Thread row with the same ordering guard as getThread.
+   * `directory`: a mutation reply; an archived Thread leaves the directory, as in the catalogue. */
+  private adoptThread(thread: Thread, seq: number, epoch: number, directory = false): void {
+    const key = 'thread:'+thread.id;
+    if (epoch!==this.projectionEpoch || seq < (this.entitySequence.get(key) || 0)) return;
+    if (directory && thread.archived) this.threads.delete(thread.id);
+    else { const old = this.threads.get(thread.id); this.threads.set(thread.id,{...old,...thread,...(old?.last_message_at!==undefined?{last_message_at:old.last_message_at}:{})}); }
+    this.entitySequence.set(key,seq); if (directory) this.directoryAdopted(key); this.changed();
+  }
   // Only batch synchronous projection commits, never hold UI notifications
   // across an HTTP await: one slow session must not hide another's updates.
   protected batchChanges(commit: () => void) {
@@ -366,8 +378,8 @@ export class HermesClient {
     if (epoch===this.projectionEpoch && seq >= (this.entitySequence.get('channels') || 0)) { this.channels.clear(); channels.forEach(c => this.channels.set(c.id,c)); this.entitySequence.set('channels',seq); this.changed() }
     return channels;
   }
-  async createChannel(name: string, description = '', primaryPath?: string): Promise<Channel> { const x = await this.call('POST','/v1/channels',primaryPath===undefined?{name,description}:{name,description,primary_path:primaryPath}); const c = validChannel(x.channel); this.channels.set(c.id,c); this.changed(); return c }
-  async updateChannel(id: string, patch: ChannelPatch): Promise<Channel> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),patch); const c = validChannel(x.channel); this.channels.set(id,c); this.changed(); return c }
+  async createChannel(name: string, description = '', primaryPath?: string): Promise<Channel> { const x = await this.call('POST','/v1/channels',primaryPath===undefined?{name,description}:{name,description,primary_path:primaryPath}); const c = validChannel(x.channel); this.channels.set(c.id,c); this.directoryAdopted('channel:'+c.id); this.changed(); return c }
+  async updateChannel(id: string, patch: ChannelPatch): Promise<Channel> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),patch); const c = validChannel(x.channel); this.channels.set(id,c); this.directoryAdopted('channel:'+id); this.changed(); return c }
   /** Core project archive: the Channel and its Threads leave the directory; nothing is deleted. */
   /** This connection's scheduled jobs. Requires `supportsAutomations`. */
   async automations(signal?: AbortSignal): Promise<Automation[]> { return parseAutomations(await this.call('GET','/v1/automations',undefined,signal)) }
@@ -391,13 +403,14 @@ export class HermesClient {
   async automation(id: string, before?: number, signal?: AbortSignal): Promise<AutomationDetail> {
     return parseAutomationDetail(await this.call('GET','/v1/automations/'+idPath(id)+(before===undefined?'':'?before='+before),undefined,signal));
   }
-  async archiveChannel(id: string): Promise<void> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),{archived:true}); if (validChannel(x.channel).archived !== true) throw new ProtocolError('archive not confirmed'); this.channels.delete(id); this.changed() }
-  async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.changed() }
+  async archiveChannel(id: string): Promise<void> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),{archived:true}); if (validChannel(x.channel).archived !== true) throw new ProtocolError('archive not confirmed'); this.channels.delete(id); this.directoryAdopted('channel:'+id); this.changed() }
+  async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.directoryAdopted('channel:'+id); this.changed() }
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }
   /** Creates a Thread. `model` applies to this Thread only (requires `supportsThreadModel`); omit it for the
    * primary model. A native cost/data warning throws ModelConfirmationRequired and creates nothing; repeat
    * with `confirmModel` after the user agrees. */
   async createThread(channelId: string, title: string, clientThreadId?: string, model?: ThreadModelChoice, confirmModel = false, options: { automationEditor?: boolean } = {}): Promise<Thread> {
+    const seq = ++this.fetchSequence, epoch = this.projectionEpoch;
     const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{}),
       ...(options.automationEditor?{automation_editor:true}:{}),
       ...(model?{model:{provider:model.provider,model:model.model,...(confirmModel?{confirm_selection:true}:{})}}:{})});
@@ -409,19 +422,19 @@ export class HermesClient {
     // The server returns the canonical model it stored; null only when a later /new cleared it.
     if (model && x.model !== null && (typeof x.model !== 'object' || obj(x.model).provider !== model.provider || typeof obj(x.model).model !== 'string'))
       throw new ProtocolError('thread model not confirmed');
+    if (thread.project_id !== channelId || (clientThreadId && thread.id !== clientThreadId)) throw new ProtocolError('thread identity mismatch');
+    // The created row is server-confirmed; the catalogue refresh follows in the background.
+    this.adoptThread(thread, seq, epoch, true);
     return thread;
   }
   async getThread(id: string, signal?: AbortSignal): Promise<Thread> {
     const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/threads/'+idPath(id),undefined,signal); const thread = validThread(x.thread);
-    const key = 'thread:'+id;
-    if (epoch===this.projectionEpoch && seq >= (this.entitySequence.get(key) || 0)) {
-      const old = this.threads.get(id); this.threads.set(id,{...old,...thread,...(old?.last_message_at!==undefined?{last_message_at:old.last_message_at}:{})});
-      this.entitySequence.set(key,seq); this.changed();
-    }
+    this.adoptThread(thread, seq, epoch);
     return thread;
   }
-  async updateThread(id: string, patch: {title?: string; archived?: boolean}): Promise<Thread> { const x = await this.call('PATCH','/v1/threads/'+idPath(id),patch); const t = validThread(x.thread); await this.getThread(id); return t }
-  async archiveThread(id: string): Promise<Thread> { const x = await this.call('DELETE','/v1/threads/'+idPath(id)); const t=validThread(x.thread); await this.getThread(id); return t }
+  // The PATCH/DELETE reply is the stored row (same as GET), so no readback request.
+  async updateThread(id: string, patch: {title?: string; archived?: boolean}): Promise<Thread> { const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('PATCH','/v1/threads/'+idPath(id),patch); const t = validThread(x.thread); if (t.id !== id) throw new ProtocolError('thread identity mismatch'); this.adoptThread(t, seq, epoch, true); return t }
+  async archiveThread(id: string): Promise<Thread> { const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('DELETE','/v1/threads/'+idPath(id)); const t=validThread(x.thread); if (t.id !== id) throw new ProtocolError('thread identity mismatch'); this.adoptThread(t, seq, epoch, true); return t }
   /** New Thread from a final reply; the same requestId returns the same Thread. Failures carry HttpError.code. */
   async branchThread(threadId: string, anchorRefSeq: number, requestId: string): Promise<Thread> {
     if (!Number.isSafeInteger(anchorRefSeq) || anchorRefSeq <= 0 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw new ProtocolError('invalid branch');

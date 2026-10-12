@@ -222,13 +222,13 @@ export class LiveSessionClient extends HermesClient {
     }
     this.storeReceipt(receipt,false);this.changed();
   }
-  override async createChannel(name:string,description='',primaryPath?:string){const result=await super.createChannel(name,description,primaryPath);await this.refreshDirectory(this.attempt?.signal);return result}
-  override async updateChannel(id:string,patch:ChannelPatch){const result=await super.updateChannel(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
-  override async archiveChannel(id:string){await super.archiveChannel(id);await this.refreshDirectory(this.attempt?.signal)}
-  override async deleteChannel(id:string){await super.deleteChannel(id);await this.refreshDirectory(this.attempt?.signal)}
-  override async createThread(id:string,title:string,clientId?:string,model?:ThreadModelChoice,confirmModel=false,options:{automationEditor?:boolean}={}){const result=await super.createThread(id,title,clientId,model,confirmModel,options);await this.refreshDirectory(this.attempt?.signal);return result}
-  override async updateThread(id:string,patch:{title?:string;archived?:boolean}){const result=await super.updateThread(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
-  override async archiveThread(id:string){const result=await super.archiveThread(id);await this.refreshDirectory(this.attempt?.signal);return result}
+  // Mutations (create/update/archive/delete of Channels and Threads) update the
+  // directory from their confirmed response in HermesClient and do not await a
+  // catalogue walk: the server's directory_changed push refreshes it in the background.
+  private directoryMark=0;
+  private readonly directoryMarks=new Map<string,number>();
+  /** Rows set from a confirmed response after a catalogue walk began win over that walk. */
+  protected override directoryAdopted(key:string):void{const d=this.owner??this;d.directoryMarks.set(key,++d.directoryMark)}
 
   async getChannelInfo(id:string,signal?:AbortSignal):Promise<Channel>{
     const body=await this.call('GET','/v1/channels/'+encodeURIComponent(id),undefined,signal),raw=body.channel as Record<string,unknown>;
@@ -267,7 +267,7 @@ export class LiveSessionClient extends HermesClient {
       // A catalogue page that already carries newer labels wins over this response.
       if (saved.markers_updated_at >= (current.markers_updated_at ?? 0)) {
         const directory = this.owner ?? this;
-        directory.batchChanges(() => { this.threads.set(id, { ...current, markers: [...saved.markers], markers_updated_at: saved.markers_updated_at }); directory.changed(); });
+        directory.batchChanges(() => { this.threads.set(id, { ...current, markers: [...saved.markers], markers_updated_at: saved.markers_updated_at }); directory.directoryAdopted('thread:' + id); directory.changed(); });
       }
       const shown = this.threads.get(id)!;
       return { thread_id: id, project_id: channel, markers: [...(shown.markers ?? [])], markers_updated_at: shown.markers_updated_at ?? 0 };
@@ -280,6 +280,8 @@ export class LiveSessionClient extends HermesClient {
     const job=(async()=>{
       while(this.directoryDirty&&!signal?.aborted){
         this.directoryDirty=false;
+        // Rows confirmed after this mark may be missing or older in this walk's pages.
+        const startMark=this.directoryMark;
         const channels:Channel[]=[],threads:Array<ReturnType<typeof parseCatalogue>['items'][number]>=[];
         const seen=new Set<string>();let after:string|null=null;
         do{
@@ -289,10 +291,15 @@ export class LiveSessionClient extends HermesClient {
         }while(after);
         if(signal?.aborted||owner!==this.liveController)throw new Error('aborted');
         this.batchChanges(()=>{
+          const newer=[...this.directoryMarks].filter(([,mark])=>mark>startMark).map(([key])=>key);
+          const localChannels=new Map(this.channels),localThreads=new Map(this.threads);
+          for(const [key,mark] of this.directoryMarks)if(mark<=startMark)this.directoryMarks.delete(key);
           this.channels.clear();for(const c of channels)this.channels.set(c.id,c);
+          for(const key of newer)if(key.startsWith('channel:')){const id=key.slice(8),c=localChannels.get(id);if(c)this.channels.set(id,c);else this.channels.delete(id)}
           this.threads.clear();for(const item of threads)if(item.kind==='session'&&this.channels.has(item.value.project_id)){
             const t=item.value;this.threads.set(t.id,t);
           }
+          for(const key of newer)if(key.startsWith('thread:')){const id=key.slice(7),t=localThreads.get(id);if(t&&this.channels.has(t.project_id))this.threads.set(id,t);else this.threads.delete(id)}
           this.directoryReady=true;
           if(this.wanted&&!this.isThreadAvailable(this.wanted))this.closeConversation();
           this.changed();

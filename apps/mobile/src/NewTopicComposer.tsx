@@ -109,9 +109,10 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       }
       if (!mounted.current) return;
       if (!draft.payload) {
-        // Hydrate the summary before enqueue: opening needs its channel. Once
-        // sealed, queue retries do not depend on another network read.
-        await retryStep(() => client.getThread(draft.threadId), alive);
+        // Hydrate the summary before enqueue: opening needs its channel. The
+        // confirmed create reply already added it; read it only when missing.
+        // Once sealed, queue retries do not depend on another network read.
+        if (!client.threads.has(draft.threadId)) await retryStep(() => client.getThread(draft.threadId), alive);
         if (!mounted.current) return;
         const uploaded = await attachments.current!.uploadTo(draft.threadId);
         if (!mounted.current) return;

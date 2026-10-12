@@ -104,7 +104,8 @@ export function NewTopicEditor({ client, channelId, onCreated }: {
     if (!threadId) {
       const made = await client.createThread(channelId, 'New topic', draftThreadId.current);
       threadId = made.id; draftThread.current = threadId;
-      await client.getThread(threadId);
+      // The confirmed create reply already added the summary; read it only when missing.
+      if (!client.threads.has(threadId)) await client.getThread(threadId);
     }
     let attachmentIds = draftAttachments.current;
     if (!attachmentIds) {
@@ -112,7 +113,8 @@ export function NewTopicEditor({ client, channelId, onCreated }: {
       attachmentIds = uploaded.map(item => item.id); draftAttachments.current = attachmentIds;
     }
     await client.send(threadId, draftMessageId.current, message, attachmentIds);
-    await client.getThread(threadId);
+    // Refresh the summary (last message time) without delaying navigation.
+    void client.getThread(threadId).catch(() => {});
     if (current()) { finalized.current = true; onCreated(threadId); }
   });
   return <View style={s.page}>
