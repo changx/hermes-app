@@ -200,6 +200,8 @@ export interface HermesDesktopApi {
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */
   onSearchLabel(listener: (label: string) => void): () => void;
+  /** A Session page receives this when the app window becomes active. */
+  onFocusComposer?(listener: () => void): () => void;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
   /** Resolves with the new Project's identity after server readback. */

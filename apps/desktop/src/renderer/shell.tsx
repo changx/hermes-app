@@ -237,6 +237,12 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   // Entering a Session page puts the cursor in the composer. Hidden tabs never take focus.
   useEffect(() => { if (tabActive && threadId) input.current?.focus({ preventScroll: true }); }, [tabActive, threadId]);
+  // The app window became active: the cursor goes back to the composer, unless a dialog on this page is open.
+  useEffect(() => window.hermesDesktop.onFocusComposer?.(() => {
+    const field = input.current;
+    if (!tabActive || !field || document.querySelector('dialog[open]')) return;
+    if (field.disabled) restoreFocus.current = true; else field.focus({ preventScroll: true });
+  }), [tabActive]);
   // The textarea is disabled while a send/upload runs, which drops focus. Restore it afterwards.
   useEffect(() => {
     if (busy || !restoreFocus.current) return;

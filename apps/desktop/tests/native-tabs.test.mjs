@@ -8,7 +8,7 @@ const compiled = await build({ entryPoints: [new URL('../src/main/tab-manager.ts
 let counter = 0;
 class Contents extends EventEmitter {
   id = ++counter; sent = []; destroyed = false; focused = false;
-  loadFile() { return Promise.resolve(); } getURL() { return 'file:///app/index.html'; } send(_name, value) { this.sent.push(value); }
+  loadFile() { return Promise.resolve(); } getURL() { return 'file:///app/index.html'; } send(name, value) { this.sent.push(value); (this.channels ??= []).push(name); }
   isDestroyed() { return this.destroyed; } close() { this.destroyed = true; } setAudioMuted(value) { this.muted = value; }
   focus() { this.focused = true; } isCrashed() { return false; }
 }
@@ -87,6 +87,20 @@ test('opening a session or a new tab focuses its view; a background sync does no
   f.manager.newTab('p');const draft=[...f.manager.tabs.values()][1];assert.equal(draft.view.webContents.focused,true);
   a.view.webContents.focused=false;a.view.webContents.emit('did-finish-load');assert.equal(a.view.webContents.focused,false);
   draft.view.webContents.focused=false;draft.view.webContents.emit('did-finish-load');assert.equal(draft.view.webContents.focused,true);
+});
+test('the window becoming active focuses only a visible Session page and asks it to focus its composer', async()=>{
+  const f=fixture();await f.service.selectThread('a');const a=[...f.manager.tabs.values()][0];
+  const asked=tab=>(tab.view.webContents.channels??[]).filter(n=>n==='desktop:focus-composer').length;
+  a.view.webContents.focused=false;f.manager.windowFocused();
+  assert.equal(a.view.webContents.focused,true);assert.equal(asked(a),1);
+  f.manager.setBounds({x:280,y:48,width:1000,height:772,visible:false});a.view.webContents.focused=false;f.manager.windowFocused();
+  assert.equal(a.view.webContents.focused,false,'a dialog in the main window covers the page: no focus change');assert.equal(asked(a),1);
+  f.manager.setBounds({x:280,y:48,width:1000,height:772,visible:true});
+  f.manager.newTab('p');const draft=[...f.manager.tabs.values()][1];draft.view.webContents.focused=false;a.view.webContents.focused=false;f.manager.windowFocused();
+  assert.equal(draft.view.webContents.focused,false,'New chat page is not a Session page');assert.equal(asked(draft),0);assert.equal(a.view.webContents.focused,false,'hidden tabs never take focus');
+  f.manager.openAutomation('job-1','Daily');const job=[...f.manager.tabs.values()][2];job.view.webContents.focused=false;f.manager.windowFocused();
+  assert.equal(job.view.webContents.focused,false);assert.equal(asked(job),0);
+  f.manager.dispose();f.manager.windowFocused();
 });
 test('an automation opens one tab per job without selecting a session; its page targets only its own job', async()=>{
   const f=fixture();await f.service.selectThread('a');const session=[...f.manager.tabs.values()][0];

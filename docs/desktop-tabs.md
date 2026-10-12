@@ -139,3 +139,13 @@ Jamie (2026-10-09): New tab and Browser are two icon buttons fixed at the right 
 - Chromium test `tab-status` checks, at three widths and three font sizes: buttons outside the tablist, at the right edge in order, unmoved while tabs scroll; opaque panel on top of a tab under it; last tab clear of the panel at the scroll end; active tab not hidden; icon font glyphs. `sidebar-recents` checks that the E015 glyph loads from the font.
 
 Release v0.1.60 (2026-10-10, authorized by Jamie: "合并发布"): feature `e2aa57f`, release commit `325bca5`, tag `v0.1.60`, built on the Mac mini (122 pass, 0 fail, 33 skipped; `npm audit` 0 vulnerabilities). The downloaded zip matches its `.sha256` and the built file; Info.plist shows 0.1.60; the packaged icon font is byte-identical to `assets/work-icons.ttf`. Release v0.1.58 was pruned; v0.1.59 is kept for rollback. Mobile: `hermes-app-expo.service` restarted (PID 385457 → 452778); iOS and Android manifests report SDK 57.0.0, both launch bundles return HTTP 200, and the served icon font equals the repository font (hash `123afa5a…`). Mac visual check is still open.
+
+## Composer focus when the app becomes active
+
+Requested by Jamie: when the desktop app comes back to the front and the visible tab is a Session page, the cursor goes to that page's composer.
+
+- Main process: the window `focus` event calls `DesktopTabManager.windowFocused()`. If the active tab is a visible Session page, the manager focuses its view and sends `desktop:focus-composer`.
+- No change for New chat and Automation tabs, or while a dialog in the main window covers the page (the page view is hidden then).
+- Session page (`shell.tsx`): on the signal, the composer takes focus without scrolling the timeline. A dialog open on the page (Edit labels) keeps its focus. If the composer is disabled during a send, focus returns to it when the send ends.
+- This also applies when the user last clicked the sidebar or the browser pane before switching to another app.
+- Tests: `tests/native-tabs.test.mjs` (which tab is focused and signaled), `tests/window-focus-composer.test.mjs` (Chromium, production Session page: focus from a button and from no focus, reading position unchanged, open dialog kept, hidden tab ignored). Mac acceptance is pending; the macOS window activation itself is not tested on Linux.

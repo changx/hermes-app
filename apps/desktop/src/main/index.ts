@@ -325,7 +325,7 @@ const createMainWindow = (): BrowserWindow => {
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
   }, browser, () => settingsWindow.open(), () => browserControl?.sync());
-  window.on('focus', () => browserControl?.sync()); window.on('blur', () => browserControl?.sync());
+  window.on('focus', () => { browserControl?.sync(); tabs?.windowFocused(); }); window.on('blur', () => browserControl?.sync());
 
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));

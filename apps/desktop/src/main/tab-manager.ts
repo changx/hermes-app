@@ -157,6 +157,12 @@ export class DesktopTabManager {
     else { if (!this.activeTabId) this.service.deactivateThread(); this.publish(); }
     if (targets.length < requested.length) throw new Error('Wait for the current action');
   }
+  /** The window became active: a visible Session page takes focus and puts the cursor in its composer. */
+  windowFocused(): void {
+    const tab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
+    if (!tab || tab.kind !== 'session' || !this.bounds.visible || tab.view.webContents.isDestroyed()) return;
+    tab.view.webContents.focus(); tab.view.webContents.send('desktop:focus-composer');
+  }
   private focusActive(): void {
     const tab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
     if (tab && !tab.view.webContents.isDestroyed()) tab.view.webContents.focus();
