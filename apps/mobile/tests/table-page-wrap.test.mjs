@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { create, act } from 'react-test-renderer';
+import * as codeBlocks from '../../../packages/client/src/codeBlocks.ts';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
@@ -16,12 +17,12 @@ const modules = {
   './sessionNavigation': { useSessionNavigation: () => ({}) },
   '../../../packages/client/src/sessionLinks': {}, 'expo-video': {},
   'react-native-webview': 'WebView', './messageMarkdown': {}, './markdownWeb': {}, './articleHtml': { ARTICLE_TEXT_LIMIT: 200000, renderArticleHtml: () => ({ html: '<article>Fixture</article>', links: [], expansions: [] }) },
-  '../../../packages/client/src/toolPresentation': {}, './Viewers': {}, './RenderResources': { useRenderResources: () => null }, './reducedMotion': {},
+  '../../../packages/client/src/toolPresentation': {}, '../../../packages/client/src/codeBlocks': codeBlocks, './Viewers': {}, './RenderResources': { useRenderResources: () => null }, './reducedMotion': {},
   './CopyToast': { copyWithToast: async text => { copiedTexts.push(text); return true; } }, './openLink': { openLink: () => {} },
 };
 const output = { exports: {} };
 // Test-only exports exercise the exact internal production components, not a replica.
-const source = readFileSync(new URL('../src/MessageContent.tsx', import.meta.url), 'utf8') + '\nexport { MarkdownTable, ArticleContent };';
+const source = readFileSync(new URL('../src/MessageContent.tsx', import.meta.url), 'utf8') + '\nexport { MarkdownTable, ArticleContent, RenderBlock };';
 new Function('module', 'exports', 'require', ts.transpileModule(source, { compilerOptions: {
   module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true,
 } }).outputText)(output, output.exports, name => name in modules ? modules[name] : require(name));
@@ -104,4 +105,18 @@ test('inline code in a cell copies on tap; inline code inside a link keeps the l
     assert.equal(linked.props.onPress, undefined);
     assert.equal(linked.parent.parent.props.accessibilityRole, 'link');
   } finally { await act(async () => root.unmount()); }
+});
+
+test('plain-text code blocks wrap; language code blocks keep the horizontal scroller', async () => {
+  const long = 'Plain prose that is much longer than the phone width and must wrap onto the next line. '.repeat(4);
+  for (const [language, scrolls] of [['', false], ['text', false], ['TXT', false], ['plaintext', false], ['plain', false], ['python', true], ['bash', true]]) {
+    let root;
+    await act(async () => { root = create(React.createElement(output.exports.RenderBlock, {
+      block: { kind: 'code', text: long + '\n', language }, tone: color => ({ color }), allowed: new WeakSet(), onExpand() {}, onInteraction() {},
+    })); });
+    try {
+      assert.equal(root.root.findAllByType('ScrollView').filter(node => node.props.horizontal).length, scrolls ? 1 : 0, `${language || 'no language'} scroller`);
+      assert.ok(root.root.findAllByType('Text').some(node => node.props.children === long + '\n'), `${language || 'no language'} keeps all text`);
+    } finally { await act(async () => root.unmount()); }
+  }
 });

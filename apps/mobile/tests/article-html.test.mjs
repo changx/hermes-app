@@ -7,6 +7,7 @@ import { loadMarkdownEngines } from './render-resource-fixture.mjs';
 import { safeFontScale } from '../src/fontScale.ts';
 import * as toolPresentation from '../../../packages/client/src/toolPresentation.ts';
 import { parseMessageMarkdown, safeLinkUrl } from '../src/messageMarkdown.ts';
+import * as codeBlocks from '../../../packages/client/src/codeBlocks.ts';
 
 // Execute the real article serializer against the real Markdown AST, with small
 // stand-ins only for the separately bundled offline engine payloads.
@@ -20,6 +21,7 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../src/articleHtml.ts',
   if (name === './markdownEngines') return loadMarkdownEngines(sampleEngines);
   if (name === './messageMarkdown') return { safeLinkUrl };
   if (name === './fontScale') return { safeFontScale };
+  if (name === '../../../packages/client/src/codeBlocks') return codeBlocks;
   throw Error(name);
 } });
 const render = (text, calls) => output.exports.renderArticleHtml(parseMessageMarkdown(text), calls);
@@ -47,4 +49,11 @@ test('article inline code copies by index; inline code inside a link stays a lin
   assert.match(page.html, /<code class="copyable" data-copy="0" role="button">npm test<\/code>/);
   assert.match(page.html, /<a href="https:\/\/example.com\/" data-link="0"><code>docs<\/code><\/a>/);
   assert.match(page.html, /closest\('\[data-copy\]'\)/);
+});
+
+test('full article wraps plain-text code blocks and keeps language code on one line', () => {
+  const html = render('```text\nplain one\n```\n\n```\nplain two\n```\n\n    plain three\n\n```python\nprint(1)\n```').html;
+  const classes = [...html.matchAll(/<section class="([^"]+)" data-copy/g)].map(match => match[1]);
+  assert.deepEqual(classes, ['code wrap', 'code wrap', 'code wrap', 'code']);
+  assert.match(html, /\.code\.wrap pre\{white-space:pre-wrap;overflow-wrap:anywhere\}/);
 });
