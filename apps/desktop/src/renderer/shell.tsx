@@ -384,6 +384,9 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
+  // Shift+Cmd+L arrives from the main process for the active Session page only. It acts like a click on the flag button.
+  const todoShortcut = useRef<() => void>(undefined);
+  useEffect(() => window.hermesDesktop.onToggleTodo?.(() => { if (!document.querySelector('dialog[open]')) todoShortcut.current?.(); }), []);
   if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
   if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside><SettingsButton className="text-button" /></main>;
   // An Automation tab holds no drafts; it lists conversations and opens them in their own tabs.
@@ -399,6 +402,9 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     setTodoBusy(true); setTodoError('');
     void setSessionTodo(currentThread, !todo, snapshot.connectionKey ?? '').catch((error: Error) => setTodoError(error.message)).finally(() => setTodoBusy(false));
   };
+  const todoEnabled = snapshot.supportsSessionLabels && snapshot.tabActive === true && snapshot.connectionState === 'online';
+  todoShortcut.current = todoEnabled ? toggleTodo : undefined;
+  const todoTooltip = `${todo ? 'Remove todo' : 'Mark as todo'} (${globalThis.window?.hermesDesktop?.getRuntimeInfo?.().platform === 'darwin' ? '⇧⌘L' : 'Ctrl+Shift+L'})`;
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
   const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor === 'palette' && <SessionPicker snapshot={snapshot} close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>
@@ -411,7 +417,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline; all labels wrap below the buttons, so the toolbar height varies. */}
       <div className="session-toolbar" role="toolbar" aria-label="Session tools">
         <div className="conversation-actions">
-          {snapshot.supportsSessionLabels && <button type="button" className={`todo-toggle${todo ? ' todo-on' : ''}`} aria-pressed={todo} aria-label={todo ? 'Remove todo' : 'Mark as todo'} data-tooltip={todo ? 'Remove todo' : 'Mark as todo'}
+          {snapshot.supportsSessionLabels && <button type="button" className={`todo-toggle${todo ? ' todo-on' : ''}`} aria-pressed={todo} aria-label={todo ? 'Remove todo' : 'Mark as todo'} data-tooltip={todoTooltip}
             disabled={todoBusy || !currentThread || snapshot.connectionState !== 'online'} onClick={toggleTodo}><TodoIcon on={todo} /></button>}
           <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
           {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation"

@@ -38,6 +38,7 @@ function Shortcuts() {
     ['Find a session', [modifier, 'K']], ['New chat', [modifier, 'N']],
     ['New tab', [modifier, 'T']], ['Close current tab', [modifier, 'W']],
     ['Next tab', [modifier, 'Tab']], ['Previous tab', [modifier, 'Shift', 'Tab']],
+    ['Mark or remove todo', [modifier, 'Shift', 'L']],
     ['Paste text or files', [modifier, 'V']], ['Open Settings', [modifier, ',']], ['Close Settings or dialog', ['Esc']],
   ] as const;
   return <div className="settings-section"><p className="settings-description">Keyboard shortcuts work while Hermes is focused. These shortcuts are fixed in this version.</p><dl className="settings-shortcuts">{rows.map(([label, keys]) => <div key={label}><dt>{label}</dt><dd>{keys.map(key => <kbd key={key}>{key}</kbd>)}</dd></div>)}</dl></div>;

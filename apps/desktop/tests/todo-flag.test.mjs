@@ -93,8 +93,9 @@ test('Chromium: Session toolbar flag marks and clears todo; the label row leaves
     import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
     import {DesktopShellView} from './apps/desktop/src/renderer/shell';
     ${common}
-    const saves=[]; let mode='ok';
+    const saves=[]; let mode='ok', todoSignal=null;
     window.hermesDesktop={loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},getRuntimeInfo:()=>({platform:'linux',versions:{}}),
+      onToggleTodo:listener=>{todoSignal=listener;return()=>{if(todoSignal===listener)todoSignal=null;};},
       saveThreadLabels:async(id,markers,time,key)=>{saves.push([id,markers,key]);if(mode==='fail')throw Error('HTTP 503');return {thread_id:id,project_id:'p',markers:mode==='stale'?['bug','todo']:markers,markers_updated_at:time};}};
     const snap=markers=>({phase:'connected',connectionKey:'one',connectionState:'online',draftIdentity:'one',supportsSessionLabels:true,tabId:'tab',tabKind:'session',tabActive:true,
       selectedThreadId:'s1',channels:[{id:'p',name:'Research'}],threads:[t('s1','Plan',60,markers)],messages:[],interactions:[],canLoadOlder:false});
@@ -105,7 +106,7 @@ test('Chromium: Session toolbar flag marks and clears todo; the label row leaves
       await wait(80);
       const flag=()=>document.querySelector('.conversation-actions .todo-toggle');
       const first=document.querySelector('.conversation-actions button');
-      ensure('flag is the first toolbar button',first===flag()&&flag().getAttribute('aria-label')==='Mark as todo'&&flag().getAttribute('aria-pressed')==='false'&&flag().dataset.tooltip==='Mark as todo');
+      ensure('flag is the first toolbar button',first===flag()&&flag().getAttribute('aria-label')==='Mark as todo'&&flag().getAttribute('aria-pressed')==='false'&&flag().dataset.tooltip==='Mark as todo (Ctrl+Shift+L)');
       ensure('outline when off',getComputedStyle(flag().querySelectorAll('path')[1]).fill==='none');
       flag().click(); await wait(30);
       ensure('mark saves the flag through the label API',JSON.stringify(saves)==='[["s1",["bug","todo"],"one"]]');
@@ -123,6 +124,20 @@ test('Chromium: Session toolbar flag marks and clears todo; the label row leaves
       ensure('disabled while offline',flag().disabled);
       render({...snap(['todo']),supportsSessionLabels:false}); await wait(20);
       ensure('hidden without label support',!flag());
+      // Shortcut: the main process sends desktop:toggle-todo to the active Session page.
+      mode='ok'; let count=saves.length;
+      render(snap(['bug'])); await wait(20); todoSignal(); await wait(30);
+      ensure('shortcut marks todo like the button',saves.length===count+1&&JSON.stringify(saves.at(-1))==='["s1",["bug","todo"],"one"]');
+      render(snap(['bug','todo'])); await wait(20);
+      ensure('tooltip names the shortcut',flag().dataset.tooltip==='Remove todo (Ctrl+Shift+L)');
+      todoSignal(); await wait(30);
+      ensure('shortcut removes todo',JSON.stringify(saves.at(-1))==='["s1",["bug"],"one"]');
+      count=saves.length;
+      render({...snap(['bug']),connectionState:'retrying'}); await wait(20); todoSignal(); await wait(30);
+      render({...snap(['bug']),tabActive:false}); await wait(20); todoSignal(); await wait(30);
+      render({...snap(['bug']),supportsSessionLabels:false}); await wait(20); todoSignal(); await wait(30);
+      render(snap(['bug'])); await wait(20); const dialog=document.createElement('dialog'); document.body.append(dialog); dialog.show(); todoSignal(); await wait(30); dialog.remove();
+      ensure('shortcut does nothing offline, in a hidden tab, without label support, or with a dialog open',saves.length===count);
     }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
   `);
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));

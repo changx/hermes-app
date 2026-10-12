@@ -13,6 +13,7 @@ Requested by Jamie: a quick todo flag on the Session page. The flag marks the se
 ## Desktop
 
 - Session toolbar: a flag button is the first tool button. Outline when off, filled orange when on (`aria-pressed`). Tooltip and name: "Mark as todo" or "Remove todo". It is disabled while the connection is offline. It is hidden when the server has no label support.
+- Shortcut: ⇧⌘L on macOS, Ctrl+Shift+L elsewhere (the Mail shortcut for Flag). It toggles the flag of the active Session tab, also while the sidebar or a browser pane has focus. The main process catches the key in `before-input-event` and sends `desktop:toggle-todo` to the active Session tab only. The page runs the same action as the button. The shortcut does nothing when the button is unavailable (offline, no label support, a save in progress), when the tab is not active, or when a dialog is open. The button tooltip names the shortcut ("Mark as todo (⇧⌘L)"); Settings › Shortcuts lists it as "Mark or remove todo".
 - The toolbar label row shows the other labels only.
 - Sidebar order from top: New chat, search box, frequent labels, Automations, **Todo**, Recents, Projects.
 - The Todo section lists every todo session of any age from every connection: running first, then newest activity. It is hidden when no session is flagged. The header collapses it; the choice is saved on this device (`hermes.sidebar.todo-collapsed`).
@@ -33,7 +34,7 @@ Requested by Jamie: a quick todo flag on the Session page. The flag marks the se
 
 ## Verification
 
-- Desktop `tests/todo-flag.test.mjs` (Chromium, production components): section order, Todo content and order, Recents and Project running-first order, flag placement and glyph, no pills, row height, frequent labels, context-menu mark and remove, collapse, hidden without todo; toolbar button state, save, label row, failure, stale read-back, 10-label limit, offline, no label support.
+- Desktop `tests/todo-flag.test.mjs` (Chromium, production components): section order, Todo content and order, Recents and Project running-first order, flag placement and glyph, no pills, row height, frequent labels, context-menu mark and remove, collapse, hidden without todo; toolbar button state, save, label row, failure, stale read-back, 10-label limit, offline, no label support; shortcut mark and remove, tooltip, and no action offline, in a hidden tab, without label support or with a dialog open. `settings-layout.test.mjs` checks the Shortcuts list. The main-process key routing has no automated test; check it on the Mac.
 - Updated: `sidebar-recents.test.mjs` (running first), `session-labels.test.mjs` (no row pills, menu), `session-toolbar.test.mjs` (tool order), `font-settings.test.mjs`.
 - Mobile `tests/todo-flag.test.mjs` (shared rules, limit equals the server limit, toggle messages), `tests/channel-archive.test.mjs` (row flag, long-press toggle), `tests/recents-search.test.mjs` (Todo section, order).
 - Linux only. Mac and iPhone acceptance are pending.

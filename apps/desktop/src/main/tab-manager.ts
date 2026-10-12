@@ -39,6 +39,12 @@ export class DesktopTabManager {
       if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || input.isAutoRepeat || this.closed || skip?.()) return;
       const key = input.key.toLowerCase();
       if (key === ',' && this.openSettings) { event.preventDefault(); this.openSettings(); return; }
+      // Shift+Cmd+L (Mail's Flag) toggles the active Session's todo flag, also while the sidebar has focus.
+      if (key === 'l' && input.shift) {
+        event.preventDefault(); const tab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
+        if (tab?.kind === 'session' && !tab.view.webContents.isDestroyed()) tab.view.webContents.send('desktop:toggle-todo');
+        return;
+      }
       if ((key === 't' || key === 'n') && this.service.snapshot().phase === 'connected') {
         event.preventDefault(); const tab = this.sender(contents), snapshot = this.snapshot(contents);
         this.newTab(tab?.initialChannelId ?? snapshot.selectedChannelId); return;
