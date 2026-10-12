@@ -1,5 +1,5 @@
 import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice } from './index';
-import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
+import { parseCatalogue, parseCatalogueThreads, parseLiveFrame, parseResultRead, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
 
@@ -215,13 +215,47 @@ export class LiveSessionClient extends HermesClient {
     if(id!==this.wanted||!this.watchReady||this.connectionState!=='online')return;
     const thread=this.threads.get(id);
     if(!thread?.completed_unread||thread.result_version!==version||thread.result_ref!==ref||!this.messages.get(id)?.some(m=>m.ref_seq===ref&&m.role==='assistant'))return;
-    const linked=combine(this.scope.signal,this.attempt?.signal);
+    const linked=combine(this.scope.signal,this.attempt?.signal),directory=this.owner??this;
     try{
-      const body=await this.call('POST','/v1/threads/'+encodeURIComponent(id)+'/result-read',{result_version:version},linked.signal);
-      if(body.thread_id!==id)throw new ProtocolError('result acknowledgement identity mismatch');
-      // Read back the authoritative directory, not a locally invented cleared flag.
-      await this.snapshot(linked.signal);
-    }finally{linked.done()}
+      // The response is the server's committed result state: one round trip clears
+      // the marker. The commit's directory_changed then rereads the row everywhere.
+      const result=parseResultRead(await this.call('POST','/v1/threads/'+encodeURIComponent(id)+'/result-read',{result_version:version},linked.signal),id);
+      if(linked.signal.aborted)return;
+      // A row read already in flight may predate this commit; it must not restore the marker.
+      directory.threadReads.set(id,++directory.threadReadNumber);
+      const current=this.threads.get(id);
+      // A row that already shows a newer result keeps it.
+      if(!current||result.result_version<(current.result_version??0))return;
+      directory.batchChanges(()=>{this.threads.set(id,{...current,...result});directory.directoryAdopted('thread:'+id);directory.changed()});
+    }catch(error){throw error instanceof LiveProtocolError?new ProtocolError('result acknowledgement identity mismatch'):error}
+    finally{linked.done()}
+  }
+  /** Newest row read per Thread; an older read's response is dropped (owner only). */
+  private readonly threadReads=new Map<string,number>();
+  private threadReadNumber=0;
+  /** Reads only the named Thread rows after a directory_changed that names them. */
+  private async refreshThreads(ids:string[],signal:AbortSignal):Promise<void>{
+    const owner=this.liveController,ticket=++this.threadReadNumber;
+    for(const id of ids)this.threadReads.set(id,ticket);
+    const body=parseCatalogueThreads(await this.call('GET','/v1/catalogue/threads?'+ids.map(id=>'id='+encodeURIComponent(id)).join('&'),undefined,signal),ids);
+    if(signal.aborted||owner!==this.liveController)throw new Error('aborted');
+    // A row in a Channel this client does not know means its Channel list is stale.
+    if(body.items.some(item=>!this.channels.has(item.project_id))){await this.refreshDirectory(signal);return}
+    this.batchChanges(()=>{
+      const current=(id:string)=>{if(this.threadReads.get(id)!==ticket)return false;this.threadReads.delete(id);this.directoryAdopted('thread:'+id);return true};
+      for(const item of body.items)if(current(item.id))this.threads.set(item.id,item);
+      for(const id of body.missing)if(current(id))this.threads.delete(id);
+      if(this.wanted&&!this.isThreadAvailable(this.wanted))this.closeConversation();
+      this.changed();
+    });
+  }
+  private directoryChangeFrame(frame:Extract<LiveFrame,{type:'directory_changed'}>,signal:AbortSignal,failure:(error:unknown)=>void):void{
+    if(!frame.thread_ids||!this.supportsCatalogueThreads||!this.directoryReady){void this.refreshDirectory(signal).catch(failure);return}
+    // Any failure of the row read falls back to the full catalogue walk.
+    void this.refreshThreads(frame.thread_ids,signal).catch(error=>{
+      if(signal.aborted||error instanceof Error&&error.message==='aborted')return;
+      void this.refreshDirectory(signal).catch(failure);
+    });
   }
 
 
@@ -505,7 +539,7 @@ export class LiveSessionClient extends HermesClient {
             void this.refreshDirectory(attempt.signal).then(()=>{if(!attempt.signal.aborted)this.state('online')},failure);
             since=Date.now();this.livenessChanged=reschedule;this.probeLiveness=probe;schedule(since+gap());
           }else if(!this.hello)throw new ProtocolError('live notification before hello');
-          else if(frame.type==='directory_changed')void this.refreshDirectory(attempt.signal).catch(failure);
+          else if(frame.type==='directory_changed')this.directoryChangeFrame(frame,attempt.signal,failure);
           else if(frame.type==='session_state'){
             const t=this.threads.get(frame.thread_id);
             if(t){this.threads.set(t.id,{...t,running:frame.running});this.changed()}

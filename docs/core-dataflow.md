@@ -35,13 +35,17 @@ watch 确认先于初次正文读取。读取期间的提示触发再次核对�
 
 完整生命周期见 [存活 session 页面](live-session-pages.md)与 [OPEN-SESSION-LIVE](open-session-live.md)。
 
-### 目录变更（创建、改名、归档、删除、标签）
+### 目录变更（创建、改名、归档、删除、标签、已读）
 
-客户端创建、改名、归档或删除 Channel／Thread，或保存标签后，只等待这一个写请求。写请求的响应就是服务端已提交的行。共享 SDK 用响应更新账号目录，然后立即返回；不再追加 GET 回读，也不等待整个 `/v1/catalogue` 重新分页读取。归档的 Thread 立即离开目录，与 catalogue 一致。
+客户端创建、改名、归档或删除 Channel／Thread，保存标签，或确认结果已读后，只等待这一个写请求。写请求的响应就是服务端已提交的行。共享 SDK 用响应更新账号目录，然后立即返回；不再追加 GET 回读，也不等待整个 `/v1/catalogue` 重新分页读取。归档的 Thread 立即离开目录，与 catalogue 一致。已读确认 `POST /v1/threads/{id}/result-read` 的响应带已提交的 `completed_unread`、`result_version`、`result_ref`，SDK 直接写入该行；该行已显示更新的结果时保留。
 
-服务端提交后推送 `directory_changed`，目录在后台重新分页读取。某次分页读取开始后才确认的行，以确认的行为准，不被这次较旧的读取覆盖或删除；之后开始的读取以服务端为准。断线期间错过的推送由重连后的 hello 目录读取补齐。
+服务端提交后推送 `directory_changed`。只有 Thread 行变化时，推送带 `thread_ids`（最多 100 个）；支持 `catalogue_threads` capability 的客户端只读这些行：`GET /v1/catalogue/threads?id=<id>&id=<id>`，响应为 `{items, missing}`，行格式与 catalogue 相同。`missing` 中的 Thread 已不存在或不在可用 Channel 中，客户端删除该行。请求次数与 session 总数无关，固定 1 次。
 
-此前每个变更要等待一次完整目录读取；读取期间到达的 `directory_changed` 又触发第二次读取。开发连接有 194 个 session（7 页），创建一个 session 需要 15 个顺序请求，北京约 4 秒。现在为 1 个请求。
+以下情况客户端仍完整分页读取 catalogue：推送不带 `thread_ids`（Channel 变化、超过 100 个 Thread）；服务端不支持该 capability；首次目录读取未完成；行属于本地未知的 Channel；读取变化行失败。
+
+同一 Thread 的变化行读取按发起顺序生效，较旧的响应不覆盖较新的响应。已读确认返回后，此前发起的该 Thread 行读取作废，不能恢复未读标记。某次分页读取开始后才确认的行，以确认的行为准，不被这次较旧的读取覆盖或删除；之后开始的读取以服务端为准。断线期间错过的推送由重连后的 hello 目录读取补齐。推送仍只是提示，不是事件日志，不携带游标或版本。
+
+此前每个变更要等待一次完整目录读取；读取期间到达的 `directory_changed` 又触发第二次读取。开发连接有 194 个 session（7 页），创建一个 session 需要 15 个顺序请求，北京约 4 秒。现在为 1 个请求。已读确认此前为 1 个 POST 加完整目录读取（jamie 连接 65 个 session，3 页，共 4 个顺序请求；北京单次请求约 0.2–0.6 秒），现在为 1 个 POST；其他设备收到推送后读 1 次变化行。
 
 发布记录（2026-10-12）：App `de795c9`，标签 `v0.1.71`（同时包含已合入 main 的 automation 编辑客户端 `6e155b4`、`95ba24f`）。Mac mini 构建 180 项测试 0 失败；下载的 `Hermes-0.1.71-macOS-arm64.zip` 校验和通过，Info.plist 版本 0.1.71，arm64，ASAR `dist/` 29 个文件与本地构建逐字节一致。Expo 测试入口已重启（PID 1398110），公网 iOS/Android manifest 200、SDK 57，launchAsset 200，均含新代码标记；Gateway PID 与插件哈希不变，未改插件或核心。真机（iPhone、Mac）验收未做。
 
