@@ -28,3 +28,11 @@ Local checks: shared client 79 passed; desktop full check (typecheck/build/tests
 Desktop and mobile TypeScript checks passed. iOS and Android offline Expo exports both passed. Dependency symlinks outside Metro's watch root initially prevented module resolution; copying the existing locked mobile dependency tree into the isolated worktree fixed both exports without dependency or lockfile changes. Evidence is kept in the active profile's private workspace, not committed logs or credentials.
 
 Publication is now partially complete: main is merged, dot-only Expo resources and desktop v0.1.10 are published and read back. Shared backend activation is blocked by the running Gateway's self-restart guard; installed plugin/Gateway remain unchanged. The minimal plugin artifact and external operator lane are prepared. See [publication status, exact evidence and external activation](completed-unread-release.md). Real model lifecycle and physical-device visibility gates remain pending; no signed standalone mobile package is claimed.
+
+## Release 2026-10-12: read markers from the ack, changed rows only
+
+- App `main` `c16093e` (merge of `feat/directory-thread-rows`), desktop v0.1.72 (`60471c7`). Mac mini workflow: 189 tests, 0 fail, 44 skipped, audit 0. Downloaded zip: `sha256sum -c` OK, Info.plist 0.1.72, `catalogue/threads` in `dist/main/index.cjs`. Releases kept: v0.1.72, v0.1.71.
+- Expo restarted 06:55:30 PDT. iOS and Android manifests 200, SDK 57.0.0, launch assets 200, both bundles contain `catalogue/threads` and `thread_ids`. This restart also published `perf/new-session-open` and the white Recents search field (`#eef1f5` count 0).
+- Plugin v0.2.29 (`b5d47f2`) installed to `plugin-releases/hermes-app/current` for jamie and hermes-app-dev. It runs after the next `hermes-gateway.service` restart. Until then clients use the full catalogue fallback; the ack change already works.
+- Checks before release: client 76/76; mobile 185 pass, 1 skipped; desktop 188/189 twice, the one failure is the known `browser-window-native` `ETIMEDOUT` flake (passes alone 2/2); plugin P1 28 failed / 223 passed on the branch vs 28 / 220 on `main`, same FAILED set.
+- Pending: Mac and iPhone acceptance.
