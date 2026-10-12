@@ -42,3 +42,9 @@ Requested by Jamie: redo the context menu of the Session rows in the sidebar (To
 - `native-electron.test.mjs` (Electron): a Session view cannot open the main-window menu or copy another Session's link; the shell menu rejects invalid items before any popup.
 - Linux `desktop:check` with Chrome and Electron under Xvfb: typecheck and build pass; 176 tests, 175 pass, 1 fail. The failure is `browser-window-native`, which is intermittent on the unchanged base too (base 2 of 3 runs pass; candidate 1 of 2 single reruns pass).
 - Pending: Mac acceptance of the native menu (look, position, keyboard, ring, rename and archive from the sidebar).
+
+## Release
+
+- 2026-10-12: desktop v0.1.70 (`1ddd42d`, tag `v0.1.70`). Mac mini workflow run 38238890363: 176 tests, 134 pass, 0 fail, 42 skipped; audit 0; zip uploaded direct at 37.4 Mbps. The downloaded zip passes sha256; Info.plist 0.1.70; arm64; the ASAR contains `desktop:context-menu`, `Mark as Todo`, `Edit Labels…` and `Rename session`, and no `session-context-menu`. Two newest Releases kept.
+- No mobile, shared client or plugin change: Expo and Gateway not restarted.
+- Pending: Mac acceptance. Rollback: reinstall v0.1.69.
