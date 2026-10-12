@@ -39,5 +39,6 @@ Requested by Jamie: redo the context menu of the Session rows in the sidebar (To
 
 - `tests/session-menu.test.mjs`: item order and states; main-process validation; IPC is main-window only; no HTML menu. Chromium (production components): menu at the pointer, row ring, one menu at a time, each action on the right row and connection, archive confirm and cancel, offline state, no label support, Shift+F10 position; rename dialog prefill, selection, blank, failure and success.
 - Updated: `todo-flag.test.mjs`, `session-labels.test.mjs`, `session-toolbar.test.mjs`.
-- Linux: typecheck, build and the full desktop suite pass (176 tests: 171 pass, 0 fail, 5 skipped).
+- `native-electron.test.mjs` (Electron): a Session view cannot open the main-window menu or copy another Session's link; the shell menu rejects invalid items before any popup.
+- Linux `desktop:check` with Chrome and Electron under Xvfb: typecheck and build pass; 176 tests, 175 pass, 1 fail. The failure is `browser-window-native`, which is intermittent on the unchanged base too (base 2 of 3 runs pass; candidate 1 of 2 single reruns pass).
 - Pending: Mac acceptance of the native menu (look, position, keyboard, ring, rename and archive from the sidebar).

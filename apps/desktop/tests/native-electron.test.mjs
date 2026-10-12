@@ -178,6 +178,9 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await evaluate(shell,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)');
  assert.deepEqual(manager.menu(first.id).map(i=>i.enabled),[true,true,true],'first tab menu enables every close action');
  await assert.rejects(evaluate(ac,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)'),/./,'session views cannot open the tab menu');
+ await assert.rejects(evaluate(ac,'window.hermesDesktop.showContextMenu([{id:"rename",label:"Rename…"}],10,10)'),/./,'session views cannot open a main-window menu');
+ await assert.rejects(evaluate(shell,'window.hermesDesktop.showContextMenu([{id:"x",label:"x",submenu:[]},{id:"x",label:"y"}],10,10)'),/./,'the shell menu rejects invalid items before any popup');
+ await assert.rejects(evaluate(ac,'window.hermesDesktop.copySessionLink("other-session")'),/./,'a session view cannot copy another session link');
  await evaluate(shell,'window.hermesDesktop.closeTab('+JSON.stringify(second.id)+')');await until(()=>bc.isDestroyed(),'closed view released');assert.equal(ac.isDestroyed(),false);assert.equal(dc.isDestroyed(),false);
  manager.menuAction(first.id,'close-right');await until(()=>dc.isDestroyed(),'close tabs to the right releases the new chat view');assert.equal(ac.isDestroyed(),false);assert.equal(manager.activeTabId,first.id);
  manager.dispose();await until(()=>ac.isDestroyed(),'all views released');
