@@ -1,6 +1,6 @@
 # Mobile bottom tabs, Recents and Automations
 
-Status: implemented on branch `feat/mobile-tabs-recents` (2026-10-11). Needs the Hermes App plugin 0.2.22 or later for Thread origin and Automations. Not yet accepted on a real iPhone.
+Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origin and Automations need the plugin 0.2.22 to run in the Gateway. Not yet accepted on a real iPhone.
 
 ## Confirmed requirements (Jamie, 2026-10-11)
 
@@ -64,3 +64,11 @@ See `docs/cron-threads.md` in the plugin repository (`/opt/projects/jamie/hermes
 - Desktop: `npm run desktop:typecheck`; `apps/desktop/tests/sidebar-recents.test.mjs` covers automation Threads in Recents.
 - Mobile: `npm run check` and `npm test` in `apps/mobile` (`tests/recents-tab.test.mjs`, route ownership in `tests/multi-connection.test.mjs`); `npx expo export --platform ios` builds.
 - Open: real iPhone check of the native tab bar (Expo Go), list bottom insets above the tab bar, the channel picker sheet, and the keyboard on the new-conversation page.
+
+## Release record
+
+- 2026-10-11, client `v0.1.65` (`7165fa2`), plugin `v0.2.22` (`8234b69`).
+- Plugin: installed through the shared `plugin-releases/hermes-app/current` link for `hermes-app-dev` and `jamie`. Online backups of both `metadata.sqlite` files are in the private evidence folder (`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/20261011-202212-automation-origin/`). The migration was run on copies of both databases first: only `threads.origin` and the `delivery_jobs` table change; `integrity_check` ok; 0.2.21 still reads and writes a migrated copy, so a code rollback needs no data restore. Active after the next `hermes-gateway.service` restart.
+- Plugin P1 suite (baseline venv): every failure also fails on `main` in the same session; no new failures.
+- Mobile: Expo service restarted on `7165fa2`; public iOS and Android manifests 200 (SDK 57), both bundles contain the Recents, Automations and native-tabs code.
+- Desktop: built on the Mac mini (126 pass, 0 fail, audit 0), 29 packaged `dist/` files identical to the local build (source maps are excluded by design), published as GitHub Release `v0.1.65`; the downloaded zip equals the checked zip.
