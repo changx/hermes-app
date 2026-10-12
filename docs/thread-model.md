@@ -33,3 +33,12 @@ Jamie 确认：
 - 插件真实 GatewayRunner 测试（本地合成 Provider）：选定模型的 Thread 每轮请求都用所选模型；默认 Thread 用 primary model；标题请求只用固定的标题模型；第一条历史是用户原文；回复模型标签一致；创建和对话后 `config.yaml` 不变；无效选择、确认、解析失败、幂等重试和冲突都覆盖。
 - 共享客户端、手机（真实组件 + 共享客户端 + 假服务端）、桌面 Chromium（列表来源、换 Project、确认、取消、拒绝、布局间距）测试。
 - 未验证：iPhone 和 Mac 真机外观与操作、真实 Provider 的模型切换。
+
+## 发布结果（2026-10-11）
+
+- 客户端：`feat/thread-model` 变基到 `fdbeb38`（包含桌面 Automations）后重跑全部检查：共享客户端 55/55，手机 169 通过、1 跳过，TS 与 iOS/Android export 通过，桌面 166/166。`8883b48` 推到 `origin/main`，标签 `v0.1.68`。
+- 桌面：Mac mini 运行 38215156604 成功（166 测试，0 失败，audit 0）。Release `v0.1.68` 下载后 `sha256sum -c` 通过，Info.plist 0.1.68，arm64，ASAR 的 29 个 `dist/` 文件与本地构建逐字节相同。v0.1.68 同时带上桌面 Automations（`789dde2`）。
+- 手机：运行目录快进到 `8883b48`，`hermes-app-expo.service` 重启（PID 581163 → 755745）。iOS/Android manifest 200、SDK 57，bundle 含 `Choose a model`、`Applies to this conversation only.`、`confirm_selection`。Gateway PID 595912 未变。
+- 插件：`v0.2.25`（`272fb3c`）推到 `changx/hermes-app-plugin`。打包并切换共享 `current` → `releases/0.2.25`（jamie 与 hermes-app-dev 同时）。变更模块 `adapter.py`、`model_settings.py` 在启动时导入，只装文件是安全的。需要重启 `hermes-gateway.service` 才生效；重启前服务端没有 `thread_model` capability，客户端不显示模型选项。
+- 证据：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/20261011-235708-thread-model/`（插件包、部署记录），Channel 工作区 `thread-model-evidence/`（测试与发布日志）。
+- 回滚：插件 `ln -sfn releases/0.2.24 ~/.hermes/plugin-releases/hermes-app/current.tmp && mv -T …/current.tmp …/current` 后重启 Gateway；手机 `git revert` 四个功能提交后快进并重启 Expo；桌面装回 v0.1.67。
