@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
 import { recentWindow, threadWindow } from "./thread-navigation";
-import { addQueryLabel, emptySessionQuery, sessionLabelSuggestions, sessionQueryActive, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
+import { addQueryLabel, emptySessionQuery, frequentSessionLabels, removeQueryLabel, sessionLabelSuggestions, sessionQueryActive, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { LabelPills } from './session-labels';
 import { SearchIcon, searchSessions, SessionQueryInput } from './session-search';
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
@@ -76,6 +76,8 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const connectionName = new Map(snapshot.channels.map(channel => [channel.id, channel.connectionName]));
   const recents = recentWindow(available, now, recentBatches);
   const labelsFor = (thread: DesktopThread) => thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true;
+  // Top labels across every listed session that supports labels; a click toggles the label in the search.
+  const frequent = frequentSessionLabels(available.filter(labelsFor));
   const row = (thread: DesktopThread, hint?: string, source?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} showLabels={labelsFor(thread)} onMenu={labelsFor(thread) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />;
   // Recents mixes every connection; with several, each row names its connection.
   const recentRow = (thread: DesktopThread) => {
@@ -92,6 +94,11 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
         onKeyDown: event => { if (event.key === 'Escape' && searching) { event.preventDefault(); event.stopPropagation(); setSearch(emptySessionQuery()); } } }} />
       {searching && <button type="button" className="sidebar-search-clear sidebar-icon-button" aria-label="Clear search" title="Clear search" onClick={() => setSearch(emptySessionQuery())}>×</button>}
     </div>
+    {frequent.length > 0 && <div className="sidebar-frequent-labels" role="group" aria-label="Frequent labels">
+      {frequent.map(label => { const on = search.labels.includes(label);
+        return <button key={label} type="button" className="label-pill frequent-label" title={label} aria-pressed={on} aria-label={on ? `Remove label ${label} from search` : `Search label ${label}`}
+          onClick={() => setSearch(on ? removeQueryLabel(search, label) : addQueryLabel(search, label))}>{label}</button>; })}
+    </div>}
     {searching ? (() => {
       const suggestions = snapshot.supportsSessionLabels === true ? sessionLabelSuggestions(available, search) : [];
       const results = searchSessions(snapshot, available, search), shown = results.slice(0, (searchBatches + 1) * 24);

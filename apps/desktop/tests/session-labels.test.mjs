@@ -39,7 +39,7 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         ensure('keyword offers the matching label',[...document.querySelectorAll('.sidebar-search-labels button')].map(b=>b.textContent).join('|')==='Foo');
         ensure('search replaces the tree',!document.querySelector('.channel-tree')&&!document.querySelector('#sidebar-recents-list'));
         ensure('keyword matches label text, 24 per batch',document.querySelectorAll('.search-result-list .tree-thread').length===24);
-        document.querySelector('[aria-label="Search label Foo"]').click();await tick();
+        document.querySelector('.sidebar-search-labels [aria-label="Search label Foo"]').click();await tick();
         ensure('label becomes a chip and clears the keyword',search.value===''&&[...document.querySelectorAll('.session-query-chip > span')].map(s=>s.textContent).join('|')==='Foo');
         ensure('label search: running first, 24 per batch',document.querySelectorAll('.search-result-list .tree-thread').length===24&&document.querySelector('.search-result-list .thread-title').textContent==='Old 0');
         ensure('current session unchanged',selected===0&&snapshot.selectedThreadId==='current');

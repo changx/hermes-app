@@ -60,3 +60,18 @@ export function sessionLabelSuggestions(sessions: readonly QueryableSession[], q
   return all.map(label => ({ label, score: rank(label) })).filter(item => Number.isFinite(item.score))
     .sort((a, b) => a.score - b.score || a.label.localeCompare(b.label)).slice(0, limit).map(item => item.label);
 }
+
+/**
+ * The labels on the most sessions, for one-click search. Ties go to the label
+ * used most recently (newest session activity), then to name order.
+ */
+export function frequentSessionLabels(sessions: readonly (QueryableSession & { lastMessageAt?: number })[], limit = 5): string[] {
+  const usage = new Map<string, { count: number; latest: number }>();
+  for (const session of sessions) for (const label of new Set(session.markers ?? [])) {
+    const item = usage.get(label) ?? { count: 0, latest: -Infinity };
+    item.count += 1; item.latest = Math.max(item.latest, session.lastMessageAt ?? -Infinity);
+    usage.set(label, item);
+  }
+  return [...usage].sort(([a, x], [b, y]) => y.count - x.count || y.latest - x.latest || a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0))
+    .slice(0, limit).map(([label]) => label);
+}

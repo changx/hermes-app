@@ -9,7 +9,7 @@ import { build } from 'esbuild';
 
 const bundle = await build({ entryPoints: [new URL('../../../packages/client/src/sessionSearch.ts', import.meta.url).pathname], bundle: true, format: 'cjs', platform: 'node', write: false });
 const mod = { exports: {} }; new Function('module', 'exports', bundle.outputFiles[0].text)(mod, mod.exports);
-const { sessionQueryScore, sessionLabelSuggestions, addQueryLabel, removeQueryLabel, sessionQueryActive } = mod.exports;
+const { sessionQueryScore, sessionLabelSuggestions, addQueryLabel, removeQueryLabel, sessionQueryActive, frequentSessionLabels } = mod.exports;
 
 const s = (title, markers = []) => ({ title, markers });
 
@@ -38,6 +38,15 @@ test('label suggestions: folded substring, best first, selected labels excluded;
   assert.equal(sessionQueryActive({ text: '', labels: ['bug'] }), true);
 });
 
+test('frequent labels: most sessions first, then most recent use, then name; at most five', () => {
+  const r = (markers, lastMessageAt) => ({ title: 'x', markers, lastMessageAt });
+  const rows = [r(['a', 'b', 'c'], 10), r(['a', 'b'], 20), r(['a', 'd', 'd'], 30), r(['e', 'f', 'g'], 5), r(['h'], 40), r([], 50), r(undefined, 60)];
+  assert.deepEqual(frequentSessionLabels(rows), ['a', 'b', 'h', 'd', 'c'], 'count, then newest use; a duplicate label counts once per session');
+  assert.deepEqual(frequentSessionLabels([r(['z'], undefined), r(['y'], undefined)]), ['y', 'z'], 'no activity time: name order');
+  assert.deepEqual(frequentSessionLabels([]), []);
+  assert.equal(frequentSessionLabels(rows, 2).length, 2);
+});
+
 // Production NativeWorkspace + DesktopShellView (Cmd+K) in real Chromium.
 test('Chromium: a Session label request searches the sidebar (AND, chips, keyword); Cmd+K searches the same way', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'session-search-'));
@@ -64,6 +73,17 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
       (async()=>{try{
         await tick(60);
         ensure('workspace subscribed to label requests',typeof labelListener==='function');
+        // Frequent labels under the search box: top labels by session count, then most recent use.
+        const frequent=()=>qa('.sidebar-frequent-labels button');
+        ensure('frequent labels in order',frequent().map(b=>b.textContent).join('|')==='bug|iOS|docs|urgent');
+        { const row=q('.sidebar-frequent-labels').getBoundingClientRect(), search=q('.sidebar-search').getBoundingClientRect(), side=q('aside.native-sidebar').getBoundingClientRect(), recents=q('.sidebar-recents').getBoundingClientRect();
+          checks.frequentBox={row:[row.top,row.bottom,row.left,row.right],search:[search.bottom,search.left],recents:recents.top};
+          ensure('frequent labels sit between the search box and Recents',row.top>=search.bottom&&row.bottom<=recents.top&&row.left>=side.left&&row.right<=side.right+0.5&&row.height>0); }
+        frequent()[1].click(); await tick();
+        ensure('a frequent label click searches that label',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='iOS'&&titles('.search-result-list').join('|')==='Login crash|Release notes');
+        ensure('selected frequent label is pressed and stays visible',frequent()[1].getAttribute('aria-pressed')==='true'&&frequent().length===4);
+        frequent()[1].click(); await tick();
+        ensure('second click removes it and restores the tree',!q('.session-query-chip')&&!!q('.channel-tree'));
         q('.sidebar-edge-toggle').click(); await tick(); ensure('sidebar collapsed',!q('aside.native-sidebar'));
         labelListener('bug'); await tick();
         ensure('label request opens the sidebar',!!q('aside.native-sidebar'));
@@ -86,7 +106,7 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
         q('[aria-label="Remove label bug from search"]').click(); await tick(); setValue(input,'urg'); await tick();
         ensure('keyword matches title and label text',titles('.search-result-list').sort().join('|')==='Payment flow|Urgent fix plan');
         ensure('matching label offered',qa('.sidebar-search-labels button').map(b=>b.textContent).join('|')==='urgent');
-        q('[aria-label="Search label urgent"]').click(); await tick();
+        q('.sidebar-search-labels [aria-label="Search label urgent"]').click(); await tick();
         ensure('suggestion becomes a chip',input.value===''&&titles('.search-result-list').join('|')==='Payment flow');
         q('.search-result-list .tree-thread').click(); await tick(); ensure('result opens its session',selected.at(-1)==='e');
         setValue(input,'zzz'); await tick(); ensure('no match message',q('.search-result-list').textContent.includes('No matching sessions'));
