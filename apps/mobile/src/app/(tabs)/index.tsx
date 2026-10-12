@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderIcon, Notice, useConnections } from '../../App';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
@@ -11,6 +11,7 @@ import { quickLabels, recentRows, searchRecentRows } from '../../recentRows';
 import { LabelPills } from '../../SessionLabels';
 import { addQueryLabel, emptySessionQuery, removeQueryLabel, sessionQueryActive, type SessionQuery } from '../../../../../packages/client/src/sessionSearch';
 import { useSessionNavigation } from '../../sessionNavigation';
+import { tabListBottomPadding } from '../../tabInsets';
 
 const MINUTE = 60_000;
 
@@ -19,6 +20,7 @@ export default function Recents() {
   const { ready, connections, revision, listError } = useConnections();
   const navigation = useSessionNavigation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   // The 24-hour window moves with time, not only with directory changes.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), MINUTE); return () => clearInterval(timer); }, []);
@@ -53,7 +55,7 @@ export default function Recents() {
           </Pressable>; })}
       </View>}
     </View>
-    <FlatList data={rows} keyExtractor={row => row.key} extraData={revision} contentContainerStyle={s.list}
+    <FlatList data={rows} keyExtractor={row => row.key} extraData={revision} contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       renderItem={({ item }) => {
         const source = multiple ? `${item.channelName} · ${item.connectionName}` : item.channelName;
@@ -75,7 +77,7 @@ export default function Recents() {
 }
 
 const s = StyleSheet.create({
-  fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 24 },
+  fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 4 },
   searchArea: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, gap: 8 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#eef1f5' },
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 7, fontSize: 16, color: '#172a40' },

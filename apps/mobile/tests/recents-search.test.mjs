@@ -46,7 +46,7 @@ const mocks = {
   'react-native': `export const FlatList=p=>require('react').createElement('FlatList',p,(p.data.length?p.data.map((item,index)=>require('react').createElement(require('react').Fragment,{key:p.keyExtractor(item)},p.renderItem({item,index}))):p.ListEmptyComponent)); export const Pressable='Pressable',View='View'; export const StyleSheet={create:x=>x};`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   'expo-router': `export const useRouter=()=>({push:p=>globalThis.__recentsTest.pushed.push(p)});`,
-  'react-native-safe-area-context': `export const SafeAreaView='SafeAreaView';`,
+  'react-native-safe-area-context': `export const SafeAreaView='SafeAreaView'; export const useSafeAreaInsets=()=>({top:0,bottom:34,left:0,right:0});`,
   '../../App': `export const HeaderIcon='HeaderIcon',Notice='Notice'; export const useConnections=()=>({ready:true,connections:globalThis.__recentsTest.connections,revision:1,listError:''});`,
   '../../FontSize': `export const Text='Text',TextInput='TextInput';`,
   '../../MessageTime': `export const MessageTime='MessageTime';`,
