@@ -61,7 +61,8 @@ test('Catalogue carries origin and participation; Recents uses them', () => {
   assert.equal(inRecents({ origin: 'automation', participated: false, lastMessageAt: 100 }, 200), false);
   assert.equal(inRecents({ origin: 'automation', participated: true, lastMessageAt: 100 }, 200), true);
   assert.equal(inRecents({ lastMessageAt: 100 }, 200), true, 'older servers send no origin');
-  assert.equal(inRecents({ lastMessageAt: 100 }, 100 + 86401), false);
+  assert.equal(inRecents({ lastMessageAt: 100 }, 100 + 72 * 3600), true, 'the window is 72 hours');
+  assert.equal(inRecents({ lastMessageAt: 100 }, 100 + 72 * 3600 + 1), false);
   assert.equal(inRecents({ running: true }, 0), true);
 });
 
