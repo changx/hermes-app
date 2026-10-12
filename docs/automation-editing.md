@@ -79,6 +79,8 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 | 编辑周期 | `PATCH /v1/automations/{id}` `{schedule}` | `parse_schedule` + `update_job`，与 cron 工具 update 相同 |
 | Instructions | 只读 | — |
 
+- 已结束的 job（core `state=completed`：一次性 job 已运行，或循环 job 用完 `repeat` 次数）没有控件，插件对所有控件返回 400（插件 0.2.30），因为 Resume 或 Run 会让它再运行一次。它保留可查看，直到 core 清除。
+- 清除：core 的保留清理按 `cron.completed_retention_days` 删除已结束的 job，从最后一次运行算起。jamie 和 hermes-app-dev 设为 1（24 小时，2026-10-12）。core 原来只清除一次性 job；本地提交 `local: prune completed repeat-limited recurring cron jobs` 把用完次数的循环 job 也包括在内（上游 PR NousResearch/hermes-agent#137245，合入后删除本地提交）。
 - `trigger_job` 会同时恢复暂停的 job。所以暂停中的 job 只有 Resume；插件对暂停中的 job 的 Run 返回 400。
 - 周期文字最长 200 字符；`parse_schedule` 不接受时返回 400，客户端保留输入框并显示示例。
 - 修改后插件通知外部 scheduler provider（`on_jobs_changed`；内置 ticker 无操作）。
