@@ -15,7 +15,7 @@ const mocks = {
   'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:()=>({remove(){}})}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
   'react-native-keyboard-controller': `import React from 'react'; export const KeyboardChatScrollView=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o),scrollTo:o=>globalThis.__entryTest.commands.push({to:o.y,animated:o.animated})}));return React.createElement('ChatScroll',p,p.children);}); export const KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
-  'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade}; export const FadeIn=fade,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
+  'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade,easing:()=>fade}; export const FadeIn=fade,LinearTransition=fade,Easing={out:x=>x,cubic:'cubic'},withTiming=x=>x,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
   'react-native-safe-area-context': `export const useSafeAreaInsets=()=>({bottom:0});`,
   'expo-blur': `export const BlurTargetView='BlurTargetView',BlurView='BlurView';`,
   './MessageContent': `export const MessageContent='MessageContent',copyMessageText=()=>{};`,
@@ -205,16 +205,26 @@ test('ChatGPT-style composer: collapsed pill, focus expands in place, round send
   const card=()=>flat(root.root.findByProps({testID:'composer-card'}).props.style);
   const send=()=>root.root.findByProps({accessibilityLabel:'Send'});
   const input=root.root.findByProps({accessibilityLabel:'Message text'});
-  assert.equal(card().borderRadius,24);assert.equal(card().marginHorizontal,36);
+  assert.equal(card().borderRadius,24);assert.equal(card().marginHorizontal,12);
+  // Focus changes animate the card frame, the text and the tool row.
+  const cardNode=root.root.findByProps({testID:'composer-card'});
+  assert.equal(typeof cardNode.props.layout,'function');
+  // The card grows upward: it starts at the old height on the new bottom edge.
+  const grow=cardNode.props.layout({currentOriginX:12,currentOriginY:30,currentWidth:400,currentHeight:48,targetOriginX:12,targetOriginY:30,targetWidth:400,targetHeight:88});
+  assert.deepEqual(grow.initialValues,{originX:12,originY:70,width:400,height:48});
+  assert.deepEqual(grow.animations,{originX:12,originY:30,width:400,height:88});
+  assert.ok(root.root.findByProps({testID:'composer-text'}).props.layout);
+  assert.ok(root.root.findByProps({testID:'composer-tools'}).props.layout);
   assert.equal(send().props.disabled,true);assert.equal(flat(send().props.style).backgroundColor,'#d7d7d9');
   await act(async()=>input.props.onFocus());
+  // Same width focused and not focused.
   assert.equal(card().marginHorizontal,12);
   // Same native input node: focus change never remounts the TextInput.
   assert.equal(root.root.findByProps({accessibilityLabel:'Message text'}),input);
   await act(async()=>root.update(React.createElement(ChatTimeline,{...defaults,text:'hi'})));
   assert.equal(send().props.disabled,false);assert.equal(flat(send().props.style).backgroundColor,'#1f2329');
   await act(async()=>root.root.findByProps({accessibilityLabel:'Message text'}).props.onBlur());
-  assert.equal(card().marginHorizontal,36);
+  assert.equal(card().marginHorizontal,12);
   await act(async()=>root.unmount());
 });
 
