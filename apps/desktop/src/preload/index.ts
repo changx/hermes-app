@@ -64,6 +64,11 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:focus-composer", receive);
     return () => ipcRenderer.removeListener("desktop:focus-composer", receive);
   },
+  onToggleTodo(listener: () => void): () => void {
+    const receive = () => listener();
+    ipcRenderer.on("desktop:toggle-todo", receive);
+    return () => ipcRenderer.removeListener("desktop:toggle-todo", receive);
+  },
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
   createChannel: (input: ProjectCreationInput): Promise<string> => ipcRenderer.invoke("desktop:create-channel", input),

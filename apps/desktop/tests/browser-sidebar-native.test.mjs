@@ -153,6 +153,12 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  reopened.sendInputEvent({type:'keyDown',keyCode:'Escape'});reopened.sendInputEvent({type:'keyUp',keyCode:'Escape'});
  await until(()=>!settingsForTest().isOpen&&BrowserWindow.getAllWindows().length===1,'Escape closes only Settings');
  assert.equal(pane.view.getVisible()&&tab.view.getVisible(),true);assert.equal(chat.id,retainedChat);assert.equal(web.id,retainedBrowser);
+ // Ctrl+Shift+L from the sidebar or the browser pane reaches only the active Session page; plain Ctrl+L does not.
+ await evaluate(chat,'window.todoHits=0;window.hermesDesktop.onToggleTodo(()=>window.todoHits++);void 0');
+ const todoKey=(contents,modifiers)=>{contents.focus();contents.sendInputEvent({type:'keyDown',keyCode:'L',modifiers});contents.sendInputEvent({type:'keyUp',keyCode:'L',modifiers});};
+ todoKey(shell,['control','shift']);await until(()=>evaluate(chat,'window.todoHits===1'),'sidebar todo shortcut reaches the Session page');
+ todoKey(web,['control','shift']);await until(()=>evaluate(chat,'window.todoHits===2'),'browser todo shortcut reaches the Session page');
+ todoKey(shell,['control']);await new Promise(r=>setTimeout(r,200));assert.equal(await evaluate(chat,'window.todoHits'),2,'Ctrl+L without Shift is not the todo shortcut');
  assert.equal(await evaluate(chat,'document.querySelector(".message-list").dataset.settingsRetained'),'yes');
  assert.equal(await evaluate(chat,'document.querySelector("[aria-label=Message]").value'),'Retained settings draft');
  window.setSize(720,820);await until(()=>tab.view.getBounds().x===0&&pane.view.getBounds().x+pane.view.getBounds().width===window.getContentSize()[0],'narrow sidebar layout');assert.ok(tab.view.getBounds().width>=400);

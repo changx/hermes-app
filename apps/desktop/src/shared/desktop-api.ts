@@ -222,6 +222,8 @@ export interface HermesDesktopApi {
   onSearchLabel(listener: (label: string) => void): () => void;
   /** A Session page receives this when the app window becomes active. */
   onFocusComposer?(listener: () => void): () => void;
+  /** The active Session page receives this for the todo shortcut (Shift+Cmd+L). */
+  onToggleTodo?(listener: () => void): () => void;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
   /** Resolves with the new Project's identity after server readback. */
