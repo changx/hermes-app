@@ -96,7 +96,7 @@ const s = StyleSheet.create({
   fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 4 },
   section: { fontSize: 13, fontWeight: '600', color: '#65758b', marginTop: 8, marginBottom: 8, paddingHorizontal: 4 },
   searchArea: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, gap: 8 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#eef1f5' },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 7, fontSize: 16, color: '#172a40' },
   clear: { color: '#607187', fontSize: 13 },
   labels: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
