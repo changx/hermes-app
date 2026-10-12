@@ -9,6 +9,7 @@
 - [README.md](README.md)
 - [docs/requirements.md](docs/requirements.md)
 - [docs/architecture.md](docs/architecture.md)
+- [docs/push-notification-design.md](docs/push-notification-design.md)（设计，未实现）
 - [docs/core-dataflow.md](docs/core-dataflow.md)
 - [docs/development-plan.md](docs/development-plan.md)
 - [docs/dev-environment.md](docs/dev-environment.md)
