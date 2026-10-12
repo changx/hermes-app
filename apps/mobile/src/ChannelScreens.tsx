@@ -5,6 +5,7 @@ import { Text, TextInput } from './FontSize';
 import type { Attachment, ThreadSummary } from '../../../packages/client/src/index';
 import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { NewTopicComposer } from './NewTopicComposer';
+import type { ThreadCreate } from './send';
 import { threadPatch } from './channel-edits';
 import { MessageTime } from './MessageTime';
 import { LabelsFilter } from './SessionLabels';
@@ -26,7 +27,7 @@ type Props = {
   onLabels: (id: string) => void;
   /** Archives the Channel and leaves its page. The page unmounts when the Channel disappears. */
   onArchive: () => Promise<void>;
-  enqueueFirstMessage: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
+  enqueueFirstMessage: (threadId: string, messageId: string, text: string, attachments: Attachment[], create?: ThreadCreate) => Promise<void>;
 };
 function Action({ label, onPress, disabled = false, secondary = false }: { label: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[s.action, secondary && s.secondary, disabled && s.disabled]}><Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text></Pressable>;

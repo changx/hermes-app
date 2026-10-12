@@ -9,7 +9,7 @@ import { browserUrl } from '../shared/browser-policy';
 import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
 import { validateLabels, labelTimestamp } from '../../../../packages/client/src/sessionLabels';
 import { join } from "node:path";
-import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, PairingRequest, SendMessageInput, StartThreadInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnections } from "./connections";
 import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
@@ -18,6 +18,9 @@ import { DesktopSettingsWindow } from './settings-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
+import { installHttpKeepAlive } from "./transport";
+
+installHttpKeepAlive();
 
 const SNAPSHOT_EVENT = "desktop:snapshot";
 let mainWindow: BrowserWindow | null = null;
@@ -290,6 +293,23 @@ const registerDesktopApi = (): void => {
       // Nothing was created (model needs confirmation or was rejected): the tab keeps its target for the retry.
       if (typeof id !== 'string') return id;
       if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id;
+    }
+    finally { tab.busy = false; tabs?.publish(); }
+  });
+  handle("desktop:start-thread", async (event, value: unknown) => {
+    trustedSender(event); const input = object(value), tab = tabs?.sender(event.sender);
+    const request = { title: text(input.title, 200), clientThreadId: text(input.clientThreadId, 80), text: text(input.text, 100_000), clientMessageId: text(input.clientMessageId, 100),
+      ...(input.channelId === undefined ? {} : { channelId: text(input.channelId, 200) }) } satisfies StartThreadInput;
+    if (!tab) { const id = await service.startThread(request); void service.selectThread(id); return id; }
+    const qualifiedId = service.threadIdentity(request.clientThreadId, request.channelId);
+    if (tab.kind !== 'new' || tab.threadId && tab.threadId !== qualifiedId) throw new Error('Tab target mismatch');
+    if (tab.busy) throw new Error('Action already in progress');
+    tab.connectionKey = service.connectionForChannel(request.channelId); tab.initialChannelId = request.channelId;
+    tab.threadId = qualifiedId; tab.busy = true;
+    try {
+      const id = await service.startThread(tab.automationEditor ? { ...request, automationEditor: true } : request);
+      if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session start not confirmed');
+      return id;
     }
     finally { tab.busy = false; tabs?.publish(); }
   });

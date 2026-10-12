@@ -1,5 +1,14 @@
 import type { ConditionalHeaders, HttpTransport, SocketFactory } from "@hermes-app/client";
+import { Agent, setGlobalDispatcher } from "undici";
 import WebSocket from "ws";
+
+/** Node's fetch (undici) closes an idle HTTPS connection after 4 s, so the first
+ * request after the user types (create, send) paid a new TLS handshake: 0.5-1.2 s
+ * from Beijing. Keep idle connections for 60 s; Cloudflare keeps them at least
+ * that long (measured 55 s reuse on both servers). Call once at startup. */
+export const installHttpKeepAlive = (): void => {
+  setGlobalDispatcher(new Agent({ keepAliveTimeout: 60_000, keepAliveMaxTimeout: 600_000 }));
+};
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REPLY_BYTES = 64 * 1024;

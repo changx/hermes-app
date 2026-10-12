@@ -8,6 +8,7 @@ import { connectionFailure, threadModelLabel, threadModelRequest, type AgentMode
 const needsConfirmation = (error: unknown): error is ModelConfirmationRequired => error instanceof Error && error.name === 'ModelConfirmationRequired';
 const rejected = (error: unknown) => error instanceof Error && (error as { status?: unknown }).status === 400;
 import { retryStep } from './retryStep.ts';
+import type { ThreadCreate } from './send.ts';
 import { Text, TextInput } from './FontSize';
 import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments';
 import { ComposerSendButton } from './ComposerCard';
@@ -26,7 +27,8 @@ import { ThreadModelButton, ThreadModelPicker } from './ThreadModelPicker';
  */
 export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false, showModel = false, automationEditor = false }: {
   client: HermesClient; channelId: string;
-  enqueue: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
+  /** With `create`, the outbox creates the session before it sends; the page opens at once. */
+  enqueue: (threadId: string, messageId: string, text: string, attachments: Attachment[], create?: ThreadCreate) => Promise<void>;
   onCreated: (threadId: string) => void; disabled?: boolean;
   onTargetLock?: (locked: boolean) => void; placeholder?: string; autoFocus?: boolean; showModel?: boolean;
   /** The new Thread is the settings conversation of the automation the agent creates in it. */
@@ -40,7 +42,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   const attachments = useRef<AttachmentComposerHandle>(null);
   const selection = useRef<{ start: number; end: number } | null>(null);
   // The model is fixed with the Thread ID at the first attempt; retries send the same request.
-  type Attempt = { threadId: string; messageId: string; created: boolean; model?: ThreadModelChoice; confirmModel?: boolean; payload?: { text: string; attachments: Attachment[] } };
+  type Attempt = { threadId: string; messageId: string; created: boolean; model?: ThreadModelChoice; confirmModel?: boolean; payload?: { text: string; attachments: Attachment[] }; start?: ThreadCreate };
   const [models, setModels] = useState<AgentModelSettings | null>(null), [modelsFailed, setModelsFailed] = useState(false);
   const [modelChoice, setModelChoice] = useState<ThreadModelChoice | null>(null), [picking, setPicking] = useState(false);
   const [modelsWanted, setModelsWanted] = useState(0), [locked, setLocked] = useState(false);
@@ -96,10 +98,26 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
     // Creation can be acknowledged ambiguously; every retry uses the same ID.
     const draft: Attempt = attempt.current ?? { threadId: 'th_' + Crypto.randomUUID().replace(/-/g, ''), messageId: 'mob_' + Crypto.randomUUID(), created: false,
       model: supportsModel ? threadModelRequest(models, modelChoice) : undefined };
+    // Text only with the default model: no create request here. The outbox saves the
+    // message, creates the session with this ID, then sends; the page opens at once.
+    // Files and a chosen model keep the old order (they need the session or a confirmation).
+    if (!attempt.current && !draft.model && !count)
+      draft.start = { channelId, title: automationEditor ? 'New automation' : 'New topic', ...(automationEditor ? { automationEditor: true as const } : {}) };
     setAttempt(draft);
     const original = text;
     const alive = () => mounted.current;
     try {
+      if (draft.start) {
+        draft.payload ??= { text: original, attachments: [] };
+        setSealed(true);
+        await enqueue(draft.threadId, draft.messageId, draft.payload.text, [], draft.start);
+        setAttempt(null);
+        if (mounted.current) {
+          setText(''); setCount(0); setSealed(false); selection.current = null; setClearKey(key => key + 1);
+          if (focusedRef.current) onCreated(draft.threadId);
+        }
+        return;
+      }
       if (!draft.created) {
         // Same client thread ID and title on every attempt: the server returns
         // the existing thread, so a temporary failure retries without a duplicate.

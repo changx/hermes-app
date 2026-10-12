@@ -1,4 +1,4 @@
-import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type ThreadModelChoice } from './index';
+import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice } from './index';
 import { parseCatalogue, parseLiveFrame, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
@@ -141,7 +141,21 @@ export class LiveSessionClient extends HermesClient {
     this.opened={id,resolve,reject,promise,contentReady};
     if(this.owner&&this.owner.hello){this.sharedConnected();}
     else{this.sendWatch();if(!this.liveController&&!this.connectionSuspended)void this.connect();}
+    // A Thread this client just created has no history: show the page now. The
+    // normal watch acknowledgement and history read still follow and reconcile.
+    if(targetRef===undefined&&(this.owner??this).freshThreads.delete(id)){
+      this.initialHistoryComplete=true;const opened=this.opened;
+      queueMicrotask(()=>{if(this.opened!==opened||this.wanted!==id)return;const ready=opened.contentReady;opened.contentReady=undefined;ready?.()});
+    }
     this.changed();return promise;
+  }
+  /** Threads created by this client and not opened yet (owner only). */
+  private readonly freshThreads=new Set<string>();
+  override async createThread(channelId:string,title:string,clientThreadId?:string,model?:ThreadModelChoice,confirmModel=false,options:{automationEditor?:boolean}={}):Promise<Thread>{
+    const known=clientThreadId!==undefined&&this.threads.has(clientThreadId);
+    const thread=await super.createThread(channelId,title,clientThreadId,model,confirmModel,options);
+    if(clientThreadId!==undefined&&!known)(this.owner??this).freshThreads.add(thread.id);
+    return thread;
   }
   closeConversation():void{
     if(this.owner?.hello&&this.wanted)this.owner.liveSocket?.send?.(watchCommand(this.wanted,this.watchId,'remove'));

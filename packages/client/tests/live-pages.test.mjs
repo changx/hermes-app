@@ -14,6 +14,7 @@ function fixture(multi=true){
     http:{async request(method,path,_token,body,signal){
       paths.push([method,path]);
       if(path==='/v1/capabilities')return {status:200,body:{protocol:1,history_latest:true,history_full:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
+      if(method==='POST'&&path==='/v1/channels/p/threads'){available=[...available,body.client_thread_id];return {status:201,body:{thread:{id:body.client_thread_id,project_id:'p',title:body.title,archived:false}}};}
       if(path.startsWith('/v1/catalogue'))return {status:200,body:{items:[{kind:'channel',value:{id:'p',name:'P'}},...available.map(id=>({kind:'session',value:{id,project_id:'p',title:id,archived:false,running:false}}))],next_after:null}};
       const id=path.split('/')[3];
       if(path.includes('/messages')){
@@ -116,5 +117,23 @@ test('accepted echo enters the exact live page only; removed page has no transcr
     f.sdk.rememberAcceptedInput('A','input','original',[],1,receipt);
     assert.equal(a.messages.get('A').at(-1).client_message_id,'input');assert.ok(b.messages.get('B').every(row=>row.client_message_id!=='input'));
     f.sdk.releasePage('A');f.sdk.rememberAcceptedInput('A','input','original',[],1,receipt);assert.equal(f.sdk.messages.has('A'),false);
+  }finally{f.sdk.close();}
+});
+
+test('a Thread this client just created shows at once; the watch and history read still follow',async()=>{
+  const f=fixture();try{
+    await f.sdk.createThread('p','New topic','th_fresh');
+    const history=deferred();f.gates.set('th_fresh',history);
+    const page=f.sdk.acquirePage('th_fresh');let shown=0;
+    const opening=page.openConversation('th_fresh',undefined,undefined,()=>shown++);
+    await tick();
+    assert.equal(shown,1,'content is ready before the history read returns');
+    await until(()=>f.paths.some(([,p])=>p.includes('/th_fresh/messages')));
+    history.resolve();await opening;assert.equal(shown,1);
+    // Only the first open is instant; a later open, or an existing Thread, waits for history.
+    f.sdk.releasePage('th_fresh',page);
+    const again=f.sdk.acquirePage('th_fresh');const gate=deferred();f.gates.set('th_fresh',gate);let later=0;
+    const reopening=again.openConversation('th_fresh',undefined,undefined,()=>later++);
+    await tick();assert.equal(later,0);gate.resolve();await reopening;assert.equal(later,1);
   }finally{f.sdk.close();}
 });

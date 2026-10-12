@@ -83,10 +83,10 @@ function Composer({ channel, onLock, focus, automation }: { channel: ChannelChoi
     <View style={s.fill} />
     <NewTopicComposer client={client} channelId={channel.id} onTargetLock={onLock} autoFocus={focus} showModel
       placeholder={automation ? 'What should run, and when?' : 'What would you like to do?'} automationEditor={automation}
-      enqueue={async (threadId, messageId, text, attachments) => {
+      enqueue={async (threadId, messageId, text, attachments, create) => {
         const box = outboxRef.current;
         if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');
-        await box.enqueue(newSend(config, threadId, text, messageId, attachments));
+        await box.enqueue(newSend(config, threadId, text, messageId, attachments, create));
       }}
       // Replace this page: Back from the new conversation returns to Recents.
       onCreated={threadId => router.replace(threadRoute(channel.slot, threadId))} />

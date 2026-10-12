@@ -4,6 +4,9 @@ import { validTimestampSeconds } from './messageTime.ts';
 export const DEFAULT_BASE = 'https://agent.tuly.space';
 export interface Connection { baseUrl: string; token: string; id: string }
 export type SendState = 'queued' | 'sending' | 'ambiguous' | 'accepted' | 'blocked';
+/** First message of a session that is not created yet: the outbox creates the session
+ * with the record's thread ID (same ID on every retry), then sends the message. */
+export interface ThreadCreate { channelId: string; title: string; automationEditor?: true }
 export interface SendRecord {
   connectionId: string;
   threadId: string;
@@ -12,6 +15,7 @@ export interface SendRecord {
   attachments?: Attachment[];
   createdAt?: number;
   status: SendState;
+  create?: ThreadCreate;
   receiptId?: string;
   receiptState?: Receipt['state'];
   receiptRefSeq?: number;
@@ -57,10 +61,21 @@ export function validSendContent(threadId: string, text: string, attachments: re
     return { ...a };
   });
 }
-export function newSend(config: Connection, threadId: string, text: string, id: string, attachments: Attachment[] = []): SendRecord {
+export function validCreate(value: unknown): value is ThreadCreate {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Record<string, unknown>;
+  return Object.keys(c).every(k => k === 'channelId' || k === 'title' || k === 'automationEditor') &&
+    typeof c.channelId === 'string' && c.channelId.length > 0 && c.channelId.length <= 200 &&
+    typeof c.title === 'string' && c.title.trim().length > 0 && c.title.length <= 200 &&
+    (c.automationEditor === undefined || c.automationEditor === true);
+}
+export function newSend(config: Connection, threadId: string, text: string, id: string, attachments: Attachment[] = [], create?: ThreadCreate): SendRecord {
   const verified = validSendContent(threadId, text, attachments);
   if (!/^mob_[a-f0-9-]{36}$/i.test(id)) throw new Error('Invalid message identifier.');
-  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending', createdAt: Date.now() / 1000, ...(verified.length ? { attachments: verified } : {}) };
+  // A session is created only with a text-only first message; files need the session first.
+  if (create !== undefined && (!validCreate(create) || verified.length || !/^th_[A-Za-z0-9_-]{1,120}$/.test(threadId))) throw new Error('This conversation cannot be started.');
+  return { connectionId: config.id, threadId, text, clientMessageId: id, status: 'sending', createdAt: Date.now() / 1000, ...(verified.length ? { attachments: verified } : {}),
+    ...(create ? { create: { channelId: create.channelId, title: create.title, ...(create.automationEditor ? { automationEditor: true as const } : {}) } } : {}) };
 }
 export function retrySend(config: Connection, record: SendRecord): SendRecord {
   if (record.connectionId !== config.id || record.status !== 'ambiguous' || record.receiptId) throw new Error('This message cannot be sent again unchanged.');
@@ -91,6 +106,7 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   if (r.receiptProcessing !== undefined && r.receiptProcessing !== null && !['running','completed','failed','interrupted','unknown'].includes(r.receiptProcessing)) throw new Error('The saved message status is damaged.');
   if (r.receiptFeedback !== undefined && (typeof r.receiptFeedback !== 'string' || !r.receiptFeedback.length || r.receiptFeedback.length > 2000)) throw new Error('The saved message status is damaged.');
   if (r.status === 'accepted' && typeof r.receiptId !== 'string') throw new Error('The saved message status is damaged.');
+  if (r.create !== undefined && (!validCreate(r.create) || attachments.length)) throw new Error('The saved message is damaged.');
   // A process may have died after dispatch but before storing the response.
   return { ...r, ...(attachments.length ? { attachments } : { attachments: undefined }), status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;
 }

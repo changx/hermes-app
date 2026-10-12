@@ -22,9 +22,10 @@ test('Chromium: New chat model choice per project connection, confirmation and l
       {id:'p',name:'Alpha',connectionName:'one',connectionKey:'k1',supportsThreadModel:true},
       {id:'b:q',name:'Beta',connectionName:'two',connectionKey:'k2',supportsThreadModel:true},
       {id:'r',name:'Old',connectionName:'one',connectionKey:'k1'}],threads:[]};
-    const loads=[], creates=[]; let respond=null;
+    const loads=[], creates=[], starts=[]; let respond=null;
     window.hermesDesktop={getModelSettings:async key=>{loads.push(key);return settings[key]},
       createThread:async data=>{creates.push(data);return respond?respond(data):data.clientThreadId},
+      startThread:async data=>{starts.push(data);return data.clientThreadId},
       getSnapshot:async()=>({}),sendMessage:async()=>{},completeNewTab:async()=>{}};
     const host=document.getElementById('root'); let root=createRoot(host);
     const select=label=>document.querySelector('select[aria-label="'+label+'"]');
@@ -50,7 +51,8 @@ test('Chromium: New chat model choice per project connection, confirmation and l
       ensure('older server: no model control',!select('Model'));
       choose('Project','p'); await tick();
       type('hello'); await submit();
-      ensure('default sends no model',creates.length===1&&!('model' in creates[0])&&creates[0].channelId==='p');
+      // Default model, text only: the session starts at once (no create request from the page, no model).
+      ensure('default starts at once with no model',creates.length===0&&starts.length===1&&!('model' in starts[0])&&starts[0].channelId==='p'&&starts[0].text==='hello'&&/^desktop:/.test(starts[0].clientMessageId));
 
       await fresh(); creates.length=0;
       choose('Model','openai-codex\\u0000gpt-6-luna'); type('hello'); await submit();
@@ -70,8 +72,8 @@ test('Chromium: New chat model choice per project connection, confirmation and l
       choose('Model','anthropic\\u0000claude-sonnet-5-5'); type('hello'); await submit();
       flushSync(()=>[...document.querySelectorAll('[role=alertdialog] button')].find(b=>b.textContent==='Cancel').click()); await tick();
       ensure('cancel unlocks the model',!select('Model').disabled&&!document.querySelector('[role=alertdialog]'));
-      choose('Model','default'); respond=null; await submit();
-      ensure('retry after cancel uses the new choice and the same session ID',creates.length===2&&!('model' in creates[1])&&creates[1].clientThreadId===creates[0].clientThreadId);
+      choose('Model','default'); respond=null; starts.length=0; await submit();
+      ensure('retry after cancel uses the new choice and the same session ID',creates.length===1&&starts.length===1&&!('model' in starts[0])&&starts[0].clientThreadId===creates[0].clientThreadId);
 
       await fresh(); creates.length=0;
       respond=data=>data.model?{model_rejected:true}:data.clientThreadId;
@@ -80,12 +82,12 @@ test('Chromium: New chat model choice per project connection, confirmation and l
       ensure('rejected model unlocks',!select('Model').disabled);
 
       // New automation: only projects whose server creates automations; the first message carries no flag from the renderer.
-      root.unmount();root=createRoot(host);respond=null;creates.length=0;
+      root.unmount();root=createRoot(host);respond=null;creates.length=0;starts.length=0;
       flushSync(()=>root.render(<NewSessionPage snapshot={{...snapshot,automationEditor:true,initialChannelId:'p',channels:snapshot.channels.map(c=>c.id==='b:q'?{...c,supportsAutomationEditors:true}:c)}}/>));await tick();
       ensure('automation heading and hint',document.querySelector('h1').textContent==='New automation'&&!!document.querySelector('.new-chat-hint'));
       ensure('automation projects only',[...select('Project').options].map(o=>o.value).join()==='b:q');
       type('every morning summarize the news'); await submit();
-      ensure('automation title and project',creates.length===1&&creates[0].title==='New automation'&&creates[0].channelId==='b:q'&&!('automationEditor' in creates[0]));
+      ensure('automation title and project',starts.length===1&&starts[0].title==='New automation'&&starts[0].channelId==='b:q'&&!('automationEditor' in starts[0]));
       root.unmount();root=createRoot(host);
       flushSync(()=>root.render(<NewSessionPage snapshot={{...snapshot,automationEditor:true}}/>));await tick();
       ensure('older servers explained',!document.querySelector('form')&&document.querySelector('main').textContent.includes('needs a newer Hermes server'));

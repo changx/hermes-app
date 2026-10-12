@@ -15,7 +15,7 @@ const bundle = await build({
 });
 const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-const { mainTransport, normalizeBaseUrl } = module.exports;
+const { mainTransport, normalizeBaseUrl, installHttpKeepAlive } = module.exports;
 
 test("HTTP history accepts a complete snapshot larger than the ordinary reply limit", async (t) => {
   const payload = { complete: true, messages: [{ text: "历史".repeat(40_000) }], next_cursor: null, older_cursor: null };
@@ -151,4 +151,32 @@ test("attachment download accepts a proxy-compressed reply without Content-Lengt
   assert.ok(seen.every((value) => value === "identity"), JSON.stringify(seen));
   await assert.rejects(http.download("/v1/threads/t/attachments/huge", "token"), /size is unsupported/);
   assert.equal((await http.download("/v1/threads/t/attachments/missing", "token")).status, 404);
+});
+
+// Undici closes an idle connection after 4 s by default when the server sends no Keep-Alive
+// hint (as through Cloudflare), so a prompt typed after a pause paid a new TLS handshake.
+// The installed dispatcher keeps the connection for 60 s.
+test("the main-process HTTP connection stays open across a pause longer than 4 s", async (t) => {
+  const { createServer: createTcpServer } = await import("node:net");
+  let connections = 0;
+  const server = createTcpServer(socket => {
+    connections++;
+    let buffer = "";
+    socket.on("data", chunk => {
+      buffer += chunk;
+      while (buffer.includes("\r\n\r\n")) {
+        buffer = buffer.slice(buffer.indexOf("\r\n\r\n") + 4);
+        socket.write("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}");
+      }
+    });
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => { server.close(resolve); for (const s of sockets) s.destroy(); }));
+  const sockets = new Set(); server.on("connection", s => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
+  if (process.env.HERMES_TEST_NO_KEEPALIVE !== "1") installHttpKeepAlive();
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  assert.equal((await http.request("GET", "/v1/capabilities", "test-token")).status, 200);
+  await new Promise(resolve => setTimeout(resolve, 4_500));
+  assert.equal((await http.request("GET", "/v1/capabilities", "test-token")).status, 200);
+  assert.equal(connections, 1, "the second request reuses the first connection");
 });

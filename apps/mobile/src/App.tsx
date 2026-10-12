@@ -172,7 +172,9 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     if (attachmentsBusy) return;
     const original = text, scope = composerScope;
     const selectedDraft = composerDrafts.current.get(draftKey);
-    await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID(), draftAttachments));
+    // While the session is still being created, a later text message carries the same
+    // create request: whichever message the outbox sends first creates it (same ID).
+    await box.enqueue(newSend(config, threadId, original, 'mob_' + Crypto.randomUUID(), draftAttachments, starting && !draftAttachments.length ? starting : undefined));
     if (outboxRef.current === box && textDrafts.current.get(draftKey) === original) textDrafts.current.delete(draftKey);
     const retainedDraft = composerDrafts.current.get(draftKey);
     if (selectedDraft && retainedDraft && selectedDraft.items.length === retainedDraft.items.length && selectedDraft.items.every((item, index) => item === retainedDraft.items[index])) {
@@ -231,8 +233,12 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     }, 'Could not retry. Try again.'),
   }), [accountClient, accountClient?.supportsThreadBranch, accountClient?.supportsMessageSources]);
 
+  // A new session whose first message is saved but whose create is not confirmed yet:
+  // show it at once from the outbox record; the normal open runs once the server has it.
+  const starting = accountClient?.threads.has(threadId) ? undefined : records.find(r => r.threadId === threadId && r.create)?.create;
+  const ready = located || !!starting;
   const messages = client.messages.get(threadId) ?? EMPTY_MESSAGES;
-  const visibleMessages = located ? messages : EMPTY_MESSAGES;
+  const visibleMessages = ready ? messages : EMPTY_MESSAGES;
   // Scoped receipt/interaction maps mutate in place. Their small signatures are
   // dependencies, while transcript objects never enter a serialized signature.
   const receiptSignature = JSON.stringify([...client.receipts.values()]);
@@ -294,6 +300,26 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     void setThreadTodo(owner, threadId, !todo).then(failure => { if (failure && focusedRef.current) setError(failure); }).finally(() => setTodoBusy(false));
   };
   if (!config || !client) return <Notice text="Opening conversation…" />;
+  if (starting && client.channels.has(starting.channelId)) return <View style={styles.flex}>
+    <Stack.Screen options={{ title: starting.title, ...(multiple ? { headerTitle: () => <HeaderTitle title={starting.title} subtitle={connectionName} /> } : {}), headerRight: undefined }} />
+    {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
+    <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows} position={entryPosition} onVisibleRefs={onVisibleRefs}
+      text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
+      typingIndicator={<TypingIndicator active={false} name={agentName.name} />}
+      receipts={receipts} interactions={interactions} answers={answers}
+      onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
+      onDeleteFailed={id => run(async () => {
+        const box = outboxRef.current;
+        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+        await box.deleteFailed(threadId, id);
+      }, 'Could not finish deleting this saved message. Try again; do not clear your app data.')}
+      onRetryFailed={id => run(async () => {
+        const box = outboxRef.current;
+        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+        await box.retryFailed(threadId, id);
+      }, 'Could not retry this message. It is still saved on this device.')}
+      onCancel={() => {}} onStop={() => {}} busy={busy} messageActions={{ exportMessage: messageActions.exportMessage }} />
+  </View>;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
   // Source navigation must mount the list only after the target rows exist, so its
@@ -374,10 +400,10 @@ export function ChannelsScreen({ channelId }: { channelId: string }) {
         onAgents={id => router.push(channelRoute(slot, id, '/agents'))}
         onLabels={id => router.push(labelsRoute(slot, id))}
         onArchive={async () => { await client.archiveChannel(channelId); if (router.canGoBack()) router.back(); else router.replace('/'); }}
-        enqueueFirstMessage={async (threadId, messageId, text, attachments) => {
+        enqueueFirstMessage={async (threadId, messageId, text, attachments, create) => {
           const box = outboxRef.current;
           if (!box || box.storage.connectionId !== config.id) throw new Error('Connection changed');
-          await box.enqueue(newSend(config, threadId, text, messageId, attachments));
+          await box.enqueue(newSend(config, threadId, text, messageId, attachments, create));
         }} />
     </FormKeyboardAvoidingView>
   </View>;

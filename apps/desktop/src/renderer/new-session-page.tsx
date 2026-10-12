@@ -43,6 +43,15 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
     if (working.current || (!message.trim() && !files.length) || !projects.some(c => c.id === project)) return;
     working.current = true; setBusy(true); setError(''); setAttempted(true); setModelLocked(true); setConfirmation('');
     try {
+      if (!thread.current && !files.length && message.trim() && !(modelKey && threadModelRequest(models, modelChoice))) {
+        // Text only, default model: nothing to confirm. The first message is saved in the outbox,
+        // this tab becomes the session at once, and the server creates it in the background.
+        thread.current = await window.hermesDesktop.startThread({ channelId: project, title: automation ? 'New automation' : 'New topic',
+          clientThreadId: threadId.current, text: message, clientMessageId: messageId.current });
+        saved.current = true;
+        await window.hermesDesktop.completeNewTab();
+        return;
+      }
       if (!thread.current) {
         const title = automation ? 'New automation' : 'New topic';
         // The model is fixed with the session ID; a retry sends the same request.

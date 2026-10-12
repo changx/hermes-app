@@ -7,7 +7,7 @@ import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, 
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
-import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import { workspacePath } from "../../../../packages/client/src/workspace";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
@@ -236,6 +236,8 @@ export class DesktopConnectionService {
       .sort((a, b) => a.name.localeCompare(b.name));
     const projected = this.client?.threads ?? new Map();
     const combined = new Map<string, Thread | (typeof projected extends Map<string, infer V> ? V : never)>();
+    // Sessions started here and not yet confirmed: shown until the server row arrives.
+    for (const item of this.outbox) { const pending = this.pendingThread(item.threadId); if (pending) combined.set(pending.id, pending); }
     for (const [id, thread] of this.listedThreads) combined.set(id, thread);
     for (const [id, thread] of projected) combined.set(id, thread);
     const receipts = [...(this.client?.receipts.values() ?? [])];
@@ -632,6 +634,13 @@ export class DesktopConnectionService {
 
   async selectThread(threadId: string, activate = true): Promise<void> {
     const client = this.client;
+    const pending = this.pendingThread(threadId);
+    if (client && pending && !this.listedThreads.has(threadId)) {
+      // No server page yet: the tab shows the unsent first message. The page opens
+      // when the create request is confirmed (deliver calls selectThread again).
+      if (activate) { this.selectedChannelId = pending.project_id; this.selectedThreadId = threadId; }
+      this.changed(); return;
+    }
     const thread = client?.threads.get(threadId) ?? this.listedThreads.get(threadId);
     if (!client || !thread || thread.archived || !client.channels.has(thread.project_id)) return;
     const existing = this.openPages.indexOf(threadId);
@@ -895,7 +904,9 @@ export class DesktopConnectionService {
         input.automationEditor ? { automationEditor: true } : {});
       if (this.client !== client) throw new Error('Connection changed during creation');
       this.listedThreads.set(thread.id, thread);
-      await this.selectThread(thread.id, activate);
+      // Open the page without waiting for its read: the first message is sent in
+      // parallel. The page shows at once because the SDK knows the new Thread is empty.
+      void this.selectThread(thread.id, activate).catch(() => {});
       return thread.id;
     } catch (error) {
       // Nothing was created: the user confirms the model warning, then the same request repeats.
@@ -903,6 +914,37 @@ export class DesktopConnectionService {
       if (input.model && error instanceof HttpError && error.status === 400) return { model_rejected: true };
       this.actionError("The topic could not be created. Check your permission and try again."); throw new Error("Topic creation was not confirmed.");
     }
+  }
+
+  /** The session of an unconfirmed starting outbox record, for display only. */
+  private pendingThread(threadId: string): Thread | undefined {
+    const client = this.client;
+    if (!client || client.threads.has(threadId)) return undefined;
+    const record = this.outbox.find(item => item.threadId === threadId && item.create);
+    if (!record?.create || !client.channels.has(record.create.channelId)) return undefined;
+    return { id: threadId, project_id: record.create.channelId, title: record.create.title, archived: false, last_message_at: record.createdAt / 1000 };
+  }
+
+  /** New session with a first text message, shown at once. The record is durable before
+   * this returns; deliver() creates the session (same Thread ID on retry), then sends. */
+  async startThread(input: StartThreadInput): Promise<string> {
+    const client = this.requireClient(), connection = this.connection!, channelId = input.channelId ?? this.selectedChannelId;
+    const title = input.title.trim(), text = input.text.replace(/\r\n/g, "\n"), threadId = input.clientThreadId, id = input.clientMessageId;
+    if (this.outboxStorageFault) throw new Error("Saved messages could not be updated. Keep your app data and reopen Hermes.");
+    if (!channelId || !client.channels.has(channelId) || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(threadId)) throw new Error("Choose a channel and enter a topic title.");
+    if (!text.trim() || text.length > 100_000 || !/^desktop:[0-9a-f-]{36}$/.test(id)) throw new Error("Write a message before sending.");
+    if (input.automationEditor && !client.supportsAutomationEditors) throw new Error("This server cannot create automations yet.");
+    const existing = this.outbox.find(item => item.id === id);
+    if (existing) { if (existing.threadId !== threadId || existing.text !== text) throw new Error('Message identity changed'); return threadId; }
+    if (client.threads.has(threadId)) throw new Error('Session already exists');
+    const record: OutboxRecord = { version: 1, id, threadId, text, attachmentIds: [], createdAt: Date.now(), state: "pending",
+      create: { channelId, title, ...(input.automationEditor ? { automationEditor: true as const } : {}) } };
+    await this.outboxStore.put(connection.id, record);
+    if (this.client !== client || this.connection !== connection) throw new Error('The message was saved for the previous connection');
+    this.outbox.push(record);
+    this.changed();
+    void this.deliver(record);
+    return threadId;
   }
 
   async renameThread(threadId: string, titleValue: string): Promise<void> {
@@ -974,7 +1016,7 @@ export class DesktopConnectionService {
     const text = input.text.replace(/\r\n/g, "\n");
     const attachmentIds = [...input.attachmentIds];
     if (this.outboxStorageFault) throw new Error("Saved messages could not be updated. Keep your app data and reopen Hermes.");
-    if (!threadId || !client.isThreadAvailable(threadId) || text.length > 100_000 || (!text.trim() && !attachmentIds.length) || attachmentIds.length > 8 || new Set(attachmentIds).size !== attachmentIds.length) throw new Error("Write a message or add an attachment before sending.");
+    if (!threadId || (!client.isThreadAvailable(threadId) && !this.pendingThread(threadId)) || text.length > 100_000 || (!text.trim() && !attachmentIds.length) || attachmentIds.length > 8 || new Set(attachmentIds).size !== attachmentIds.length) throw new Error("Write a message or add an attachment before sending.");
     const id = input.clientMessageId ?? `desktop:${randomUUID()}`;
     if (!/^desktop:[A-Za-z0-9-]{8,80}$/.test(id)) throw new Error('Invalid message identity');
     const existing = this.outbox.find(item => item.id === id);
@@ -1080,11 +1122,24 @@ export class DesktopConnectionService {
     const client = this.client, connection = this.connection;
     if (this.closed || this.outboxStorageFault || !client || !connection || value.state === "blocked" || this.delivering.has(value.id) || this.connectionState !== "online" || Date.now() < (this.sendRetryAfter.get(value.id) ?? 0)) return;
     if (value.receiptId && value.receiptRefSeq === undefined && this.checkedReceipts.has(value.id)) return;
+    // A later message of a session started here waits until its starting record created it.
+    if (!value.create && !client.threads.has(value.threadId) && this.pendingThread(value.threadId)) return;
     this.delivering.add(value.id);
+    let creating = false;
     try {
       if (value.state === "unknown" && !value.receiptId) { await this.persistOutbox({ ...value, state: "blocked" }); this.actionError("This task could not be confirmed and will not run again automatically. Your original message is still saved."); return; }
       if (value.receiptId && value.receiptRefSeq !== undefined) {
         await this.removeAcknowledged(connection.id, value.id); return;
+      }
+      if (value.create && !value.receiptId && !client.threads.has(value.threadId)) {
+        // Same client Thread ID on every attempt: the server returns the existing session.
+        creating = true;
+        await client.createThread(value.create.channelId, value.create.title, value.threadId, undefined, false, value.create.automationEditor ? { automationEditor: true } : {});
+        creating = false;
+        if (this.closed || this.client !== client || this.connection !== connection) return;
+        // The tab showed the unsent message; now it gets the live page (shown at once: new and empty).
+        if (this.selectedThreadId === value.threadId) void this.selectThread(value.threadId).catch(() => {});
+        this.changed();
       }
       if (!value.receiptId && client.isCatalogueReady && !client.isThreadAvailable(value.threadId)) {
         await this.persistOutbox({ ...value, state: "blocked" });
@@ -1113,8 +1168,12 @@ export class DesktopConnectionService {
       if (error instanceof HttpError && error.retryAfterMs) this.sendRetryAfter.set(value.id, Date.now() + error.retryAfterMs);
       if (!value.receiptId) await this.persistOutbox({ ...value, state: isRetryableError(error) ? "pending" : "blocked" });
       if (error instanceof HttpError && (error.status === 401 || error.status === 403)) this.actionError("This device is no longer authorized. Pair it again before sending. Your message is still saved.");
-      else if (!isRetryableError(error)) this.actionError("This message could not be sent. Your message is still saved on this device.");
-    } finally { this.delivering.delete(value.id); this.scheduleOutbox(); }
+      else if (!isRetryableError(error)) this.actionError(creating ? "This conversation could not be started. Your message is still saved on this device." : "This message could not be sent. Your message is still saved on this device.");
+    } finally {
+      this.delivering.delete(value.id); this.scheduleOutbox();
+      // Messages typed while the session was being created go out now, in order.
+      if (value.create && client.threads.has(value.threadId) && this.outbox.some(item => item.id !== value.id && item.threadId === value.threadId && !item.receiptId && item.state === "pending")) void this.flushOutbox();
+    }
   }
 
   private async removeAcknowledged(connectionId: string, id: string): Promise<void> {
