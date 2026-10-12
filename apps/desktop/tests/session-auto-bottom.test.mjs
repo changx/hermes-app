@@ -46,6 +46,12 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
       scrollTo(list().scrollHeight-list().clientHeight-30);const near=list().scrollTop;await wait();ensure('near-end scroll does not snap',list().scrollTop===near);
       grow();await wait();ensure('near-end growth preserves reading',list().scrollTop===near);
       scrollTo(list().scrollHeight);await wait();grow();await wait();bottom('reaching the end resumes follow');
+      // Typing in a multi-line composer re-measures the textarea; the timeline must stay at its end.
+      const type=value=>flushSync(()=>{const input=document.querySelector('.composer-box textarea');const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;setter.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));});
+      type('Line one\\nLine two\\nLine three\\nLine four');await wait();bottom('multi-line composer growth at bottom');
+      type('Line one\\nLine two\\nLine three\\nLine four and');await wait();bottom('typing in a multi-line composer keeps bottom');
+      type('Line one\\nLine two\\nLine three\\nLine four and more');await wait();bottom('repeated multi-line typing keeps bottom');
+      grow();await wait();bottom('follow survives multi-line typing');
       document.getElementById('results').textContent=JSON.stringify({ok:true,checks});root.unmount();
     }catch(error){document.getElementById('results').textContent=JSON.stringify({ok:false,error:String(error),checks});}})();
   ` }, bundle: true, platform: 'browser', format: 'iife', write: false });
@@ -73,6 +79,6 @@ test('Chromium: exact tail survives delayed layout; send resumes follow without 
     const evaluation=await call('Runtime.evaluate',{expression:`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const text=document.getElementById('results')?.textContent;if(text)resolve(JSON.parse(text));else if(Date.now()>deadline)reject(Error('Browser checks timed out'));else setTimeout(check,50);};check();})`,awaitPromise:true,returnByValue:true});
     const result=evaluation.result?.value;
     assert.equal(result?.ok, true, JSON.stringify(result));
-    assert.equal(result.checks.length, 15);
+    assert.equal(result.checks.length, 19);
   } finally { socket?.close();if(chrome){const exited=new Promise(resolve=>chrome.once('exit',resolve));chrome.kill();await exited;}await rm(folder, { recursive: true, force: true }); }
 });

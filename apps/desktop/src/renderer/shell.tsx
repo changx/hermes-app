@@ -239,9 +239,15 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     if (tabActive) input.current?.focus({ preventScroll: true });
   }, [busy, tabActive]);
   useLayoutEffect(() => {
-    if (!input.current) return;
-    input.current.style.height = "0px";
-    input.current.style.height = `${Math.min(COMPOSER_INPUT_MAX, Math.max(COMPOSER_INPUT_MIN, input.current.scrollHeight))}px`;
+    const field = input.current, box = field?.parentElement;
+    if (!field || !box) return;
+    // Measuring needs a collapsed textarea. Hold the card at its current height
+    // meanwhile: a briefly taller timeline clamps its scrollTop, and the content
+    // then sits lower behind the restored composer.
+    box.style.minHeight = `${box.offsetHeight}px`;
+    field.style.height = "0px";
+    field.style.height = `${Math.min(COMPOSER_INPUT_MAX, Math.max(COMPOSER_INPUT_MIN, field.scrollHeight))}px`;
+    box.style.minHeight = "";
   }, [text]);
   const update = (value: string) => { setText(value); if (threadId) drafts.set(threadId, value); };
   const finish = () => { working.current = false; if (mounted.current) setBusy(false); };
