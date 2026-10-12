@@ -1,11 +1,13 @@
 import { inRecents } from '../../../packages/client/src/recents.ts';
+import { frequentSessionLabels, sessionQueryScore, type SessionQuery } from '../../../packages/client/src/sessionSearch.ts';
 
 /** Directory data the Recents tab reads from one connection. */
 type Directory = {
   isCatalogueReady: boolean;
+  supportsSessionLabels?: boolean;
   channels: ReadonlyMap<string, { id: string; name: string }>;
   threads: ReadonlyMap<string, {
-    id: string; project_id: string; title: string; archived?: boolean | number; running?: boolean;
+    id: string; project_id: string; title: string; title_alphabet?: string; markers?: readonly string[]; archived?: boolean | number; running?: boolean;
     completed_unread?: boolean; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean;
   }>;
 };
@@ -13,6 +15,8 @@ export type RecentSource = Readonly<{ slot: string; name: string; client: Direct
 export type RecentRow = Readonly<{
   key: string; slot: string; id: string; title: string; channelId: string; channelName: string; connectionName: string;
   running: boolean; completedUnread: boolean; lastMessageAt?: number;
+  /** Labels, only from connections that support them. */
+  markers: readonly string[]; titleAlphabet?: string;
 }>;
 export type ChannelChoice = Readonly<{ key: string; slot: string; id: string; name: string; connectionName: string }>;
 
@@ -22,22 +26,48 @@ export type ChannelChoice = Readonly<{ key: string; slot: string; id: string; na
  * sidebar (packages/client/src/recents.ts).
  */
 export function recentRows(connections: readonly RecentSource[], nowSeconds: number): RecentRow[] {
+  return listedRows(connections, thread => inRecents({ origin: thread.origin, participated: thread.participated, running: thread.running === true, lastMessageAt: thread.last_message_at }, nowSeconds))
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.key.localeCompare(b.key));
+}
+
+type DirectoryThread = Directory['threads'] extends ReadonlyMap<string, infer T> ? T : never;
+/** Every listed, non-archived Thread of every ready connection. */
+function listedRows(connections: readonly RecentSource[], keep: (thread: DirectoryThread) => boolean = () => true): RecentRow[] {
   const rows: RecentRow[] = [];
   for (const runtime of connections) {
     const client = runtime.client;
     if (!client?.isCatalogueReady) continue;
     for (const thread of client.threads.values()) {
       const channel = client.channels.get(thread.project_id);
-      if (!channel || thread.archived) continue;
-      const candidate = { origin: thread.origin, participated: thread.participated, running: thread.running === true, lastMessageAt: thread.last_message_at };
-      if (!inRecents(candidate, nowSeconds)) continue;
+      if (!channel || thread.archived || !keep(thread)) continue;
       rows.push({ key: `${runtime.slot}:${thread.id}`, slot: runtime.slot, id: thread.id, title: thread.title,
         channelId: channel.id, channelName: channel.name, connectionName: runtime.name,
         running: thread.running === true, completedUnread: thread.completed_unread === true,
+        markers: client.supportsSessionLabels ? [...(thread.markers ?? [])] : [],
+        ...(thread.title_alphabet === undefined ? {} : { titleAlphabet: thread.title_alphabet }),
         ...(thread.last_message_at === undefined ? {} : { lastMessageAt: thread.last_message_at }) });
     }
   }
-  return rows.sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.key.localeCompare(b.key));
+  return rows;
+}
+
+/**
+ * Search from the Recents tab: every listed Thread (not only the last 24
+ * hours), the same keyword and AND-label matching as the desktop sidebar.
+ * Best match first; ties go running first, then newest activity.
+ */
+export function searchRecentRows(connections: readonly RecentSource[], query: SessionQuery): RecentRow[] {
+  return listedRows(connections)
+    .map(row => ({ row, score: sessionQueryScore({ title: row.title, title_alphabet: row.titleAlphabet, markers: row.markers }, query, row.channelName) }))
+    .filter(item => Number.isFinite(item.score))
+    .sort((a, b) => a.score - b.score || Number(b.row.running) - Number(a.row.running) || (b.row.lastMessageAt ?? 0) - (a.row.lastMessageAt ?? 0)
+      || a.row.title.localeCompare(b.row.title) || a.row.key.localeCompare(b.row.key))
+    .map(item => item.row);
+}
+
+/** Quick label filter: the five labels on the most listed Threads (same rule as the desktop sidebar). */
+export function quickLabels(connections: readonly RecentSource[], limit = 5): string[] {
+  return frequentSessionLabels(listedRows(connections), limit);
 }
 
 /** Every channel the new-Thread page can target, by connection then name. */
