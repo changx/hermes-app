@@ -143,6 +143,7 @@
 - [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
 - [docs/session-labels.md](docs/session-labels.md)
+- [docs/todo-flag.md](docs/todo-flag.md)
 - [docs/archive.md](docs/archive.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)
 - [docs/client-layout-tools-blur-release.md](docs/client-layout-tools-blur-release.md)

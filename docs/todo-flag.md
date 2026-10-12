@@ -1,0 +1,39 @@
+# Todo flag (desktop and mobile)
+
+Requested by Jamie: a quick todo flag on the Session page. The flag marks the session in the session lists. Other labels are of little use in lists, so the lists no longer show label pills.
+
+## Storage
+
+- The flag is the reserved label `todo` in the existing session labels. No plugin, server or Gateway change.
+- Reading ignores case: `todo`, `TODO` and `ToDo` all count. Writing adds `todo`. Removing deletes every case of it and keeps the other labels in order.
+- The server allows 10 labels. A session with 10 other labels cannot get the flag. The App shows: "Remove a label first. A session can have up to 10 labels."
+- The save uses the normal label save. If the read-back does not match, the App shows "Labels changed on another device. Try again." Other failures show "Could not update the todo flag. Check the connection and try again." No technical detail is shown.
+- Shared rules: `packages/client/src/todo.ts` (no runtime imports, so mobile Node tests can load it).
+
+## Desktop
+
+- Session toolbar: a flag button is the first tool button. Outline when off, filled orange when on (`aria-pressed`). Tooltip and name: "Mark as todo" or "Remove todo". It is disabled while the connection is offline. It is hidden when the server has no label support.
+- The toolbar label row shows the other labels only.
+- Sidebar order from top: New chat, search box, frequent labels, Automations, **Todo**, Recents, Projects.
+- The Todo section lists every todo session of any age from every connection: running first, then newest activity. It is hidden when no session is flagged. The header collapses it; the choice is saved on this device (`hermes.sidebar.todo-collapsed`).
+- Recents and each Project's session list put running sessions first, then newest activity. Projects keep their recent window, so an old todo session shows only in Todo.
+- Rows show an orange flag right of the title. Rows show no label pills. The frequent-labels row leaves out `todo`.
+- The row context menu: "Mark as todo" or "Remove todo", then "Edit labels".
+- Search results keep best-match order. Labels stay on the toolbar (a click searches the label), in search filters and in Edit labels.
+
+## Mobile
+
+- Session page header: a flag button next to Session options, with the same names and messages.
+- Recents tab: a Todo section above Recents with the same content and order. Cards show the flag, not label pills. Quick labels leave out `todo`.
+- Channel session list: running first, flag on rows, no label pills. Long-press offers "Mark as todo" or "Remove todo".
+
+## Icon
+
+- `scripts/build-work-icons.py` adds a filled `flag` glyph at `U+E016` (`ICONS.flag`). Existing glyphs are unchanged. `assets/work-icons.ttf` is rebuilt; both apps ship it.
+
+## Verification
+
+- Desktop `tests/todo-flag.test.mjs` (Chromium, production components): section order, Todo content and order, Recents and Project running-first order, flag placement and glyph, no pills, row height, frequent labels, context-menu mark and remove, collapse, hidden without todo; toolbar button state, save, label row, failure, stale read-back, 10-label limit, offline, no label support.
+- Updated: `sidebar-recents.test.mjs` (running first), `session-labels.test.mjs` (no row pills, menu), `session-toolbar.test.mjs` (tool order), `font-settings.test.mjs`.
+- Mobile `tests/todo-flag.test.mjs` (shared rules, limit equals the server limit, toggle messages), `tests/channel-archive.test.mjs` (row flag, long-press toggle), `tests/recents-search.test.mjs` (Todo section, order).
+- Linux only. Mac and iPhone acceptance are pending.

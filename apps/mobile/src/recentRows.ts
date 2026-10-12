@@ -1,4 +1,5 @@
 import { inRecents } from '../../../packages/client/src/recents.ts';
+import { hasTodo, withoutTodo } from '../../../packages/client/src/todo.ts';
 import { frequentSessionLabels, sessionQueryScore, type SessionQuery } from '../../../packages/client/src/sessionSearch.ts';
 
 /** Directory data the Recents tab reads from one connection. */
@@ -22,13 +23,21 @@ export type ChannelChoice = Readonly<{ key: string; slot: string; id: string; na
 
 /**
  * Recents across every saved connection: owned by the user, active in the
- * last 24 hours or running, newest activity first. Same rule as the desktop
- * sidebar (packages/client/src/recents.ts).
+ * last 24 hours or running. Running first, then newest activity. Same rule as
+ * the desktop sidebar (packages/client/src/recents.ts).
  */
 export function recentRows(connections: readonly RecentSource[], nowSeconds: number): RecentRow[] {
   return listedRows(connections, thread => inRecents({ origin: thread.origin, participated: thread.participated, running: thread.running === true, lastMessageAt: thread.last_message_at }, nowSeconds))
-    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.key.localeCompare(b.key));
+    .sort(runningFirst);
 }
+
+/** Todo: every flagged Thread of every connection, any age. Running first, then newest activity (same as the desktop sidebar). */
+export function todoRows(connections: readonly RecentSource[]): RecentRow[] {
+  return listedRows(connections).filter(row => hasTodo(row.markers)).sort(runningFirst);
+}
+
+const runningFirst = (a: RecentRow, b: RecentRow): number => Number(b.running) - Number(a.running)
+  || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.key.localeCompare(b.key);
 
 type DirectoryThread = Directory['threads'] extends ReadonlyMap<string, infer T> ? T : never;
 /** Every listed, non-archived Thread of every ready connection. */
@@ -67,7 +76,8 @@ export function searchRecentRows(connections: readonly RecentSource[], query: Se
 
 /** Quick label filter: the five labels on the most listed Threads (same rule as the desktop sidebar). */
 export function quickLabels(connections: readonly RecentSource[], limit = 5): string[] {
-  return frequentSessionLabels(listedRows(connections), limit);
+  // The flag is not a quick filter: the Todo section already lists flagged Threads.
+  return frequentSessionLabels(listedRows(connections).map(row => ({ ...row, markers: withoutTodo(row.markers) })), limit);
 }
 
 /** Every channel the new-Thread page can target, by connection then name. */

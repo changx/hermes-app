@@ -1,34 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { labelCandidates, labelPillLayout, validateLabels } from '../../../../packages/client/src/sessionLabels';
+import { useEffect, useRef, useState } from 'react';
+import { labelCandidates, validateLabels } from '../../../../packages/client/src/sessionLabels';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
-
-export function LabelPills({ markers = [] }: { markers?: readonly string[] }) {
-  const root = useRef<HTMLSpanElement>(null);
-  const [layout, setLayout] = useState({ widths: [] as number[], hidden: markers.length });
-  const key = JSON.stringify(markers);
-  useLayoutEffect(() => {
-    const node = root.current;
-    if (!node) return;
-    let active = true;
-    const measure = () => {
-      if (!active) return;
-      const widths = [...node.querySelectorAll<HTMLElement>('[data-label-measure]')].map(n => n.getBoundingClientRect().width);
-      const overflow = [0, ...[...node.querySelectorAll<HTMLElement>('[data-overflow-measure]')].map(n => n.getBoundingClientRect().width)];
-      const next = labelPillLayout(node.getBoundingClientRect().width, widths, overflow);
-      setLayout(old => JSON.stringify(old) === JSON.stringify(next) ? old : next);
-    };
-    measure();
-    const observer = new ResizeObserver(measure); observer.observe(node);
-    window.addEventListener('resize', measure);
-    void document.fonts?.ready.then(measure);
-    return () => { active = false; observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [key]);
-  if (!markers.length) return null;
-  return <span className="label-pills" ref={root} aria-label={`Labels: ${markers.join(', ')}`}>
-    <span className="label-measure" aria-hidden="true">{markers.map(label => <span key={label} className="label-pill" data-label-measure>{label}</span>)}{markers.map((_, i) => <span key={i} className="label-pill" data-overflow-measure>+{i + 1}</span>)}</span>
-    <span className="label-pills-visible" aria-hidden="true">{layout.widths.map((width, i) => <span key={markers[i]} className="label-pill" style={{ width }} title={markers[i]}>{markers[i]}</span>)}{layout.hidden > 0 && <span className="label-pill label-overflow" title={markers.slice(layout.widths.length).join(', ')}>+{layout.hidden}</span>}</span>
-  </span>;
-}
 
 /** Session toolbar labels: every label is shown, wrapping onto more rows; each one searches the sidebar for that label. */
 export function ToolbarLabels({ markers = [], onSearch }: { markers?: readonly string[]; onSearch: (label: string) => void }) {

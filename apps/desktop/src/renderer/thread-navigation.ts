@@ -1,5 +1,6 @@
 import type { DesktopThread } from "../shared/desktop-api";
 import { inRecents } from '../../../../packages/client/src/recents';
+import { runningFirst, todoSessions } from '../../../../packages/client/src/todo';
 import { emptyLabelFilter, labelFilterActive, matchesLabels, type LabelFilter } from '../../../../packages/client/src/sessionLabels';
 
 export const THREAD_BATCH = 24;
@@ -7,7 +8,7 @@ const DAY = 24 * 60 * 60;
 
 export const orderedThreads = (threads: readonly DesktopThread[], channelId?: string): DesktopThread[] =>
   threads.filter((thread) => !channelId || thread.channelId === channelId)
-    .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    .sort(runningFirst);
 
 // Running sessions and sessions with an unread result are always in the
 // initial window, so a Project count never points at hidden rows.
@@ -25,11 +26,16 @@ export const threadWindow = (threads: readonly DesktopThread[], channelId: strin
 /**
  * Sidebar Recents: Sessions from every Project and connection with activity in
  * the trailing 24 hours, plus running Sessions, that the user owns (see
- * packages/client/src/recents.ts). Newest activity first.
+ * packages/client/src/recents.ts). Running first, then newest activity.
  */
 export const recentWindow = (threads: readonly DesktopThread[], now: number, batches = 0) => {
-  const rows = threads.filter(thread => inRecents(thread, now / 1000))
-    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+  const rows = threads.filter(thread => inRecents(thread, now / 1000)).sort(runningFirst);
   const count = (Math.max(0, batches) + 1) * THREAD_BATCH;
+  return { rows: rows.slice(0, count), hasMore: rows.length > count };
+};
+
+/** Sidebar Todo: every flagged Session of any age, running first, then newest activity. */
+export const todoWindow = (threads: readonly DesktopThread[], batches = 0) => {
+  const rows = todoSessions(threads), count = (Math.max(0, batches) + 1) * THREAD_BATCH;
   return { rows: rows.slice(0, count), hasMore: rows.length > count };
 };

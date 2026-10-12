@@ -70,3 +70,27 @@ test('Session long-press archives the session after confirmation', async () => {
   assert.deepEqual(calls, [['archiveThread', 'th_1']]);
   root.unmount();
 });
+
+test('Session rows show the todo flag, not labels; long-press marks and clears todo through the label save', async () => {
+  state.alerts = []; const calls = [];
+  const labelled = {
+    supportsChannelArchive: true, supportsSessionLabels: true, supportsChannelWorkspace: false,
+    channels: new Map([['p', { id: 'p', name: 'Research' }]]),
+    threads: new Map([['th_1', { id: 'th_1', project_id: 'p', title: 'Plan', markers: ['bug', 'TODO'], archived: false }],
+      ['th_2', { id: 'th_2', project_id: 'p', title: 'Notes', markers: ['bug'], archived: false }]]),
+    saveThreadLabels: async (id, markers) => { calls.push([id, markers]); labelled.threads.get(id).markers = markers; return { markers }; },
+  };
+  const root = await render({ client: labelled, onArchive: async () => {} });
+  assert.equal(root.root.findAll(n => n.type === 'LabelPills').length, 0, 'no label pills in the list');
+  const flags = root.root.findAll(n => n.props.accessibilityLabel === 'Todo' && n.props.accessibilityRole === 'image');
+  assert.equal(flags.length, 1, 'only the flagged session shows the flag');
+  assert.equal(button(root, 'Plan, todo').props.accessibilityHint, 'Open session. Long press for options.');
+  await act(async () => button(root, 'Plan, todo').props.onLongPress());
+  assert.deepEqual(state.alerts[0][2].map(b => b.text), ['Remove todo', 'Rename session', 'Edit labels', 'Archive session', 'Cancel']);
+  await choose(state.alerts[0], 'Remove todo');
+  assert.deepEqual(calls, [['th_1', ['bug']]], 'clears every case of the flag and keeps the other labels');
+  await act(async () => button(root, 'Notes').props.onLongPress());
+  await choose(state.alerts[1], 'Mark as todo');
+  assert.deepEqual(calls[1], ['th_2', ['bug', 'todo']]);
+  root.unmount();
+});

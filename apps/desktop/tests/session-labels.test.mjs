@@ -46,12 +46,10 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         button(document,'Show more').click();await tick();ensure('48 after Show more',document.querySelectorAll('.search-result-list .tree-thread').length===48);
         ensure('running dot intact',document.querySelectorAll('.search-result-list .thread-status').length===1&&document.querySelectorAll('.search-result-list .thread-result-unread').length===1);
         button(document,'Clear search').click();await tick();ensure('clear restores the tree',document.querySelectorAll('.channel-tree .tree-thread').length===2&&!document.querySelector('.session-query-chip'));
-        const pillRow=document.querySelector('.channel-tree .tree-thread .label-pills');const full=()=>[...pillRow.querySelectorAll('.label-pills-visible .label-pill')];
-        const widths=[];for(const width of [180,260,420]){document.getElementById('nav').style.width=width+'px';window.dispatchEvent(new Event('resize'));await tick();const box=pillRow.getBoundingClientRect();const pills=full();widths.push(pills.filter(n=>!n.classList.contains('label-overflow')).length);ensure('contained '+width,pills.every(n=>n.getBoundingClientRect().right<=box.right+.5));ensure('one line '+width,new Set(pills.map(n=>n.getBoundingClientRect().top)).size===1);}
-        ensure('overflow measured',widths[0]<widths.at(-1)&&full().some(n=>n.scrollWidth>n.clientWidth));
-        document.querySelector('.channel-tree .tree-thread .label-pill').click();await tick();ensure('chips route row click',selected===1);
+        ensure('sidebar rows show no label pills',!document.querySelector('.sidebar-scroll .label-pills'));
         document.querySelector('.channel-tree .tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();
-        document.querySelector('[role="menuitem"]').click();await tick();
+        ensure('context menu: todo toggle, then labels',[...document.querySelectorAll('[role="menuitem"]')].map(n=>n.textContent).join('|')==='Mark as todo|Edit labels');
+        [...document.querySelectorAll('[role="menuitem"]')].find(n=>n.textContent==='Edit labels').click();await tick();
         const dialog=document.querySelector('dialog');ensure('accessible modal',dialog.open&&dialog.getAttribute('aria-labelledby')==='labels-editor-title');ensure('input focused on opening',document.activeElement===dialog.querySelector('[aria-label="Label text"]'));
         button(dialog,'Clear labels').click();await tick();inputValue(dialog.querySelector('[aria-label="Label text"]'),' Foo ');await tick();button(dialog,'Add').click();await tick();
         inputValue(dialog.querySelector('[aria-label="Label text"]'),' Foo ');await tick();button(dialog,'Add').click();await tick();ensure('exact duplicate rejection',dialog.textContent.includes('already in this list'));

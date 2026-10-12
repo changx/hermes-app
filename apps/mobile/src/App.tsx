@@ -15,6 +15,9 @@ import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { LabelPills } from './SessionLabels';
+import { TODO_COLOR } from './TodoFlag';
+import { setThreadTodo } from './todoToggle';
+import { hasTodo, withoutTodo } from '../../../packages/client/src/todo';
 import { projectTimeline } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
@@ -44,8 +47,12 @@ export function HeaderActions({ onSettings }: { onSettings: () => void }) {
   </View>;
 }
 /** The Session page's only header entry; labels, link and Settings live on its page. */
-export function SessionOptionsButton({ onPress }: { onPress: () => void }) {
+export function SessionOptionsButton({ onPress, todo }: { onPress: () => void; todo?: { on: boolean; busy: boolean; onPress: () => void } }) {
   return <View style={styles.headerActions}>
+    {todo && <Pressable accessibilityRole="button" accessibilityLabel={todo.on ? 'Remove todo' : 'Mark as todo'} accessibilityState={{ selected: todo.on, busy: todo.busy }} disabled={todo.busy} hitSlop={6}
+      onPress={todo.onPress} style={({ pressed }) => [styles.headerIcon, pressed && styles.headerIconPressed, todo.busy && styles.headerIconBusy]}>
+      <SymbolView name={todo.on ? { ios: 'flag.fill', android: 'flag' } : { ios: 'flag', android: 'outlined_flag' }} size={20} tintColor={todo.on ? TODO_COLOR : '#2b4e81'} weight="medium" fallback={<Text style={styles.headerLink}>{todo.on ? 'Todo' : 'Flag'}</Text>} />
+    </Pressable>}
     <HeaderIcon label="Session options" ios="ellipsis" android="more_horiz" onPress={onPress} />
   </View>;
 }
@@ -113,6 +120,8 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  // The flag saves on its own; the composer stays usable meanwhile.
+  const [todoBusy, setTodoBusy] = useState(false);
   const busyRef = useRef(false);
   const openingRef = useRef(0);
   const ownedWatch = useRef<object | null>(null);
@@ -277,6 +286,13 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   }, [client, threadId]);
 
   const selected = accountClient?.threads.get(threadId);
+  const todo = hasTodo(selected?.markers);
+  const toggleTodo = () => {
+    const owner = accountClient;
+    if (!owner || todoBusy) return;
+    setTodoBusy(true); setError('');
+    void setThreadTodo(owner, threadId, !todo).then(failure => { if (failure && focusedRef.current) setError(failure); }).finally(() => setTodoBusy(false));
+  };
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
@@ -289,9 +305,10 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
-      headerRight: () => <SessionOptionsButton onPress={() => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } })} /> }} />
+      headerRight: () => <SessionOptionsButton onPress={() => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } })}
+        todo={accountClient?.supportsSessionLabels ? { on: todo, busy: todoBusy || status !== 'online', onPress: toggleTodo } : undefined} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    {accountClient?.supportsSessionLabels && !!selected.markers?.length && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={selected.markers} /></View>}
+    {accountClient?.supportsSessionLabels && withoutTodo(selected.markers).length > 0 && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={withoutTodo(selected.markers)} /></View>}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
@@ -396,7 +413,7 @@ const styles = StyleSheet.create({
   hint: { color: '#607187', fontSize: 12, margin: 9 }, error: { color: '#9d1b32', backgroundColor: '#fff0f2', padding: 10 },
   button: { backgroundColor: '#2960ad', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', margin: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, headerLink: { color: '#2b4e81', fontSize: 13, fontWeight: '600' },
-  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, headerIconPressed: { backgroundColor: '#e6edf7' },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, headerIconPressed: { backgroundColor: '#e6edf7' }, headerIconBusy: { opacity: 0.5 },
   secondary: { backgroundColor: '#e6edf7' }, disabled: { opacity: 0.5 }, buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 }, secondaryText: { color: '#2b4e81' },
   headerTitle: { alignItems: 'center', maxWidth: 240 }, headerTitleText: { fontSize: 17, fontWeight: '600', color: '#172a40' }, headerSubtitle: { fontSize: 12, color: '#607187' },
 });

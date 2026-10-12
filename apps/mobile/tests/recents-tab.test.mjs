@@ -7,15 +7,15 @@ const now = 2_000_000_000;
 const client = (channels, threads) => ({ isCatalogueReady: true, channels: new Map(channels.map(c => [c.id, c])), threads: new Map(threads.map(t => [t.id, t])) });
 const thread = (id, project_id, ago, extra = {}) => ({ id, project_id, title: id, last_message_at: now - ago, ...extra });
 
-test('Recents: own Threads of the last 24 hours across connections, newest first', () => {
+test('Recents: own Threads of the last 24 hours across connections, running first, then newest', () => {
   const a = client([{ id: 'p', name: 'Research' }], [
     thread('mine', 'p', 60), thread('old', 'p', 25 * 3600), thread('run', 'p', 10, { origin: 'automation' }),
     thread('replied', 'p', 30, { origin: 'automation', participated: true }), thread('gone', 'p', 5, { archived: true }),
     thread('running-old', 'p', 90 * 3600, { running: true }), thread('orphan', 'x', 1)]);
   const b = client([{ id: 'p', name: 'Research' }], [thread('mine', 'p', 20, { completed_unread: true })]);
   const rows = recentRows([{ slot: 'primary', name: 'home', client: a }, { slot: 'w', name: 'work', client: b }, { slot: 'z', name: 'down', client: null }], now);
-  assert.deepEqual(rows.map(r => r.key), ['w:mine', 'primary:replied', 'primary:mine', 'primary:running-old']);
-  assert.deepEqual([rows[0].channelName, rows[0].connectionName, rows[0].completedUnread], ['Research', 'work', true]);
+  assert.deepEqual(rows.map(r => r.key), ['primary:running-old', 'w:mine', 'primary:replied', 'primary:mine']);
+  assert.deepEqual([rows[1].channelName, rows[1].connectionName, rows[1].completedUnread], ['Research', 'work', true]);
 });
 
 test('New conversation preselects the channel of the most recent own activity', () => {

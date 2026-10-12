@@ -13,7 +13,7 @@ Status: candidate on branch `feat/desktop-automations`. Not merged or released. 
 
 ### Sidebar section
 
-- Order from top: New chat, search box, frequent labels, **Automations**, Recents, Projects. While a search is active, the search results replace all three sections (unchanged rule).
+- Order from top: New chat, search box, frequent labels, **Automations**, Recents, Projects. (Todo was added between Automations and Recents later; see [todo-flag.md](todo-flag.md).) While a search is active, the search results replace all three sections (unchanged rule).
 - The section lists the jobs of every connected server that has the `automations` capability (plugin 0.2.22 or later). Order: running first, then latest run, then name (same as mobile).
 - Each row uses the Recents row layout: job name; the connection name when several connections exist; a status only when it needs attention (`Running`, `Paused`, `Last run failed`); the unread result count as the blue badge. The tooltip has the full status, schedule and next or last run.
 - When no connection offers Automations, the section is not shown. A server that could not be read shows one short line; the other servers' jobs stay.

@@ -76,6 +76,13 @@ def panel_right():
     return [outer, left, right]
 
 
+def flag():
+    # Filled pennant on a pole: one broad shape that stays readable at sidebar size.
+    pole = bar(210, 110, 210 + STROKE, 890)
+    pennant = [(210 + STROKE, 890), (820, 890), (680, 690), (820, 490), (210 + STROKE, 490)][::-1]
+    return [pole, pennant]
+
+
 shapes = {
     '.notdef': [],
     'chevronDown': polygon([(200, 610), (270, 680), (500, 450), (730, 680), (800, 610), (500, 310)]),
@@ -87,8 +94,9 @@ shapes = {
     'more': more(),
     'filter': filter_lines(),
     'panelRight': panel_right(),
+    'flag': flag(),
 }
-codes = {'chevronDown': 0xE001, 'chevronRight': 0xE002, 'chevronLeft': 0xE003, 'gear': 0xE010, 'compose': 0xE011, 'plus': 0xE012, 'more': 0xE013, 'filter': 0xE014, 'panelRight': 0xE015}
+codes = {'chevronDown': 0xE001, 'chevronRight': 0xE002, 'chevronLeft': 0xE003, 'gear': 0xE010, 'compose': 0xE011, 'plus': 0xE012, 'more': 0xE013, 'filter': 0xE014, 'panelRight': 0xE015, 'flag': 0xE016}
 
 root = Path(__file__).resolve().parents[1]
 font = FontBuilder(1000, isTTF=True)

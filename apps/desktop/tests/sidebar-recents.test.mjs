@@ -14,9 +14,9 @@ const { recentWindow, THREAD_BATCH } = mod.exports;
 const now = 2_000_000_000_000, seconds = now / 1000;
 const row = (id, lastMessageAt, extra = {}) => ({ id, channelId: 'p', title: id, markers: [], running: false, lastMessageAt, ...extra });
 
-test('Recents keeps only the last 24 hours plus running sessions, newest first', () => {
+test('Recents keeps only the last 24 hours plus running sessions; running first, then newest', () => {
   const threads = [row('old', seconds - 25 * 3600), row('hour', seconds - 3600), row('minute', seconds - 60), row('running-old', seconds - 90 * 3600, { running: true }), row('never', undefined)];
-  assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['minute', 'hour', 'running-old']);
+  assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['running-old', 'minute', 'hour']);
 });
 
 test('Recents leaves out automation Threads until the user replies in them', () => {

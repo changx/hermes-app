@@ -32,7 +32,7 @@ test('Chromium: Session page has no title bar; tools float at the top right with
         ensure('no title or project text',!outside.includes('Session Title Beta')&&!outside.includes('Project Alpha'));
         const actions=bar.querySelector('.conversation-actions'), labels=bar.querySelector('.toolbar-labels');
         const names=[...actions.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'));
-        ensure('tools present',names.join('|')==='Copy link|Edit labels|Rename|Archive|Settings');
+        ensure('tools present',names.join('|')==='Mark as todo|Copy link|Edit labels|Rename|Archive|Settings');
         ensure('icon buttons have in-app tooltips, not native titles',[...actions.querySelectorAll('button')].every(b=>b.dataset.tooltip&&!b.title&&b.querySelector('svg')&&!b.textContent.trim()));
         const hover=async(el)=>{el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,600));return document.querySelector('.app-tooltip');};
         const away=async()=>{list.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,30));};

@@ -356,12 +356,7 @@ textarea:disabled {
 .thread-children { margin: 0 8px 8px 21px; border-left: 1px solid var(--app-border); }
 .tree-thread { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; padding: 9px 10px; border: 0; background: transparent; text-align: left; color: var(--app-text); }
 .thread-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.label-pills { position: relative; display: block; width: 100%; min-width: 0; height: calc(var(--app-font-size) * 1.15 + 4px); pointer-events: none; font-size: var(--app-font-size); font-weight: 500; }
-.label-pills-visible { display: flex; align-items: center; gap: 4px; overflow: hidden; height: calc(var(--app-font-size) * 1.15 + 4px); }
 .label-pill { display: inline-block; box-sizing: border-box; flex: none; padding: 2px 7px; border-radius: 6px; color: #42566f; background: #edf2f7; line-height: 1.15; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.label-measure { position: absolute; visibility: hidden; display: flex; width: max-content; max-width: none; pointer-events: none; }
-.label-measure .label-pill { max-width: none; }
-.label-overflow { flex-shrink: 0; }
 .session-context-menu { position: fixed; z-index: 20; padding: 5px; background: #fff; border: 1px solid var(--app-border); border-radius: 8px; box-shadow: 0 4px 14px #0002; }
 .session-context-menu button { width: 160px; padding: 9px; text-align: left; }
 dialog.labels-editor:not([open]) { display: none; }
@@ -791,3 +786,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .automation-thread-title { font-weight: 600; overflow-wrap: anywhere; }
 .automation-thread-details { color: var(--app-muted); font-size: 0.875em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .automation-more { align-self: center; padding: 8px; }
+
+/* Todo flag: a quiet orange flag at the end of a sidebar row, and a toolbar toggle that fills when on. */
+.thread-todo { display: inline-flex; flex: none; color: #d9480f; }
+.thread-todo .app-icon { width: 14px; height: 14px; font-size: 13px; line-height: 14px; }
+.session-toolbar .conversation-actions .todo-toggle.todo-on { color: #d9480f; }
+.session-toolbar .conversation-actions .todo-toggle.todo-on:hover { color: #b8400d; }
+.session-toolbar .todo-pennant-on { fill: currentColor; }
+.session-toolbar .conversation-actions button:disabled { opacity: .5; cursor: default; }
+.native-sidebar .sidebar-todo .sidebar-section-header { margin-top: 8px; }

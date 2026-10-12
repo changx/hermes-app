@@ -38,7 +38,7 @@ test('Chromium: real settings change text only, reset, retain pages, persist to 
       if(stage==='first'){
         const original=document.querySelector('.message'),before=geometry();
         for(const size of [12,16,18,24]){change(size);check('UI/content/code/tool size '+size,textSize(size));check('spacing/icons unchanged '+size,geometry()===before);check('message identity retained '+size,document.querySelector('.message')===original);check('persisted '+size,localStorage.getItem(FONT_SIZE_KEY)===String(size));
-          for(const pill of document.querySelectorAll('.label-pills-visible .label-pill')){const child=pill.getBoundingClientRect(),parent=pill.parentElement.getBoundingClientRect();check('label not clipped '+size,child.top>=parent.top-1&&child.bottom<=parent.bottom+1);}
+          // Sidebar rows no longer show label pills; the todo flag scales with the row text.
         }
         flushSync(()=>[...document.querySelectorAll('.settings-window button')].find(button=>button.textContent==='Reset to 16').click());check('reset saves default',textSize(16)&&localStorage.getItem(FONT_SIZE_KEY)==='16');
         change(20);close();await tick();check('closing Settings keeps conversation and size',!document.querySelector('.settings-window')&&!!document.querySelector('.message')&&getComputedStyle(document.documentElement).fontSize==='20px');

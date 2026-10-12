@@ -11,6 +11,7 @@ import { build } from 'esbuild';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
+import * as todo from '../../../packages/client/src/todo.ts';
 
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -134,6 +135,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     'expo-crypto': { randomUUID: () => 'synthetic-send-id', getRandomBytes: () => new Uint8Array(12), getRandomBytesAsync: async () => new Uint8Array(44) },
     'expo-clipboard': { setStringAsync: async () => {} },
     '../../../packages/client/src/sessionLinks': sessionLinks,
+    '../../../packages/client/src/todo': todo, './TodoFlag': { TodoFlag: 'TodoFlag', TODO_COLOR: '#d9480f' }, './todoToggle': { setThreadTodo: async () => '' },
     '../../../packages/client/src/projectDirectory': {},
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String, isRetryableError: () => true },
     './NetworkStatusToast': { NetworkStatusToast: 'NetworkStatusToast' },

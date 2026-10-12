@@ -7,15 +7,22 @@ import { HeaderIcon, Notice, useConnections } from '../../App';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
 import { TabHeader } from '../../TabHeader';
-import { quickLabels, recentRows, searchRecentRows } from '../../recentRows';
-import { LabelPills } from '../../SessionLabels';
+import { quickLabels, recentRows, searchRecentRows, todoRows, type RecentRow } from '../../recentRows';
+import { TodoFlag } from '../../TodoFlag';
+import { hasTodo } from '../../../../../packages/client/src/todo';
 import { addQueryLabel, emptySessionQuery, removeQueryLabel, sessionQueryActive, type SessionQuery } from '../../../../../packages/client/src/sessionSearch';
 import { useSessionNavigation } from '../../sessionNavigation';
 import { tabListBottomPadding } from '../../tabInsets';
 
 const MINUTE = 60_000;
 
-/** Recents tab: the user's own Threads with activity in the last 24 hours, newest first. */
+type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key: string; row: RecentRow };
+
+/**
+ * Recents tab: a Todo section (every flagged Thread, any age), then the
+ * user's own Threads with activity in the last 24 hours. Both lists put
+ * running Threads first, then newest activity. A search shows one result list.
+ */
 export default function Recents() {
   const { ready, connections, revision, listError } = useConnections();
   const navigation = useSessionNavigation();
@@ -26,7 +33,14 @@ export default function Recents() {
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), MINUTE); return () => clearInterval(timer); }, []);
   const [query, setQuery] = useState<SessionQuery>(emptySessionQuery);
   const searching = sessionQueryActive(query);
-  const rows = useMemo(() => searching ? searchRecentRows(connections, query) : recentRows(connections, now / 1000), [connections, revision, now, query, searching]);
+  const items = useMemo((): Item[] => {
+    const rowItem = (section: string) => (row: RecentRow): Item => ({ kind: 'row', key: `${section}:${row.key}`, row });
+    if (searching) return searchRecentRows(connections, query).map(rowItem('search'));
+    const todos = todoRows(connections), recents = recentRows(connections, now / 1000);
+    if (!todos.length) return recents.map(rowItem('recent'));
+    return [{ kind: 'section', key: 'section:todo', title: 'Todo' }, ...todos.map(rowItem('todo')),
+      ...(recents.length ? [{ kind: 'section' as const, key: 'section:recent', title: 'Recent' }, ...recents.map(rowItem('recent'))] : [])];
+  }, [connections, revision, now, query, searching]);
   // Selected labels stay visible (first) even when they are not among the five most used.
   const labels = useMemo(() => { const top = quickLabels(connections); return [...query.labels.filter(label => !top.includes(label)), ...top]; }, [connections, revision, query.labels]);
   const toggle = (label: string) => setQuery(old => old.labels.includes(label) ? removeQueryLabel(old, label) : addQueryLabel(old, label));
@@ -55,20 +69,22 @@ export default function Recents() {
           </Pressable>; })}
       </View>}
     </View>
-    <FlatList data={rows} keyExtractor={row => row.key} extraData={revision} contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
+    <FlatList data={items} keyExtractor={item => item.key} extraData={revision} contentContainerStyle={[s.list, { paddingBottom: tabListBottomPadding(insets.bottom) }]}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-      renderItem={({ item }) => {
+      renderItem={({ item: entry }) => {
+        if (entry.kind === 'section') return <Text accessibilityRole="header" style={s.section}>{entry.title}</Text>;
+        const item = entry.row, todo = hasTodo(item.markers);
         const source = multiple ? `${item.channelName} · ${item.connectionName}` : item.channelName;
         return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(item.slot, item.id)}
-          accessibilityLabel={[item.title, source, item.running ? 'Running' : undefined, item.completedUnread ? 'Completed, unread' : undefined].filter(Boolean).join(', ')}
+          accessibilityLabel={[item.title, source, item.running ? 'Running' : undefined, item.completedUnread ? 'Completed, unread' : undefined, todo ? 'Todo' : undefined].filter(Boolean).join(', ')}
           style={({ pressed }) => [s.card, pressed && s.pressed]}>
           <Text numberOfLines={2} style={s.heading}>{item.title}</Text>
-          {item.markers.length > 0 && <LabelPills markers={item.markers} />}
           <View style={s.meta}>
             <Text numberOfLines={1} style={s.source}>{source}</Text>
             <MessageTime seconds={item.lastMessageAt} />
             {item.running && <View style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}
             {item.completedUnread && <View style={s.unreadDot} />}
+            {todo && <TodoFlag />}
           </View>
         </Pressable>;
       }}
@@ -78,6 +94,7 @@ export default function Recents() {
 
 const s = StyleSheet.create({
   fill: { flex: 1 }, list: { paddingHorizontal: 12, paddingTop: 4 },
+  section: { fontSize: 13, fontWeight: '600', color: '#65758b', marginTop: 8, marginBottom: 8, paddingHorizontal: 4 },
   searchArea: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, gap: 8 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#eef1f5' },
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 7, fontSize: 16, color: '#172a40' },

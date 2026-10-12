@@ -7,7 +7,10 @@ import type { LiveSessionClient } from '../../../packages/client/src/liveClient'
 import { NewTopicComposer } from './NewTopicComposer';
 import { threadPatch } from './channel-edits';
 import { MessageTime } from './MessageTime';
-import { LabelPills, LabelsFilter } from './SessionLabels';
+import { LabelsFilter } from './SessionLabels';
+import { TodoFlag } from './TodoFlag';
+import { setThreadTodo } from './todoToggle';
+import { hasTodo } from '../../../packages/client/src/todo';
 import { emptyLabelFilter, labelFilterActive, matchesLabels } from '../../../packages/client/src/sessionLabels';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 
@@ -85,7 +88,12 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
     if (editing && channelId) { await client.updateChannel(channelId, patch); if (current()) setEditing(false); }
   });
   const rename = (thread: ThreadSummary) => { setRenaming(thread.id); setNewTitle(thread.title); setError(''); };
+  const toggleTodo = (thread: ThreadSummary) => void run(async current => {
+    const failure = await setThreadTodo(client, thread.id, !hasTodo(thread.markers));
+    if (failure && current()) setError(failure);
+  });
   const sessionMenu = (thread: ThreadSummary) => { if (busy) return; Alert.alert(thread.title, undefined, [
+    ...(client.supportsSessionLabels ? [{ text: hasTodo(thread.markers) ? 'Remove todo' : 'Mark as todo', onPress: () => toggleTodo(thread) }] : []),
     { text: 'Rename session', onPress: () => rename(thread) },
     ...(client.supportsSessionLabels ? [{ text: 'Edit labels', onPress: () => { if (focusedRef.current) onLabels(thread.id); } }] : []),
     { text: 'Archive session', style: 'destructive' as const, onPress: () => Alert.alert('Archive this session?', 'It will no longer be shown on any device.', [
@@ -135,10 +143,10 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
       keyboardDismissMode="on-drag" contentContainerStyle={[s.list, { paddingTop: 16 }]}
       ListHeaderComponent={<Text style={s.sectionHeading}>Sessions</Text>}
       renderItem={({ item }) => <View style={s.card}>
-        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}${draftThreads?.has(item.id) ? ', draft' : ''}${client.supportsSessionLabels && item.markers?.length ? ', labels: ' + item.markers.join(', ') : ''}`} accessibilityHint="Open session. Long press for options."
-          accessibilityActions={[{ name: 'rename', label: 'Rename session' }, ...(client.supportsSessionLabels ? [{ name: 'labels', label: 'Edit labels' }] : [])]} onAccessibilityAction={event => { if (!busy && event.nativeEvent.actionName === 'rename') rename(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'labels' && focusedRef.current) onLabels(item.id); }}
+        {renaming === item.id ? <><TextInput accessibilityLabel="New session name" style={s.input} value={newTitle} onChangeText={setNewTitle} editable={!busy} maxLength={200} /><View style={s.row}><Action label="Save" disabled={busy || !newTitle.trim()} onPress={() => void run(async current => { await client.updateThread(item.id, threadPatch(newTitle)); if (current()) setRenaming(null); })} /><Action label="Cancel" secondary disabled={busy} onPress={() => setRenaming(null)} /></View></> : <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}${draftThreads?.has(item.id) ? ', draft' : ''}${client.supportsSessionLabels && hasTodo(item.markers) ? ', todo' : ''}`} accessibilityHint="Open session. Long press for options."
+          accessibilityActions={[{ name: 'rename', label: 'Rename session' }, ...(client.supportsSessionLabels ? [{ name: 'todo', label: hasTodo(item.markers) ? 'Remove todo' : 'Mark as todo' }, { name: 'labels', label: 'Edit labels' }] : [])]} onAccessibilityAction={event => { if (!busy && event.nativeEvent.actionName === 'rename') rename(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'todo') toggleTodo(item); if (!busy && client.supportsSessionLabels && event.nativeEvent.actionName === 'labels' && focusedRef.current) onLabels(item.id); }}
           disabled={busy || editing || !!renaming} onPress={() => onThread(item.id)} onLongPress={() => sessionMenu(item)} style={s.fill}>
-          <Text style={s.heading}>{item.title}</Text>{client.supportsSessionLabels && <LabelPills markers={item.markers} />}<View style={s.meta}>{draftThreads?.has(item.id) && <Text accessibilityLabel="Draft" style={s.draft}>draft</Text>}<MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}</View>
+          <Text style={s.heading}>{item.title}</Text><View style={s.meta}>{draftThreads?.has(item.id) && <Text accessibilityLabel="Draft" style={s.draft}>draft</Text>}<MessageTime seconds={item.last_message_at} />{item.running === true && <View accessible accessibilityRole="text" accessibilityLabel="Running" style={s.running}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}{item.completed_unread && <View accessible accessibilityRole="text" accessibilityLabel="Completed, unread" style={s.unreadDot} />}{client.supportsSessionLabels && hasTodo(item.markers) && <TodoFlag />}</View>
         </Pressable>}
       </View>}
       ListEmptyComponent={<Text style={s.empty}>{filtering ? 'No matching sessions.' : 'No sessions yet. Write a message below to start a conversation.'}</Text>} />

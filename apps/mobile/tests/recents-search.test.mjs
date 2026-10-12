@@ -51,7 +51,7 @@ const mocks = {
   '../../FontSize': `export const Text='Text',TextInput='TextInput';`,
   '../../MessageTime': `export const MessageTime='MessageTime';`,
   '../../TabHeader': `export const TabHeader=p=>require('react').createElement('TabHeader',null,p.children);`,
-  '../../SessionLabels': `export const LabelPills='LabelPills';`,
+  '../../TodoFlag': `export const TodoFlag='TodoFlag';`,
   '../../sessionNavigation': `export const useSessionNavigation=()=>({threadOn:(slot,id)=>globalThis.__recentsTest.opened.push(slot+':'+id)});`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/app/(tabs)/index.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
@@ -89,9 +89,35 @@ test('Recents tab: search box and quick label filter search every Thread; a seco
     await press(root.root.find(n => n.props.accessibilityLabel === 'Clear search'));
     assert.equal(root.root.findByType('TextInput').props.value, '');
     assert.deepEqual(cards(root), ['Bug triage', 'Login crash', 'Release notes']);
-    const pills = root.root.findAll(n => n.type === 'LabelPills').map(n => n.props.markers);
-    assert.deepEqual(pills, [['bug', 'iOS'], ['docs', 'iOS']], 'cards show labels only from connections that support them');
+    assert.equal(root.root.findAll(n => n.type === 'LabelPills').length, 0, 'cards no longer show labels');
+    assert.equal(root.root.findAll(n => n.type === 'TodoFlag').length, 0, 'no todo flag without a todo label');
     const list = root.root.findByType('FlatList');
     assert.equal(list.props.keyboardShouldPersistTaps, 'handled');
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('Recents tab: Todo section above Recent lists every flagged Thread, running first; rows show only the flag', async () => {
+  const base = sources();
+  base[0].client.threads.set('t-old', thread('t-old', 'Old todo', 20 * 86400, ['bug', 'TODO']));
+  base[0].client.threads.set('t-run', thread('t-run', 'Running todo', 50 * 86400, ['todo'], { running: true }));
+  base[0].client.threads.set('t-new', thread('t-new', 'Fresh todo', 30, ['todo']));
+  // A connection without label support never shows a flag.
+  base[1].client.threads.set('t-off', thread('t-off', 'No labels here', 40, ['todo']));
+  state.connections = base;
+  let root; await act(async () => { root = create(React.createElement(Recents)); });
+  try {
+    const list = root.root.findByType('FlatList'), keys = list.props.data.map(item => item.key);
+    assert.deepEqual(keys.slice(0, 4), ['section:todo', 'todo:primary:t-run', 'todo:primary:t-new', 'todo:primary:t-old'], 'running first, then newest; any age; any case');
+    assert.equal(keys[4], 'section:recent');
+    assert.deepEqual(keys.slice(5), ['recent:primary:t-run', 'recent:w:z', 'recent:primary:t-new', 'recent:w:t-off', 'recent:primary:a', 'recent:primary:c'],
+      'Recent keeps the 24-hour rule with running first; todo Threads stay in it too');
+    const headers = root.root.findAll(n => n.type === 'Text' && n.props.accessibilityRole === 'header').map(n => n.props.children);
+    assert.deepEqual(headers, ['Todo', 'Recent']);
+    assert.equal(root.root.findAll(n => n.type === 'TodoFlag').length, 5, 'three Todo rows plus two of them again in Recent; none for the connection without labels');
+    assert.ok(cards(root).includes('Old todo'));
+    assert.ok(root.root.findAll(n => n.props.accessibilityLabel === 'Old todo, Research · home, Todo').length === 1);
+    assert.deepEqual(quick(root).map(n => n.props.accessibilityLabel).filter(l => /todo/i.test(l)), [], 'the flag is not a quick label');
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('fresh'); });
+    assert.deepEqual(root.root.findByType('FlatList').props.data.map(item => item.key), ['search:primary:t-new'], 'a search shows one result list, no sections');
   } finally { await act(async () => root.unmount()); }
 });
