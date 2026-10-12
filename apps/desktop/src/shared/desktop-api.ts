@@ -52,6 +52,8 @@ export type DesktopMessage = Readonly<{
   displayKind?: "direct" | "final" | "system_notice";
   noticeKind?: "review" | "compression" | "branch";
   text: string;
+  /** Model that produced a final reply, when the server reports it. */
+  model?: string;
   refSeq?: number;
   clientMessageId?: string;
   receiptId?: string;

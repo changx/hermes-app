@@ -22,3 +22,11 @@ test('manual upward movement releases follow even inside bottom threshold', () =
   assert.equal(followAfterUserScroll(490,500,1000,500),true);
   assert.equal(followAfterUserScroll(100,200,1000,500),false);
 });
+
+test('a final reply row carries the server-reported model', () => {
+  const rows = projectTimeline([
+    { id: '1', ref_seq: 1, role: 'assistant', text: 'Answer', display_kind: 'final', model: 'claude-opus-5-5', attachments: [] },
+    { id: '2', ref_seq: 2, role: 'assistant', text: 'Plain', attachments: [] },
+  ], null, 'th');
+  assert.deepEqual(rows.map(row => row.model), ['claude-opus-5-5', undefined]);
+});
