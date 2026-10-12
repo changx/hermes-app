@@ -231,4 +231,9 @@ test('Automations paging, controls and settings conversations route to the job s
   await assert.rejects(f.workspace.automationEditor('old-a'),/unavailable/);
   f.b.client.automationEditor=async id=>({id:'th_edit0000',channelId:'p',title:id+' · 设置',archived:false});
   assert.equal(await f.workspace.automationEditor(other+':b1'),other+':th_edit0000');
+  // Delete goes to the job's own server with the raw ID; a server without controls is refused first.
+  const deleted=[];f.b.client.deleteAutomation=async id=>{deleted.push(id);};
+  await f.workspace.deleteAutomation(other+':b1');assert.deepEqual(deleted,['b1']);
+  f.a.client.deleteAutomation=async()=>{throw Error('must not be called');};
+  await assert.rejects(f.workspace.deleteAutomation('old-a'),/unavailable/);
 });

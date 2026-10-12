@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { automationThreadState, loadAutomationRows, mergeAutomationRows, runStarted, AUTOMATION_PAGE } from '../src/automationRows.ts';
+import { automationThreadState, confirmAutomationDelete, loadAutomationRows, mergeAutomationRows, runStarted, AUTOMATION_PAGE } from '../src/automationRows.ts';
 
 const job = (id, extra = {}) => ({ id, name: `Job ${id}`, schedule: 'every 60m', state: 'scheduled', enabled: true, running: false,
   failed: false, targets: [{ channelId: 'p_a', mode: 'new' }], threadCount: 0, unreadCount: 0, controls: [], ...extra });
@@ -78,11 +78,27 @@ test('screens use the editing API only behind its capabilities', () => {
   const src = path => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');
   const detail = src('app/automations/[automationId].tsx');
   assert.match(detail, /client\.supportsAutomationControls && job\.controls\.includes/);
-  assert.match(detail, /client\.supportsAutomationEditors && <Action label="Edit in conversation"/);
+  assert.match(detail, /client\.supportsAutomationEditors && automationChangeable\(job\) && <Action label="Edit in conversation"/);
+  assert.match(detail, /can\('delete'\) && <Action label=/);
+  assert.match(detail, /confirmAutomationDelete\(job\.name, \(\) => void deleteJob\(\), Alert\.alert\)/);
   assert.match(detail, /await client\.getThread\(thread\.id\)/);  // hydrate before opening
   assert.match(src('app/(tabs)/automations.tsx'), /canCreate && <HeaderIcon label="New automation"/);
   assert.match(src('app/new-thread.tsx'), /automationEditor=\{automation\}/);
   assert.match(src('NewTopicComposer.tsx'), /automationEditor \? \{ automationEditor: true \} : \{\}/);
   assert.match(src('app/channels/[channelId].tsx'), /client\?\.supportsAutomations && <HeaderIcon label="Automations"/);
   assert.match(src('app/_layout.tsx'), /channels\/\[channelId\]\/automations/);
+});
+
+test('Delete asks first and names the job; only the destructive button deletes', () => {
+  const shown = [], removed = [];
+  confirmAutomationDelete('Morning digest', () => removed.push('job'), (title, message, buttons) => shown.push({ title, message, buttons }));
+  assert.equal(shown.length, 1);
+  assert.equal(removed.length, 0);  // nothing happens before the answer
+  assert.equal(shown[0].title, 'Delete this automation?');
+  assert.match(shown[0].message, /"Morning digest" will not run again\. Its conversations stay\./);
+  assert.deepEqual(shown[0].buttons.map(b => [b.text, b.style]), [['Cancel', 'cancel'], ['Delete', 'destructive']]);
+  shown[0].buttons[0].onPress?.();
+  assert.equal(removed.length, 0);
+  shown[0].buttons[1].onPress();
+  assert.deepEqual(removed, ['job']);
 });

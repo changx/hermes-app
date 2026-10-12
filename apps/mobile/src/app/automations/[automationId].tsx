@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ConnectionScope, Notice, channelRoute, routeConnection, useApp } from '../../App';
 import { Text, TextInput } from '../../FontSize';
-import { automationThreadState, runStarted } from '../../automationRows';
+import { automationThreadState, confirmAutomationDelete, runStarted } from '../../automationRows';
 import { automationStatus, automationTiming, scheduleLabel } from '../../automationText';
 import { routeId } from '../../routeId';
 import { useSessionNavigation } from '../../sessionNavigation';
-import type { Automation, AutomationThread } from '../../../../../packages/client/src/automations';
+import { automationChangeable, type Automation, type AutomationThread } from '../../../../../packages/client/src/automations';
 
 const START_WATCH_MS = 120_000, START_POLL_MS = 4_000;
 
@@ -19,6 +19,7 @@ function Detail({ automationId }: { automationId: string }) {
   const router = useRouter();
   const [job, setJob] = useState<Automation | null>(null), [threads, setThreads] = useState<AutomationThread[]>([]);
   const [next, setNext] = useState<number | null>(null), [error, setError] = useState(''), [missing, setMissing] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const [more, setMore] = useState(false), [showPrompt, setShowPrompt] = useState(false);
   const [acting, setActing] = useState<string | null>(null), [scheduleOpen, setScheduleOpen] = useState(false);
   // After Run: the job state before the run, until the job reports the run (or two minutes pass).
@@ -62,6 +63,19 @@ function Detail({ automationId }: { automationId: string }) {
     if (await act('run', () => client.automationControl(automationId, 'run'), 'Could not start the run. Try again.'))
       setStarting({ before, since: Date.now() });
   };
+  // Only the job goes; its conversations stay. Then return to the list, which reloads on focus.
+  const deleteJob = async () => {
+    if (!client || acting) return;
+    setActing('delete'); setError('');
+    try {
+      await client.deleteAutomation(automationId);
+      setDeleted(true);
+      if (router.canGoBack()) router.back();
+    } catch (problem) {
+      const status = (problem as { status?: number }).status;
+      setError(status === 403 ? 'This automation cannot be changed from this app.' : 'Could not delete this automation. Try again.');
+    } finally { setActing(null); }
+  };
   const editInConversation = async () => {
     if (!client || acting) return;
     setActing('editor'); setError('');
@@ -83,6 +97,7 @@ function Detail({ automationId }: { automationId: string }) {
   };
   if (!client) return <Notice text="Opening…" />;
   if (!client.supportsAutomations) return <Notice text="Automations are not available on this connection yet." />;
+  if (deleted) return <Notice text="This automation was deleted. Its conversations stay." />;
   if (missing) return <Notice text="This automation no longer exists." />;
   if (!job) return error ? <Notice text={error} /> : <ActivityIndicator style={s.spinner} />;
   const channelName = (id: string) => client.channels.get(id)?.name;
@@ -114,7 +129,9 @@ function Detail({ automationId }: { automationId: string }) {
         {can('resume') && <Action label="Resume" busy={acting === 'resume'} onPress={() => void act('resume', () => client.automationControl(automationId, 'resume'), 'Could not resume. Try again.')} />}
         {can('run') && <Action label="Run now" busy={acting === 'run' || !!starting} onPress={() => void run()} />}
         {can('schedule') && <Action label="Change schedule" busy={acting === 'schedule'} onPress={() => setScheduleOpen(true)} />}
-        {client.supportsAutomationEditors && <Action label="Edit in conversation" busy={acting === 'editor'} onPress={() => void editInConversation()} />}
+        {client.supportsAutomationEditors && automationChangeable(job) && <Action label="Edit in conversation" busy={acting === 'editor'} onPress={() => void editInConversation()} />}
+        {can('delete') && <Action label={acting === 'delete' ? 'Deleting…' : 'Delete'} destructive busy={acting === 'delete'}
+          onPress={() => confirmAutomationDelete(job.name, () => void deleteJob(), Alert.alert)} />}
       </View>}
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       <ScheduleSheet visible={scheduleOpen} current={job.schedule} onClose={() => setScheduleOpen(false)}
@@ -141,10 +158,10 @@ function Detail({ automationId }: { automationId: string }) {
     ListEmptyComponent={<Text style={s.empty}>No conversations yet. They appear here after a run delivers its result.</Text>} />;
 }
 
-function Action({ label, busy, onPress }: { label: string; busy: boolean; onPress: () => void }) {
+function Action({ label, busy, destructive, onPress }: { label: string; busy: boolean; destructive?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ busy, disabled: busy }} disabled={busy} onPress={onPress}
     style={({ pressed }) => [s.action, pressed && s.pressed, busy && s.busy]}>
-    <Text style={s.actionText}>{label}</Text>
+    <Text style={[s.actionText, destructive && s.destructive]}>{label}</Text>
   </Pressable>;
 }
 
@@ -199,7 +216,7 @@ const s = StyleSheet.create({
   more: { alignItems: 'center', paddingVertical: 12 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   action: { borderWidth: 1, borderColor: '#bcd0ea', backgroundColor: '#fff', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
-  actionText: { fontSize: 14, fontWeight: '600', color: '#2b4e81' }, busy: { opacity: 0.5 },
+  actionText: { fontSize: 14, fontWeight: '600', color: '#2b4e81' }, destructive: { color: '#9d1b32' }, busy: { opacity: 0.5 },
   sheet: { flex: 1, backgroundColor: '#f8fafc', padding: 16, gap: 12 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { fontSize: 17, fontWeight: '700', color: '#14283e' },

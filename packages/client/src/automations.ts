@@ -9,7 +9,7 @@ export class AutomationProtocolError extends Error {
 }
 
 export type AutomationTarget = Readonly<{ channelId: string; mode: 'new' | 'thread'; threadId?: string }>;
-export type AutomationControl = 'pause' | 'resume' | 'run' | 'schedule';
+export type AutomationControl = 'pause' | 'resume' | 'run' | 'schedule' | 'delete';
 export type Automation = Readonly<{
   id: string; name: string; schedule: string; state: string; enabled: boolean; running: boolean;
   nextRunAt?: string; lastRunAt?: string; lastStatus?: string; failed: boolean;
@@ -39,7 +39,7 @@ const count = (value: unknown): number => {
   return value;
 };
 const FAILED = new Set(['error', 'failed', 'delivery_failed', 'timeout']);
-const CONTROLS = new Set<AutomationControl>(['pause', 'resume', 'run', 'schedule']);
+const CONTROLS = new Set<AutomationControl>(['pause', 'resume', 'run', 'schedule', 'delete']);
 
 function parseControls(value: unknown): AutomationControl[] {
   if (value === undefined || value === null) return [];
@@ -88,6 +88,9 @@ export function parseAutomationPage(value: unknown): AutomationPage {
   const nextAfter = body.next_after === null || body.next_after === undefined ? null : text(body.next_after, 2000);
   return { automations: body.automations.map(parseAutomation), nextAfter };
 }
+
+/** The job can still change (Pause, Resume, Run or schedule); Delete alone does not count. */
+export const automationChangeable = (job: Automation): boolean => job.controls.some(control => control !== 'delete');
 
 /** Response of a control: the job after the change. */
 export function parseAutomationUpdate(value: unknown): Automation {

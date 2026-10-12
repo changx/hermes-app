@@ -32,6 +32,7 @@ const api: HermesDesktopApi = Object.freeze({
   openAutomationList: (): Promise<void> => ipcRenderer.invoke('desktop:open-automation-list'),
   controlAutomation: (control: string, schedule?: string) => ipcRenderer.invoke('desktop:control-automation', control, schedule),
   openAutomationEditor: (): Promise<string> => ipcRenderer.invoke('desktop:open-automation-editor'),
+  deleteAutomation: (): Promise<void> => ipcRenderer.invoke('desktop:delete-automation'),
   openAutomation: (id: string, title: string): Promise<void> => ipcRenderer.invoke('desktop:open-automation', id, title),
   getAutomation: (before?: number) => ipcRenderer.invoke('desktop:get-automation', before),
   setContentBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:content-bounds', bounds),

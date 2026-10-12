@@ -237,6 +237,11 @@ export class DesktopConnections {
     const r = this.route(id);
     return this.qualifyAutomation(r.account, await r.account.service.controlAutomation(r.raw, control, schedule));
   }
+  /** Delete one qualified job; its conversations stay. */
+  async deleteAutomation(id: string): Promise<void> {
+    const r = this.route(id);
+    await r.account.service.deleteAutomation(r.raw);
+  }
   /** The qualified Session ID of the job's settings conversation. */
   async automationEditor(id: string): Promise<string> {
     const r = this.route(id);

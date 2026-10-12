@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { DesktopAutomation, DesktopAutomationControl, DesktopAutomationList, DesktopAutomationPage, DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import type { AutomationThread } from '../../../../packages/client/src/automations';
 import { automationStatus, automationTiming, scheduleLabel } from '../../../../packages/client/src/automationText';
+import { automationChangeable } from '../../../../packages/client/src/automations';
 import { unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
 import { Icon } from './icons';
 
@@ -41,10 +42,11 @@ function AutomationRow({ job, selected, multiple }: { job: DesktopAutomation; se
  * offers them, and Show all for the rest. Hidden while no connection does. A
  * row opens the job's tab; + opens New automation.
  */
-export const AutomationsSection = memo(({ connectionStates, threads, activeAutomationId, multiple }: {
+export const AutomationsSection = memo(({ connectionStates, threads, activeAutomationId, multiple, automationsVersion }: {
   /** Changes when a connection comes online or goes away. */ connectionStates: string;
   /** Directory identity: a change means new results or reads may have changed the counts. */ threads: readonly DesktopThread[];
   activeAutomationId?: string; multiple: boolean;
+  /** Changes after a job is deleted. */ automationsVersion?: number;
 }) => {
   const [list, setList] = useState<DesktopAutomationList | null>(null);
   const [error, setError] = useState(false);
@@ -55,7 +57,7 @@ export const AutomationsSection = memo(({ connectionStates, threads, activeAutom
     try { const next = await window.hermesDesktop.listAutomations(); if (version === generation.current) { setList(next); setError(false); } }
     catch { if (version === generation.current) setError(true); }
   }, []);
-  useEffect(() => { void load(); }, [connectionStates, load]);
+  useEffect(() => { void load(); }, [connectionStates, automationsVersion, load]);
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
@@ -107,7 +109,7 @@ export function AutomationListPage({ snapshot }: { snapshot: DesktopSnapshot }) 
       setRows([...list.automations]); setCursors(list.cursors ?? {}); setCanCreate(list.canCreate === true); setFailed(list.failed); setError('');
     } catch { if (version === generation.current) setError('Could not load automations. Check the connection and try again.'); }
   }, []);
-  useEffect(() => { if (active) void load(); }, [active, load]);
+  useEffect(() => { if (active) void load(); }, [active, snapshot.automationsVersion, load]);
   const loadMore = useCallback(async () => {
     if (more || !Object.keys(cursors).length) return;
     const version = generation.current;
@@ -214,6 +216,14 @@ export function AutomationPage({ snapshot }: { snapshot: DesktopSnapshot }) {
     } catch { setError(failure); return false; }
     finally { setActing(null); }
   };
+  const deleteJob = async () => {
+    if (acting || page?.state !== 'ok') return;
+    if (!window.confirm(`Delete "${page.automation.name}"? It will not run again. Its conversations stay.`)) return;
+    setActing('delete'); setError('');
+    // On success the main process closes this tab.
+    try { await window.hermesDesktop.deleteAutomation(); }
+    catch { setError('Could not delete this automation. Try again.'); setActing(null); }
+  };
   const editInConversation = async () => {
     if (acting) return;
     setActing('editor'); setError('');
@@ -249,7 +259,8 @@ export function AutomationPage({ snapshot }: { snapshot: DesktopSnapshot }) {
           {can('resume') && <button type="button" className="automation-action" disabled={!!acting} onClick={() => void control('resume', 'Could not resume. Try again.')}>Resume</button>}
           {can('run') && <button type="button" className="automation-action" disabled={!!acting || !!starting} onClick={() => void control('run', 'Could not start the run. Try again.')}>Run now</button>}
           {can('schedule') && schedule === null && <button type="button" className="automation-action" disabled={!!acting} onClick={() => setSchedule(job.schedule)}>Change schedule</button>}
-          {job.editorChannelId !== undefined && <button type="button" className="automation-action" disabled={!!acting} onClick={() => void editInConversation()}>Edit in conversation</button>}
+          {job.editorChannelId !== undefined && automationChangeable(job) && <button type="button" className="automation-action" disabled={!!acting} onClick={() => void editInConversation()}>Edit in conversation</button>}
+          {job.controls.includes('delete') && <button type="button" className="automation-action automation-danger" disabled={!!acting} onClick={() => void deleteJob()}>{acting === 'delete' ? 'Deleting…' : 'Delete'}</button>}
         </div>}
         {schedule !== null && <form className="automation-schedule" onSubmit={event => { event.preventDefault(); void saveSchedule(); }}>
           <label>Schedule<input autoFocus value={schedule} maxLength={200} onChange={event => setSchedule(event.target.value)}

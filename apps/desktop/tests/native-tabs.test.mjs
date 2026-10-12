@@ -120,6 +120,13 @@ test('an automation opens one tab per job without selecting a session; its page 
   // A conversation opened from the page gets its own session tab.
   await f.service.selectThread('b');assert.equal(f.manager.tabs.size,3);assert.equal(f.manager.tabs.get(f.manager.activeTabId).threadId,'b');
   assert.throws(()=>f.manager.openAutomation('gone:job','Old'),/unavailable/);assert.equal(f.manager.tabs.size,3);
+  // A deleted job closes its tab and bumps the version that makes the lists reload.
+  const version=f.manager.snapshot().automationsVersion;
+  f.manager.openAutomation('job-2','Weekly');const weekly=f.manager.tabs.get(f.manager.activeTabId);
+  f.manager.automationDeleted('job-2');
+  assert.equal(weekly.view.webContents.destroyed,true);assert.equal(f.manager.tabs.has(weekly.id),false);
+  assert.equal(f.manager.snapshot().automationsVersion,version+1);assert.equal(f.manager.snapshot(tab.view.webContents).automationsVersion,version+1);
+  assert.equal(f.manager.tabs.has(tab.id),true);
   // Removing the connection closes the Automation tab with the others.
   f.snapshot.connectionKey='another';f.snapshot.selectedThreadId=undefined;f.manager.sync(f.snapshot);assert.equal(tab.view.webContents.destroyed,true);
 });

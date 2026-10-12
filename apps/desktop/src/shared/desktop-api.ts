@@ -99,6 +99,8 @@ export type DesktopSnapshot = Readonly<{
   draftThreadIds?: readonly string[];
   draftIdentity?: string;
   revision: number;
+  /** Changes after a job is deleted; the Automations lists reload. */
+  automationsVersion?: number;
   phase: DesktopPhase;
   connectionState: ConnectionState;
   connectionLabel: string;
@@ -197,6 +199,8 @@ export interface HermesDesktopApi {
   openAutomationList(): Promise<void>;
   /** Automation tab: Pause, Resume, Run now or a new schedule for its own job. */
   controlAutomation(control: DesktopAutomationControl, schedule?: string): Promise<DesktopAutomation>;
+  /** Automation tab: delete its own job and close its tabs. The job's conversations stay. */
+  deleteAutomation(): Promise<void>;
   /** Automation tab: its job's settings conversation (created on first use); resolves with the Session ID to open. */
   openAutomationEditor(): Promise<string>;
   /** Main window: opens the job's tab, or activates it when open. `title` names the tab until the page loads. */

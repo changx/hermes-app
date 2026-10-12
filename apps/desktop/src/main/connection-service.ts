@@ -206,6 +206,12 @@ export class DesktopConnectionService {
     }
     return client.automationControl(id, control);
   }
+  /** Delete the job. The server keeps its conversations; only the job goes. */
+  async deleteAutomation(id: string): Promise<void> {
+    const client = this.requireClient();
+    if (!client.supportsAutomationControls) throw new Error('Automation controls are unavailable.');
+    await client.deleteAutomation(id);
+  }
   /** The job's settings conversation, created on first use and added to the directory. */
   async automationEditor(id: string): Promise<string> {
     const client = this.requireClient();

@@ -218,6 +218,13 @@ const registerDesktopApi = (): void => {
     manager.setTabTitle(tab, job.name);
     return job;
   });
+  // Delete closes every tab of the job and tells the lists to reload. Its conversations stay.
+  handle('desktop:delete-automation', async event => {
+    trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
+    const { automationId } = manager.automationTarget(event.sender);
+    await service.deleteAutomation(automationId);
+    manager.automationDeleted(automationId);
+  });
   handle('desktop:open-automation-editor', async event => {
     trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
     return service.automationEditor(manager.automationTarget(event.sender).automationId);

@@ -68,3 +68,14 @@ export function automationThreadState(item: Pick<AutomationThread, 'completedUnr
 export function runStarted(before: Pick<Automation, 'running' | 'lastRunAt'>, now: Pick<Automation, 'running' | 'lastRunAt'>): boolean {
   return now.running || (now.lastRunAt ?? '') !== (before.lastRunAt ?? '');
 }
+
+type AlertButton = { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void };
+type ShowAlert = (title: string, message: string | undefined, buttons: AlertButton[]) => void;
+
+/** Ask before Delete: only the job goes; its conversations stay. */
+export function confirmAutomationDelete(name: string, remove: () => void, alert: ShowAlert): void {
+  alert('Delete this automation?', `"${name}" will not run again. Its conversations stay.`, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Delete', style: 'destructive', onPress: remove },
+  ]);
+}

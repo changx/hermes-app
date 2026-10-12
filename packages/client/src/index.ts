@@ -398,6 +398,14 @@ export class HermesClient {
   async setAutomationSchedule(id: string, schedule: string): Promise<Automation> {
     return parseAutomationUpdate(await this.call('PATCH','/v1/automations/'+idPath(id),{schedule}));
   }
+  /** Delete the job (plugin 0.2.31, when its `controls` has `delete`). Its conversations stay.
+   *  A job that is already gone (404, e.g. a repeated request) counts as deleted. */
+  async deleteAutomation(id: string): Promise<void> {
+    let body: Record<string, unknown>;
+    try { body = await this.call('DELETE','/v1/automations/'+idPath(id)); }
+    catch (error) { if (error instanceof HttpError && error.status === 404) return; throw error; }
+    if (body.deleted !== true) throw new ProtocolError('automation delete not confirmed');
+  }
   /** The job's settings conversation, created on first use (requires `supportsAutomationEditors`). */
   async automationEditor(id: string): Promise<Thread> {
     return validThread((await this.call('POST','/v1/automations/'+idPath(id)+'/editor',{})).thread);

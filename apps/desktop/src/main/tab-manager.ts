@@ -16,6 +16,8 @@ export class DesktopTabManager {
   activeTabId?: string;
   readonly draftThreads = new Set<string>();
   private revision = 0;
+  /** Changes after a job is deleted, so the Automations lists reload. */
+  private automationsVersion = 0;
   private baseline?: DesktopSnapshot;
   private bounds = { x: 280, y: 48, width: 800, height: 600, visible: true };
   private closed = false;
@@ -108,6 +110,13 @@ export class DesktopTabManager {
     const tab = this.sender(contents);
     if (!tab || tab.kind !== 'automation' || !tab.automationId || !this.service.hasConnection(tab.connectionKey)) throw new Error('Automation unavailable');
     return tab as Tab & { automationId: string };
+  }
+  /** A job was deleted: close its tabs and let the Automations lists reload. */
+  automationDeleted(automationId: string): void {
+    this.automationsVersion++;
+    const ids = [...this.tabs.values()].filter(tab => tab.kind === 'automation' && tab.automationId === automationId).map(tab => tab.id);
+    for (const id of ids) { try { this.close(id); } catch { /* A busy tab stays; its page shows the job is gone. */ } }
+    this.publish();
   }
   /** The tab shows the job's current name after each page load. */
   setTabTitle(tab: Tab, title: string): void { if (this.tabs.get(tab.id) === tab && tab.title !== title) { tab.title = title; this.publish(); } }
@@ -230,14 +239,14 @@ export class DesktopTabManager {
     const base = this.service.snapshot(tab?.threadId, false, tab?.connectionKey);
     if (tab) {
       const session = tab.kind === 'session';
-      return { ...base, revision: this.revision, selectedThreadId: session ? tab.threadId : undefined,
+      return { ...base, revision: this.revision, automationsVersion: this.automationsVersion, selectedThreadId: session ? tab.threadId : undefined,
         selectedThreadTitle: session ? base.selectedThreadTitle : undefined, selectedChannelId: session ? base.threads.find(t => t.id === tab.threadId)?.channelId : tab.initialChannelId,
         messages: session ? base.messages : [], interactions: session ? base.interactions : [],
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId,
         ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}) };
     }
-    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
         title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'

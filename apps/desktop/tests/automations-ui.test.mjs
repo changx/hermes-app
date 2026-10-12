@@ -226,3 +226,36 @@ test('Chromium: Automation tab controls pause, resume, run, schedule and the set
   `);
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
 });
+
+test('Chromium: Automation tab Delete asks first, then deletes only the job', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const result = await runPage('automation-delete', `
+    import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
+    import {DesktopShellView} from './apps/desktop/src/renderer/shell';
+    ${common}
+    let current=job('digest',{name:'Morning digest',controls:['pause','run','schedule','delete'],editorChannelId:'p'}), deletes=0, fail=true, answer=false, asked=[];
+    window.confirm=text=>{asked.push(text);return answer};
+    window.hermesDesktop={loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},selectThread:async()=>{},
+      getAutomation:async()=>({state:'ok',automation:current,threads:[],nextBefore:null}),
+      deleteAutomation:async()=>{deletes++;if(fail)throw Error('bad')}};
+    const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',draftIdentity:'one',tabId:'tab-1',tabKind:'automation',automationId:'digest',tabActive:true,
+      channels:[{id:'p',name:'Research'}],threads:[],messages:[],interactions:[],canLoadOlder:false};
+    const root=createRoot(document.getElementById('root'));
+    flushSync(()=>root.render(<React.StrictMode><DesktopShellView snapshot={snapshot} viewRole="tab" /></React.StrictMode>));
+    const buttons=()=>[...document.querySelectorAll('.automation-actions .automation-action')].map(b=>b.textContent);
+    const press=async label=>{[...document.querySelectorAll('.automation-action')].find(b=>b.textContent===label).click();await wait(40);};
+    (async()=>{try{
+      await wait(80);
+      ensure('Delete comes last',buttons().join('|')==='Pause|Run now|Change schedule|Edit in conversation|Delete');
+      await press('Delete');
+      ensure('cancel asks and keeps the job',deletes===0&&asked.length===1&&asked[0].includes('Morning digest')&&asked[0].includes('conversations stay'));
+      answer=true; await press('Delete');
+      ensure('a failed delete explains and allows a retry',deletes===1&&document.querySelector('.automation-error').textContent==='Could not delete this automation. Try again.'&&buttons().includes('Delete'));
+      fail=false; await press('Delete');
+      ensure('confirmed delete calls the tab action',deletes===2&&buttons().includes('Deleting…'));
+      current={...current,state:'completed',enabled:false,controls:['delete']};
+      flushSync(()=>root.render(<React.StrictMode><DesktopShellView snapshot={{...snapshot,tabId:'tab-2'}} viewRole="tab" key="2" /></React.StrictMode>)); await wait(80);
+      ensure('a finished job shows only Delete',buttons().join('|')==='Delete');
+    }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
+  `);
+  assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
+});

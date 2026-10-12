@@ -791,6 +791,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .automation-action { padding: 6px 14px; border: 1px solid var(--app-border); border-radius: 999px; background: #fff; color: var(--app-link); font: inherit; font-weight: 600; cursor: pointer; }
 .automation-action:hover:not(:disabled), .automation-action:focus-visible { background: var(--app-selected); }
 .automation-action:disabled { opacity: .55; cursor: default; }
+.automation-action.automation-danger { color: #9d1b32; }
 .automation-primary { border-color: var(--app-link); }
 .automation-schedule { display: flex; flex-direction: column; gap: 8px; align-self: stretch; margin-top: 4px; padding: 12px; border: 1px solid var(--app-border); border-radius: 10px; background: #fff; }
 .automation-schedule label { display: flex; flex-direction: column; gap: 4px; color: var(--app-muted); font-weight: 600; }

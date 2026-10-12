@@ -103,3 +103,20 @@ test('Older servers: no editing fields means read-only', async () => {
   const { sdk: other } = client(() => ({ status: 200, body: { automations: [job({ controls: ['pause'] })] } }));
   assert.deepEqual((await other.automations())[0].controls, []);  // not editable without editable: true
 });
+
+test('Automation delete: parses the control, sends DELETE, treats 404 as already deleted', async () => {
+  const parsed = (await client(() => ({ status: 200, body: { automations: [job({ editable: true, state: 'completed', controls: ['delete'] })] } })).sdk.automations())[0];
+  assert.deepEqual(parsed.controls, ['delete']);
+  const built = await build({ stdin: { contents: "export { automationChangeable } from './automations';", resolveDir: new URL('../src/', import.meta.url).pathname, loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false });
+  const loaded = { exports: {} }; new Function('module', 'exports', built.outputFiles[0].text)(loaded, loaded.exports);
+  const { automationChangeable } = loaded.exports;
+  assert.equal(automationChangeable(parsed), false);
+  assert.equal(automationChangeable({ ...parsed, controls: ['pause', 'delete'] }), true);
+
+  const { sdk, calls } = client(() => ({ status: 200, body: { id: 'a/b', deleted: true } }));
+  await sdk.deleteAutomation('a/b');
+  assert.deepEqual(calls.at(-1).slice(0, 2), ['DELETE', '/v1/automations/a%2Fb']);
+  await client(() => ({ status: 404, body: {} })).sdk.deleteAutomation('gone');
+  await assert.rejects(client(() => ({ status: 403, body: {} })).sdk.deleteAutomation('j1'), error => error.status === 403);
+  await assert.rejects(client(() => ({ status: 200, body: {} })).sdk.deleteAutomation('j1'));
+});

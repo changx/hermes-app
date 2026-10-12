@@ -13,6 +13,7 @@
 7. Automations 列表分页。
 8. 编辑 Thread 可以在 job 创建之前登记。
 9. 没有特定 App Channel 的 job（Discord、`local`、多个 Channel 等）也可以编辑，归属 `/sethome` 设定的 App home Channel（2026-10-12，插件 0.2.29）。
+10. 详情页增加 Delete：确认后删除 job，sessions 不动（2026-10-12，插件 0.2.31，第 11 节）。
 
 ## 2. job 的归属
 
@@ -77,9 +78,10 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 | Pause / Resume | `POST /v1/automations/{id}/pause`、`/resume` | `pause_job`、`resume_job` |
 | Run | `POST /v1/automations/{id}/run` | `trigger_job`：设 `next_run_at=now`，下一个 tick（≤60 s）运行 |
 | 编辑周期 | `PATCH /v1/automations/{id}` `{schedule}` | `parse_schedule` + `update_job`，与 cron 工具 update 相同 |
+| Delete | `DELETE /v1/automations/{id}` | `remove_job`（第 11 节） |
 | Instructions | 只读 | — |
 
-- 已结束的 job（core `state=completed`：一次性 job 已运行，或循环 job 用完 `repeat` 次数）没有控件，插件对所有控件返回 400（插件 0.2.30），因为 Resume 或 Run 会让它再运行一次。它保留可查看，直到 core 清除。
+- 已结束的 job（core `state=completed`：一次性 job 已运行，或循环 job 用完 `repeat` 次数）没有 Pause / Resume / Run / 编辑周期，插件对这些控件返回 400（插件 0.2.30），因为 Resume 或 Run 会让它再运行一次。插件 0.2.31 起它只有 Delete（第 11 节）。它保留可查看，直到删除或 core 清除。
 - 清除：core 的保留清理按 `cron.completed_retention_days` 删除已结束的 job，从最后一次运行算起。jamie 和 hermes-app-dev 设为 1（24 小时，2026-10-12）。core 原来只清除一次性 job；本地提交 `local: prune completed repeat-limited recurring cron jobs` 把用完次数的循环 job 也包括在内（上游 PR NousResearch/hermes-agent#137245，合入后删除本地提交）。
 - `trigger_job` 会同时恢复暂停的 job。所以暂停中的 job 只有 Resume；插件对暂停中的 job 的 Run 返回 400。
 - 周期文字最长 200 字符；`parse_schedule` 不接受时返回 400，客户端保留输入框并显示示例。
@@ -136,3 +138,22 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 - 测试：`apps/mobile/tests/automation-editing.test.mjs`（`automationThreadState`）。移动端 TypeScript 通过；`npm test` 185 个中 183 通过、1 失败；失败的 `local-draft-storage.test.mjs` 在 `main` 上也失败；iOS/Android 导出通过。
 - 发布（2026-10-12，仅客户端）：合并 `1d0f11b`，只重启 `hermes-app-expo.service`（PID 1747449 → 1987570）；Gateway PID 1753013 和插件哈希不变。公网 iOS/Android manifest 200、SDK 57.0.0、launchAsset 200；`runningRow`、`runningDot`、`runningText` 计数在两个平台各 +2。回滚基线：`rollback/mobile-automation-running-before-release`（`a14d03e`）。
 - 未做：iPhone 真机验收。
+
+## 11. 删除 job
+
+状态：已实现，未发布（插件分支 `feat/automation-delete`，版本 0.2.31；App 分支 `feat/automation-delete`）。设备验收未做。
+
+- 界面：桌面 Automation tab 和手机详情页的控件行最后一个按钮 `Delete`（红字）。点击先确认：`Delete this automation?` / `"<名字>" will not run again. Its conversations stay.`；取消不做任何事。
+  - 桌面：删除成功后主进程关闭该 job 的 tab，侧栏 Automations 和 Automations 列表 tab 重新读取（快照字段 `automationsVersion`）。
+  - 手机：删除成功后返回上一页；列表页获得焦点时重新读取。没有上一页时显示 `This automation was deleted. Its conversations stay.`。
+  - 失败时显示 `Could not delete this automation. Try again.`，按钮保留，可重试。
+- 服务端：`DELETE /v1/automations/{id}` 调用 core `cron.jobs.remove_job`（与 cron 工具 `remove` 相同），再通知 scheduler provider。返回 `{id, deleted: true}`；不可编辑的 job 返回 403；不存在返回 404。客户端把 404 当作已删除（重复请求）。
+- 显示条件：详情的 `controls` 包含 `delete`。可编辑的 job 在任何状态都有 Delete，包括已结束（`state=completed`）的 job，它只有 Delete。旧 App 忽略未知控件，不显示 Delete；旧 App 中已结束 job 的 Edit in conversation 也仍然隐藏。新 App 只在还有其他控件时显示 Edit in conversation（`automationChangeable`）。
+- 不变的内容：插件不修改任何 Thread 或 session。结果 Thread、编辑 Thread（`<job 名> · 设置`）、它们的 core session 和消息、`automation_editors` 记录都保留。编辑 Thread 之后的每一轮，`pre_llm_call` 告诉 agent 这个 job 已不存在。
+- core 同时删除的内容：`remove_job` 删除该 job 的运行输出目录 `cron/output/<job_id>`（每次运行的 Markdown 记录）和 notepad。这些不是 session；投递到 Thread 的结果仍在 Thread 中。
+- 测试：
+  - 插件：`tests/p1/test_automation_editing.py`（新增 `test_delete_removes_the_job_and_keeps_its_threads`：401/403/404、job 被删除、结果 Thread 和编辑 Thread 保留且未归档、标题不变、context note 说 job 已不存在）。
+  - 共享 client：`tests/automations.test.mjs`（解析 `delete`、`DELETE` 路径编码、404 视为已删除、403 和无确认响应报错）。
+  - 桌面：`automations-ui`（Chromium，StrictMode：按钮顺序、取消不删除、失败提示可重试、确认后调用、已结束 job 只有 Delete）、`connections`（按连接路由原始 ID；无控件能力的服务器在请求前拒绝）、`native-tabs`（关闭该 job 的 tab，`automationsVersion` +1，其他 tab 保留）。
+  - 手机：`tests/automation-editing.test.mjs`（`confirmAutomationDelete`：先询问、取消不删除、只有 destructive 按钮删除；页面接线）。
+- 未做：真实服务器端到端、iPhone 和 Mac 设备验收。插件安装到 hermes-app-dev 和 Gateway 重启需按发布流程执行。
