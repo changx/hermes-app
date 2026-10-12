@@ -68,8 +68,12 @@ test('the default is the primary model and sends no model', async () => {
   const s = server(); const { root, sent } = await render(s.client);
   assert.ok(byLabel(root, 'Model: Default (claude-opus-5-5)'));
   await type(root, 'hello'); await press(root, 'Send');
-  assert.deepEqual(s.creates(), [{ title: 'New topic', client_thread_id: s.creates()[0].client_thread_id }]);
+  // Text only with the default model: the composer sends no create request; the outbox
+  // record carries the create (no model) and the page opens at once.
+  assert.deepEqual(s.creates(), []);
   assert.equal(sent.length, 1);
+  assert.match(sent[0][0], /^th_[a-f0-9]{32}$/);
+  assert.deepEqual(sent[0].slice(2), ['hello', [], { channelId: 'p', title: 'New topic' }]);
   root.unmount();
 });
 
@@ -130,11 +134,12 @@ test('another Channel resets the choice and reloads that connection\'s list', as
 
 test('an older server shows no model control and sends no model', async () => {
   state.alerts = [];
-  const s = server({ thread_model: false }); const { root } = await render(s.client);
+  const s = server({ thread_model: false }); const { root, sent } = await render(s.client);
   assert.equal(pressables(root).some(n => String(n.props.accessibilityLabel).startsWith('Model:')), false);
   assert.equal(s.calls.some(c => c.path === '/v1/agent/model/options'), false);
   await type(root, 'hello'); await press(root, 'Send');
-  assert.equal('model' in s.creates()[0], false);
+  assert.deepEqual(s.creates(), []);
+  assert.deepEqual(sent[0][4], { channelId: 'p', title: 'New topic' });
   root.unmount();
 });
 
@@ -161,8 +166,25 @@ test('a rejected model unlocks the choice with a plain message and sends nothing
   assert.equal(byLabel(root, 'Model: gpt-6-luna').props.disabled, false);
   await press(root, 'Model: gpt-6-luna'); await press(root, 'Default (claude-opus-5-5), Primary model');
   await press(root, 'Send');
-  assert.equal('model' in s.creates()[1], false);
-  assert.notEqual(s.creates()[1].client_thread_id, s.creates()[0].client_thread_id);
+  // Back to the default model: the outbox creates the session; a new session ID is used.
+  assert.equal(s.creates().length, 1);
   assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0][4], { channelId: 'p', title: 'New topic' });
+  assert.notEqual(sent[0][0], s.creates()[0].client_thread_id);
   root.unmount();
+});
+
+test('a file or a chosen model keeps the old order; an automation start carries its flag', async () => {
+  state.alerts = [];
+  const s = server(); const { root, sent } = await render(s.client, { automationEditor: true });
+  await type(root, 'every morning'); await press(root, 'Send');
+  assert.deepEqual(s.creates(), []);
+  assert.deepEqual(sent[0][4], { channelId: 'p', title: 'New automation', automationEditor: true });
+  root.unmount();
+  const m = server(); const chosen = await render(m.client);
+  await press(chosen.root, 'Model: Default (claude-opus-5-5)'); await press(chosen.root, 'gpt-6-luna, OpenAI Codex');
+  await type(chosen.root, 'hello'); await press(chosen.root, 'Send');
+  assert.equal(m.creates().length, 1, 'a chosen model is created by the composer first');
+  assert.equal(chosen.sent[0][4], undefined);
+  chosen.root.unmount();
 });

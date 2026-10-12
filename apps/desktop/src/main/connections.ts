@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
+import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
 import type { Automation } from '../../../../packages/client/src/automations';
 import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
@@ -258,6 +258,10 @@ export class DesktopConnections {
     if (activate) this.active = r.account.id;
     const result = await r.account.service.createThread({ ...input, channelId: r.raw }, activate);
     return typeof result === 'string' ? this.encode(r.account, result)! : result;
+  }
+  async startThread(input: StartThreadInput): Promise<string> {
+    const r = input.channelId ? this.route(input.channelId) : { account: this.current(), raw: undefined };
+    return this.encode(r.account, await r.account.service.startThread({ ...input, channelId: r.raw }))!;
   }
   async getModelSettings(key: string) { return this.forIdentity(key).service.getModelSettings(key); }
   async setModelSettings(key: string, provider: string, model: string, confirm: boolean) { return this.forIdentity(key).service.setModelSettings(key, provider, model, confirm); }

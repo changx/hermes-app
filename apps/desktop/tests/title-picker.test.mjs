@@ -16,7 +16,7 @@ test('Chromium: title alphabet search, keyboard selection, IME and New topic cre
     const checks=[], actions=[];let closed=0;
     const ensure=(n,v)=>{if(!v)throw Error(n);checks.push(n)};
     const snapshot={phase:'connected',channels:[{id:'p',name:'Project'}],threads:Array.from({length:30},(_,i)=>({id:'t'+i,channelId:'p',title:i===0?'恢复自动标题':'会话'+i,title_alphabet:i===0?'hui fu zi dong biao ti':'hui hua '+i,running:false,lastMessageAt:30-i}))};
-    window.hermesDesktop={selectThread:async id=>actions.push(id),createThread:async data=>{ensure('placeholder restored',data.title==='New topic');return data.clientThreadId},sendMessage:async()=>{},completeNewTab:async()=>{}};
+    window.hermesDesktop={selectThread:async id=>actions.push(id),createThread:async data=>{ensure('placeholder restored',data.title==='New topic');return data.clientThreadId},startThread:async data=>{ensure('placeholder restored',data.title==='New topic');return data.clientThreadId},sendMessage:async()=>{},completeNewTab:async()=>{}};
     const root=createRoot(document.getElementById('root'));const render=()=>flushSync(()=>root.render(<SessionPicker snapshot={snapshot} close={()=>closed++}/>));
     const input=()=>document.querySelector('input'), options=()=>[...document.querySelectorAll('[role=option]')];
     const key=(name,extra={})=>flushSync(()=>input().dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,...extra})));

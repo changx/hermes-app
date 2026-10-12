@@ -507,3 +507,91 @@ test('late receipt after stop cannot mutate persisted metadata or revive polling
   assert.equal(resumed.box.records[0].receiptState, 'queued');
   await resumed.box.stop();
 });
+
+// A new session's first message: saved before any request; the outbox creates the session
+// with the record's ID (same ID on every retry), then sends. Synthetic data only.
+const start = { channelId: 'p', title: 'New topic' };
+const startSdk = (createImpl = async () => {}) => {
+  const client = sdk();
+  client.threads = new Map(); client.creates = [];
+  client.createThread = async (channelId, title, threadId, model, confirm, options) => {
+    client.creates.push([channelId, title, threadId, model, confirm, options]);
+    await createImpl(threadId);
+    const row = { id: threadId, project_id: channelId, title, archived: false };
+    client.threads.set(threadId, row); return row;
+  };
+  return client;
+};
+const first = (n, text = 'hello') => newSend(config, 'th_abc', text, id(n), [], start);
+
+test('start: the create field is durable, survives a reload, and is validated', async () => {
+  const store = new Store();
+  const { box } = make(store, startSdk());
+  await box.start();
+  await box.enqueue(first(1));
+  const again = make(store, startSdk()).box;
+  await again.start();
+  assert.deepEqual(again.records[0].create, start);
+  assert.throws(() => newSend(config, 'th_abc', 'x', id(2), [], { channelId: '', title: 'New topic' }));
+  assert.throws(() => newSend(config, 'th_abc', 'x', id(2), [], { ...start, automationEditor: false }));
+  assert.throws(() => newSend(config, 'thread with space', 'x', id(2), [], start));
+  for (const [key, value] of store.data) if (!key.includes('.part.')) {
+    store.data.set(key, JSON.stringify({ ...JSON.parse(value), create: { channelId: 'p', title: 'x', extra: 1 } }));
+  }
+  await box.stop(); await again.stop();
+  const damaged = make(store, startSdk()).box;
+  await assert.rejects(damaged.start(), /damaged/);
+  await damaged.stop();
+});
+
+test('start: create first, then send, and a later message in the same session waits', async () => {
+  const gate = deferred();
+  const client = startSdk(() => gate.promise);
+  const { box } = make(new Store(), client, config, Date.now, 12000);
+  await box.start(); box.setConnection('online');
+  await box.enqueue(first(1));
+  await box.enqueue(newSend(config, 'th_abc', 'second', id(2), [], start));
+  await flush();
+  assert.equal(client.creates.length, 1);
+  assert.deepEqual(client.creates[0], ['p', 'New topic', 'th_abc', undefined, false, {}]);
+  assert.equal(client.sends.length, 0, 'nothing is sent before the session exists');
+  gate.resolve(); await flush();
+  assert.deepEqual(client.sends.map(s => s[1]), [id(1), id(2)]);
+  assert.equal(client.creates.length, 1, 'the second message does not create again');
+  await box.stop();
+});
+
+test('start: a temporary failure retries the create with the same ID; a rejection blocks with a plain notice', async () => {
+  let n = 0, now = 1000;
+  const client = startSdk(async () => { if (++n === 1) { const e = new Error('busy'); e.status = 503; throw e; } });
+  const { box } = make(new Store(), client, config, () => now);
+  await box.start(); box.setConnection('online');
+  await box.enqueue(first(1)); await flush();
+  assert.equal(box.records[0].status, 'ambiguous');
+  now += 60000; box.setConnection('online'); await flush();
+  assert.deepEqual(client.creates.map(c => c[2]), ['th_abc', 'th_abc']);
+  assert.equal(client.sends.length, 1);
+
+  const denied = startSdk(async () => { const e = new Error('nope'); e.status = 403; throw e; });
+  const blocked = make(new Store(), denied);
+  await blocked.box.start(); blocked.box.setConnection('online');
+  await blocked.box.enqueue(first(3)); await flush();
+  assert.equal(blocked.box.records[0].status, 'blocked');
+  assert.equal(denied.sends.length, 0);
+  assert.match(blocked.notices.at(-1), /could not be started/);
+  await box.stop(); await blocked.box.stop();
+});
+
+test('start: an automation start passes its flag; a known session is not created again', async () => {
+  const client = startSdk();
+  const { box } = make(new Store(), client);
+  await box.start(); box.setConnection('online');
+  await box.enqueue(newSend(config, 'th_auto', 'daily', id(1), [], { channelId: 'p', title: 'New automation', automationEditor: true }));
+  await flush();
+  assert.deepEqual(client.creates[0].slice(1, 3).concat([client.creates[0][5]]), ['New automation', 'th_auto', { automationEditor: true }]);
+  client.threads.set('th_known', { id: 'th_known' });
+  await box.enqueue(newSend(config, 'th_known', 'hi', id(2), [], start)); await flush();
+  assert.equal(client.creates.length, 1);
+  assert.equal(client.sends.length, 2);
+  await box.stop();
+});

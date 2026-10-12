@@ -149,6 +149,10 @@ export type ThreadInput = Readonly<{ title: string; clientThreadId: string; chan
 /** A session ID; or nothing created: confirm the model warning, or the server rejected the model. */
 export type ThreadCreation = string | ModelSelectionConfirmation | Readonly<{ model_rejected: true }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
+/** A new session and its first text message, started at once: the first message is saved in
+ * the outbox, the tab opens, and the session is created on the server in the background. */
+export type StartThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string; text: string; clientMessageId: string;
+  /** Set by the main process for a New automation tab, never by the renderer. */ automationEditor?: boolean }>;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 /** A page the agent opened ('read') or a link its reply cites ('cited'). */
 export type DesktopMessageSource = Readonly<{ url: string; kind: 'read' | 'cited' }>;
@@ -240,6 +244,8 @@ export interface HermesDesktopApi {
   addProjectFiles(channelId: string, files: readonly File[]): Promise<ProjectFilesResult>;
   /** Returns the session ID, or a confirmation request (nothing created) for a model with a cost/data warning. */
   createThread(input: ThreadInput): Promise<ThreadCreation>;
+  /** New session with a text-only first message, shown at once; returns the session ID. */
+  startThread(input: StartThreadInput): Promise<string>;
   renameThread(threadId: string, title: string): Promise<void>;
   saveThreadLabels(threadId: string, markers: string[], timestamp: number, connectionKey: string): Promise<LabelDetail>;
   archiveThread(threadId: string): Promise<void>;

@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 
 export type OutboxState = "pending" | "sending" | "unknown" | "blocked";
 
+/** A session started on this device: create it (same Thread ID on every retry) before the first send. */
+export type OutboxCreate = Readonly<{ channelId: string; title: string; automationEditor?: true }>;
+
 export type OutboxRecord = Readonly<{
   version: 1;
   id: string;
@@ -14,6 +17,7 @@ export type OutboxRecord = Readonly<{
   state: OutboxState;
   receiptId?: string;
   receiptRefSeq?: number;
+  create?: OutboxCreate;
 }>;
 
 type OutboxData = { version: 1; identities: Record<string, OutboxRecord[]> };
@@ -37,7 +41,8 @@ const record = (value: unknown): OutboxRecord => {
     typeof item.createdAt !== "number" || !Number.isSafeInteger(item.createdAt) || item.createdAt < 0 ||
     !["pending", "sending", "unknown", "blocked"].includes(item.state ?? "") ||
     (item.receiptId !== undefined && (typeof item.receiptId !== "string" || !item.receiptId || item.receiptId.length > 200)) ||
-    (item.receiptRefSeq !== undefined && (!item.receiptId || !Number.isSafeInteger(item.receiptRefSeq) || item.receiptRefSeq <= 0))
+    (item.receiptRefSeq !== undefined && (!item.receiptId || !Number.isSafeInteger(item.receiptRefSeq) || item.receiptRefSeq <= 0)) ||
+    (item.create !== undefined && !validCreate(item.create, item.threadId))
   ) throw new Error("invalid outbox record");
   return Object.freeze({
     version: 1,
@@ -49,7 +54,14 @@ const record = (value: unknown): OutboxRecord => {
     state: item.state,
     ...(item.receiptId ? { receiptId: item.receiptId } : {}),
     ...(item.receiptRefSeq !== undefined ? { receiptRefSeq: item.receiptRefSeq } : {}),
+    ...(item.create ? { create: Object.freeze({ channelId: item.create.channelId, title: item.create.title, ...(item.create.automationEditor ? { automationEditor: true as const } : {}) }) } : {}),
   }) as OutboxRecord;
+};
+const validCreate = (value: unknown, threadId: string): boolean => {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<OutboxCreate>;
+  return /^th_[A-Za-z0-9_-]{8,64}$/.test(threadId) && typeof item.channelId === "string" && !!item.channelId && item.channelId.length <= 200 &&
+    typeof item.title === "string" && !!item.title.trim() && item.title.length <= 200 && (item.automationEditor === undefined || item.automationEditor === true);
 };
 const data = (value: unknown): OutboxData => {
   if (!value || typeof value !== "object") throw new Error("invalid outbox");
