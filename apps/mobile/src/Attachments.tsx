@@ -75,9 +75,13 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     // Never delete uploads here: after durable enqueue but before clearKey commits, they may belong to an outbox record.
   };
   useEffect(() => {
-    if (identity.current.client !== client || identity.current.threadId !== threadId || identity.current.clearKey !== clearKey) {
+    // Local first-message files belong to no server until uploadTo() stages
+    // them, so a new client keeps an unstaged selection.
+    const clientChanged = identity.current.client !== client &&
+      (threadId !== null || identity.current.threadId !== null || stagedThread.current !== null);
+    if (clientChanged || identity.current.threadId !== threadId || identity.current.clearKey !== clearKey) {
       cleanup(); identity.current = { client, threadId, clearKey }; update([]); setNotice(''); setMenuOpen(false);
-    }
+    } else identity.current = { client, threadId, clearKey };
   }, [client, threadId, clearKey]);
   useEffect(() => { callbacks.current(uploadedInOrder(itemsRef.current), threadId ? draftBusy(itemsRef.current) : false); }, []);
   useEffect(() => () => {

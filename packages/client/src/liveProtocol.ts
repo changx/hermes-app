@@ -15,6 +15,10 @@ export interface SessionDirectoryItem {
   last_message_at?: number;
   markers?: string[];
   markers_updated_at?: number;
+  /** Who started the Thread. Absent on older servers, which means 'user'. */
+  origin?: 'user' | 'automation';
+  /** True after the user sent at least one message in the Thread. */
+  participated?: boolean;
 }
 export type CatalogueItem = {kind:'channel';value:Channel}|{kind:'session';value:SessionDirectoryItem};
 export interface CataloguePage {items:CatalogueItem[];next_after:string|null}
@@ -60,6 +64,11 @@ export function parseCatalogue(value:unknown):CataloguePage {
       }
       if((result.result_version===0)!==(result.result_ref===0)||result.completed_unread&&result.result_version===0)throw new LiveProtocolError();
     }
+    if(entry.origin!==undefined){
+      if(entry.origin!=='user'&&entry.origin!=='automation')throw new LiveProtocolError();
+      result.origin=entry.origin;
+    }
+    if(entry.participated!==undefined)result.participated=bool(entry.participated);
     if(entry.last_message_at!==undefined){
       if(typeof entry.last_message_at!=='number'||!Number.isFinite(entry.last_message_at)||entry.last_message_at<0)throw new LiveProtocolError();
       result.last_message_at=entry.last_message_at;

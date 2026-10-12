@@ -28,6 +28,8 @@ export type DesktopThread = Readonly<{
   completedUnread?: boolean;
   resultVersion?: number;
   resultRef?: number;
+  origin?: "user" | "automation";
+  participated?: boolean;
 }>;
 export type DesktopToolCall = Readonly<{ id: string; name?: string; label: string; detail?: string; caption?: string; icon?: string }>;
 export type DesktopAttachment = Readonly<{

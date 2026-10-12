@@ -1,0 +1,66 @@
+# Mobile bottom tabs, Recents and Automations
+
+Status: implemented on branch `feat/mobile-tabs-recents` (2026-10-11). Needs the Hermes App plugin 0.2.22 or later for Thread origin and Automations. Not yet accepted on a real iPhone.
+
+## Confirmed requirements (Jamie, 2026-10-11)
+
+- The phone gets bottom tab navigation. Left to right: Recents, Channels, Automations.
+- The tab bar has no unread badges.
+- Use the Expo Router native tabs (`NativeTabs`).
+- The server marks where a Thread came from. A Thread enters Recents only after the user took part in it. Recents is a plain Thread list: no grouping, no summary rows.
+- Recents has a new-conversation icon button. Its page asks for the first message and a channel. The channel of the most recent use is preselected and can be changed. Creating a session from a channel page stays as it is.
+- Each channel row in the channel list shows its connection.
+- Attachments stay on the device until the user sends; the Thread is created and the files are uploaded only at send.
+- The Automations list shows jobs; a job opens the Threads that it produced.
+
+## Behavior
+
+### Recents rule (shared with the desktop sidebar)
+
+`packages/client/src/recents.ts`:
+
+- A Thread is in Recents when the user owns it AND it had activity in the last 24 hours or is running.
+- The user owns a Thread when its `origin` is not `automation`, or when `participated` is true (the user sent at least one message in it).
+- A server older than plugin 0.2.22 sends no origin. Then every Thread counts as the user's, which was the previous behavior.
+- The desktop sidebar Recents (`apps/desktop/src/renderer/thread-navigation.ts`) and the mobile Recents tab (`apps/mobile/src/recentRows.ts`) use this rule.
+
+### Tabs
+
+- `apps/mobile/src/app/(tabs)/_layout.tsx` defines the tab bar. It also sends a device without connections to the welcome page.
+- Each tab draws its own header (`TabHeader`): title, tab actions, and the Settings gear.
+- Threads, channel pages, settings, the new-conversation page and the automation page are pushed on the root Stack above the tabs. The tab bar is hidden there. Back returns to the same tab and scroll position.
+- Route ownership: an emptied root stack falls back to `(tabs)`. Automation pages belong to their connection and close when that connection is removed.
+
+### Recents tab
+
+- Rows from every saved connection, newest activity first. Each row shows the Thread title, its channel and, with more than one connection, the connection name, then time, Running and the unread dot.
+- The list refreshes with the directory and once per minute, so the 24-hour window moves.
+
+### New conversation (from Recents)
+
+- Route `/new-thread`. A Channel field at the top opens a list of every channel with its connection name.
+- Preselection: the channel of the user's most recent own activity (any time, not only 24 hours). Automation Threads without a user reply do not count. Without such activity, the first channel in the list.
+- The composer is the same `NewTopicComposer` as at the bottom of a channel page, with the same durable first-message path (`MobileOutbox`).
+- Before the first send attempt, the text and the selected files are local only. The user can change the channel or the connection and keep both. From the first send attempt until the durable commit, the attempt's Thread and message IDs belong to the selected channel, so the Channel field is locked. This keeps the composer rule: never share files or IDs across channels.
+- After the send, the page is replaced by the new conversation. Back returns to Recents.
+
+### Channels tab
+
+- The previous home list. Every row now shows its connection name, also with one saved connection.
+
+### Automations tab
+
+- Jobs of every connection that has plugin 0.2.22: name, status (Running, Scheduled, Paused, Finished, Last run failed), schedule, next or last run, and the number of unread results. A connection without the capability shows one line that Automations are not available there yet.
+- A job opens `/automations/[automationId]`: status, schedule, where it delivers (tap to open the channel), the instructions (hidden until tapped), and the conversations it produced, newest first, with paging.
+- Read-only in this version. Creating or changing an automation stays in a conversation with the agent.
+
+## Server contract
+
+See `docs/cron-threads.md` in the plugin repository (`/opt/projects/jamie/hermes-app-plugin`): `origin` and `participated` in the catalogue, `GET /v1/automations`, `GET /v1/automations/{id}`, and the capabilities `thread_origin` and `automations`.
+
+## Verification
+
+- Shared client: `npm run client:check` (includes `packages/client/tests/automations.test.mjs`).
+- Desktop: `npm run desktop:typecheck`; `apps/desktop/tests/sidebar-recents.test.mjs` covers automation Threads in Recents.
+- Mobile: `npm run check` and `npm test` in `apps/mobile` (`tests/recents-tab.test.mjs`, route ownership in `tests/multi-connection.test.mjs`); `npx expo export --platform ios` builds.
+- Open: real iPhone check of the native tab bar (Expo Go), list bottom insets above the tab bar, the channel picker sheet, and the keyboard on the new-conversation page.

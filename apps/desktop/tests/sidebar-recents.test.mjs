@@ -19,6 +19,12 @@ test('Recents keeps only the last 24 hours plus running sessions, newest first',
   assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['minute', 'hour', 'running-old']);
 });
 
+test('Recents leaves out automation Threads until the user replies in them', () => {
+  const threads = [row('mine', seconds - 60), row('run', seconds - 30, { origin: 'automation' }),
+    row('replied', seconds - 90, { origin: 'automation', participated: true }), row('old-server', seconds - 120, {})];
+  assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['mine', 'replied', 'old-server']);
+});
+
 test('Recents shows one batch, then more on request', () => {
   const threads = Array.from({ length: THREAD_BATCH + 3 }, (_, i) => row('t' + String(i).padStart(2, '0'), seconds - i));
   const first = recentWindow(threads, now);

@@ -4,7 +4,7 @@ import { removedConnectionRoutes, routeSlot } from '../src/routeOwnership.ts';
 
 test('removing a connection drops only its routes and keeps peer route keys', () => {
   const state = { index: 5, routes: [
-    { key: 'home', name: 'index' },
+    { key: 'home', name: '(tabs)' },
     { key: 'pa', name: 'channels/[channelId]', params: { channelId: 'p', connection: 'primary' } },
     { key: 'ta', name: 'threads/[threadId]', params: { threadId: 't', connection: 'primary' } },
     { key: 'pb', name: 'channels/[channelId]', params: { channelId: 'p', connection: 'b'.repeat(24) } },
@@ -25,17 +25,18 @@ test('focused peer page stays focused; no change returns null', () => {
   assert.equal(removedConnectionRoutes(state, new Set(['c'.repeat(24)])), null);
   assert.equal(routeSlot({ name: 'threads/[threadId]', params: { threadId: 't' } }), 'primary', 'older routes belong to the primary slot');
   assert.equal(routeSlot({ name: 'connection' }), null);
+  assert.equal(routeSlot({ name: 'automations/[automationId]', params: { automationId: 'j', connection: 'b'.repeat(24) } }), 'b'.repeat(24));
 });
 
 test('an emptied stack falls back to the home route', () => {
   const next = removedConnectionRoutes({ index: 0, routes: [{ key: 'x', name: 'settings/connection', params: { connection: 'primary' } }] }, new Set(['primary']));
-  assert.deepEqual(next.routes, [{ name: 'index' }]);
+  assert.deepEqual(next.routes, [{ name: '(tabs)' }]);
   assert.equal(next.index, 0);
 });
 
 test('removing a connection pops its settings page but keeps the shared settings pages', () => {
   const b = 'b'.repeat(24);
-  const state = { index: 2, routes: [{ key: 'home', name: 'index' }, { key: 'settings', name: 'settings/index' }, { key: 'conn', name: 'settings/connection', params: { connection: b } }] };
+  const state = { index: 2, routes: [{ key: 'home', name: '(tabs)' }, { key: 'settings', name: 'settings/index' }, { key: 'conn', name: 'settings/connection', params: { connection: b } }] };
   const next = removedConnectionRoutes(state, new Set([b]));
   assert.deepEqual(next.routes.map(route => route.key), ['home', 'settings']);
   assert.equal(next.index, 1, 'the user lands on the Settings list');

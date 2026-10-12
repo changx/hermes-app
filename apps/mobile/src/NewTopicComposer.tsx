@@ -8,13 +8,18 @@ import { AttachmentComposer, type AttachmentComposerHandle } from './Attachments
 import { ComposerSendButton } from './ComposerCard';
 
 /** Route-owned draft: retained by the native Stack while an existing topic is open.
- * Mount with a connection/channel key; never share files or IDs across channels.
+ * Never share files or IDs across channels. Mount with a connection/channel
+ * key, or change `client`/`channelId` only while `onTargetLock` reports false:
+ * before the first send attempt the text and files are local only. From the
+ * first attempt until the durable commit, the Thread and message IDs belong to
+ * the current target, so the owner must keep it.
  * First-message dispatch belongs to the existing durable outbox, not this view.
  */
-export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false }: {
+export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabled = false, onTargetLock, placeholder = 'Start a new conversation…', autoFocus = false }: {
   client: HermesClient; channelId: string;
   enqueue: (threadId: string, messageId: string, text: string, attachments: Attachment[]) => Promise<void>;
   onCreated: (threadId: string) => void; disabled?: boolean;
+  onTargetLock?: (locked: boolean) => void; placeholder?: string; autoFocus?: boolean;
 }) {
   const [text, setText] = useState(''), [count, setCount] = useState(0);
   const [busy, setBusy] = useState(false), [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -25,6 +30,8 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
   const selection = useRef<{ start: number; end: number } | null>(null);
   type Attempt = { threadId: string; messageId: string; created: boolean; payload?: { text: string; attachments: Attachment[] } };
   const attempt = useRef<Attempt | null>(null);
+  const lockCallback = useRef(onTargetLock); lockCallback.current = onTargetLock;
+  const setAttempt = (value: Attempt | null) => { attempt.current = value; lockCallback.current?.(value !== null); };
   const working = useRef(false), mounted = useRef(true);
   const focused = useIsFocused(), focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -44,7 +51,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
     working.current = true; setBusy(true); setError('');
     // Creation can be acknowledged ambiguously; every retry uses the same ID.
     const draft: Attempt = attempt.current ?? { threadId: 'th_' + Crypto.randomUUID().replace(/-/g, ''), messageId: 'mob_' + Crypto.randomUUID(), created: false };
-    attempt.current = draft;
+    setAttempt(draft);
     const original = text;
     try {
       if (!draft.created) {
@@ -67,7 +74,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       await enqueue(draft.threadId, draft.messageId, draft.payload.text, draft.payload.attachments);
       // No network read after the durable commit; a dropped connection must not
       // leave this draft looking unsent or cause another first-message send.
-      attempt.current = null;
+      setAttempt(null);
       if (mounted.current) {
         setText(''); setCount(0); setSealed(false); selection.current = null; setClearKey(key => key + 1);
         if (focusedRef.current) onCreated(draft.threadId);
@@ -85,7 +92,7 @@ export function NewTopicComposer({ client, channelId, enqueue, onCreated, disabl
       disabled={busy || disabled || sealed} onSelectionChange={setCount} onChange={(_, pending) => setAttachmentBusy(pending)} onPasteText={paste}
       expanded={inputFocused} onPressField={() => input.current?.focus()}
       send={<ComposerSendButton hint="Starts a new conversation" busy={busy} disabled={busy || disabled || attachmentBusy || (!text.trim() && !count)} onPress={() => void submit()} />}>
-      <TextInput ref={input} accessibilityLabel="First message" placeholder="Start a new conversation…" placeholderTextColor="#8e8e93"
+      <TextInput ref={input} accessibilityLabel="First message" placeholder={placeholder} placeholderTextColor="#8e8e93" autoFocus={autoFocus}
         multiline maxLength={16000} editable={!busy && !disabled && !sealed} value={text} onChangeText={value => { if (!working.current && !attempt.current?.payload) setText(value); }}
         numberOfLines={Platform.OS === 'ios' && !text.length ? 1 : undefined}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}

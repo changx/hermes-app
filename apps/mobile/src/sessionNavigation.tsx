@@ -42,6 +42,10 @@ export function useSessionNavigation() {
       const connection = scope.connection;
       navigateSession(router, page => !!connection && scope.hasPage(connection, page), id, threadRoute(connection, id, messageRef));
     },
+    /** Opens a Thread of a named connection, from a page that spans connections. */
+    threadOn(connection: string, id: string) {
+      navigateSession(router, page => scope.hasPage(connection, page), id, threadRoute(connection, id));
+    },
     link(href: string) {
       // A short in-message link names no server: it belongs to this page's connection.
       const short = relativeSessionThread(href);

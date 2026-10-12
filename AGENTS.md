@@ -96,6 +96,7 @@
 - [docs/mobile-session-options.md](docs/mobile-session-options.md)
 - [docs/mobile-battery.md](docs/mobile-battery.md)
 - [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)
+- [docs/mobile-tabs-recents.md](docs/mobile-tabs-recents.md)
 
 ### 桌面应用
 

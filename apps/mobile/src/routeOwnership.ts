@@ -6,7 +6,7 @@
 type RouteLike = { key?: string; name: string; params?: object; state?: StateLike };
 type StateLike = { index?: number; routes: RouteLike[]; [field: string]: unknown };
 
-const CONNECTION_ROUTES = /^(channels\/|threads\/|settings\/connection$)/;
+const CONNECTION_ROUTES = /^(channels\/|threads\/|automations\/|settings\/connection$)/;
 
 /** Connection slot of a route; routes without the parameter belong to the primary slot. */
 export function routeSlot(route: RouteLike): string | null {
@@ -25,7 +25,7 @@ export function filterRoutes<S extends StateLike>(state: S, drop: (route: RouteL
   }
   if (!changed) return null;
   // Never leave an empty stack; the home route is always the safe base.
-  if (!routes.length) routes.push({ name: 'index' });
+  if (!routes.length) routes.push({ name: '(tabs)' });
   const focused = state.routes[state.index ?? state.routes.length - 1];
   const kept = routes.indexOf(focused);
   return { ...state, routes, index: kept >= 0 ? kept : routes.length - 1 };

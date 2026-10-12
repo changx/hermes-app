@@ -10,7 +10,7 @@ import { NetworkStatusToast } from '../NetworkStatusToast';
 import { CopyToast } from '../CopyToast';
 import { removedConnectionRoutes } from '../routeOwnership';
 
-export const unstable_settings = { initialRouteName: 'index' };
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 /**
  * The Stack is never remounted for a connection change. Removing one
@@ -40,10 +40,12 @@ function NativeRoutes() {
     <RouteOwnership owners={owners} />
     <Stack screenOptions={{ keyboardHandlingEnabled: true, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
       headerTitleStyle: { fontSize: 17 * scale }, headerBackTitleStyle: { fontSize: 17 * scale } }}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Protected guard={!ready || connections.length > 0}>
         <Stack.Screen name="new-channel" options={{ title: 'New channel' }} />
+        <Stack.Screen name="new-thread" options={{ title: 'New conversation' }} />
+        <Stack.Screen name="automations/[automationId]" getId={({ params }) => `${params?.connection ?? 'primary'}:${params?.automationId}`} options={{ title: 'Automation' }} />
         <Stack.Screen name="channels/[channelId]" getId={({ params }) => `${params?.connection ?? 'primary'}:${params?.channelId}`} options={{ title: 'Channel' }} />
         <Stack.Screen name="channels/[channelId]/context" options={{ title: 'Channel context' }} />
         <Stack.Screen name="channels/[channelId]/files" options={{ title: 'Files' }} />

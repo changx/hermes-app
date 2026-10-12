@@ -1,12 +1,13 @@
 /** Owner-scoped HTTP operations and projections. Live connection lifecycle is separate. */
 import { createWorkspaceApi, type ConditionalHeaders, type WorkspaceApi } from './workspace';
+import { parseAutomationDetail, parseAutomations, type Automation, type AutomationDetail } from './automations';
 export { utf8Size, workspacePath } from './workspace';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
 export interface Thread { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number }
+export interface ThreadSummary { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean }
 export interface Channel { id: string; name: string; description?: string; /** Server folder bound as the Channel primary path; null when none. */ bound_primary_path?: string | null; [key: string]: unknown }
 /** Patch for updateChannel. primary_path: a string binds, null unbinds, omitted keeps the current binding. */
 export interface ChannelPatch { name?: string; description?: string; primary_path?: string | null }
@@ -189,6 +190,8 @@ export class HermesClient {
   supportsMessageSources = false;
   supportsThreadExport = false;
   supportsChannelArchive = false;
+  /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
+  supportsAutomations = false;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -295,7 +298,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -309,6 +312,7 @@ export class HermesClient {
     this.supportsMessageSources = owner.supportsMessageSources;
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
+    this.supportsAutomations = owner.supportsAutomations;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
   private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
@@ -344,6 +348,12 @@ export class HermesClient {
   async createChannel(name: string, description = '', primaryPath?: string): Promise<Channel> { const x = await this.call('POST','/v1/channels',primaryPath===undefined?{name,description}:{name,description,primary_path:primaryPath}); const c = validChannel(x.channel); this.channels.set(c.id,c); this.changed(); return c }
   async updateChannel(id: string, patch: ChannelPatch): Promise<Channel> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),patch); const c = validChannel(x.channel); this.channels.set(id,c); this.changed(); return c }
   /** Core project archive: the Channel and its Threads leave the directory; nothing is deleted. */
+  /** This connection's scheduled jobs. Requires `supportsAutomations`. */
+  async automations(signal?: AbortSignal): Promise<Automation[]> { return parseAutomations(await this.call('GET','/v1/automations',undefined,signal)) }
+  /** One job and the Threads it delivered into, newest first; pass `before` for the next page. */
+  async automation(id: string, before?: number, signal?: AbortSignal): Promise<AutomationDetail> {
+    return parseAutomationDetail(await this.call('GET','/v1/automations/'+idPath(id)+(before===undefined?'':'?before='+before),undefined,signal));
+  }
   async archiveChannel(id: string): Promise<void> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),{archived:true}); if (validChannel(x.channel).archived !== true) throw new ProtocolError('archive not confirmed'); this.channels.delete(id); this.changed() }
   async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.changed() }
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }

@@ -1,4 +1,5 @@
 import type { DesktopThread } from "../shared/desktop-api";
+import { inRecents } from '../../../../packages/client/src/recents';
 import { emptyLabelFilter, labelFilterActive, matchesLabels, type LabelFilter } from '../../../../packages/client/src/sessionLabels';
 
 export const THREAD_BATCH = 24;
@@ -23,10 +24,11 @@ export const threadWindow = (threads: readonly DesktopThread[], channelId: strin
 
 /**
  * Sidebar Recents: Sessions from every Project and connection with activity in
- * the trailing 24 hours, plus running Sessions. Newest activity first.
+ * the trailing 24 hours, plus running Sessions, that the user owns (see
+ * packages/client/src/recents.ts). Newest activity first.
  */
 export const recentWindow = (threads: readonly DesktopThread[], now: number, batches = 0) => {
-  const rows = threads.filter(thread => thread.running === true || thread.lastMessageAt !== undefined && thread.lastMessageAt >= now / 1000 - DAY)
+  const rows = threads.filter(thread => inRecents(thread, now / 1000))
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   const count = (Math.max(0, batches) + 1) * THREAD_BATCH;
   return { rows: rows.slice(0, count), hasMore: rows.length > count };

@@ -11,15 +11,15 @@ export function ProjectList({ connections, revision, onProject, onNewChannel, on
   onProject: (slot: string, id: string) => void; onNewChannel: () => void; onConnections: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const multiple = connections.length > 1;
   const { rows, pending } = useMemo(() => projectRows(connections), [connections, revision]);
   return <View style={s.fill}>
     <FlatList keyboardShouldPersistTaps="handled" data={rows} keyExtractor={row => row.key} extraData={revision}
       contentContainerStyle={[s.list, { paddingBottom: 96 + insets.bottom }]}
       renderItem={({ item }) => {
-        const source = [multiple ? item.connectionName : undefined, item.issue].filter(Boolean).join(' · ');
+        // Every row names its connection, also with one saved connection.
+        const source = [item.connectionName, item.issue].filter(Boolean).join(' · ');
         return <Pressable accessibilityRole="button" onPress={() => onProject(item.slot, item.id)} style={({ pressed }) => [s.card, pressed && s.pressed]}
-          accessibilityLabel={[item.name, multiple ? item.connectionName : undefined, item.issue, unreadCountDescription(item.unread)].filter(Boolean).join(', ')}>
+          accessibilityLabel={[item.name, item.connectionName, item.issue, unreadCountDescription(item.unread)].filter(Boolean).join(', ')}>
           <View style={s.fill}>
             <Text numberOfLines={1} style={s.heading}>{item.name}</Text>
             {!!source && <Text numberOfLines={1} style={[s.source, item.issue && s.issue]}>{source}</Text>}

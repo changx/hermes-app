@@ -210,6 +210,8 @@ export class DesktopConnectionService {
         completedUnread: thread.completed_unread,
         resultVersion: thread.result_version,
         resultRef: thread.result_ref,
+        ...(thread.origin === "automation" ? { origin: "automation" as const } : {}),
+        ...(thread.participated === true ? { participated: true } : {}),
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
