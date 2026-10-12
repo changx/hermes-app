@@ -257,13 +257,20 @@ export class LiveSessionClient extends HermesClient {
     const linked = combine(signal, this.attempt?.signal), owner = this.liveController;
     try {
       const path = '/v1/threads/' + encodeURIComponent(id) + '/labels';
-      this.parseLabelDetail(await this.call('PUT', path, { markers: labels, markers_updated_at: time }, linked.signal), id, channel);
-      // Validate the exact target again on readback. Never project a proposed array.
-      await this.getThreadLabels(id, linked.signal);
-      await this.snapshot(linked.signal);
-      if (owner !== this.liveController || linked.signal.aborted || !this.isThreadAvailable(id) || this.threads.get(id)!.project_id !== channel) throw new ProtocolError('Label save not confirmed');
-      const current = this.threads.get(id)!;
-      return { thread_id: id, project_id: channel, markers: [...(current.markers ?? [])], markers_updated_at: current.markers_updated_at ?? 0 };
+      // The PUT response is the server's committed state (the saved array, or the
+      // newer current one for a stale/equal save), never the proposed array.
+      // One round trip confirms the save; the committed save's directory_changed
+      // refreshes the full catalogue in the background.
+      const saved = this.parseLabelDetail(await this.call('PUT', path, { markers: labels, markers_updated_at: time }, linked.signal), id, channel);
+      const current = this.threads.get(id);
+      if (owner !== this.liveController || linked.signal.aborted || !current || !this.isThreadAvailable(id) || current.project_id !== channel) throw new ProtocolError('Label save not confirmed');
+      // A catalogue page that already carries newer labels wins over this response.
+      if (saved.markers_updated_at >= (current.markers_updated_at ?? 0)) {
+        const directory = this.owner ?? this;
+        directory.batchChanges(() => { this.threads.set(id, { ...current, markers: [...saved.markers], markers_updated_at: saved.markers_updated_at }); directory.changed(); });
+      }
+      const shown = this.threads.get(id)!;
+      return { thread_id: id, project_id: channel, markers: [...(shown.markers ?? [])], markers_updated_at: shown.markers_updated_at ?? 0 };
     } finally { this.labelSaves.delete(id); linked.done(); }
   }
   private async refreshDirectory(signal?:AbortSignal):Promise<void>{

@@ -17,7 +17,11 @@ try {
   await Promise.all(clients.map(client => client.connect())); await until(() => clients.every(client => client.connectionState === 'online'));
   assert.ok(clients.every(client => client.supportsSessionLabels));
   for (const [values, time] of [[['Synthetic SDK 👩🏽‍💻', 'Exact'], 1000], [['Replacement'], 1001], [[], 1002]]) {
+    const before = requests.length;
     const result = await clients[0].saveThreadLabels(threadId, values, time); assert.deepEqual(result.markers, values);
+    // One PUT confirms the save (no detail readback); the catalogue refresh runs in the background.
+    assert.deepEqual(requests.slice(before).filter(r => r.path.endsWith('/labels')).map(r => r.method), ['PUT']);
+    assert.deepEqual(clients[0].threads.get(threadId).markers, values);
     await until(() => clients[1].threads.get(threadId)?.markers_updated_at === time);
     assert.deepEqual(clients[1].threads.get(threadId).markers, values);
   }
@@ -25,5 +29,5 @@ try {
   assert.deepEqual((await clients[1].saveThreadLabels(threadId, ['Equal'], 1002)).markers, []);
   assert.ok(clients.every(client => client.messages.size === 0 && client.receipts.size === 0 && client.openedPageIds.length === 0));
   assert.ok(requests.every(r => !r.path.includes('/messages') && !r.path.endsWith('/live-state') && !r.path.startsWith('/v1/sync')));
-  console.log(JSON.stringify({ result: 'passed', fixture: 'synthetic', real_plugin_http_ws: true, two_directory_clients: true, authoritative_readback: true, no_body_reads: true, requests: requests.length }));
+  console.log(JSON.stringify({ result: 'passed', fixture: 'synthetic', real_plugin_http_ws: true, two_directory_clients: true, single_put_confirm: true, no_body_reads: true, requests: requests.length }));
 } finally { clients.forEach(client => client.close()); }
