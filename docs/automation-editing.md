@@ -12,12 +12,19 @@
 6. Recents 按既有规则处理，不新增规则。
 7. Automations 列表分页。
 8. 编辑 Thread 可以在 job 创建之前登记。
+9. 没有特定 App Channel 的 job（Discord、`local`、多个 Channel 等）也可以编辑，归属 `/sethome` 设定的 App home Channel（2026-10-12，插件 0.2.29）。
 
 ## 2. job 的归属
 
-- 归属 Channel = job 的 `deliver` 目标（`hermes_app:<channel>:new` 或 `hermes_app:<channel>:<thread>`）。不另存归属字段。
-- 只投递到本连接 App 的一个 Channel 的 job 可以编辑。其他 job（多个 Channel、Discord、`local` 等）在列表中只读显示，没有控件。
-- 换 Channel = 修改 `deliver`。`workdir` 的变化见第 3 节。
+不另存归属字段。归属 Channel 每次按下面的规则计算：
+
+1. job 只投递到本连接 App 的一个 Channel（`hermes_app:<channel>:new` 或 `hermes_app:<channel>:<thread>`）：归属该 Channel。
+2. 其他 job（Discord、`local`、其他平台的 `origin`、多个 Channel、Channel 已不存在）：归属 App home Channel，即 `/sethome` 设定的 core `platforms.hermes_app.home_channel`。插件通过 core 的 `load_gateway_config().get_home_channel` 读取，所以重新 `/sethome` 后立即生效，不需要重启。
+3. 没有 home，或 home 不是本连接的 Channel：job 只读，没有控件。
+
+- 归属 Channel 决定编辑 Thread 的位置和控件是否显示。编辑不改变 `deliver`：Discord job 的结果仍然发到 Discord。
+- home Channel 的 automations 列表（`?channel=<home>`）也列出归属它的 job。
+- 换 Channel = 修改 `deliver`。`workdir` 规则不变（第 3 节）：归属 home 不改变 job 的 `workdir`。
 
 ## 3. 运行上下文与 `workdir`
 
