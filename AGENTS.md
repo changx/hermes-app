@@ -127,7 +127,7 @@
 - [docs/desktop-session-menu.md](docs/desktop-session-menu.md)
 - [docs/desktop-automations.md](docs/desktop-automations.md)
 - [docs/automation-workflow.md](docs/automation-workflow.md)（草案，未实现）
-- [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑：静态 `workdir`、编辑 Thread、控件、分页；已实现，未发布）
+- [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑：静态 `workdir`、编辑 Thread、控件、分页、删除；已发布）
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布

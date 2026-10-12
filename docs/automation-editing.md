@@ -141,7 +141,7 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 
 ## 11. 删除 job
 
-状态：已实现，未发布（插件分支 `feat/automation-delete`，版本 0.2.31；App 分支 `feat/automation-delete`）。设备验收未做。
+状态：已发布（2026-10-12）：桌面 `v0.1.73`、Expo 测试入口、插件 `v0.2.31`（已安装，Gateway 重启后生效）。设备验收未做。
 
 - 界面：桌面 Automation tab 和手机详情页的控件行最后一个按钮 `Delete`（红字）。点击先确认：`Delete this automation?` / `"<名字>" will not run again. Its conversations stay.`；取消不做任何事。
   - 桌面：删除成功后主进程关闭该 job 的 tab，侧栏 Automations 和 Automations 列表 tab 重新读取（快照字段 `automationsVersion`）。
@@ -157,3 +157,9 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
   - 桌面：`automations-ui`（Chromium，StrictMode：按钮顺序、取消不删除、失败提示可重试、确认后调用、已结束 job 只有 Delete）、`connections`（按连接路由原始 ID；无控件能力的服务器在请求前拒绝）、`native-tabs`（关闭该 job 的 tab，`automationsVersion` +1，其他 tab 保留）。
   - 手机：`tests/automation-editing.test.mjs`（`confirmAutomationDelete`：先询问、取消不删除、只有 destructive 按钮删除；页面接线）。
 - 未做：真实服务器端到端、iPhone 和 Mac 设备验收。插件安装到 hermes-app-dev 和 Gateway 重启需按发布流程执行。
+- 发布（2026-10-12，与 `main` 上的 72 小时 Recents 一起）：
+  - App `main` = `4d58643`（`a6a671e` Delete，`7266171` 修正 Recents 测试的 24 小时断言，tag `v0.1.73`）。候选在 rebase 后重跑：client 77/77、手机 TS 通过和 187 通过 1 跳过、iOS/Android 导出、`desktop:check` 191/191。
+  - 桌面：Mac mini workflow run `38323259621` 成功（191 个测试，146 通过，0 失败，45 跳过；audit 0）。下载的 zip `sha256sum -c` 通过，Info.plist 0.1.73，ASAR 含 `desktop:delete-automation` 和确认文字。
+  - 手机：只重启 `hermes-app-expo.service`（PID 1987570 → 2680628）。公网 iOS/Android manifest 200、SDK 57.0.0、launchAsset 200；`Delete this automation?` 和 `259200`（72 小时）在两个平台都从 0 变为 1。
+  - 插件：`v0.2.31` = `3b39029`，打包后 `current` → `releases/0.2.31`（jamie 和 hermes-app-dev 共用）。Gateway PID 1994675（08:58 启动）未变，所以运行的仍是 0.2.30，Delete 按钮在重启前不出现。回滚：`current` 指回 `releases/0.2.30` 后重启。
+  - 证据：`~/.hermes/profiles/jamie/workspace/hermes-app/20261012-automation-delete/`。
