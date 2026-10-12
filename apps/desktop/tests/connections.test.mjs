@@ -189,7 +189,7 @@ test('Automations: jobs of every connection with qualified IDs, sorted; unsuppor
   assert.deepEqual(list.automations.map(j=>j.id),['job-a']);assert.equal(list.failed.length,1);
   // A server without the capability is not asked.
   f.b.client.supportsAutomations=false;f.a.client.supportsAutomations=false;
-  list=await f.workspace.automations();assert.deepEqual(list,{supported:false,automations:[],failed:[]});
+  list=await f.workspace.automations();assert.deepEqual(list,{supported:false,automations:[],failed:[],cursors:{},canCreate:false});
   f.b.client.supportsAutomations=true;
   const asked=[];
   f.b.client.automation=async(id,before)=>{asked.push([id,before]);return {automation:job(id),threads:[{id:'th_same0000',channelId:'p',title:'Run',runs:2,completedUnread:true,resultVersion:1,resultRef:3}],nextBefore:7};};
@@ -201,4 +201,34 @@ test('Automations: jobs of every connection with qualified IDs, sorted; unsuppor
   assert.deepEqual(await f.workspace.automation(other+':job-b'),{state:'missing'});
   f.b.client.automation=async()=>{throw new HttpError(503,undefined,'/v1/automations/x');};
   await assert.rejects(f.workspace.automation(other+':job-b'));
+});
+
+test('Automations paging, controls and settings conversations route to the job server with qualified IDs', async()=>{
+  const f=fixture(), other='b'.repeat(24);
+  const job=(id,extra={})=>({id,name:id,schedule:'every 60m',state:'scheduled',enabled:true,running:false,failed:false,targets:[{channelId:'p',mode:'new'}],threadCount:1,unreadCount:0,controls:[],...extra});
+  f.a.client.supportsAutomations=true;f.b.client.supportsAutomations=true;
+  f.a.client.automations=async()=>[job('old-a')];
+  f.b.client.supportsAutomationsPaged=true;f.b.client.supportsAutomationControls=true;f.b.client.supportsAutomationEditors=true;
+  const asked=[];
+  f.b.client.automationsPage=async({after})=>{asked.push(after??null);return after?{automations:[job('b2')],nextAfter:null}:{automations:[job('b1',{editorChannelId:'p',editorThreadId:'th_edit0000'})],nextAfter:'cur'};};
+  let list=await f.workspace.automations();
+  assert.deepEqual(list.automations.map(j=>j.id).sort(),[other+':b1','old-a']);
+  assert.deepEqual(list.cursors,{[other]:'cur'});assert.equal(list.canCreate,true);
+  const b1=list.automations.find(j=>j.id===other+':b1');assert.equal(b1.editorChannelId,other+':p');assert.equal(b1.editorThreadId,other+':th_edit0000');
+  // Continuing asks only the connection with a cursor.
+  list=await f.workspace.automations({[other]:'cur'});
+  assert.deepEqual(asked,[null,'cur']);assert.deepEqual(list.automations.map(j=>j.id),[other+':b2']);assert.deepEqual(list.cursors,{});
+  const controls=[];
+  f.b.client.automationControl=async(id,name)=>{controls.push([id,name]);return job(id,{state:name==='pause'?'paused':'scheduled'});};
+  f.b.client.setAutomationSchedule=async(id,value)=>{controls.push([id,'schedule',value]);return job(id,{schedule:value});};
+  assert.equal((await f.workspace.controlAutomation(other+':b1','pause')).id,other+':b1');
+  assert.equal((await f.workspace.controlAutomation(other+':b1','schedule',' every day at 9am ')).schedule,'every day at 9am');
+  await assert.rejects(f.workspace.controlAutomation(other+':b1','schedule','  '));
+  assert.deepEqual(controls,[['b1','pause'],['b1','schedule','every day at 9am']]);
+  // A server without controls or editors is refused before any request.
+  f.a.client.automationControl=async()=>{throw Error('must not be called');};
+  await assert.rejects(f.workspace.controlAutomation('old-a','run'),/unavailable/);
+  await assert.rejects(f.workspace.automationEditor('old-a'),/unavailable/);
+  f.b.client.automationEditor=async id=>({id:'th_edit0000',channelId:'p',title:id+' · 设置',archived:false});
+  assert.equal(await f.workspace.automationEditor(other+':b1'),other+':th_edit0000');
 });

@@ -786,6 +786,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .automation-thread-title { font-weight: 600; overflow-wrap: anywhere; }
 .automation-thread-details { color: var(--app-muted); font-size: 0.875em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .automation-more { align-self: center; padding: 8px; }
+/* Editing (plugin 0.2.28): controls, schedule form, list tab, sidebar + and Show all. */
+.automation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.automation-action { padding: 6px 14px; border: 1px solid var(--app-border); border-radius: 999px; background: #fff; color: var(--app-link); font: inherit; font-weight: 600; cursor: pointer; }
+.automation-action:hover:not(:disabled), .automation-action:focus-visible { background: var(--app-selected); }
+.automation-action:disabled { opacity: .55; cursor: default; }
+.automation-primary { border-color: var(--app-link); }
+.automation-schedule { display: flex; flex-direction: column; gap: 8px; align-self: stretch; margin-top: 4px; padding: 12px; border: 1px solid var(--app-border); border-radius: 10px; background: #fff; }
+.automation-schedule label { display: flex; flex-direction: column; gap: 4px; color: var(--app-muted); font-weight: 600; }
+.automation-schedule input { padding: 8px 10px; border: 1px solid var(--app-field-border); border-radius: 8px; color: var(--app-text); background: var(--app-background); font: inherit; }
+.automation-schedule div { display: flex; justify-content: flex-end; gap: 8px; }
+.automation-hint { color: var(--app-muted); font-size: 0.875em; }
+.automation-list-header { flex-direction: row; align-items: center; justify-content: space-between; align-self: stretch; margin-bottom: 12px; }
+.automation-show-all .thread-title { color: var(--app-link); }
+.sidebar-section-action { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.sidebar-section-action:hover, .sidebar-section-action:focus-visible { background: var(--app-selected); color: var(--app-text); }
+.new-chat-hint { margin: -8px 0 0; color: var(--app-muted); }
 
 /* Todo flag: a quiet orange flag at the end of a sidebar row, and a toolbar toggle that fills when on. */
 .thread-todo { display: inline-flex; flex: none; color: #d9480f; }

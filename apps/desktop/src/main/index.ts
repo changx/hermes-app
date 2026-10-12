@@ -169,7 +169,8 @@ const registerDesktopApi = (): void => {
     if (tabs?.tabs.get(tab.id) !== tab || tab.kind !== 'new' || !request?.current()) return;
     return browser?.document(tab.id, file);
   });
-  handle('desktop:new-tab', (event, channelId: unknown) => { trustedSender(event); tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200)); });
+  handle('desktop:new-tab', (event, channelId: unknown, automation: unknown) => { trustedSender(event); if (automation !== undefined && typeof automation !== 'boolean') throw new Error('Invalid desktop request');
+    tabs?.newTab(channelId === undefined ? undefined : text(channelId, 200), automation === true); });
   handle('desktop:activate-tab', (event, id: unknown) => { shellSender(event); tabs?.activate(text(id, 200)); });
   handle('desktop:close-tab', (event, id: unknown) => { shellSender(event); tabs?.close(text(id, 200)); });
   handle('desktop:tab-menu', (event, id: unknown, x: unknown, y: unknown) => {
@@ -195,8 +196,34 @@ const registerDesktopApi = (): void => {
   });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
   // Automations: the sidebar lists and opens jobs; an Automation tab reads only its own job.
-  handle('desktop:list-automations', event => { shellSender(event); return service.automations(); });
-  handle('desktop:open-automation', (event, id: unknown, title: unknown) => { shellSender(event); tabs?.openAutomation(text(id, 300), text(title, 400)); });
+  handle('desktop:list-automations', (event, value: unknown) => {
+    trustedSender(event);
+    if (event.sender !== mainWindow?.webContents && !tabs?.isAutomationList(event.sender)) throw new Error('Shell action required');
+    if (value === undefined) return service.automations();
+    const input = object(value), cursors: Record<string, string> = {};
+    if (Object.keys(input).length > 20) throw new Error('Invalid desktop request');
+    for (const [key, cursor] of Object.entries(input)) cursors[text(key, 200)] = text(cursor, 2000);
+    return service.automations(cursors);
+  });
+  handle('desktop:open-automation-list', event => { shellSender(event); tabs?.openAutomationList(); });
+  // An Automation tab changes only its own job; the renderer never names another job.
+  handle('desktop:control-automation', async (event, control: unknown, schedule: unknown) => {
+    trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
+    const tab = manager.automationTarget(event.sender);
+    if (control !== 'pause' && control !== 'resume' && control !== 'run' && control !== 'schedule') throw new Error('Invalid desktop request');
+    const job = await service.controlAutomation(tab.automationId, control, control === 'schedule' ? text(schedule, 200) : undefined);
+    manager.setTabTitle(tab, job.name);
+    return job;
+  });
+  handle('desktop:open-automation-editor', async event => {
+    trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
+    return service.automationEditor(manager.automationTarget(event.sender).automationId);
+  });
+  handle('desktop:open-automation', (event, id: unknown, title: unknown) => {
+    trustedSender(event);
+    if (event.sender !== mainWindow?.webContents && !tabs?.isAutomationList(event.sender)) throw new Error('Shell action required');
+    tabs?.openAutomation(text(id, 300), text(title, 400));
+  });
   handle('desktop:get-automation', async (event, before: unknown) => {
     trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');
     const tab = manager.automationTarget(event.sender);
@@ -259,7 +286,7 @@ const registerDesktopApi = (): void => {
     tab.connectionKey = service.connectionForChannel(request.channelId); tab.initialChannelId = request.channelId;
     tab.threadId = qualifiedId; tab.busy = true;
     try {
-      const id = await service.createThread(request, false);
+      const id = await service.createThread(tab.automationEditor ? { ...request, automationEditor: true } : request, false);
       // Nothing was created (model needs confirmation or was rejected): the tab keeps its target for the retry.
       if (typeof id !== 'string') return id;
       if (!tabs?.tabs.has(tab.id) || !service.hasConnection(tab.connectionKey) || id !== qualifiedId) throw new Error('Session creation not confirmed'); return id;

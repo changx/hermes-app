@@ -3,7 +3,7 @@ import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
 
-export type DesktopTabKind = 'new' | 'session' | 'automation';
+export type DesktopTabKind = 'new' | 'session' | 'automation' | 'automations';
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserMode = 'sidebar' | 'window';
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string;
@@ -13,6 +13,7 @@ export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: 
 
 export type DesktopChannel = Readonly<{ id: string; name: string; description?: string; connectionName?: string; connectionKey?: string;
   /** The Channel's server accepts a model when a session is created. */ supportsThreadModel?: boolean;
+  /** The Channel's server can create automations in a settings conversation. */ supportsAutomationEditors?: boolean;
   /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean;
   /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean; supportsChannelArchive?: boolean;
@@ -38,7 +39,10 @@ export type DesktopThread = Readonly<{
 export type DesktopAutomation = Automation & Readonly<{ connectionKey?: string; connectionName?: string }>;
 /** Sidebar Automations: jobs of every connection that offers them. `supported` is false when none does. */
 export type DesktopAutomationList = Readonly<{ supported: boolean; automations: readonly DesktopAutomation[];
-  /** Connections whose list could not be loaded. */ failed: readonly string[] }>;
+  /** Connections whose list could not be loaded. */ failed: readonly string[];
+  /** Next page per connection (opaque); empty when every list is complete. */ cursors?: Readonly<Record<string, string>>;
+  /** Some connection can create automations (settings conversations). */ canCreate?: boolean }>;
+export type DesktopAutomationControl = 'pause' | 'resume' | 'run' | 'schedule';
 export type DesktopAutomationPage = Readonly<{ state: 'ok'; automation: DesktopAutomation; threads: readonly AutomationThread[]; nextBefore: number | null }
   | { state: 'missing' | 'unsupported' }>;
 export type DesktopToolCall = Readonly<{ id: string; name?: string; label: string; detail?: string; caption?: string; icon?: string }>;
@@ -81,13 +85,15 @@ export type DesktopSnapshot = Readonly<{
   browser?: DesktopBrowserState;
   /** Built-in sidebar or one separate window per Session. */
   browserMode?: DesktopBrowserMode;
-  tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; automationId?: string; kind: DesktopTabKind }>[];
+  tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; automationId?: string; automationEditor?: boolean; kind: DesktopTabKind }>[];
   activeTabId?: string;
   tabId?: string;
   tabActive?: boolean;
   tabKind?: DesktopTabKind;
   /** The job an Automation tab shows. */
   automationId?: string;
+  /** A New chat tab that creates an automation's settings conversation. */
+  automationEditor?: boolean;
   initialChannelId?: string;
   connectionName?: string;
   draftThreadIds?: readonly string[];
@@ -98,6 +104,7 @@ export type DesktopSnapshot = Readonly<{
   connectionLabel: string;
   connectionKey?: string;
   supportsThreadModel?: boolean;
+  supportsAutomationEditors?: boolean;
   supportsSessionLabels?: boolean;
   /** Server reports the branch endpoint, message sources and conversation export. */
   supportsThreadBranch?: boolean;
@@ -137,7 +144,8 @@ export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: '
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
 export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?: Readonly<{ name: string; reason: 'exists' | 'invalid' | 'failed' }> }>;
 /** `model` applies to the new session only; omit it for the connection's primary model. */
-export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string; model?: ThreadModelChoice; confirmModel?: boolean }>;
+export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string; model?: ThreadModelChoice; confirmModel?: boolean;
+  /** Set by the main process for a New automation tab, never by the renderer. */ automationEditor?: boolean }>;
 /** A session ID; or nothing created: confirm the model warning, or the server rejected the model. */
 export type ThreadCreation = string | ModelSelectionConfirmation | Readonly<{ model_rejected: true }>;
 export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly string[]; clientMessageId?: string }>;
@@ -170,7 +178,8 @@ export interface HermesDesktopApi {
   setBrowserBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   /** Built-in sidebar or separate windows; moves open pages without reloading them. */
   setBrowserMode(mode: DesktopBrowserMode): Promise<void>;
-  newTab(channelId?: string): Promise<void>;
+  /** `automation` opens a New automation tab: its first message starts the automation's settings conversation. */
+  newTab(channelId?: string, automation?: boolean): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   closeTab(tabId: string): Promise<void>;
   /** Show the native Close Tab / Close Tabs to the Right / Close Other Tabs menu at window coordinates. */
@@ -178,8 +187,14 @@ export interface HermesDesktopApi {
   /** Main window only: shows a native menu at window coordinates; resolves with the chosen item's id, or null. */
   showContextMenu(items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null>;
   completeNewTab(): Promise<void>;
-  /** Main window: scheduled jobs of every connection, read-only. */
-  listAutomations(): Promise<DesktopAutomationList>;
+  /** Main window or the Automations tab: scheduled jobs of every connection; `cursors` continues the list. */
+  listAutomations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList>;
+  /** Main window: opens the single Automations list tab (every job, loaded page by page). */
+  openAutomationList(): Promise<void>;
+  /** Automation tab: Pause, Resume, Run now or a new schedule for its own job. */
+  controlAutomation(control: DesktopAutomationControl, schedule?: string): Promise<DesktopAutomation>;
+  /** Automation tab: its job's settings conversation (created on first use); resolves with the Session ID to open. */
+  openAutomationEditor(): Promise<string>;
   /** Main window: opens the job's tab, or activates it when open. `title` names the tab until the page loads. */
   openAutomation(automationId: string, title: string): Promise<void>;
   /** Automation tab: its own job and one page of its conversations; `before` continues the list. */

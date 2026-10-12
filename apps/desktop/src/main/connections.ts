@@ -79,7 +79,8 @@ export class DesktopConnections {
     const snap = account.service.snapshot(thread, pages), name = this.nameOf(account, snap);
     return { ...snap, connectionName: name,
       selectedChannelId: this.encode(account, snap.selectedChannelId), selectedThreadId: this.encode(account, snap.selectedThreadId),
-      channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey, supportsThreadModel: snap.supportsThreadModel })),
+      channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey, supportsThreadModel: snap.supportsThreadModel,
+        supportsAutomationEditors: snap.supportsAutomationEditors })),
       threads: snap.threads.map(t => ({ ...t, id: this.encode(account, t.id)!, channelId: this.encode(account, t.channelId)!, supportsSessionLabels: snap.supportsSessionLabels })),
       ...(snap.sessionPages ? { sessionPages: snap.sessionPages.map(p => ({ ...p, id: this.encode(account, p.id)! })) } : {}),
     };
@@ -206,18 +207,40 @@ export class DesktopConnections {
   private qualifyAutomation(account: Account, job: Automation): DesktopAutomation {
     const snap = account.service.snapshot(undefined, false);
     return { ...job, id: this.encode(account, job.id)!, connectionKey: snap.connectionKey, connectionName: this.nameOf(account, snap),
-      targets: job.targets.map(t => ({ ...t, channelId: this.encode(account, t.channelId)!, ...(t.threadId ? { threadId: this.encode(account, t.threadId)! } : {}) })) };
+      targets: job.targets.map(t => ({ ...t, channelId: this.encode(account, t.channelId)!, ...(t.threadId ? { threadId: this.encode(account, t.threadId)! } : {}) })),
+      ...(job.editorChannelId ? { editorChannelId: this.encode(account, job.editorChannelId)! } : {}),
+      ...(job.editorThreadId ? { editorThreadId: this.encode(account, job.editorThreadId)! } : {}) };
   }
-  /** Jobs of every connected server that offers Automations: running first, then latest run, then name. */
-  async automations(): Promise<DesktopAutomationList> {
-    const accounts = [...this.accounts.values()].filter(a => a.service.snapshot(undefined, false).phase === 'connected' && a.service.supportsAutomations());
-    const failed: string[] = [];
+  /**
+   * Jobs of every connected server that offers Automations: running first, then latest run, then name.
+   * A paging server returns its first page and a cursor; `cursors` (keyed by connection) asks only
+   * those connections for their next page. Older servers return every job at once.
+   */
+  async automations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList> {
+    const connected = [...this.accounts.values()].filter(a => a.service.snapshot(undefined, false).phase === 'connected' && a.service.supportsAutomations());
+    const accounts = cursors ? connected.filter(a => cursors[a.id] !== undefined && a.service.supportsAutomationsPaged()) : connected;
+    const failed: string[] = [], next: Record<string, string> = {};
     const rows = (await Promise.all(accounts.map(async account => {
-      try { return (await account.service.automations()).map(job => this.qualifyAutomation(account, job)); }
-      catch { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
+      try {
+        if (!account.service.supportsAutomationsPaged()) return (await account.service.automations()).map(job => this.qualifyAutomation(account, job));
+        const page = await account.service.automationsPage(cursors?.[account.id]);
+        if (page.nextAfter) next[account.id] = page.nextAfter;
+        return page.automations.map(job => this.qualifyAutomation(account, job));
+      } catch { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
     }))).flat();
     rows.sort((a, b) => Number(b.running) - Number(a.running) || (b.lastRunAt ?? '').localeCompare(a.lastRunAt ?? '') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-    return { supported: accounts.length > 0, automations: rows, failed };
+    return { supported: connected.length > 0, automations: rows, failed, cursors: next,
+      canCreate: connected.some(a => a.service.supportsAutomationEditors()) };
+  }
+  /** Pause, Resume, Run now or a new schedule for one qualified job. */
+  async controlAutomation(id: string, control: 'pause' | 'resume' | 'run' | 'schedule', schedule?: string): Promise<DesktopAutomation> {
+    const r = this.route(id);
+    return this.qualifyAutomation(r.account, await r.account.service.controlAutomation(r.raw, control, schedule));
+  }
+  /** The qualified Session ID of the job's settings conversation. */
+  async automationEditor(id: string): Promise<string> {
+    const r = this.route(id);
+    return this.encode(r.account, await r.account.service.automationEditor(r.raw))!;
   }
   async automation(id: string, before?: number): Promise<DesktopAutomationPage> {
     const r = this.route(id);

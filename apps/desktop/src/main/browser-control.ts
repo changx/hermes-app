@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, MAC_ACTION, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
+import type { DesktopTabKind } from '../shared/desktop-api';
 
 /** One paired server the desktop may receive browser commands from. */
 export type BrowserAccount = Readonly<{
@@ -7,7 +8,7 @@ export type BrowserAccount = Readonly<{
   /** Wire Thread/Project ID -> desktop (qualified) ID, and back. */
   qualify(raw: string): string; unqualify(id: string): string | undefined;
 }>;
-export type BrowserTab = Readonly<{ id: string; threadId?: string; connectionKey?: string; kind: 'new' | 'session' | 'automation' }>;
+export type BrowserTab = Readonly<{ id: string; threadId?: string; connectionKey?: string; kind: DesktopTabKind }>;
 export type BrowserControlDeps = Readonly<{
   accounts(): readonly BrowserAccount[];
   tabs(): readonly BrowserTab[];

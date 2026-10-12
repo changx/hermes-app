@@ -4,8 +4,13 @@ import { threadModelKey, threadModelLabel, threadModelRequest } from '@hermes-ap
 import type { DesktopAttachment, DesktopSnapshot } from '../shared/desktop-api';
 import { AttachmentThumbnail } from './attachment-thumbnail';
 
+/** New chat tab. With `automationEditor` it is New automation: the first message starts the settings
+ * conversation in which the agent drafts and creates the automation; only projects whose server supports it are listed. */
 export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
-  const [project, setProject] = useState(snapshot.initialChannelId ?? snapshot.selectedChannelId ?? snapshot.channels[0]?.id ?? '');
+  const automation = snapshot.automationEditor === true;
+  const projects = automation ? snapshot.channels.filter(c => c.supportsAutomationEditors) : snapshot.channels;
+  const preferred = [snapshot.initialChannelId, snapshot.selectedChannelId].find(id => id && projects.some(c => c.id === id));
+  const [project, setProject] = useState(preferred ?? projects[0]?.id ?? '');
   const [message, setMessage] = useState(''), [files, setFiles] = useState<readonly File[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [attempted, setAttempted] = useState(false);
   const thread = useRef<string | undefined>(undefined), uploads = useRef<readonly DesktopAttachment[]>([]), saved = useRef(false);
@@ -35,11 +40,11 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
     setFiles(next); setError('');
   };
   const submit = async (confirmModel = false) => {
-    if (working.current || (!message.trim() && !files.length) || !snapshot.channels.some(c => c.id === project)) return;
+    if (working.current || (!message.trim() && !files.length) || !projects.some(c => c.id === project)) return;
     working.current = true; setBusy(true); setError(''); setAttempted(true); setModelLocked(true); setConfirmation('');
     try {
       if (!thread.current) {
-        const title = 'New topic';
+        const title = automation ? 'New automation' : 'New topic';
         // The model is fixed with the session ID; a retry sends the same request.
         if (!request.current) request.current = { model: modelKey ? threadModelRequest(models, modelChoice) : undefined, confirm: false };
         if (confirmModel) request.current = { ...request.current, confirm: true };
@@ -73,10 +78,13 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
     const [provider, model] = value.split('\u0000');
     setModelChoice(value !== 'default' && provider && model ? { provider, model } : null);
   };
-  return <main className="new-chat-page" aria-label="New chat" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose([...event.dataTransfer.files]); }}>
+  if (automation && !projects.length) return <main className="new-chat-page" aria-label="New automation"><div className="new-chat-form">
+    <h1>New automation</h1><p>Creating automations needs a newer Hermes server. Ask the agent in any conversation instead.</p></div></main>;
+  return <main className="new-chat-page" aria-label={automation ? 'New automation' : 'New chat'} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose([...event.dataTransfer.files]); }}>
     <form className="new-chat-form" onSubmit={event => { event.preventDefault(); void submit(); }}>
-      <h1>New chat</h1>
-      <label className="new-chat-project">Project<select aria-label="Project" value={project} disabled={busy || attempted} onChange={event => setProject(event.target.value)}>{snapshot.channels.map(c => <option key={c.id} value={c.id}>{c.name}{(snapshot.connections?.length ?? 0) > 1 ? ` — ${c.connectionName}` : ''}</option>)}</select></label>
+      <h1>{automation ? 'New automation' : 'New chat'}</h1>
+      {automation && <p className="new-chat-hint">Describe what should run and when. The agent drafts it with you, tries it once, and creates it after you confirm. Results go to the project you choose.</p>}
+      <label className="new-chat-project">Project<select aria-label="Project" value={project} disabled={busy || attempted} onChange={event => setProject(event.target.value)}>{projects.map(c => <option key={c.id} value={c.id}>{c.name}{(snapshot.connections?.length ?? 0) > 1 ? ` — ${c.connectionName}` : ''}</option>)}</select></label>
       {modelKey && (modelsFailed
         ? <p className="new-chat-project new-chat-model">Model<span>{threadModelLabel(null, null)}</span><button type="button" onClick={() => setModelReload(n => n + 1)}>Load models</button></p>
         : <label className="new-chat-project new-chat-model">Model<select aria-label="Model" title="Applies to this conversation only" value={threadModelKey(modelChoice)}
@@ -92,7 +100,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
         <div><button type="button" onClick={() => { setConfirmation(''); setModelLocked(false); }}>Cancel</button>
           <button type="button" onClick={() => { void submit(true); }}>Use this model</button></div>
       </div>}
-      <textarea autoFocus aria-label="First message" placeholder="What would you like to work on?" rows={12} maxLength={100_000} value={message} disabled={busy || attempted} onChange={event => setMessage(event.target.value)} onPaste={event => { const items = [...event.clipboardData.files]; if (items.length) { event.preventDefault(); choose(items); } }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
+      <textarea autoFocus aria-label="First message" placeholder={automation ? 'What should run, and when?' : 'What would you like to work on?'} rows={12} maxLength={100_000} value={message} disabled={busy || attempted} onChange={event => setMessage(event.target.value)} onPaste={event => { const items = [...event.clipboardData.files]; if (items.length) { event.preventDefault(); choose(items); } }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
       <input ref={picker} type="file" hidden multiple onChange={event => { choose([...event.target.files ?? []]); event.target.value = ''; }} />
       {!!files.length && <ul className="session-files">{files.map((file, index) => <li key={index}><AttachmentThumbnail file={file} /><span className="session-file-name">{file.name}</span><button type="button" disabled={busy || attempted} aria-label={`Remove ${file.name}`} onClick={() => setFiles(old => old.filter((_, i) => i !== index))}>×</button><button type="button" aria-label={`Preview ${file.name}`} disabled={busy || attempted} onClick={() => { setError(''); void window.hermesDesktop.previewLocalFile(file).catch(() => setError('The file could not be previewed.')); }}>Preview</button></li>)}</ul>}
       {error && <p role="alert">{error}</p>}

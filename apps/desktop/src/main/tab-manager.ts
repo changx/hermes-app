@@ -9,6 +9,7 @@ import type { DesktopBrowserSidebar } from './browser-sidebar';
 export type TabMenuAction = 'close' | 'close-right' | 'close-others';
 type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string;
   /** Automation tabs: the qualified job ID and the tab title (the job name). */ automationId?: string; title?: string;
+  /** New chat tab whose first message starts an automation's settings conversation. */ automationEditor?: boolean;
   kind: DesktopTabKind; busy: boolean; baseline?: DesktopSnapshot };
 export class DesktopTabManager {
   readonly tabs = new Map<string, Tab>();
@@ -69,12 +70,22 @@ export class DesktopTabManager {
     void view.webContents.loadFile(join(this.directory, '../renderer/index.html'));
     return tab;
   }
-  newTab(channelId?: string): void {
+  newTab(channelId?: string, automation = false): void {
     const snapshot = this.service.snapshot();
     if (snapshot.phase !== 'connected' || channelId && !snapshot.channels.some(c => c.id === channelId)) throw new Error('Choose a project');
     const tab = this.create('new', undefined, channelId ?? snapshot.selectedChannelId);
+    if (automation) tab.automationEditor = true;
     this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
   }
+  /** The single Automations list tab: every job of every connection, page by page. */
+  openAutomationList(): void {
+    if (this.closed || this.service.snapshot().phase !== 'connected') throw new Error('Automations unavailable');
+    const tab = [...this.tabs.values()].find(t => t.kind === 'automations') ?? this.create('automations');
+    tab.title = 'Automations';
+    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
+  }
+  /** The Automations list tab, for requests that only that tab or the main window may make. */
+  isAutomationList(contents: WebContents): boolean { return this.sender(contents)?.kind === 'automations'; }
   /** One tab per job: activates the job's tab, or opens it. No Session is selected while it shows. */
   openAutomation(automationId: string, title: string): void {
     const snapshot = this.service.snapshot();
@@ -218,12 +229,13 @@ export class DesktopTabManager {
         messages: session ? base.messages : [], interactions: session ? base.interactions : [],
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId,
-        ...(tab.automationId ? { automationId: tab.automationId } : {}) };
+        ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}) };
     }
     return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
-        initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}),
-        title: tab.kind === 'new' ? 'New chat' : tab.kind === 'automation' ? tab.title ?? 'Automation' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
+        initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
+        title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'
+          : tab.kind === 'automations' ? 'Automations' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }
   publish(): void {
     if (this.closed || this.window.isDestroyed()) return;

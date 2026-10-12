@@ -28,7 +28,7 @@ Status: candidate on branch `feat/desktop-automations`. Not merged or released. 
 - The unread dot and Running come from the live directory, so reading a conversation clears its dot at once. The page also reloads when the tab comes to the front and after directory changes.
 - A click on a conversation opens its Session tab (the same path as a sidebar row). A conversation that is no longer in the directory (for example archived) is shown as "No longer available" and cannot be opened.
 - A job that the server no longer has shows "This automation no longer exists." Removing the connection closes the tab.
-- Read-only, like mobile. Creating or changing an automation stays in a conversation with the agent.
+- Read-only in the first version. With plugin 0.2.28 the page adds Pause / Resume, Run now, Change schedule and Edit in conversation, and the sidebar adds New automation (+) and Show all. See [automation-editing.md](automation-editing.md).
 
 ## Implementation
 

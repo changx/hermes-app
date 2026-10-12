@@ -78,6 +78,17 @@ test('Chromium: New chat model choice per project connection, confirmation and l
       choose('Model','openai-codex\\u0000gpt-6-luna'); type('hello'); await submit();
       ensure('rejected model message',document.querySelector('[role=alert]').textContent.includes('model is not available'));
       ensure('rejected model unlocks',!select('Model').disabled);
+
+      // New automation: only projects whose server creates automations; the first message carries no flag from the renderer.
+      root.unmount();root=createRoot(host);respond=null;creates.length=0;
+      flushSync(()=>root.render(<NewSessionPage snapshot={{...snapshot,automationEditor:true,initialChannelId:'p',channels:snapshot.channels.map(c=>c.id==='b:q'?{...c,supportsAutomationEditors:true}:c)}}/>));await tick();
+      ensure('automation heading and hint',document.querySelector('h1').textContent==='New automation'&&!!document.querySelector('.new-chat-hint'));
+      ensure('automation projects only',[...select('Project').options].map(o=>o.value).join()==='b:q');
+      type('every morning summarize the news'); await submit();
+      ensure('automation title and project',creates.length===1&&creates[0].title==='New automation'&&creates[0].channelId==='b:q'&&!('automationEditor' in creates[0]));
+      root.unmount();root=createRoot(host);
+      flushSync(()=>root.render(<NewSessionPage snapshot={{...snapshot,automationEditor:true}}/>));await tick();
+      ensure('older servers explained',!document.querySelector('form')&&document.querySelector('main').textContent.includes('needs a newer Hermes server'));
       document.getElementById('results').textContent=JSON.stringify({ok:true,checks:checks.length,gap});
     }catch(e){document.getElementById('results').textContent=JSON.stringify({ok:false,error:String(e),checks})}})();
   ` }, bundle: true, platform: 'browser', format: 'iife', write: false, alias: { '@hermes-app/client/threadModel': new URL('../../../packages/client/src/threadModel.ts', import.meta.url).pathname } });
@@ -89,7 +100,7 @@ test('Chromium: New chat model choice per project connection, confirmation and l
     const dom = execFileSync(process.env.HERMES_TEST_CHROME, ['--headless', '--no-sandbox', '--disable-gpu', '--virtual-time-budget=5000', '--dump-dom', `--user-data-dir=${join(folder, 'profile')}`, pathToFileURL(file).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 5000000, stdio: ['ignore', 'pipe', 'pipe'] });
     const result = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
     assert.equal(result?.ok, true, (result?.error ?? 'No result') + ' after ' + JSON.stringify(result?.checks));
-    assert.equal(result.checks, 19);
+    assert.equal(result.checks, 23);
     console.log(JSON.stringify(result));
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

@@ -9,7 +9,7 @@ import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import { workspacePath } from "../../../../packages/client/src/workspace";
-import type { Automation, AutomationDetail } from "../../../../packages/client/src/automations";
+import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
@@ -187,6 +187,34 @@ export class DesktopConnectionService {
   supportsPrimaryPath(): boolean { return this.client?.supportsChannelPrimaryPath === true; }
   supportsChannelArchive(): boolean { return this.client?.supportsChannelArchive === true; }
   supportsAutomations(): boolean { return this.client?.supportsAutomations === true; }
+  supportsAutomationsPaged(): boolean { return this.client?.supportsAutomationsPaged === true; }
+  supportsAutomationEditors(): boolean { return this.client?.supportsAutomationEditors === true; }
+  /** One page of jobs (plugin 0.2.28); `after` continues. */
+  async automationsPage(after?: string): Promise<AutomationPage> {
+    const client = this.requireClient();
+    if (!client.supportsAutomationsPaged) throw new Error('Automations are unavailable.');
+    return client.automationsPage({ after });
+  }
+  /** Pause, Resume, Run now or a new schedule. The server checks that the job may be changed. */
+  async controlAutomation(id: string, control: 'pause' | 'resume' | 'run' | 'schedule', schedule?: string): Promise<Automation> {
+    const client = this.requireClient();
+    if (!client.supportsAutomationControls) throw new Error('Automation controls are unavailable.');
+    if (control === 'schedule') {
+      const value = schedule?.trim();
+      if (!value || value.length > 200) throw new Error('Enter a schedule.');
+      return client.setAutomationSchedule(id, value);
+    }
+    return client.automationControl(id, control);
+  }
+  /** The job's settings conversation, created on first use and added to the directory. */
+  async automationEditor(id: string): Promise<string> {
+    const client = this.requireClient();
+    if (!client.supportsAutomationEditors) throw new Error('Automation editing is unavailable.');
+    const thread = await client.automationEditor(id);
+    if (this.client !== client) throw new Error('Connection changed');
+    this.listedThreads.set(thread.id, thread); this.changed();
+    return thread.id;
+  }
   /** This connection's scheduled jobs. Read-only; nothing enters the chat caches. */
   async automations(): Promise<Automation[]> {
     const client = this.requireClient();
@@ -287,6 +315,7 @@ export class DesktopConnectionService {
       connectionName: this.connection?.baseUrl ? new URL(this.connection.baseUrl).hostname : undefined,
       supportsSessionLabels: this.client?.supportsSessionLabels === true,
       supportsThreadModel: this.client?.supportsThreadModel === true,
+      supportsAutomationEditors: this.client?.supportsAutomationEditors === true,
       supportsThreadBranch: this.client?.supportsThreadBranch === true,
       supportsMessageSources: this.client?.supportsMessageSources === true,
       supportsThreadExport: this.client?.supportsThreadExport === true,
@@ -860,8 +889,10 @@ export class DesktopConnectionService {
     const title = input.title.trim();
     if (!channelId || !client.channels.has(channelId) || !title || title.length > 200 || !/^th_[A-Za-z0-9_-]{8,64}$/.test(input.clientThreadId)) throw new Error("Choose a channel and enter a topic title.");
     if (input.model && !client.supportsThreadModel) throw new Error("This server cannot choose a model for a new session.");
+    if (input.automationEditor && !client.supportsAutomationEditors) throw new Error("This server cannot create automations yet.");
     try {
-      const thread = await client.createThread(channelId, title, input.clientThreadId, input.model, input.confirmModel === true);
+      const thread = await client.createThread(channelId, title, input.clientThreadId, input.model, input.confirmModel === true,
+        input.automationEditor ? { automationEditor: true } : {});
       if (this.client !== client) throw new Error('Connection changed during creation');
       this.listedThreads.set(thread.id, thread);
       await this.selectThread(thread.id, activate);

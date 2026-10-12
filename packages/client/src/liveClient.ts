@@ -226,7 +226,7 @@ export class LiveSessionClient extends HermesClient {
   override async updateChannel(id:string,patch:ChannelPatch){const result=await super.updateChannel(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
   override async archiveChannel(id:string){await super.archiveChannel(id);await this.refreshDirectory(this.attempt?.signal)}
   override async deleteChannel(id:string){await super.deleteChannel(id);await this.refreshDirectory(this.attempt?.signal)}
-  override async createThread(id:string,title:string,clientId?:string,model?:ThreadModelChoice,confirmModel=false){const result=await super.createThread(id,title,clientId,model,confirmModel);await this.refreshDirectory(this.attempt?.signal);return result}
+  override async createThread(id:string,title:string,clientId?:string,model?:ThreadModelChoice,confirmModel=false,options:{automationEditor?:boolean}={}){const result=await super.createThread(id,title,clientId,model,confirmModel,options);await this.refreshDirectory(this.attempt?.signal);return result}
   override async updateThread(id:string,patch:{title?:string;archived?:boolean}){const result=await super.updateThread(id,patch);await this.refreshDirectory(this.attempt?.signal);return result}
   override async archiveThread(id:string){const result=await super.archiveThread(id);await this.refreshDirectory(this.attempt?.signal);return result}
 

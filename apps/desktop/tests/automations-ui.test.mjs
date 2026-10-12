@@ -28,7 +28,7 @@ const common = `
   const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const now=Date.now()/1000;
-  const job=(id,extra={})=>({id,name:id,schedule:'every 60m',state:'scheduled',enabled:true,running:false,failed:false,targets:[{channelId:'p',mode:'new'}],threadCount:1,unreadCount:0,...extra});
+  const job=(id,extra={})=>({id,name:id,schedule:'every 60m',state:'scheduled',enabled:true,running:false,failed:false,targets:[{channelId:'p',mode:'new'}],threadCount:1,unreadCount:0,controls:[],...extra});
 `;
 
 test('Chromium: sidebar Automations sits above Recents, lists jobs and opens one in a tab', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
@@ -129,6 +129,99 @@ test('Chromium: an Automation tab shows the job and its conversations; a convers
       flushSync(()=>root.render(<DesktopShellView snapshot={{...snapshot,tabActive:false}} viewRole="tab" />));
       flushSync(()=>root.render(<DesktopShellView snapshot={{...snapshot,tabActive:true}} viewRole="tab" />)); await wait(40);
       ensure('returning to the tab reloads it; a removed job says so',document.querySelector('.automation-notice')?.textContent==='This automation no longer exists.');
+    }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
+  `);
+  assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
+});
+
+test('Chromium: sidebar offers New automation and Show all; the Automations tab pages and opens jobs', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const result = await runPage('automation-list', `
+    import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
+    import {NativeWorkspace} from './apps/desktop/src/renderer/native-workspace';
+    import {AutomationListPage} from './apps/desktop/src/renderer/automations';
+    ${common}
+    let opened=[], tabs=[], lists=[], lists2=[], listOpened=0;
+    const many=Array.from({length:10},(_,i)=>job('j'+i,{name:'Job '+i,lastRunAt:'2026-10-11T0'+(9-i)+':00:00Z'}));
+    window.hermesDesktop={setContentBounds:async()=>{},selectThread:async()=>{},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
+      newTab:async(channel,automation)=>{tabs.push([channel??null,automation===true])},
+      openAutomation:async(id,title)=>{opened.push([id,title])}, openAutomationList:async()=>{listOpened++},
+      listAutomations:async cursors=>{lists.push(cursors??null);
+        if(!cursors)return {supported:true,failed:[],canCreate:true,automations:many.slice(0,8),cursors:{primary:'c1'}};
+        return {supported:true,failed:[],canCreate:true,automations:many.slice(8),cursors:{}};}};
+    const base={phase:'connected',connectionKey:'one',connectionState:'online',selectedChannelId:'p',
+      connections:[{id:'primary',name:'personal.example',server:'https://personal.example',state:'online',connectionKey:'one'}],
+      channels:[{id:'p',name:'Research',connectionKey:'one'}],threads:[],tabs:[],messages:[],interactions:[],canLoadOlder:false};
+    const root=createRoot(document.getElementById('root'));
+    flushSync(()=>root.render(<NativeWorkspace snapshot={base} draftThreads={new Set()} onEditLabels={()=>{}} onCreateProject={()=>{}} onProjectOptions={()=>{}} onSettings={()=>{}} overlayOpen={false} />));
+    (async()=>{try{
+      await wait(80);
+      const scroll=document.querySelector('.sidebar-scroll');
+      ensure('sidebar shows the first eight jobs',scroll.querySelectorAll('#sidebar-automations-list .automation-row').length===8);
+      const all=scroll.querySelector('.automation-show-all');
+      ensure('Show all when more jobs exist',all&&all.textContent==='Show all');
+      all.click(); await wait(10); ensure('Show all opens the Automations tab',listOpened===1);
+      const plus=scroll.querySelector('.sidebar-section-action[aria-label="New automation"]');
+      ensure('New automation button in the header',!!plus);
+      plus.click(); await wait(10); ensure('+ opens a New automation tab',JSON.stringify(tabs)==='[[null,true]]');
+      flushSync(()=>root.render(<AutomationListPage snapshot={{...base,tabId:'t',tabKind:'automations',tabActive:true}} />)); await wait(80);
+      const page=document.querySelector('main.automation-page[aria-label="Automations"]');
+      ensure('list tab renders the first page',page&&page.querySelectorAll('.automation-thread').length===8);
+      const more=[...page.querySelectorAll('.automation-more')].find(b=>b.textContent==='Show more');
+      if(more){more.click();} await wait(80);
+      ensure('next page uses the cursors',lists.some(c=>c&&c.primary==='c1'));
+      ensure('all ten jobs listed in order',[...page.querySelectorAll('.automation-thread-title')].map(e=>e.textContent).join('|')===many.map(j=>j.name).join('|'));
+      ensure('no more pages',!page.querySelector('.automation-more'));
+      page.querySelectorAll('.automation-thread')[9].click(); await wait(10);
+      ensure('a row opens the job tab',JSON.stringify(opened)==='[["j9","Job 9"]]');
+      page.querySelector('.automation-primary').click(); await wait(10);
+      ensure('list tab New automation',tabs.length===2&&tabs[1][1]===true);
+    }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
+  `);
+  assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
+});
+
+test('Chromium: Automation tab controls pause, resume, run, schedule and the settings conversation', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const result = await runPage('automation-controls', `
+    import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
+    import {DesktopShellView} from './apps/desktop/src/renderer/shell';
+    ${common}
+    let current=job('digest',{name:'Morning digest',controls:['pause','run','schedule'],editorChannelId:'p'}), calls=[], selected=[], fail=false;
+    window.hermesDesktop={loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},selectThread:async id=>{selected.push(id)},
+      getAutomation:async()=>({state:'ok',automation:current,threads:[],nextBefore:null}),
+      openAutomationEditor:async()=>{calls.push(['editor']);return 'th_edit'},
+      controlAutomation:async(name,value)=>{calls.push([name,value??null]);if(fail)throw Error('bad');
+        if(name==='pause')current={...current,enabled:false,state:'paused',controls:['resume','schedule']};
+        if(name==='resume')current={...current,enabled:true,state:'scheduled',controls:['pause','run','schedule']};
+        if(name==='schedule')current={...current,schedule:value};
+        return current;}};
+    const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',draftIdentity:'one',tabId:'tab-1',tabKind:'automation',automationId:'digest',tabActive:true,
+      channels:[{id:'p',name:'Research'}],threads:[],messages:[],interactions:[],canLoadOlder:false};
+    const root=createRoot(document.getElementById('root'));
+    flushSync(()=>root.render(<DesktopShellView snapshot={snapshot} viewRole="tab" />));
+    const buttons=()=>[...document.querySelectorAll('.automation-actions .automation-action')].map(b=>b.textContent);
+    const press=async label=>{[...document.querySelectorAll('.automation-action')].find(b=>b.textContent===label).click();await wait(40);};
+    (async()=>{try{
+      await wait(80);
+      ensure('controls of a running job',buttons().join('|')==='Pause|Run now|Change schedule|Edit in conversation');
+      await press('Pause');
+      ensure('pause shows Resume only',buttons().join('|')==='Resume|Change schedule|Edit in conversation'&&document.querySelector('.automation-status').textContent==='Paused');
+      await press('Resume');
+      await press('Run now');
+      ensure('run shows Starting',document.querySelector('.automation-status').textContent==='Starting…');
+      await press('Change schedule');
+      const input=document.querySelector('.automation-schedule input');
+      ensure('schedule form starts with the current schedule',input&&input.value==='every 60m');
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+      setter.call(input,'every day at 9am'); input.dispatchEvent(new Event('input',{bubbles:true})); await wait(20);
+      document.querySelector('.automation-schedule button[type="submit"]').click(); await wait(40);
+      ensure('schedule saved and form closed',!document.querySelector('.automation-schedule'));
+      fail=true; await press('Change schedule');
+      document.querySelector('.automation-schedule button[type="submit"]').click(); await wait(40);
+      ensure('a rejected schedule keeps the form and explains',!!document.querySelector('.automation-schedule')&&document.querySelector('.automation-error').textContent.startsWith('This schedule was not understood'));
+      fail=false; await press('Cancel');
+      await press('Edit in conversation');
+      ensure('settings conversation opens its session',JSON.stringify(selected)==='["th_edit"]');
+      ensure('calls in order',JSON.stringify(calls)===JSON.stringify([['pause',null],['resume',null],['run',null],['schedule','every day at 9am'],['schedule','every day at 9am'],['editor']]));
     }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
   `);
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));

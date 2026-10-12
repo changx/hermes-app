@@ -123,3 +123,16 @@ test('an automation opens one tab per job without selecting a session; its page 
   // Removing the connection closes the Automation tab with the others.
   f.snapshot.connectionKey='another';f.snapshot.selectedThreadId=undefined;f.manager.sync(f.snapshot);assert.equal(tab.view.webContents.destroyed,true);
 });
+
+test('Automations list tab is single and may list jobs; a New automation tab carries the editor flag', async()=>{
+  const f=fixture();await f.service.selectThread('a');const session=[...f.manager.tabs.values()][0];
+  f.manager.openAutomationList();const list=[...f.manager.tabs.values()][1];
+  assert.equal(list.kind,'automations');assert.equal(f.manager.activeTabId,list.id);assert.equal(f.snapshot.selectedThreadId,undefined);
+  assert.equal(f.manager.isAutomationList(list.view.webContents),true);assert.equal(f.manager.isAutomationList(session.view.webContents),false);
+  assert.throws(()=>f.manager.target(list.view.webContents),/unavailable/);assert.throws(()=>f.manager.automationTarget(list.view.webContents),/unavailable/);
+  f.manager.activate(session.id);f.manager.openAutomationList();assert.equal(f.manager.tabs.size,2);assert.equal(f.manager.activeTabId,list.id);
+  f.manager.newTab('p',true);const draft=[...f.manager.tabs.values()][2];
+  assert.equal(draft.kind,'new');assert.equal(draft.automationEditor,true);assert.equal(f.manager.snapshot(draft.view.webContents).automationEditor,true);
+  assert.deepEqual(f.manager.snapshot().tabs.map(t=>[t.kind,t.title,t.automationEditor===true]),[['session','a',false],['automations','Automations',false],['new','New automation',true]]);
+  f.manager.newTab('p');const plain=[...f.manager.tabs.values()][3];assert.equal(plain.automationEditor,undefined);assert.equal(f.manager.snapshot(plain.view.webContents).automationEditor,undefined);
+});
