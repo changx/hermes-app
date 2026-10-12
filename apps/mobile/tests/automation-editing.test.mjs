@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { loadAutomationRows, mergeAutomationRows, runStarted, AUTOMATION_PAGE } from '../src/automationRows.ts';
+import { automationThreadState, loadAutomationRows, mergeAutomationRows, runStarted, AUTOMATION_PAGE } from '../src/automationRows.ts';
 
 const job = (id, extra = {}) => ({ id, name: `Job ${id}`, schedule: 'every 60m', state: 'scheduled', enabled: true, running: false,
   failed: false, targets: [{ channelId: 'p_a', mode: 'new' }], threadCount: 0, unreadCount: 0, controls: [], ...extra });
@@ -62,6 +62,16 @@ test('Starting… ends when the job runs or reports a new run', () => {
   assert.equal(runStarted(before, { running: true, lastRunAt: before.lastRunAt }), true);
   assert.equal(runStarted(before, { running: false, lastRunAt: '2026-10-12T04:00:00' }), true);
   assert.equal(runStarted({ running: false }, { running: false, lastRunAt: '2026-10-12T04:00:00' }), true);
+});
+
+test('produced Threads show live Running and unread state like the channel list', () => {
+  assert.deepEqual(automationThreadState({ completedUnread: false }, { running: true, completed_unread: false }), { running: true, unread: false });
+  assert.deepEqual(automationThreadState({ completedUnread: true }, { running: false, completed_unread: false }), { running: false, unread: false });
+  assert.deepEqual(automationThreadState({ completedUnread: true }, undefined), { running: false, unread: true });
+  const detail = readFileSync(new URL('../src/app/automations/[automationId].tsx', import.meta.url), 'utf8');
+  assert.match(detail, /automationThreadState\(item, client\.threads\.get\(item\.id\)\)/);
+  assert.match(detail, /extraData=\{revision\}/);
+  assert.match(detail, /<Text style=\{s\.runningText\}>Running<\/Text>/);
 });
 
 test('screens use the editing API only behind its capabilities', () => {

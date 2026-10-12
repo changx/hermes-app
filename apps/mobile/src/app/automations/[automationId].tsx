@@ -4,7 +4,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ConnectionScope, Notice, channelRoute, routeConnection, useApp } from '../../App';
 import { Text, TextInput } from '../../FontSize';
-import { runStarted } from '../../automationRows';
+import { automationThreadState, runStarted } from '../../automationRows';
 import { automationStatus, automationTiming, scheduleLabel } from '../../automationText';
 import { routeId } from '../../routeId';
 import { useSessionNavigation } from '../../sessionNavigation';
@@ -14,7 +14,7 @@ const START_WATCH_MS = 120_000, START_POLL_MS = 4_000;
 
 /** One automation: what it does, where it delivers, the Threads it produced, and its controls. */
 function Detail({ automationId }: { automationId: string }) {
-  const { client, slot } = useApp();
+  const { client, slot, revision } = useApp();
   const navigation = useSessionNavigation();
   const router = useRouter();
   const [job, setJob] = useState<Automation | null>(null), [threads, setThreads] = useState<AutomationThread[]>([]);
@@ -89,7 +89,7 @@ function Detail({ automationId }: { automationId: string }) {
   const status = starting ? 'Starting…' : automationStatus(job);
   const can = (control: string) => client.supportsAutomationControls && job.controls.includes(control as never);
   const editable = job.controls.length > 0;
-  return <FlatList data={threads} keyExtractor={t => t.id} contentContainerStyle={s.list}
+  return <FlatList data={threads} keyExtractor={t => t.id} extraData={revision} contentContainerStyle={s.list}
     refreshing={false} onRefresh={() => void load()}
     ListHeaderComponent={<View style={s.header}>
       <Stack.Screen options={{ title: job.name }} />
@@ -125,15 +125,17 @@ function Detail({ automationId }: { automationId: string }) {
         }} />
       <Text style={s.section}>Conversations</Text>
     </View>}
-    renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => navigation.thread(item.id)}
-      accessibilityLabel={[item.title, channelName(item.channelId), item.completedUnread ? 'Completed, unread' : undefined].filter(Boolean).join(', ')}
+    renderItem={({ item }) => { const { running, unread } = automationThreadState(item, client.threads.get(item.id));
+      return <Pressable accessibilityRole="button" onPress={() => navigation.thread(item.id)}
+      accessibilityLabel={[item.title, channelName(item.channelId), running ? 'Running' : undefined, unread ? 'Completed, unread' : undefined].filter(Boolean).join(', ')}
       style={({ pressed }) => [s.card, pressed && s.pressed]}>
       <View style={s.fill}>
         <Text numberOfLines={2} style={s.heading}>{item.title}</Text>
         <Text numberOfLines={1} style={s.line}>{[channelName(item.channelId), item.runs > 1 ? `${item.runs} results` : undefined].filter(Boolean).join(' · ')}</Text>
       </View>
-      {item.completedUnread && <View style={s.unreadDot} />}
-    </Pressable>}
+      {running && <View style={s.runningRow}><View style={s.runningDot} /><Text style={s.runningText}>Running</Text></View>}
+      {unread && <View style={s.unreadDot} />}
+    </Pressable>; }}
     ListFooterComponent={next !== null ? <Pressable accessibilityRole="button" disabled={more} onPress={() => void loadMore()} style={s.more}>
       <Text style={s.link}>{more ? 'Loading…' : 'Show more'}</Text></Pressable> : null}
     ListEmptyComponent={<Text style={s.empty}>No conversations yet. They appear here after a run delivers its result.</Text>} />;
@@ -192,6 +194,8 @@ const s = StyleSheet.create({
   pressed: { backgroundColor: '#eef3fa' },
   heading: { fontSize: 16, fontWeight: '600', color: '#172a40', marginBottom: 2 },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4DA3FF' },
+  runningRow: { flexDirection: 'row', alignItems: 'center', gap: 4 }, runningDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#238636' },
+  runningText: { color: '#237a35', fontSize: 12, fontWeight: '600' },
   more: { alignItems: 'center', paddingVertical: 12 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   action: { borderWidth: 1, borderColor: '#bcd0ea', backgroundColor: '#fff', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },

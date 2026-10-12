@@ -1,5 +1,5 @@
-import type { HermesClient } from '../../../packages/client/src/index';
-import type { Automation } from '../../../packages/client/src/automations';
+import type { HermesClient, ThreadSummary } from '../../../packages/client/src/index';
+import type { Automation, AutomationThread } from '../../../packages/client/src/automations';
 
 /** One job row of a list that may merge several connections. */
 export type AutomationRow = Readonly<{ key: string; slot: string; connectionName: string; job: Automation }>;
@@ -54,6 +54,14 @@ export async function loadAutomationRows(sources: readonly AutomationSource[], o
   }));
   sortAutomationRows(result.rows);
   return result;
+}
+
+/**
+ * Status of one produced Thread, as the channel list shows it: the live
+ * directory entry (kept current by session_state) wins over the page snapshot.
+ */
+export function automationThreadState(item: Pick<AutomationThread, 'completedUnread'>, live?: Pick<ThreadSummary, 'running' | 'completed_unread'>): { running: boolean; unread: boolean } {
+  return { running: live?.running === true, unread: live ? live.completed_unread === true : item.completedUnread };
 }
 
 /** After Run: the run has started or finished once the job reports it. */
