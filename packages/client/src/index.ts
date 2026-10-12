@@ -2,6 +2,7 @@
 import { createWorkspaceApi, type ConditionalHeaders, type WorkspaceApi } from './workspace';
 import { parseAutomationDetail, parseAutomations, type Automation, type AutomationDetail } from './automations';
 export { utf8Size, workspacePath } from './workspace';
+export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
@@ -13,6 +14,8 @@ export interface Channel { id: string; name: string; description?: string; /** S
 export interface ChannelPatch { name?: string; description?: string; primary_path?: string | null }
 export interface AgentModelSettings { scope: 'connected-default'; provider: string; model: string; providers: {id: string; name: string; models: string[]}[] }
 export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }
+/** Model for one new Thread. Omit it to use the connection's primary model. */
+export interface ThreadModelChoice { provider: string; model: string }
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; public_url?: string; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
@@ -33,6 +36,11 @@ export interface Options { http: HttpTransport; socket: SocketFactory; token: ()
   /** Random spread (0–0.5) applied to each ordinary backoff delay. Server Retry-After is never shortened. */
   backoffJitter?: number }
 export class ProtocolError extends Error { constructor(message: string) { super(message); this.name = 'ProtocolError' } }
+/** Thread creation needs the user's confirmation of a native cost/data warning first. Nothing was created.
+ * A ProtocolError, so no retry path treats it as a temporary failure. */
+export class ModelConfirmationRequired extends ProtocolError {
+  constructor(readonly warning: string, readonly choice: ThreadModelChoice) { super('model confirmation required'); this.name = 'ModelConfirmationRequired' }
+}
 
 const diagnosticRoute = (path: string): string => {
   const clean=path.split('?')[0];
@@ -195,6 +203,8 @@ export class HermesClient {
   supportsChannelArchive = false;
   /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
   supportsAutomations = false;
+  /** Server accepts a model choice when a Thread is created (`thread_model`). */
+  supportsThreadModel = false;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -301,7 +311,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsThreadModel=x.thread_model===true; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -316,6 +326,7 @@ export class HermesClient {
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
     this.supportsAutomations = owner.supportsAutomations;
+    this.supportsThreadModel = owner.supportsThreadModel;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
   private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
@@ -360,7 +371,22 @@ export class HermesClient {
   async archiveChannel(id: string): Promise<void> { const x = await this.call('PATCH','/v1/channels/'+idPath(id),{archived:true}); if (validChannel(x.channel).archived !== true) throw new ProtocolError('archive not confirmed'); this.channels.delete(id); this.changed() }
   async deleteChannel(id: string): Promise<void> { const x = await this.call('DELETE','/v1/channels/'+idPath(id)); if (x.deleted !== true) throw new ProtocolError('delete not confirmed'); this.channels.delete(id); this.changed() }
   async listThreads(channelId: string, after?: string, limit = 50) { const x = await this.call('GET','/v1/channels/'+idPath(channelId)+'/threads'+query({after,limit})); return {threads: arr(x.threads).map(validThread),next_cursor:optionalCursor(x.next_cursor)} }
-  async createThread(channelId: string, title: string, clientThreadId?: string): Promise<Thread> { const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{})}); return validThread(x.thread) }
+  /** Creates a Thread. `model` applies to this Thread only (requires `supportsThreadModel`); omit it for the
+   * primary model. A native cost/data warning throws ModelConfirmationRequired and creates nothing; repeat
+   * with `confirmModel` after the user agrees. */
+  async createThread(channelId: string, title: string, clientThreadId?: string, model?: ThreadModelChoice, confirmModel = false): Promise<Thread> {
+    const x = await this.call('POST','/v1/channels/'+idPath(channelId)+'/threads',{title,...(clientThreadId?{client_thread_id:clientThreadId}:{}),
+      ...(model?{model:{provider:model.provider,model:model.model,...(confirmModel?{confirm_selection:true}:{})}}:{})});
+    if (model && x.confirmation_required === true) {
+      if (x.provider !== model.provider || x.model !== model.model) throw new ProtocolError('model confirmation identity mismatch');
+      throw new ModelConfirmationRequired(displayString(x.warning, 12000), {provider:model.provider, model:model.model});
+    }
+    const thread = validThread(x.thread);
+    // The server returns the canonical model it stored; null only when a later /new cleared it.
+    if (model && x.model !== null && (typeof x.model !== 'object' || obj(x.model).provider !== model.provider || typeof obj(x.model).model !== 'string'))
+      throw new ProtocolError('thread model not confirmed');
+    return thread;
+  }
   async getThread(id: string, signal?: AbortSignal): Promise<Thread> {
     const seq = ++this.fetchSequence, epoch=this.projectionEpoch; const x = await this.call('GET','/v1/threads/'+idPath(id),undefined,signal); const thread = validThread(x.thread);
     const key = 'thread:'+id;
