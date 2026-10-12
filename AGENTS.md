@@ -125,6 +125,8 @@
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop-session-search.md](docs/desktop-session-search.md)
 - [docs/desktop-automations.md](docs/desktop-automations.md)
+- [docs/automation-workflow.md](docs/automation-workflow.md)（草案，未实现）
+- [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑设计，未实现）
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 
 ### 共享行为、内容呈现与发布
