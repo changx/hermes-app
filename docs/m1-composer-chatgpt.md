@@ -39,3 +39,5 @@ Jamie reported that on the session page the input changed width when focus chang
 - The `TextInput` keeps one tree position. It is now inside one `Animated.View` wrapper in both states, so focus changes do not remount it.
 - The dock and the message list still change height at once. Only the card and its parts animate.
 - The shared `ComposerCard` also serves the channel new-topic composer, so that composer gets the same width and animation.
+
+Released `e1a6552` to `exps://agent.tuly.space` (fast-forward from `07a0b7f`, lockfile unchanged). Only `hermes-app-expo.service` was restarted (PID 1398110 → 1470774). The `hermes-gateway.service` PID 1414834 and the hermes-app-dev plugin hash did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each exact launchAsset returns HTTP 200 and contains the `composer-text` and `composer-tools` markers. Evidence: private `workspace/hermes-app/2026-10-12-mobile-composer-focus-motion/`. Rollback baseline: `07a0b7f` (branch `rollback/mobile-composer-focus-motion-before-release`). iPhone acceptance of the animation is pending.
