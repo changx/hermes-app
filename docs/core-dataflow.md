@@ -43,6 +43,8 @@ watch 确认先于初次正文读取。读取期间的提示触发再次核对�
 
 此前每个变更要等待一次完整目录读取；读取期间到达的 `directory_changed` 又触发第二次读取。开发连接有 194 个 session（7 页），创建一个 session 需要 15 个顺序请求，北京约 4 秒。现在为 1 个请求。
 
+发布记录（2026-10-12）：App `de795c9`，标签 `v0.1.71`（同时包含已合入 main 的 automation 编辑客户端 `6e155b4`、`95ba24f`）。Mac mini 构建 180 项测试 0 失败；下载的 `Hermes-0.1.71-macOS-arm64.zip` 校验和通过，Info.plist 版本 0.1.71，arm64，ASAR `dist/` 29 个文件与本地构建逐字节一致。Expo 测试入口已重启（PID 1398110），公网 iOS/Android manifest 200、SDK 57，launchAsset 200，均含新代码标记；Gateway PID 与插件哈希不变，未改插件或核心。真机（iPhone、Mac）验收未做。
+
 ## 发送与接收证明
 
 设备本地持久保存未确认原文及 `client_message_id`。同一次发送重试必须使用相同 ID、Thread、原文和附件；相同正文的两次独立发送使用不同 ID。

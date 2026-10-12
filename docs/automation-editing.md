@@ -1,6 +1,6 @@
 # Automation 创建与编辑
 
-状态：已实现，未发布。插件分支 `feat/automation-editing`（目标版本 0.2.28）；App 分支 `feat/automation-editing`（手机、共享 client、桌面）。设备验收未做。前提：只读 Automations（插件 0.2.22–0.2.24 的 `GET /v1/automations`、`GET /v1/automations/{id}`；桌面见 [desktop-automations.md](desktop-automations.md)；手机 Automations 页见 [mobile-tabs-recents.md](mobile-tabs-recents.md)）。总体方向见 [automation-workflow.md](automation-workflow.md)。插件侧投递模式见插件仓库 `docs/cron-threads.md`。
+状态：已实现。App 客户端（手机、共享 client、桌面）已随桌面 `v0.1.71` 与 Expo 测试入口发布（2026-10-12）；新控件按服务端能力显示，插件 0.2.28（分支 `feat/automation-editing`）未发布前不出现。设备验收未做。前提：只读 Automations（插件 0.2.22–0.2.24 的 `GET /v1/automations`、`GET /v1/automations/{id}`；桌面见 [desktop-automations.md](desktop-automations.md)；手机 Automations 页见 [mobile-tabs-recents.md](mobile-tabs-recents.md)）。总体方向见 [automation-workflow.md](automation-workflow.md)。插件侧投递模式见插件仓库 `docs/cron-threads.md`。
 
 ## 1. Jamie 的决定（2026-10-11 / 10-12）
 
