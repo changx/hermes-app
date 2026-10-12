@@ -65,7 +65,7 @@ New chat 打开完整标签页，提供多行正文、附件选择/拖放及 Pro
 - 未筛选时不展示标签条件行；筛选后显示可移除条件与 Clear。
 - 标签浮层提供搜索、多选和 No labels。条件按 OR 匹配，筛选后保留分组。
 - 每组按 Running 优先，再按最后消息时间倒序。同时间使用稳定 ID 作为 tie-breaker。
-- 所有 Running Session 均展示，不受近 24 小时及初始 24 条窗口限制。
+- 所有 Running Session 均展示，不受近 72 小时（2026-10-12 前为 24 小时）及初始 24 条窗口限制。
 - 非 Running Session 使用最近活动窗口；筛选时采用全时段目录，并按 24 条逐批 Show more。
 - 浮动折叠按钮保持 sidebar 边缘位置，折叠后同步调整原生 View bounds。
 
