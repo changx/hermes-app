@@ -357,8 +357,8 @@ textarea:disabled {
 .tree-thread { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; padding: 9px 10px; border: 0; background: transparent; text-align: left; color: var(--app-text); }
 .thread-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .label-pill { display: inline-block; box-sizing: border-box; flex: none; padding: 2px 7px; border-radius: 6px; color: #42566f; background: #edf2f7; line-height: 1.15; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.session-context-menu { position: fixed; z-index: 20; padding: 5px; background: #fff; border: 1px solid var(--app-border); border-radius: 8px; box-shadow: 0 4px 14px #0002; }
-.session-context-menu button { width: 160px; padding: 9px; text-align: left; }
+/* The row whose native context menu is open (Finder style). */
+.tree-thread.menu-open { box-shadow: inset 0 0 0 2px var(--app-accent); }
 dialog.labels-editor:not([open]) { display: none; }
 dialog.labels-editor { max-height: 85vh; overflow: auto; margin: auto; max-width: calc(100vw - 40px); }
 dialog.labels-editor::backdrop { background: #0005; }

@@ -124,6 +124,7 @@
 - [docs/message-toolbar-release-0.1.46.md](docs/message-toolbar-release-0.1.46.md)
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop-session-search.md](docs/desktop-session-search.md)
+- [docs/desktop-session-menu.md](docs/desktop-session-menu.md)
 - [docs/desktop-automations.md](docs/desktop-automations.md)
 - [docs/automation-workflow.md](docs/automation-workflow.md)（草案，未实现）
 - [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑设计，未实现）

@@ -26,7 +26,7 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         {id:'current',channelId:'p',title:'Current stays open',markers:[],running:false,lastMessageAt:Date.now()/1000},
         ...Array.from({length:55},(_,i)=>({id:'row'+i,channelId:'p',title:'Old '+i,markers:['Foo','Other','👩🏽‍💻'.repeat(15)],running:i===0,completedUnread:i===0,lastMessageAt:1}))]};
       let selected=0,closes=0,saves=[],gate,mode='pending',target;
-      window.hermesDesktop={selectThread:async()=>{selected++},saveThreadLabels:async(...args)=>{saves.push(args);if(mode==='pending')return new Promise((resolve,reject)=>gate={resolve,reject});if(mode==='stale')return {markers:['Remote']};return {markers:args[1]}}};
+      const menus=[];window.hermesDesktop={showContextMenu:async items=>{menus.push(items);return 'labels'},selectThread:async()=>{selected++},saveThreadLabels:async(...args)=>{saves.push(args);if(mode==='pending')return new Promise((resolve,reject)=>gate={resolve,reject});if(mode==='stale')return {markers:['Remote']};return {markers:args[1]}}};
       const close=()=>{closes++;flushSync(()=>editorRoot.render(null));};
       const edit=thread=>{target=thread;flushSync(()=>editorRoot.render(<LabelsEditor thread={thread} snapshot={snapshot} close={close}/>));};
       const render=()=>flushSync(()=>root.render(<NavigationPanel snapshot={snapshot} onNewSession={()=>{}} onEditLabels={edit}/>));
@@ -47,9 +47,8 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         ensure('running dot intact',document.querySelectorAll('.search-result-list .thread-status').length===1&&document.querySelectorAll('.search-result-list .thread-result-unread').length===1);
         button(document,'Clear search').click();await tick();ensure('clear restores the tree',document.querySelectorAll('.channel-tree .tree-thread').length===2&&!document.querySelector('.session-query-chip'));
         ensure('sidebar rows show no label pills',!document.querySelector('.sidebar-scroll .label-pills'));
-        document.querySelector('.channel-tree .tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();
-        ensure('context menu: todo toggle, then labels',[...document.querySelectorAll('[role="menuitem"]')].map(n=>n.textContent).join('|')==='Mark as todo|Edit labels');
-        [...document.querySelectorAll('[role="menuitem"]')].find(n=>n.textContent==='Edit labels').click();await tick();
+        document.querySelector('.channel-tree .tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();await tick();
+        ensure('native context menu offers labels',menus.length===1&&menus[0].some(i=>i.id==='labels'&&i.label==='Edit Labels…')&&!document.querySelector('[role="menu"]'));
         const dialog=document.querySelector('dialog');ensure('accessible modal',dialog.open&&dialog.getAttribute('aria-labelledby')==='labels-editor-title');ensure('input focused on opening',document.activeElement===dialog.querySelector('[aria-label="Label text"]'));
         button(dialog,'Clear labels').click();await tick();inputValue(dialog.querySelector('[aria-label="Label text"]'),' Foo ');await tick();button(dialog,'Add').click();await tick();
         inputValue(dialog.querySelector('[aria-label="Label text"]'),' Foo ');await tick();button(dialog,'Add').click();await tick();ensure('exact duplicate rejection',dialog.textContent.includes('already in this list'));

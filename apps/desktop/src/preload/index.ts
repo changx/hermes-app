@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
-import type { ChannelInput, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, ContextMenuItem, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -26,6 +26,7 @@ const api: HermesDesktopApi = Object.freeze({
   activateTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:activate-tab', id),
   closeTab: (id: string): Promise<void> => ipcRenderer.invoke('desktop:close-tab', id),
   showTabMenu: (id: string, x: number, y: number): Promise<void> => ipcRenderer.invoke('desktop:tab-menu', id, x, y),
+  showContextMenu: (items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null> => ipcRenderer.invoke('desktop:context-menu', items, x, y),
   completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
   listAutomations: () => ipcRenderer.invoke('desktop:list-automations'),
   openAutomation: (id: string, title: string): Promise<void> => ipcRenderer.invoke('desktop:open-automation', id, title),
@@ -48,7 +49,7 @@ const api: HermesDesktopApi = Object.freeze({
   selectThread: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:select-thread", threadId),
   closeSessionPage: (threadId: string): Promise<void> => ipcRenderer.invoke("desktop:close-session-page", threadId),
   openSessionLink: (url: string): Promise<void> => ipcRenderer.invoke("desktop:open-session-link", url),
-  copySessionLink: (): Promise<void> => ipcRenderer.invoke("desktop:copy-session-link"),
+  copySessionLink: (threadId?: string): Promise<void> => threadId === undefined ? ipcRenderer.invoke("desktop:copy-session-link") : ipcRenderer.invoke("desktop:copy-session-link", threadId),
   searchLabel: (label: string): Promise<void> => ipcRenderer.invoke("desktop:search-label", label),
   onSearchLabel(listener: (label: string) => void): () => void {
     const receive = (_event: Electron.IpcRendererEvent, label: unknown) => { if (typeof label === 'string') listener(label); };

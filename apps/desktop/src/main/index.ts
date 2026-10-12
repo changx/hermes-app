@@ -13,6 +13,7 @@ import type { ChannelInput, PairingRequest, SendMessageInput, ThreadInput } from
 import { DesktopConnections } from "./connections";
 import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
+import { contextMenuItems, menuPosition } from './context-menu';
 import { DesktopSettingsWindow } from './settings-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
@@ -175,11 +176,22 @@ const registerDesktopApi = (): void => {
     shellSender(event); const manager = tabs, tabId = text(id, 200);
     if (!manager || !mainWindow || mainWindow.isDestroyed()) return;
     const items = manager.menu(tabId);
-    const position = Number.isFinite(x) && Number.isFinite(y) ? { x: Math.max(0, Math.round(x as number)), y: Math.max(0, Math.round(y as number)) } : {};
+    const position = menuPosition(x, y);
     Menu.buildFromTemplate(items.map(item => ({ label: item.label, enabled: item.enabled, click: () => {
       if (manager !== tabs || !manager.tabs.has(tabId)) return;
       try { manager.menuAction(tabId, item.action); } catch { /* A busy tab stays open. */ }
     } }))).popup({ window: mainWindow, ...position });
+  });
+  // Main-window menus (sidebar Session rows). The renderer builds the items; only the chosen id comes back.
+  handle('desktop:context-menu', (event, items: unknown, x: unknown, y: unknown) => {
+    shellSender(event); const entries = contextMenuItems(items), owner = mainWindow;
+    if (!owner || owner.isDestroyed()) return null;
+    return new Promise<string | null>(resolve => {
+      let settled = false; const finish = (id: string | null) => { if (!settled) { settled = true; resolve(id); } };
+      Menu.buildFromTemplate(entries.map(item => 'separator' in item ? { type: 'separator' as const } : { label: item.label, enabled: item.enabled !== false, click: () => finish(item.id) }))
+        // macOS can report the close before the click; a short wait lets the click win.
+        .popup({ window: owner, ...menuPosition(x, y), callback: () => setTimeout(() => finish(null), 150) });
+    });
   });
   handle('desktop:complete-new-tab', event => { trustedSender(event); tabs?.complete(event.sender); });
   // Automations: the sidebar lists and opens jobs; an Automation tab reads only its own job.
@@ -200,7 +212,10 @@ const registerDesktopApi = (): void => {
     const context = tabs?.sender(event.sender) ? target(event) : undefined;
     service.openSessionLink(text(value, 4096), context);
   });
-  handle("desktop:copy-session-link", (event) => { clipboard.writeText(service.sessionLink(target(event))); });
+  handle("desktop:copy-session-link", (event, id: unknown) => {
+    if (id === undefined) { clipboard.writeText(service.sessionLink(target(event))); return; }
+    shellSender(event); clipboard.writeText(service.sessionLink(text(id, 200)));
+  });
   // A Session page's toolbar label: the main window's sidebar searches for it. Only the label text crosses windows.
   handle("desktop:search-label", (event, label: unknown) => {
     trustedSender(event); const value = text(label, 1024);

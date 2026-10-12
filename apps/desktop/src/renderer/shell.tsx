@@ -65,19 +65,24 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
   </form></div>;
 };
 
-type Editor = "rename-thread" | "palette" | null;
+type Editor = "palette" | null;
 type ProjectEditor = { channelId?: string } | null;
-const EditorDialog = ({ kind, snapshot, close }: { kind: Exclude<Editor, null>; snapshot: DesktopSnapshot; close: () => void }) => {
-  const [name, setName] = useState("");
+/** Renames any Session: the open one (toolbar) or a sidebar row (context menu). Starts with the current title selected. */
+const RenameDialog = ({ thread, close }: { thread: DesktopSnapshot['threads'][number]; close: () => void }) => {
+  const [name, setName] = useState(thread.title);
+  const [busy, setBusy] = useState(false);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (kind === "rename-thread" && snapshot.selectedThreadId) safely(window.hermesDesktop.renameThread(snapshot.selectedThreadId, name).then(close));
+    const title = name.trim();
+    if (!title || busy) return;
+    if (title === thread.title) { close(); return; }
+    // A failure keeps the dialog open; the connection's error banner explains it.
+    setBusy(true); void window.hermesDesktop.renameThread(thread.id, title).then(close, () => setBusy(false));
   };
-  if (kind === "palette") return <SessionPicker snapshot={snapshot} close={close} />;
-  const title = "Rename topic";
+  const title = "Rename session";
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}><form className="editor-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-    <h2>{title}</h2><label>Title<input autoFocus required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} /></label>
-    <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit">Save</button></div>
+    <h2>{title}</h2><label>Title<input autoFocus required maxLength={200} value={name} onFocus={event => event.currentTarget.select()} onChange={(event) => setName(event.target.value)} /></label>
+    <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button type="submit" disabled={busy || !name.trim()}>Save</button></div>
   </form></div>;
 };
 
@@ -361,6 +366,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
+  const [renameTarget, setRenameTarget] = useState<DesktopSnapshot['threads'][number] | null>(null);
   const [todoBusy, setTodoBusy] = useState(false), [todoError, setTodoError] = useState('');
   useEffect(() => setTodoError(''), [snapshot.selectedThreadId]);
   const [projectEditor, setProjectEditor] = useState<ProjectEditor>(null);
@@ -370,7 +376,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   useEffect(() => {
     const shortcut = (event: globalThis.KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229) return;
-      if (event.key === "Escape") { setEditor(null); setProjectEditor(null); return; }
+      if (event.key === "Escape") { setEditor(null); setProjectEditor(null); setRenameTarget(null); return; }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
 
       if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
@@ -393,8 +399,8 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     void setSessionTodo(currentThread, !todo, snapshot.connectionKey ?? '').catch((error: Error) => setTodoError(error.message)).finally(() => setTodoBusy(false));
   };
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
-  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor && <EditorDialog key={`${editor}:${snapshot.selectedChannelId}:${snapshot.selectedThreadId}`} kind={editor} snapshot={snapshot} close={() => setEditor(null)} />}</>;
-  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget}>
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor === 'palette' && <SessionPicker snapshot={snapshot} close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
+  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>
     {overlays}
   </NativeWorkspace>;
   if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;
@@ -410,7 +416,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
           {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation"
             onClick={() => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."))}><MessageIcon name="export" /></button>}
           {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
-          <button type="button" aria-label="Rename" data-tooltip="Rename session" onClick={() => setEditor('rename-thread')}><ToolIcon name="rename" /></button>
+          <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!currentThread} onClick={() => { if (currentThread) setRenameTarget(currentThread); }}><ToolIcon name="rename" /></button>
           <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={archive}><ToolIcon name="archive" /></button>
           <SettingsButton icon={<ToolIcon name="settings" />} tooltip />
         </div>

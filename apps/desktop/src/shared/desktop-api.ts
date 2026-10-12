@@ -144,6 +144,8 @@ export type SendMessageInput = Readonly<{ text: string; attachmentIds: readonly 
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 /** A page the agent opened ('read') or a link its reply cites ('cited'). */
 export type DesktopMessageSource = Readonly<{ url: string; kind: 'read' | 'cited' }>;
+/** A native context-menu entry. `id` comes back when the user chooses the item. */
+export type ContextMenuItem = Readonly<{ id: string; label: string; enabled?: boolean } | { separator: true }>;
 export type BranchResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
 export type ExportResult = Readonly<{ ok: true; saved: boolean } | { ok: false }>;
 export type DesktopRuntimeInfo = Readonly<{
@@ -173,6 +175,8 @@ export interface HermesDesktopApi {
   closeTab(tabId: string): Promise<void>;
   /** Show the native Close Tab / Close Tabs to the Right / Close Other Tabs menu at window coordinates. */
   showTabMenu(tabId: string, x: number, y: number): Promise<void>;
+  /** Main window only: shows a native menu at window coordinates; resolves with the chosen item's id, or null. */
+  showContextMenu(items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null>;
   completeNewTab(): Promise<void>;
   /** Main window: scheduled jobs of every connection, read-only. */
   listAutomations(): Promise<DesktopAutomationList>;
@@ -195,7 +199,8 @@ export interface HermesDesktopApi {
   selectThread(threadId: string): Promise<void>;
   closeSessionPage(threadId: string): Promise<void>;
   openSessionLink(url: string): Promise<void>;
-  copySessionLink(): Promise<void>;
+  /** A Session page copies its own link; the main window names the Session. */
+  copySessionLink(threadId?: string): Promise<void>;
   /** A Session page asks the main window's sidebar to search for sessions with this label. */
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */

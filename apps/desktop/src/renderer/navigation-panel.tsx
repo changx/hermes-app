@@ -8,6 +8,7 @@ import { SearchIcon, searchSessions, SessionQueryInput } from './session-search'
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
 import { Icon } from './icons';
 import { AutomationsSection } from './automations';
+import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 
 // Only states that need the user's attention are shown in the tree.
 const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
@@ -17,7 +18,8 @@ const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ??
 const activeAutomation = (snapshot: DesktopSnapshot) => snapshot.tabs?.find(tab => tab.id === snapshot.activeTabId)?.automationId;
 
 // Rows show the todo flag only; other labels stay on the Session page and in search.
-const ThreadRow = memo(({thread,selected,draft,onMenu,hint,source}: {thread:DesktopThread;selected:boolean;draft:boolean;hint?:string;source?:string;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}`} title={hint} aria-current={selected ? "page" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
+// `menuOpen` marks the row whose native menu is showing, like a Finder row.
+const ThreadRow = memo(({thread,selected,draft,onMenu,hint,source,menuOpen}: {thread:DesktopThread;selected:boolean;draft:boolean;hint?:string;source?:string;menuOpen?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}`} title={hint} aria-current={selected ? "page" : undefined} aria-haspopup={onMenu ? "menu" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
@@ -39,7 +41,7 @@ const saveCollapsed = (key: string, value: boolean) => { try { window.localStora
  * Automations, Todo, Recents and the Project tree. The search matches like Cmd+K: a keyword
  * (title or label text) plus exact labels, all required.
  */
-export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onChannelOptions, onCreateProject, search: controlledSearch, onSearch }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void }) => {
+export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onRename, onChannelOptions, onCreateProject, search: controlledSearch, onSearch }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void }) => {
   // The workspace owns the query so a Session page's label click and a collapsed sidebar keep it; standalone use keeps it here.
   const [localSearch, setLocalSearch] = useState(emptySessionQuery);
   const search = controlledSearch ?? localSearch, setSearch = onSearch ?? setLocalSearch;
@@ -54,7 +56,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   }, [snapshot.channels]);
   const [batches, setBatches] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
-  const [menu, setMenu] = useState<{ thread: DesktopThread; x: number; y: number } | null>(null);
+  const [menuThread, setMenuThread] = useState<string | null>(null);
   const [recentsCollapsed, setRecentsCollapsed] = useState(loadCollapsed(RECENTS_KEY));
   const [recentBatches, setRecentBatches] = useState(0);
   const [todoCollapsed, setTodoCollapsed] = useState(loadCollapsed(TODO_KEY));
@@ -68,13 +70,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const multiple = (snapshot.connections?.length ?? 0) > 1;
   const stateFor = (key?: string) => key ? snapshot.connections?.find(row => row.connectionKey === key)?.state : undefined;
   const anyOnline = snapshot.connections ? snapshot.connections.some(row => row.state === 'online') : snapshot.phase === 'connected';
-  useEffect(() => { setBatches({}); setRecentBatches(0); setTodoBatches(0); setMenu(null); }, [snapshot.connectionKey]);
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = () => setMenu(null), key = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
-    window.addEventListener('click', dismiss); window.addEventListener('keydown', key);
-    return () => { window.removeEventListener('click', dismiss); window.removeEventListener('keydown', key); };
-  }, [menu]);
+  useEffect(() => { setBatches({}); setRecentBatches(0); setTodoBatches(0); }, [snapshot.connectionKey]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
@@ -90,9 +86,26 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   // Top labels across every listed session that supports labels; a click toggles the label in the search.
   // The todo flag is not a frequent label: the Todo section lists flagged sessions.
   const frequent = frequentSessionLabels(available.filter(labelsFor).map(thread => ({ ...thread, markers: withoutTodo(thread.markers) })));
-  const row = (thread: DesktopThread, hint?: string, source?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} onMenu={labelsFor(thread) && onEditLabels ? (thread, x, y) => setMenu({ thread, x, y }) : undefined} />;
   const connectionOf = (thread: DesktopThread) => snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey;
   const menuOnline = (thread: DesktopThread) => (snapshot.connections ? snapshot.connections.find(row => row.connectionKey === connectionOf(thread))?.state : snapshot.connectionState) === 'online' && available.some(item => item.id === thread.id);
+  // A native menu: the Session page is a separate view over the window, so an HTML menu would be cut off at the sidebar edge.
+  const openMenu = (thread: DesktopThread, x: number, y: number) => {
+    if (menuThread) return;
+    const todo = hasTodo(thread.markers), labels = labelsFor(thread) && !!onEditLabels, online = menuOnline(thread);
+    const items = sessionMenuItems({ todo, labels, online }).map(item => 'id' in item && item.id === 'rename' && !onRename ? { ...item, enabled: false } : item);
+    setMenuThread(thread.id);
+    void window.hermesDesktop.showContextMenu(items, x, y).catch(() => null).then(choice => {
+      setMenuThread(null);
+      if (!isSessionMenuAction(choice)) return;
+      if (choice === 'rename') onRename?.(thread);
+      else if (choice === 'labels') onEditLabels?.(thread);
+      else if (choice === 'todo') void setSessionTodo(thread, !todo, connectionOf(thread) ?? '').catch((error: Error) => window.alert(error.message));
+      else if (choice === 'copy-link') void window.hermesDesktop.copySessionLink(thread.id).catch(() => window.alert('Could not copy the link.'));
+      // A failed archive shows the connection's error banner; the row stays.
+      else if (window.confirm(`Archive "${thread.title}"?`)) void window.hermesDesktop.archiveThread(thread.id).catch(() => {});
+    });
+  };
+  const row = (thread: DesktopThread, hint?: string, source?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
   // Recents mixes every connection; with several, each row names its connection.
   const recentRow = (thread: DesktopThread) => {
     const source = multiple ? connectionName.get(thread.channelId) : undefined;
@@ -178,10 +191,5 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No projects yet.</p> : null}
     </div>
     </>}
-    {menu && (() => { const thread = available.find(item => item.id === menu.thread.id) ?? menu.thread, todo = hasTodo(thread.markers), online = menuOnline(thread);
-      return <div className="session-context-menu" role="menu" aria-label="Session options" style={{ left: Math.max(0, Math.min(menu.x, window.innerWidth - 180)), top: Math.max(0, Math.min(menu.y, window.innerHeight - 90)) }}>
-        <button autoFocus type="button" role="menuitem" disabled={!online} onClick={() => { setMenu(null); void setSessionTodo(thread, !todo, connectionOf(thread) ?? '').catch((error: Error) => window.alert(error.message)); }}>{todo ? 'Remove todo' : 'Mark as todo'}</button>
-        <button type="button" role="menuitem" disabled={!online} onClick={() => { onEditLabels?.(thread); setMenu(null); }}>Edit labels</button>
-      </div>; })()}
   </div>;
-}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot));
+}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot));

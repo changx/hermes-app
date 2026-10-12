@@ -68,7 +68,8 @@ test('Chromium: Session page has no title bar; tools float at the top right with
         await new Promise(r=>setTimeout(r,20));
         ensure('buttons act',calls.join('|')==='copy|archive|settings');
         bar.querySelector('[aria-label="Rename"]').click(); await new Promise(r=>setTimeout(r,20));
-        ensure('rename dialog opens',!!document.querySelector('[role="dialog"][aria-label="Rename topic"]'));
+        const renameDialog=document.querySelector('[role="dialog"][aria-label="Rename session"]');
+        ensure('rename dialog opens with the current title',!!renameDialog&&renameDialog.querySelector('input').value===snapshot.threads.find(t=>t.id===snapshot.selectedThreadId).title);
         checks.geometry={bar:[box.top-pageBox.top,pageBox.right-box.right,box.width,box.height],listTop:listBox.top-pageBox.top};
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.ttf': 'empty', '.woff2': 'empty', '.woff': 'empty' } });

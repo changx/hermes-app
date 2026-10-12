@@ -18,7 +18,7 @@ Requested by Jamie: a quick todo flag on the Session page. The flag marks the se
 - The Todo section lists every todo session of any age from every connection: running first, then newest activity. It is hidden when no session is flagged. The header collapses it; the choice is saved on this device (`hermes.sidebar.todo-collapsed`).
 - Recents and each Project's session list put running sessions first, then newest activity. Projects keep their recent window, so an old todo session shows only in Todo.
 - Rows show an orange flag right of the title. Rows show no label pills. The frequent-labels row leaves out `todo`.
-- The row context menu: "Mark as todo" or "Remove todo", then "Edit labels".
+- The row context menu offers "Mark as Todo" or "Remove Todo" after "Rename…". See [desktop-session-menu.md](desktop-session-menu.md).
 - Search results keep best-match order. Labels stay on the toolbar (a click searches the label), in search filters and in Edit labels.
 
 ## Mobile

@@ -36,8 +36,8 @@ test('Chromium: sidebar Todo section, flags instead of label pills, running firs
     import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
     import {NativeWorkspace} from './apps/desktop/src/renderer/native-workspace';
     ${common}
-    const saves=[];
-    window.hermesDesktop={setContentBounds:async()=>{},newTab:async()=>{},selectThread:async()=>{},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
+    const saves=[], menus=[]; let choice='todo';
+    window.hermesDesktop={showContextMenu:async items=>{menus.push(items);return choice},setContentBounds:async()=>{},newTab:async()=>{},selectThread:async()=>{},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
       listAutomations:async()=>({supported:false,failed:[],automations:[]}),
       saveThreadLabels:async(id,markers,time,key)=>{saves.push([id,markers,key]);return {thread_id:id,project_id:'p',markers,markers_updated_at:time};}};
     window.alert=message=>{checks.alert=message;};
@@ -71,14 +71,12 @@ test('Chromium: sidebar Todo section, flags instead of label pills, running firs
       checks.rowHeight=row.getBoundingClientRect().height;
       const frequent=[...scroll.querySelectorAll('.frequent-label')].map(b=>b.textContent);
       ensure('frequent labels leave out todo',frequent.length>0&&!frequent.some(l=>/todo/i.test(l))&&frequent.includes('bug'));
-      plainRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100})); await wait(20);
-      const items=[...document.querySelectorAll('[role="menuitem"]')];
-      ensure('menu offers Mark as todo first',items.map(i=>i.textContent).join('|')==='Mark as todo|Edit labels');
-      items[0].click(); await wait(30);
+      plainRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100})); await wait(30);
+      ensure('menu offers Mark as Todo after Rename',menus[0].filter(i=>i.id).map(i=>i.label).join('|')==='Rename…|Mark as Todo|Edit Labels…|Copy Link|Archive…');
       ensure('mark saves labels with the flag added on the right connection',JSON.stringify(saves)==='[["plain",["bug","docs","todo"],"one"]]'&&!document.querySelector('[role="menu"]'));
       const oldRow=[...scroll.querySelectorAll('#sidebar-todo-list .tree-thread')].find(r=>r.textContent.includes('Old todo'));
-      oldRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100})); await wait(20);
-      document.querySelector('[role="menuitem"]').click(); await wait(30);
+      oldRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100})); await wait(30);
+      ensure('a flagged row offers Remove Todo',menus[1].some(i=>i.id==='todo'&&i.label==='Remove Todo'));
       ensure('remove clears every case of the flag and keeps other labels',JSON.stringify(saves[1])==='["old-todo",["bug"],"one"]');
       const toggle=scroll.querySelector('#sidebar-todo-title'); toggle.click(); await wait(20);
       ensure('Todo collapses and remembers it',!scroll.querySelector('#sidebar-todo-list')&&localStorage.getItem('hermes.sidebar.todo-collapsed')==='1');
