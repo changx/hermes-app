@@ -33,6 +33,7 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 
 - App job 的定义不设置 `workdir`（`cronjob create` 时不传）。Channel 由 `deliver` 确定。
 - 显式设置了 `workdir` 的 job 按 core 现有行为使用固定路径；动态查找只用于没有 `workdir` 的 job。
+- 只运行脚本的 job（`no_agent`）不使用动态 `workdir`：它不加载 AGENTS.md，脚本保持 core 默认的工作目录（脚本所在目录），已有脚本中的相对路径不受影响。
 
 需要的 core 扩展（本地提交，通用，可提交上游）：
 
@@ -42,7 +43,9 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 - cron 在外部 worker 进程中运行（`dispatch=scoped`），插件也在 worker 中加载，所以 hook 在运行进程中可用（实现时验证）。
 - 本地提交标题以 `local:` 开头，按 AGENTS.md「Hermes 核心本地分支」的规则开发、测试和部署；同时向上游提交。
 
-插件实现：hermes_app 注册 `resolve_cron_workdir`。job 的 `deliver` 指向本连接 App 的 Channel 时，返回 `agents_source(channel)` 的目录；没有时返回 `root_path(channel)`。其他 job 返回空值。
+插件实现（插件 0.2.26 候选，`cron_workdir.py`）：hermes_app 在 core 支持时注册 `resolve_cron_workdir`。agent job 的 `deliver` 只指向本连接 App 的一个 Channel 时，返回 `agents_source(channel)` 的目录；没有时返回 `root_path(channel)`。其他情况（多个 Channel、Channel 不存在或已归档、绑定有歧义、目录不存在、`no_agent` job）返回空值，job 不带 `workdir` 运行。
+
+core 实现（候选）：`jamie/cron-workdir-resolver`（基于 upstream/main，供上游 PR）与 `jamie/cron-workdir-resolver-local`（基于 local/main，部署用，提交标题 `local: resolve_cron_workdir hook ...`）。
 
 结果：改 Channel primary path（App 或 `hermes project` CLI）后，下一次运行立即使用新目录，不需要同步或对账。
 
