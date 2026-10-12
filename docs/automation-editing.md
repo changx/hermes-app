@@ -127,3 +127,10 @@ core 事实（`~/.hermes/hermes-agent`，local/main）：
 - 手机：commit `6e155b4`，client 57 个、手机 180 个测试通过。
 - 桌面：`native-tabs`（列表 tab、New automation 标志）、`connections`（分页游标、控件、编辑 Thread 的 ID 限定）、`automations-ui`（Chromium：「+」、「Show all」、列表 tab 分页、控件、周期表单、Edit in conversation）、`new-chat-model`（New automation 模式）。
 - 未做：真实服务器上的端到端检查、iPhone 和 Mac 设备验收。
+
+## 10. 详情页 Conversations 的运行状态（手机）
+
+- 手机详情页的 Conversations 行从实时目录（`client.threads`，由 `session_state` 更新）读取 `running` 和 `completed_unread`，与 Channel 列表相同；实时目录没有该 Thread 时，未读状态使用详情页数据。运行中显示绿点和 `Running`，无障碍标签包含「Running」。`FlatList` 以 `revision` 作为 `extraData`，状态变化时行重绘。桌面 `AutomationPage` 原本已用实时 thread 显示 `Running`，未改。
+- 测试：`apps/mobile/tests/automation-editing.test.mjs`（`automationThreadState`）。移动端 TypeScript 通过；`npm test` 185 个中 183 通过、1 失败；失败的 `local-draft-storage.test.mjs` 在 `main` 上也失败；iOS/Android 导出通过。
+- 发布（2026-10-12，仅客户端）：合并 `1d0f11b`，只重启 `hermes-app-expo.service`（PID 1747449 → 1987570）；Gateway PID 1753013 和插件哈希不变。公网 iOS/Android manifest 200、SDK 57.0.0、launchAsset 200；`runningRow`、`runningDot`、`runningText` 计数在两个平台各 +2。回滚基线：`rollback/mobile-automation-running-before-release`（`a14d03e`）。
+- 未做：iPhone 真机验收。
