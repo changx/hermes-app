@@ -119,3 +119,17 @@ Jamie 授权合并发布。修复提交 `82deb76`，发布提交与标签 `v0.1.
 桌面发布 CI `38380513766` 成功。下载的 `Hermes-0.1.77-macOS-arm64.zip` SHA-256 `d763e9e61613f5fd50eab71227412537f335ea9a201222fc9a609ed17412052f` 校验通过，Info.plist 版本 0.1.77，ASAR `dist/main/index.cjs` 中 `LiveSessionClient.download` 只检查 `id !== this.wanted`。
 
 手机测试入口只重启 Expo（PID 2761470 → 3795516）。公网 iOS/Android manifest 与 launchAsset 均为 200、SDK 57.0.0；bundle 中 `watchReady` 出现次数由 20 降为 18。Gateway PID 3564617 与插件哈希不变，未改插件或核心。回滚基线 `rollback/attachment-watch-gate-before-release`（`7b191eb`）。iPhone 与 Mac 真机验收未做。
+
+## 新消息附件先进入账号映射
+
+`LivePageClient.mirror()` 只在 `changed()` 时把页面附件复制到账号级 `attachments`。桌面主进程按图片请求从该映射读取附件；映射中没有时，`previewAttachmentImage` 直接失败。此前 `HermesClient.history()` 先 `changed()`，后写入本页附件，新到消息已显示而附件不在映射中，图片显示 "Click to retry"；之后任一变化重新复制映射，重试才成功。现在先写附件，再 `changed()`。手机端直接使用消息自带附件，不读该映射。
+
+测试 `live-pages.test.mjs` 在每次变化通知中检查：账号映射里出现的消息，其附件已在账号附件映射中。旧代码在该测试中缺少 `att-new`。
+
+### v0.1.78 发布（2026-10-13）
+
+Jamie 授权合并发布。修复提交 `50badf9`，发布提交与标签 `v0.1.78` 为 `c3b68b5`，已推送 main。候选验证：共享客户端 79/79；桌面 148 通过 0 失败 47 跳过；手机 tsc 零诊断、测试 191 通过 0 失败 1 跳过、iOS/Android 导出成功。
+
+桌面发布 CI `38392467281` 成功。`Hermes-0.1.78-macOS-arm64.zip` SHA-256 `ec60577b8e00ff4a7c8cff602b5e9b0482459b38e77ad05ca5e37afb9ae8bc89` 校验通过，Info.plist 版本 0.1.78，ASAR `dist/main/index.cjs` 的 `history()` 先写附件后 `changed()`。
+
+手机测试入口只重启 Expo（PID 3795516 → 14073）。公网 iOS/Android manifest 与 launchAsset 均 200、SDK 57.0.0；bundle 中 `history()` 的附件写入由位于消息写入之后变为之前。Gateway PID 3564617 与插件不变。回滚基线 `rollback/attachment-mirror-order-before-release`（`c3196b2`）。Mac 真机验收未做。
