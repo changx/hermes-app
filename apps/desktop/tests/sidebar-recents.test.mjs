@@ -67,7 +67,7 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
         ensure('sections in order',titles.join('|')==='Recents|Projects');
         const recents=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread .thread-title')].map(e=>e.textContent);
         ensure('recents: last 72 hours across connections, newest first',recents.join('|')==='Just now|An hour ago');
-        ensure('recent row names its project and connection',scroll.querySelector('#sidebar-recents-list .tree-thread').title==='Hermes App · Work');
+        ensure('recent row has no native title tooltip',!scroll.querySelector('#sidebar-recents-list .tree-thread').hasAttribute('title')&&scroll.querySelector('#sidebar-recents-list .tree-thread').dataset.threadId==='w:t-now');
         const sources=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread')].map(e=>e.querySelector('.thread-connection-name')?.textContent);
         ensure('each recent row shows its connection name',sources.join('|')==='Work|personal.example');
         const recentRowEl=scroll.querySelector('#sidebar-recents-list .tree-thread'), source=recentRowEl.querySelector('.thread-connection-name').getBoundingClientRect(), title=recentRowEl.querySelector('.thread-title').getBoundingClientRect();

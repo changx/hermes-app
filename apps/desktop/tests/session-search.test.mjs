@@ -90,7 +90,7 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
         ensure('label chip in the search box',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug');
         ensure('results replace Recents and Projects',!q('.channel-tree')&&!q('#sidebar-recents-list'));
         ensure('only sessions with the label, sidebar order',titles('.search-result-list').join('|')==='Login crash|Payment flow|Slow sync');
-        ensure('result row names its project',q('.search-result-list .tree-thread').title==='Research');
+        ensure('result row has no native title; its hover card names the project',!q('.search-result-list .tree-thread').hasAttribute('title')&&!!q('.search-result-list .tree-thread').dataset.threadId);
         labelListener('iOS'); labelListener('bug'); await tick();
         ensure('second label narrows (AND), no duplicate chip',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug|iOS'&&titles('.search-result-list').join('|')==='Login crash');
         const input=q('.sidebar-search input[aria-label="Search sessions"]');

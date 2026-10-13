@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { SessionHoverCard, type SessionCardInfo } from "./session-hover-card";
 import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
 import { recentWindow, threadWindow, todoWindow } from "./thread-navigation";
 import { addQueryLabel, emptySessionQuery, frequentSessionLabels, removeQueryLabel, sessionLabelSuggestions, sessionQueryActive, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
@@ -19,7 +20,8 @@ const activeAutomation = (snapshot: DesktopSnapshot) => snapshot.tabs?.find(tab 
 
 // Rows show the todo flag only; other labels stay on the Session page and in search.
 // `menuOpen` marks the row whose native menu is showing, like a Finder row.
-const ThreadRow = memo(({thread,selected,draft,onMenu,hint,source,menuOpen}: {thread:DesktopThread;selected:boolean;draft:boolean;hint?:string;source?:string;menuOpen?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}`} title={hint} aria-current={selected ? "page" : undefined} aria-haspopup={onMenu ? "menu" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
+// No native `title`: SessionHoverCard shows the full title and details (found by `data-thread-id`).
+const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen}: {thread:DesktopThread;selected:boolean;draft:boolean;source?:string;menuOpen?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}`} data-thread-id={thread.id} aria-current={selected ? "page" : undefined} aria-haspopup={onMenu ? "menu" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
@@ -105,13 +107,22 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
       else if (window.confirm(`Archive "${thread.title}"?`)) void window.hermesDesktop.archiveThread(thread.id).catch(() => {});
     });
   };
-  const row = (thread: DesktopThread, hint?: string, source?: string) => <ThreadRow key={thread.id} thread={thread} hint={hint} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
+  const row = (thread: DesktopThread, source?: string) => <ThreadRow key={thread.id} thread={thread} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
   // Recents mixes every connection; with several, each row names its connection.
   const recentRow = (thread: DesktopThread) => {
     const source = multiple ? connectionName.get(thread.channelId) : undefined;
-    return row(thread, [projectName.get(thread.channelId), source].filter(Boolean).join(' · ') || undefined, source);
+    return row(thread, source);
   };
-  return <div className="sidebar-scroll">
+  const scroll = useRef<HTMLDivElement>(null);
+  const describe = (id: string): SessionCardInfo | undefined => {
+    const thread = available.find(item => item.id === id);
+    if (!thread) return undefined;
+    const statuses = [thread.running && 'Running', draftThreads?.has(id) && 'Draft', thread.completedUnread && 'Completed, unread', hasTodo(thread.markers) && 'Todo'].filter((item): item is string => !!item);
+    return { title: thread.title, project: projectName.get(thread.channelId), connection: multiple ? connectionName.get(thread.channelId) : undefined,
+      statuses, labels: withoutTodo(thread.markers), lastMessageAt: thread.lastMessageAt };
+  };
+  return <div className="sidebar-scroll" ref={scroll}>
+    <SessionHoverCard root={scroll} describe={describe} />
     <nav className="sidebar-actions" aria-label="Create">
       <button type="button" className="sidebar-action" onClick={() => onNewSession(snapshot.selectedChannelId ?? projects[0]?.id ?? '')}><Icon name="compose" /><span>New chat</span></button>
     </nav>
@@ -134,7 +145,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
           {suggestions.map(label => <button key={label} type="button" className="label-pill search-label-suggestion" title={label} aria-label={`Search label ${label}`} onClick={() => setSearch({ ...addQueryLabel(search, label), text: '' })}>{label}</button>)}
         </div>}
         <div className="item-list search-result-list">
-          {shown.map(thread => row(thread, projectName.get(thread.channelId)))}
+          {shown.map(thread => row(thread))}
           {!results.length && <p className="tree-empty">No matching sessions</p>}
           {results.length > shown.length && <button className="tree-more" type="button" onClick={() => setSearchBatches(value => value + 1)}>Show more</button>}
         </div>

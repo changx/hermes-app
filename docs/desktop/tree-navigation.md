@@ -80,7 +80,7 @@ Branch: `feat/desktop-recents`; base `origin/main` `d786452`.
 
 Confirmed behavior:
 - The sidebar has no blank band at the top. Order: New chat, Recents, Projects. The collapse button sits at the right end of the New chat row.
-- Recents lists Sessions from every Project and connection with activity in the last 72 hours (shared `RECENT_WINDOW_SECONDS`, also used by the Project tree initial window), plus running Sessions. Newest activity first, 24 rows per batch with Show more. The row tooltip names its Project. The Recents title collapses the list; the choice is a device-local preference.
+- Recents lists Sessions from every Project and connection with activity in the last 72 hours (shared `RECENT_WINDOW_SECONDS`, also used by the Project tree initial window), plus running Sessions. Newest activity first, 24 rows per batch with Show more. Hovering a row shows the Session card (see below), which names its Project. The Recents title collapses the list; the choice is a device-local preference.
 - Recents rows are indented one level: titles sit 17px right of the Recents label, the same step as Session titles under a Project name, with a guide line.
 - New project is a `+` icon in the Projects header, beside the label filter (the filter was later removed for session search). The old New project row is removed.
 - New project and Project `...` open the same modal: Title, Context, Files, AGENTS.md. New project also has the existing explicit connection choice.
@@ -98,3 +98,23 @@ Verification:
 - Shared client TypeScript and 26 tests passed.
 - `connections-native` failed once on the untouched base and passed on a rerun; it is intermittent, not caused by this change.
 - Not done: live dev-Gateway file/AGENTS round trip, macOS visual and pointer acceptance, merge or release.
+
+## Session hover card
+
+Branch: `feat/sidebar-hover-card`; base `main` `3b22c17`.
+
+Request (Jamie, 2026-10-12): hovering a Session row in the left sidebar shows the full title. Do not use the native system tooltip: it shows late, its text is small, and it cannot hold more information.
+
+Behavior:
+- Session rows (Recents, Todo, Project tree, search results) no longer set a native `title`. Each row carries `data-thread-id`; one `SessionHoverCard` per sidebar handles all rows.
+- The card opens 250 ms after the pointer stops on a row. After a card was open, the next row's card opens at once (500 ms window). Keyboard focus (`:focus-visible`) opens it at once.
+- Content: full title at the sidebar text size (wraps, no truncation); Project, plus connection name when several connections exist; states that apply (Running, Draft, Completed, unread, Todo); labels other than the todo flag; last message time. Values come from the existing directory snapshot. No server or protocol change.
+- Position: under the row, or above it when there is no room below. The card spans the sidebar width and stays inside the sidebar, because the Session page is a separate native view to its right.
+- The card closes when the pointer leaves the rows, on click or context menu (it stays closed until the pointer leaves that row), on sidebar scroll, Escape, focus loss and window blur. It has `pointer-events: none` and `role="tooltip"`; the row gets `aria-describedby` while it shows.
+- Automation rows keep their native `title`; they were not part of the request.
+
+Verification:
+- `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: TypeScript, build, 192 tests passed, 0 skipped.
+- New `sidebar-session-card.test.mjs` drives real Chromium pointer and keyboard input: first card in about 280 ms, full long title at 16 px, card inside the 260 px sidebar and under its row, project/connection, states, labels without todo, warm switch to the next row, close on leave, click, scroll and Escape, card above the last visible row.
+- Recents and search tests now check that rows have no native `title`.
+- Not done: macOS pointer and visual acceptance on Jamie's Mac, merge, release.
