@@ -502,8 +502,9 @@ export class HermesClient {
     if(page.length) this.knownEmptyThreads.delete(threadId);
     const byRef=new Map(existing.map(m=>[m.ref_seq,m]));
     if(epoch===this.projectionEpoch) page.forEach(m=>{ const key=threadId+':'+m.ref_seq; if(seq >= (this.messageSequence.get(key)||0)) { byRef.set(m.ref_seq,m); this.messageSequence.set(key,seq) } });
-    this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq)); this.changed();
+    // Attachments first: changed() makes LivePageClient mirror them for the desktop's image reads.
     for(const m of page)for(const a of m.attachments||[])this.attachments.set(a.id,a);
+    this.messages.set(threadId,[...byRef.values()].sort((a,b)=>a.ref_seq-b.ref_seq)); this.changed();
     return {messages:page,next_cursor:optionalCursor(x.next_cursor),newer_cursor:x.newer_cursor===undefined?undefined:optionalCursor(x.newer_cursor),incomplete_turns:arr(x.incomplete_turns),turn_outcomes:arr(x.turn_outcomes)};
   }
   async historyWindow(threadId: string, before?: string, limit = 30, signal?: AbortSignal, aroundRef?: number) {

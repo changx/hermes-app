@@ -9,8 +9,8 @@ const until=async predicate=>{const end=Date.now()+3000;while(!predicate()){asse
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 function fixture(multi=true){
   const sockets=[], paths=[], gates=new Map(), statusGates=new Map(), rows={A:[{id:'a1',ref_seq:1,role:'assistant',text:'A'}],B:[{id:'b2',ref_seq:2,role:'assistant',text:'B'}]};
-  let available=['A','B'], holdWatch=false;
-  const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>{},
+  let available=['A','B'], holdWatch=false, onChange=()=>{};
+  const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>onChange(),
     http:{async download(path){paths.push(['GET',path]);return {status:200,body:new TextEncoder().encode('image bytes')};},
     async request(method,path,_token,body,signal){
       paths.push([method,path]);
@@ -36,7 +36,7 @@ function fixture(multi=true){
     }}});
   const watch=id=>sockets.find(s=>!s.closed&&s.watches.has(id));
   const hint=id=>{const socket=watch(id);socket.emit({thread_id:id,request_id:socket.watches.get(id),type:'conversation_changed'});};
-  return {sdk,sockets,paths,rows,gates,statusGates,watch,hint,holdWatch:value=>{holdWatch=value;},remove:id=>{available=available.filter(value=>value!==id);for(const s of sockets.filter(s=>!s.closed))s.emit({type:'directory_changed'});}};
+  return {sdk,sockets,paths,rows,gates,statusGates,watch,hint,holdWatch:value=>{holdWatch=value;},onChange:fn=>{onChange=fn;},remove:id=>{available=available.filter(value=>value!==id);for(const s of sockets.filter(s=>!s.closed))s.emit({type:'directory_changed'});}};
 }
 
 test('A and B live simultaneously; covered A updates, B release keeps A exact objects and boundaries',async()=>{
@@ -152,5 +152,21 @@ test('attachment bytes download while a reconnect waits for the watch ack; owner
     await assert.rejects(a.download('B','att2'),/Conversation is not open/);
     f.sdk.releasePage('A',a);
     await assert.rejects(a.download('A','att1'),/Conversation is not open/);
+  }finally{f.sdk.close();}
+});
+
+test('a new message and its attachment reach the account mirror in the same change',async()=>{
+  const f=fixture();try{
+    await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
+    const a=f.sdk.acquirePage('A');await a.openConversation('A');
+    // The desktop main process reads attachments from the account mirror when
+    // the renderer asks for an image, so a listed message must have its attachment there.
+    const missing=[];
+    f.onChange(()=>{for(const row of f.sdk.messages.get('A')??[])for(const item of row.attachments??[])if(!f.sdk.attachments.has(item.id))missing.push(item.id);});
+    f.rows.A.push({id:'a3',ref_seq:3,role:'assistant',text:'image',attachments:[{id:'att-new',thread_id:'A',state:'available',name:'chart.png',mime:'image/png',size:11,receipt_id:null}]});
+    f.hint('A');
+    await until(()=>f.sdk.messages.get('A')?.length===2);
+    assert.deepEqual(missing,[]);
+    assert.equal(f.sdk.attachments.get('att-new')?.name,'chart.png');
   }finally{f.sdk.close();}
 });
