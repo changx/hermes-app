@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HeaderIcon, Notice, useConnections } from '../../App';
+import { HeaderIcon, Notice, labelsRoute, useConnections } from '../../App';
+import { threadPatch } from '../../channel-edits';
+import { setThreadTodo } from '../../todoToggle';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
 import { TabHeader } from '../../TabHeader';
@@ -46,12 +48,47 @@ export default function Recents() {
   const toggle = (label: string) => setQuery(old => old.labels.includes(label) ? removeQueryLabel(old, label) : addQueryLabel(old, label));
   const multiple = connections.length > 1;
   const loading = connections.some(c => c.client && !c.client.isCatalogueReady);
+  // Long press: the same Session menu as the Channel list, on the row's own connection.
+  const [actionError, setActionError] = useState('');
+  const working = useRef(false);
+  const clientOf = (row: RecentRow) => connections.find(c => c.slot === row.slot)?.client ?? null;
+  const run = async (work: () => Promise<string | void>) => {
+    if (working.current) return;
+    working.current = true; setActionError('');
+    try { const failure = await work(); if (failure) setActionError(failure); }
+    catch { setActionError('Could not complete that action. Try again later.'); }
+    finally { working.current = false; }
+  };
+  const renameSession = (row: RecentRow) => Alert.prompt('Rename session', undefined, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Save', onPress: (title?: string) => { const client = clientOf(row), next = title?.trim();
+      if (client && next && next !== row.title) void run(async () => { await client.updateThread(row.id, threadPatch(next)); }); } },
+  ], 'plain-text', row.title);
+  const archiveSession = (row: RecentRow) => Alert.alert('Archive this session?', 'It will no longer be shown on any device.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Archive', style: 'destructive', onPress: () => { const client = clientOf(row); if (client) void run(async () => { await client.archiveThread(row.id); }); } },
+  ]);
+  const sessionActions = (row: RecentRow) => {
+    const client = clientOf(row), labels = client?.supportsSessionLabels === true, todo = hasTodo(row.markers);
+    return [
+      ...(labels ? [{ name: 'todo', label: todo ? 'Remove todo' : 'Mark as todo', run: () => { if (client) void run(() => setThreadTodo(client, row.id, !todo)); } }] : []),
+      // Alert.prompt exists only on iOS.
+      ...(Platform.OS === 'ios' ? [{ name: 'rename', label: 'Rename session', run: () => renameSession(row) }] : []),
+      ...(labels ? [{ name: 'labels', label: 'Edit labels', run: () => router.push(labelsRoute(row.slot, row.id)) }] : []),
+      { name: 'archive', label: 'Archive session', destructive: true, run: () => archiveSession(row) },
+    ];
+  };
+  const sessionMenu = (row: RecentRow) => { if (working.current || !clientOf(row)) return; Alert.alert(row.title, undefined, [
+    ...sessionActions(row).map(action => ({ text: action.label, onPress: action.run, ...(action.destructive ? { style: 'destructive' as const } : {}) })),
+    { text: 'Cancel', style: 'cancel' },
+  ]); };
   if (!ready) return <Notice text="" />;
   return <SafeAreaView style={s.fill} edges={['top', 'left', 'right']}>
     <TabHeader title="Recents">
       <HeaderIcon label="New conversation" ios="square.and.pencil" android="edit_square" onPress={() => router.push('/new-thread')} />
     </TabHeader>
     {!!listError && <Text accessibilityRole="alert" style={s.error}>{listError}</Text>}
+    {!!actionError && <Text accessibilityRole="alert" style={s.error}>{actionError}</Text>}
     <View style={s.searchArea}>
       <View style={s.search}>
         <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={15} tintColor="#7b8794" fallback={null} />
@@ -75,7 +112,10 @@ export default function Recents() {
         if (entry.kind === 'section') return <Text accessibilityRole="header" style={s.section}>{entry.title}</Text>;
         const item = entry.row, todo = hasTodo(item.markers);
         const source = multiple ? `${item.channelName} · ${item.connectionName}` : item.channelName;
-        return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(item.slot, item.id)}
+        const actions = sessionActions(item);
+        return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(item.slot, item.id)} onLongPress={() => sessionMenu(item)}
+          accessibilityActions={actions.map(({ name, label }) => ({ name, label }))}
+          onAccessibilityAction={event => { if (!working.current) actions.find(action => action.name === event.nativeEvent.actionName)?.run(); }}
           accessibilityLabel={[item.title, source, item.running ? 'Running' : undefined, item.completedUnread ? 'Completed, unread' : undefined, todo ? 'Todo' : undefined].filter(Boolean).join(', ')}
           style={({ pressed }) => [s.card, pressed && s.pressed]}>
           <Text numberOfLines={2} style={s.heading}>{item.title}</Text>
