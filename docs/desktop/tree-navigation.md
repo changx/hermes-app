@@ -118,3 +118,5 @@ Verification:
 - New `sidebar-session-card.test.mjs` drives real Chromium pointer and keyboard input: first card in about 280 ms, full long title at 16 px, card inside the 260 px sidebar and under its row, project/connection, states, labels without todo, warm switch to the next row, close on leave, click, scroll and Escape, card above the last visible row.
 - Recents and search tests now check that rows have no native `title`.
 - Not done: macOS pointer and visual acceptance on Jamie's Mac, merge, release.
+
+Release (2026-10-12): merged as `a64d6ea`; desktop v0.1.74 (`54f3caf`), workflow run `38339762349` on `macmini-m4`. Mac mini checks: 192 tests, 146 passed, 0 failed, 46 skipped (browser tests need env vars); npm audit 0. `Hermes-0.1.74-macOS-arm64.zip` downloaded: `sha256sum -c` OK, Info.plist 0.1.74, the ASAR renderer contains `session-hover-card` and `sidebar-session-card`. No plugin, Gateway or mobile change. Open: pointer and visual acceptance on Jamie's Mac.
