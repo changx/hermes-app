@@ -538,7 +538,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 @media (max-width: 760px) { .new-chat-actions > span { display: none; } }
 
 .tree-thread.selected { color: #2b4e81; background: var(--app-selected); }
-.thread-status { color: #237a35; font-size: var(--app-font-size); }
+.thread-status { color: #237a35; font-size: var(--app-font-size); flex-shrink: 0; }
 .thread-draft { color: #dc2626; font-size: var(--app-font-size); font-weight: 600; flex-shrink: 0; }
 .thread-result-unread { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #4DA3FF; }
 .tree-more { width: 100%; padding: 9px 10px; border: 0; background: transparent; color: var(--app-link); text-align: left; font-size: var(--app-font-size); }

@@ -18,6 +18,7 @@ const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ??
 // The job whose tab is in front; its sidebar row is selected.
 const activeAutomation = (snapshot: DesktopSnapshot) => snapshot.tabs?.find(tab => tab.id === snapshot.activeTabId)?.automationId;
 
+// Row order: title, draft, Running, connection name, unread dot, todo flag. The title shrinks first.
 // Rows show the todo flag only; other labels stay on the Session page and in search.
 // `menuOpen` marks the row whose native menu is showing, like a Finder row.
 // No native `title`: SessionHoverCard shows the full title and details (found by `data-thread-id`).
@@ -25,7 +26,7 @@ const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen}: {thread:
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
-  <span className="thread-title">{thread.title}</span>{source ? <span className="thread-connection-name">{source}</span> : null}{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}{hasTodo(thread.markers) ? <span className="thread-todo" role="img" aria-label="Todo"><Icon name="flag" /></span> : null}
+  <span className="thread-title">{thread.title}</span>{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{source ? <span className="thread-connection-name">{source}</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}{hasTodo(thread.markers) ? <span className="thread-todo" role="img" aria-label="Todo"><Icon name="flag" /></span> : null}
   </span>
 </button>);
 
