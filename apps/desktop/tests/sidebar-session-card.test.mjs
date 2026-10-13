@@ -11,14 +11,14 @@ import WebSocket from 'ws';
 const LONG = 'A very long Session title that the sidebar row must truncate, and the hover card must show in full without cutting any words';
 
 // Real pointer input through DevTools: synthetic DOM events do not exercise hover.
-test('Chromium: sidebar Session card shows the full title fast, stays in the sidebar, and closes', { skip: !process.env.HERMES_TEST_CHROME, timeout: 30000 }, async () => {
+test('Chromium: sidebar Session card asks main for a popup right of the sidebar with the full title, fast, and closes it', { skip: !process.env.HERMES_TEST_CHROME, timeout: 30000 }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'sidebar-card-'));
   let chrome, socket;
   try {
     const bundle = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
       import {NavigationPanel} from './apps/desktop/src/renderer/navigation-panel';
-      window.selected=[]; window.hermesDesktop={selectThread:async id=>window.selected.push(id)};
+      window.selected=[]; window.card=null; window.cardCalls=0; window.hermesDesktop={selectThread:async id=>window.selected.push(id),showSessionCard:async card=>{window.card=card;window.cardCalls++;}};
       const now=Date.now()/1000;
       const threads=[{id:'long',channelId:'p',title:${JSON.stringify(LONG)},markers:['Design','todo'],running:true,completedUnread:true,lastMessageAt:now-60},
         {id:'short',channelId:'p',title:'Short one',markers:[],running:false,lastMessageAt:now-120}];
@@ -55,7 +55,8 @@ test('Chromium: sidebar Session card shows the full title fast, stays in the sid
     await evaluate(`new Promise(resolve=>{const wait=()=>document.querySelector('[data-thread-id="long"]')?resolve(true):setTimeout(wait,10);wait()})`);
     const center = selector => evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
     const move = point => call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
-    const card = () => evaluate(`(()=>{const c=document.querySelector('.session-hover-card');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c);return {title:c.querySelector('.session-hover-title').textContent,text:c.innerText,left:r.left,right:r.right,top:r.top,bottom:r.bottom,visible:s.visibility,font:parseFloat(getComputedStyle(c.querySelector('.session-hover-title')).fontSize),labels:[...c.querySelectorAll('.label-pill')].map(e=>e.textContent)}})()`);
+    // The visible card is a native window drawn by main; the page sends it the request (window.card) or null.
+    const card = () => evaluate(`window.card`);
     const waitCard = async (want, limit = 1000) => { const start = Date.now(); for (;;) { const value = await card(); if (want(value)) return { value, ms: Date.now() - start }; if (Date.now() - start > limit) return { value, ms: -1 }; await new Promise(r => setTimeout(r, 15)); } };
     const sidebar = await evaluate(`(()=>{const r=document.querySelector('aside').getBoundingClientRect();return {left:r.left,right:r.right}})()`);
     const row = selector => `#sidebar-recents-list [data-thread-id="${selector}"]`;
@@ -68,28 +69,30 @@ test('Chromium: sidebar Session card shows the full title fast, stays in the sid
     await move({ x: 700, y: 650 });
     const hoverAt = Date.now();
     await move(await center(row('long')));
-    const first = await waitCard(v => v && v.visible === 'visible');
+    const first = await waitCard(v => !!v);
     evidence.firstShowMs = Date.now() - hoverAt;
     assert.ok(first.ms >= 0 && evidence.firstShowMs < 700, `card shows fast: ${evidence.firstShowMs}ms`);
+    assert.ok(evidence.firstShowMs >= 200, `not on a pointer pass-through: ${evidence.firstShowMs}ms`);
     const shown = first.value;
     evidence.card = shown;
     assert.equal(shown.title, LONG, 'full title');
-    assert.ok(shown.font >= 16, `title at the sidebar text size: ${shown.font}px`);
-    assert.ok(shown.left >= sidebar.left && shown.right <= sidebar.right, `card stays in the sidebar: ${JSON.stringify(shown)}`);
-    assert.ok(shown.bottom - shown.top > 60, 'long title wraps onto several lines');
-    const anchor = await evaluate(`document.querySelector('${row('long')}').getBoundingClientRect().bottom`);
-    assert.ok(shown.top >= anchor, 'card under its row, not over it');
-    assert.match(shown.text, /Example Project · Home/);
-    assert.match(shown.text, /Running · Draft · Completed, unread · Todo/);
+    assert.equal(shown.fontSize, 16, 'card text at the sidebar text size');
+    assert.equal(shown.sidebarRight, sidebar.right, 'card placed from the sidebar right edge');
+    const anchor = await evaluate(`(()=>{const r=document.querySelector('${row('long')}').getBoundingClientRect();return {top:r.top,bottom:r.bottom}})()`);
+    assert.deepEqual({ top: shown.rowTop, bottom: shown.rowBottom }, anchor, 'card level with its row');
+    assert.equal(shown.project, 'Example Project'); assert.equal(shown.connection, 'Home');
+    assert.deepEqual(shown.statuses, ['Running', 'Draft', 'Completed, unread', 'Todo']);
     assert.deepEqual(shown.labels, ['Design'], 'labels without the todo flag');
-    assert.match(shown.text, /Last message /);
+    assert.match(shown.lastMessage, /\d/);
+    assert.equal(await evaluate(`document.querySelectorAll('.session-hover-card').length`), 0, 'no in-page card inside the sidebar');
+    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /^A very long Session title.*Example Project · Home/, 'screen reader description');
     assert.equal(await evaluate(`document.querySelector('${row('long')}').getAttribute('aria-describedby')`), 'sidebar-session-card');
 
     // Moving to the next row switches the card at once.
     await move(await center(row('short')));
     const next = await waitCard(v => v && v.title === 'Short one', 200);
     assert.ok(next.ms >= 0 && next.ms < 120, `warm switch: ${next.ms}ms`);
-    assert.doesNotMatch(next.value.text, /Running|Draft|Todo/);
+    assert.deepEqual(next.value.statuses, []);
 
     // Leaving the list closes it.
     await move({ x: 700, y: 650 });
@@ -99,7 +102,7 @@ test('Chromium: sidebar Session card shows the full title fast, stays in the sid
     await new Promise(r => setTimeout(r, 600));
     const point = await center(row('long'));
     await move(point);
-    await waitCard(v => v && v.visible === 'visible');
+    await waitCard(v => !!v);
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
     await move({ x: point.x + 3, y: point.y });
@@ -110,17 +113,9 @@ test('Chromium: sidebar Session card shows the full title fast, stays in the sid
     // Scrolling the sidebar closes it.
     await move({ x: 700, y: 650 }); await new Promise(r => setTimeout(r, 600));
     await move(await center(row('short')));
-    await waitCard(v => v && v.visible === 'visible');
+    await waitCard(v => !!v);
     await evaluate(`document.querySelector('.sidebar-scroll').scrollTop=40`);
     assert.equal((await waitCard(v => v === null, 300)).value, null, 'scroll closes the card');
-
-    // Near the bottom edge the card opens above its row.
-    await evaluate(`document.querySelector('.sidebar-scroll').scrollTop=0`);
-    const lastRow = await evaluate(`(()=>{const rows=[...document.querySelectorAll('.tree-thread[data-thread-id]')].filter(r=>{const b=r.getBoundingClientRect();return b.bottom<=700&&b.top>=0});const r=rows.at(-1);r.id='bottom-row';return {id:r.dataset.threadId,top:r.getBoundingClientRect().top}})()`);
-    await move({ x: 700, y: 650 }); await new Promise(r => setTimeout(r, 600));
-    await move(await center('#bottom-row'));
-    const above = await waitCard(v => v && v.visible === 'visible');
-    assert.ok(above.value.bottom <= lastRow.top + 1, `card above the last visible row: ${JSON.stringify({ lastRow, card: above.value })}`);
 
     // Keyboard focus shows the card at once; Escape closes it.
     await move({ x: 700, y: 650 }); await new Promise(r => setTimeout(r, 600));
@@ -134,10 +129,6 @@ test('Chromium: sidebar Session card shows the full title fast, stays in the sid
 
     if (process.env.HERMES_SIDEBAR_EVIDENCE) {
       await mkdir(process.env.HERMES_SIDEBAR_EVIDENCE, { recursive: true });
-      await move({ x: 700, y: 650 }); await new Promise(r => setTimeout(r, 600));
-      await move(await center(row('long'))); await waitCard(v => v && v.visible === 'visible');
-      const { data } = await call('Page.captureScreenshot', { format: 'png' });
-      await writeFile(join(process.env.HERMES_SIDEBAR_EVIDENCE, 'session-card.png'), Buffer.from(data, 'base64'));
       await writeFile(join(process.env.HERMES_SIDEBAR_EVIDENCE, 'session-card.json'), JSON.stringify(evidence, null, 2) + '\n');
     }
     console.log(JSON.stringify(evidence));

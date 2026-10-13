@@ -1,0 +1,9 @@
+/* Sidebar Session card window (src/main/session-card-window.ts). Colors follow the main window palette. */
+html, body { margin: 0; padding: 0; background: #fff; overflow: hidden; }
+body { color: #111827; font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif; -webkit-font-smoothing: antialiased; cursor: default; user-select: none; }
+#card { box-sizing: border-box; display: grid; gap: 5px; padding: 10px 12px 11px; font-size: 16px; }
+.title { font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-wrap; }
+.meta, .status { color: #6b7280; font-size: .8125em; line-height: 1.35; overflow-wrap: anywhere; }
+.status { color: #4b5563; }
+.labels { display: flex; flex-wrap: wrap; gap: 4px; font-size: .8125em; font-weight: 500; }
+.label { box-sizing: border-box; max-width: 100%; padding: 2px 7px; border-radius: 6px; color: #42566f; background: #edf2f7; line-height: 1.15; white-space: pre; overflow: hidden; text-overflow: ellipsis; }

@@ -192,6 +192,8 @@ export interface HermesDesktopApi {
   showTabMenu(tabId: string, x: number, y: number): Promise<void>;
   /** Main window only: shows a native menu at window coordinates; resolves with the chosen item's id, or null. */
   showContextMenu(items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null>;
+  /** Sidebar Session card: a native popup right of the sidebar, above the Session page. `null` hides it. */
+  showSessionCard(card: SessionCardRequest | null): Promise<void>;
   completeNewTab(): Promise<void>;
   /** Main window or the Automations tab: scheduled jobs of every connection; `cursors` continues the list. */
   listAutomations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList>;
@@ -275,3 +277,9 @@ export interface HermesDesktopApi {
   downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void>;
   previewAttachmentImage(attachmentId: string): Promise<string>;
 }
+
+/** Sidebar Session card content and where its row is. Coordinates are main-window content (CSS) pixels. */
+export type SessionCardRequest = Readonly<{
+  title: string; project?: string; connection?: string; statuses: readonly string[]; labels: readonly string[]; lastMessage?: string;
+  rowTop: number; rowBottom: number; sidebarRight: number; fontSize: number;
+}>;
