@@ -63,6 +63,8 @@ Request (Jamie): image and attachment previews on phone and desktop are a contin
 - Desktop: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop:check` passes 196/196 with 0 skipped. The new Electron/Xvfb test `tests/attachment-gallery-native.test.mjs` clicks Preview in a Session with 7 files across two messages. It checks the start slide, the title and counter, that only neighbours download, the sandboxed HTML slide, the → key, a trackpad horizontal scroll over a text frame, a rendered PDF slide, Markdown with a sibling image, video and audio metadata, media pause on leave, reload, and resize. The existing sidebar test now opens its single-file previews directly, because Preview in a message with several files opens the gallery.
 - Not yet done: iPhone and Mac checks on the real devices.
 
+Release v0.1.79 (2026-10-13, authorized by Jamie: "合并发布"): `main` fast-forwarded `6c061ba..bfe60e6`, tag `v0.1.79`, tag run 38398865964 succeeded (196 tests, 148 pass, 0 fail, 48 skipped; audit 0). Release `Hermes-0.1.79-macOS-arm64.zip`: checksum OK, Info.plist 0.1.79; ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js`, `dist/renderer/styles.css` byte-identical to the local build. Expo: runtime checkout at `bfe60e6`, `hermes-app-expo.service` restarted (PID 14073 → 210935); public iOS and Android manifests 200, SDK 57.0.0, launch assets 200, marker `Tap to try again` present on both. Gateway PID 3564617 and plugin hash unchanged. Rollback: `v0.1.78` / `6c061ba`. iPhone and Mac checks still open.
+
 ## Not included
 
 - PDF and Office rendering on Android.
