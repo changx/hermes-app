@@ -1,17 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import type { SessionCardRequest } from '../shared/desktop-api';
 
 /**
  * Sidebar Session card: the full title and details of the Session row under
  * the pointer (or with keyboard focus). It replaces the native `title`
  * tooltip, which shows late, uses small system text and holds one line.
  *
- * The Session page is a separate native view to the right of the sidebar, so
- * the card cannot cross the sidebar edge: it spans the sidebar width and wraps.
+ * The card opens to the right of the sidebar, level with the row, so it never
+ * covers the sidebar. The Session page there is a separate native view, so the
+ * main process shows the card in its own small window (SessionCardWindow).
+ * This component decides when and what; it draws only an accessible description.
  */
 export const SHOW_DELAY_MS = 250;
 /** After a card closes, a card for the next row in this time shows at once. */
 export const WARM_MS = 500;
-const GAP = 4, INSET = 8, EDGE = 8;
 export const SESSION_CARD_ID = 'sidebar-session-card';
 
 export type SessionCardInfo = Readonly<{
@@ -23,7 +25,7 @@ const rowOf = (root: HTMLElement, node: EventTarget | null) => {
   return row && root.contains(row) ? row : null;
 };
 
-const lastMessage = (seconds?: number) => {
+export const lastMessageText = (seconds?: number) => {
   if (!seconds) return undefined;
   const date = new Date(seconds * 1000);
   if (Number.isNaN(date.getTime())) return undefined;
@@ -31,30 +33,31 @@ const lastMessage = (seconds?: number) => {
   return date.toLocaleString(undefined, { ...(sameYear ? {} : { year: 'numeric' }), month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
+const send = (card: SessionCardRequest | null) => { void window.hermesDesktop?.showSessionCard?.(card)?.catch?.(() => {}); };
+
 export function SessionHoverCard({ root, describe }: { root: RefObject<HTMLElement | null>; describe: (threadId: string) => SessionCardInfo | undefined }) {
   const [row, setRow] = useState<HTMLElement | null>(null);
-  const [place, setPlace] = useState<{ left: number; top: number; width: number } | null>(null);
-  const card = useRef<HTMLDivElement>(null);
+  const shown = useRef(false);
   useEffect(() => {
     const element = root.current;
     if (!element || typeof element.addEventListener !== 'function') return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let current: HTMLElement | null = null, shown = false, closedAt = 0;
+    let current: HTMLElement | null = null, open = false, closedAt = 0;
     // After a click the row's card stays closed until the pointer leaves that row.
     let pressed: HTMLElement | null = null;
     const hide = () => {
       clearTimeout(timer);
-      if (shown) closedAt = Date.now();
+      if (open) closedAt = Date.now();
       current?.removeAttribute('aria-describedby');
-      current = null; shown = false; setRow(null);
+      current = null; open = false; setRow(null);
     };
     const show = (target: HTMLElement, delay: number) => {
       if (target === current) return;
-      const warm = shown || Date.now() - closedAt < WARM_MS;
+      const warm = open || Date.now() - closedAt < WARM_MS;
       hide();
       current = target;
-      const open = () => { if (current !== target || !target.isConnected) return; shown = true; target.setAttribute('aria-describedby', SESSION_CARD_ID); setRow(target); };
-      if (warm || delay === 0) open(); else timer = setTimeout(open, delay);
+      const reveal = () => { if (current !== target || !target.isConnected) return; open = true; target.setAttribute('aria-describedby', SESSION_CARD_ID); setRow(target); };
+      if (warm || delay === 0) reveal(); else timer = setTimeout(reveal, delay);
     };
     const over = (event: PointerEvent) => {
       const target = rowOf(element, event.target);
@@ -74,7 +77,8 @@ export function SessionHoverCard({ root, describe }: { root: RefObject<HTMLEleme
     element.addEventListener('focusin', focus);
     element.addEventListener('focusout', hide);
     element.addEventListener('keydown', key);
-    window.addEventListener('blur', hide);
+    // No window `blur` rule: focus moving into the Session page blurs this page too. Main hides the card when the window loses focus.
+    window.addEventListener('resize', hide);
     return () => {
       hide();
       element.removeEventListener('pointerover', over);
@@ -85,30 +89,27 @@ export function SessionHoverCard({ root, describe }: { root: RefObject<HTMLEleme
       element.removeEventListener('focusin', focus);
       element.removeEventListener('focusout', hide);
       element.removeEventListener('keydown', key);
-      window.removeEventListener('blur', hide);
+      window.removeEventListener('resize', hide);
     };
   }, [root]);
   const info = row?.isConnected ? describe(row.dataset.threadId ?? '') : undefined;
-  useLayoutEffect(() => {
+  const lastMessage = lastMessageText(info?.lastMessageAt);
+  // Live state (Running, labels) can change while the card is open; resend only on a real change.
+  const key = info ? JSON.stringify([info.title, info.project, info.connection, info.statuses, info.labels, lastMessage]) : '';
+  useEffect(() => {
     const container = root.current;
-    if (!info || !row || !card.current || !container) { setPlace(null); return; }
-    const anchor = row.getBoundingClientRect(), side = container.getBoundingClientRect();
-    const width = Math.max(120, side.width - INSET * 2);
-    card.current.style.width = `${width}px`; // Measure the height at the final width.
-    const height = card.current.getBoundingClientRect().height, bottom = document.documentElement.clientHeight - EDGE;
-    const below = anchor.bottom + GAP;
-    const top = below + height <= bottom ? below : Math.max(EDGE, anchor.top - GAP - height);
-    setPlace(old => old && old.left === side.left + INSET && old.top === top && old.width === width ? old : { left: side.left + INSET, top, width });
-  });
+    if (!info || !row || !container) { if (shown.current) { shown.current = false; send(null); } return; }
+    const box = row.getBoundingClientRect(), sidebar = (container.closest('aside') ?? container).getBoundingClientRect();
+    const fontSize = parseFloat(getComputedStyle(row).fontSize) || 16;
+    shown.current = true;
+    send({ title: info.title, project: info.project, connection: info.connection, statuses: [...info.statuses], labels: [...info.labels], lastMessage,
+      rowTop: box.top, rowBottom: box.bottom, sidebarRight: sidebar.right, fontSize });
+  }, [row, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (shown.current) { shown.current = false; send(null); } }, []);
   if (!info) return null;
+  // Screen readers read this through the row's aria-describedby; the visible card is the native popup.
   const where = [info.project, info.connection].filter(Boolean).join(' · ');
-  const when = lastMessage(info.lastMessageAt);
-  return <div ref={card} id={SESSION_CARD_ID} className="session-hover-card" role="tooltip"
-    style={place ? { left: place.left, top: place.top, width: place.width } : { left: 0, top: 0, width: 240, visibility: 'hidden' }}>
-    <div className="session-hover-title">{info.title}</div>
-    {where && <div className="session-hover-meta">{where}</div>}
-    {info.statuses.length > 0 && <div className="session-hover-status">{info.statuses.join(' · ')}</div>}
-    {info.labels.length > 0 && <div className="session-hover-labels">{info.labels.map(label => <span key={label} className="label-pill">{label}</span>)}</div>}
-    {when && <div className="session-hover-meta">Last message {when}</div>}
+  return <div id={SESSION_CARD_ID} className="visually-hidden">
+    {[info.title, where, info.statuses.join(', '), info.labels.length ? `Labels: ${info.labels.join(', ')}` : '', lastMessage ? `Last message ${lastMessage}` : ''].filter(Boolean).join('. ')}
   </div>;
 }

@@ -60,6 +60,16 @@ await Promise.all([
     minify: true,
   }),
   build({
+    // Sidebar Session card window: a static page main fills with text (no preload, no React).
+    entryPoints: [resolve(root, "src/card/session-card.ts")],
+    outfile: resolve(dist, "renderer/session-card.js"),
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "chrome132",
+    minify: true,
+  }),
+  build({
     entryPoints: [resolve(root, "src/renderer/index.tsx")],
     outfile: resolve(dist, "renderer/index.js"),
     bundle: true,
@@ -74,6 +84,8 @@ await Promise.all([
   copyFile(resolve(root, "src/renderer/index.html"), resolve(dist, "renderer/index.html")),
   copyFile(resolve(root, "../../assets/work-icons.ttf"), resolve(dist, "renderer/work-icons.ttf")),
   copyFile(resolve(root, "src/renderer/styles.css"), resolve(dist, "renderer/styles.css")),
+  copyFile(resolve(root, "src/card/session-card.html"), resolve(dist, "renderer/session-card.html")),
+  copyFile(resolve(root, "src/card/session-card.css"), resolve(dist, "renderer/session-card.css")),
   // KaTeX layout for formulas in replies and Markdown previews. Chromium uses the woff2 fonts.
   copyFile(resolve(katexDist, "katex.min.css"), resolve(dist, "renderer/katex.css")),
   ...(await readdir(resolve(katexDist, "fonts"))).filter(name => name.endsWith(".woff2"))

@@ -120,3 +120,28 @@ Verification:
 - Not done: macOS pointer and visual acceptance on Jamie's Mac, merge, release.
 
 Release (2026-10-12): merged as `a64d6ea`; desktop v0.1.74 (`54f3caf`), workflow run `38339762349` on `macmini-m4`. Mac mini checks: 192 tests, 146 passed, 0 failed, 46 skipped (browser tests need env vars); npm audit 0. `Hermes-0.1.74-macOS-arm64.zip` downloaded: `sha256sum -c` OK, Info.plist 0.1.74, the ASAR renderer contains `session-hover-card` and `sidebar-session-card`. No plugin, Gateway or mobile change. Open: pointer and visual acceptance on Jamie's Mac.
+
+## Session card as a popup right of the sidebar
+
+Branch: `feat/sidebar-card-popup`; base `origin/main` `e4b6014`.
+
+Request (Jamie, 2026-10-12): the hover card must not stay inside the sidebar. It pops up to the right of the sidebar and does not cover sidebar content. This replaces the v0.1.74 placement (under the row, inside the sidebar); timing, content and close rules stay the same.
+
+Behavior:
+- The card's left edge is 6 px right of the sidebar edge. Its top is level with the hovered row. It covers the Session page, never the sidebar.
+- Width is about 20em of the sidebar text size (320 px at 16 px, 260–420 px). The title wraps; nothing is cut.
+- Near the bottom of the screen the card moves up. Near the right edge it narrows to a 220 px minimum. Its left edge never moves over the sidebar.
+- It closes on the existing rules, and also when the main window moves, resizes, loses focus, minimizes or changes full screen. Keyboard focus moving into the Session page does not close it.
+
+Implementation:
+- The Session page is a native view that covers the window's HTML, so the card is a small native child window (`src/main/session-card-window.ts`). It is frameless, never takes focus (`focusable: false`), ignores the mouse and is created hidden after the main window shows, so the first card has no page load.
+- The card page (`src/card/`) has no preload and no IPC. Main fills it with text through `showCard()` (textContent only) and sizes the window to the returned height.
+- The sidebar component keeps the hover rules and sends one validated request (`desktop:session-card`, main window only): text fields, the row's top/bottom, the sidebar's right edge and the text size; `null` hides. The sidebar keeps a visually hidden description for `aria-describedby`.
+- The renderer no longer closes the card on its own `window` blur: that event also fires when focus moves into the Session page in the same window. Main handles real window focus loss.
+
+Verification:
+- `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: TypeScript, build, 195 tests passed, 0 skipped.
+- New `session-card-window.test.mjs`: request validation; placement (right of the sidebar, level with the row, moves up at the screen bottom, narrows at the right edge); real Electron with a Session tab open and focus in the Session page: native pointer hover shows the card in about 265 ms at x = sidebar edge + 6, level with the row, over the Session page, with the full title, Project and Running; child of the main window, not focusable, no app API in the card page; hides when the pointer leaves and when the window moves.
+- `sidebar-session-card.test.mjs` (Chromium, real pointer and keyboard) now checks the request sent to main: delay, full title, row position, sidebar edge, text size, states, labels; warm switch; close on leave, click, scroll and Escape.
+- `browser-window-native` and `browser-sidebar-native` count only focusable windows, so the hidden card window does not change their one-window-per-Session and single-Settings checks.
+- Not done: macOS look (native rounded corners and shadow) and pointer feel on Jamie's Mac, merge, release.

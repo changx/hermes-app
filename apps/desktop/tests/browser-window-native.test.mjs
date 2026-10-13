@@ -16,7 +16,9 @@ test('Electron: browser moves between sidebar and one separate window per Sessio
     const bundle = await build({ entryPoints: [join(root, 'src/main/index.ts')], bundle: true, platform: 'node', format: 'cjs', external: ['electron'], write: false, plugins: [{ name: 'test-exports', setup(b) { b.onLoad({ filter: /src\/main\/index\.ts$/ }, async args => ({ contents: await readFile(args.path, 'utf8') + '\nexport {service}; export const sidebarForTest=()=>browser; export const tabsForTest=()=>tabs;\n', loader: 'ts' })); } }] });
     await writeFile(join(folder, 'dist/main/index.cjs'), bundle.outputFiles[0].text);
     await writeFile(join(folder, 'harness.cjs'), String.raw`
-const {app,BrowserWindow}=require('electron');const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const {app,BrowserWindow}=require('electron');
+// The sidebar Session card is a hidden, non-focusable helper window; count only the user's windows.
+const appWindows=()=>BrowserWindow.getAllWindows().filter(w=>w.isFocusable());const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
 const {service:accounts,sidebarForTest,tabsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary,a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map(),loads=[];let base;
@@ -29,7 +31,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
 const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','browser-window.json'),'utf8'));
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base='http://127.0.0.1:'+server.address().port;
- await app.whenReady();await until(()=>BrowserWindow.getAllWindows().length,'main window');const main=BrowserWindow.getAllWindows()[0],shell=main.webContents;
+ await app.whenReady();await until(()=>appWindows().length,'main window');const main=appWindows()[0],shell=main.webContents;
  await until(()=>evaluate(shell,'!!document.querySelector(".native-workspace")'),'workspace');
  const browser=sidebarForTest(),manager=tabsForTest();
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(a)+')');await until(()=>manager.tabs.size===1,'session A tab');const tabA=[...manager.tabs.values()][0];
@@ -43,7 +45,7 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  // Switch from the sidebar's own button while the main window has focus.
  main.focus();shell.focus();await evaluate(shell,'document.querySelector(".browser-sidebar .browser-mode-toggle").click()');
  await until(()=>paneA.window&&paneA.window.isVisible(),'separate window shown for Session A');const winA=paneA.window;
- assert.equal(BrowserWindow.getAllWindows().length,2);assert.equal(winA.isFocused(),false,'separate window does not take focus');
+ assert.equal(appWindows().length,2);assert.equal(winA.isFocused(),false,'separate window does not take focus');
  assert.ok(winA.contentView.children.includes(paneA.view)&&!main.contentView.children.includes(paneA.view),'page moved to the separate window');
  assert.equal(webA.id,webAId);assert.equal(loads.length,loadsBefore,'no reload');
  assert.equal(await evaluate(webA,'document.documentElement.dataset.kept+":"+document.querySelector("#field").value'),'yes:typed','live page state kept');
@@ -63,7 +65,7 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(b)+')');await until(()=>manager.tabs.size===2&&manager.tabs.get(manager.activeTabId)?.threadId===b,'session B tab');const tabB=manager.tabs.get(manager.activeTabId);
  await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/b')+')');await until(()=>browser.panes.get(tabB.id)?.window?.isVisible(),'separate window for Session B');
  const paneB=browser.panes.get(tabB.id),winB=paneB.window,webB=paneB.view.webContents;
- assert.equal(BrowserWindow.getAllWindows().length,3,'one window per Session');assert.notEqual(winA,winB);
+ assert.equal(appWindows().length,3,'one window per Session');assert.notEqual(winA,winB);
  assert.equal(winA.isFocused()||winB.isFocused(),false,'no browser window took focus');
  await until(()=>webB.getURL()===base+'/b','session B page');assert.equal(webA.getURL(),base+'/second','session A page unchanged');
  assert.notDeepEqual(winA.getBounds(),winB.getBounds(),'second window cascades');
@@ -76,7 +78,7 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  webB.focus();webB.sendInputEvent({type:'keyDown',keyCode:'W',modifiers:['control']});webB.sendInputEvent({type:'keyUp',keyCode:'W',modifiers:['control']});
  await until(()=>webB.isDestroyed()&&!browser.panes.has(tabB.id)&&winB.isDestroyed(),'Ctrl+W closes only Session B browser window');assert.equal(manager.tabs.has(tabB.id),true,'Session B tab stays open');
  // Closing a window closes that Session's browser; the conversation stays.
- winA.close();await until(()=>webA.isDestroyed()&&!browser.panes.has(tabA.id),'closing window A closes its browser');assert.equal(manager.tabs.has(tabA.id),true);assert.equal(BrowserWindow.getAllWindows().length,1);
+ winA.close();await until(()=>webA.isDestroyed()&&!browser.panes.has(tabA.id),'closing window A closes its browser');assert.equal(manager.tabs.has(tabA.id),true);assert.equal(appWindows().length,1);
  // Reopen: window mode and placement are remembered.
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tabA.id)+')');
  const remembered=prefs().bounds;assert.ok(remembered&&remembered.width>=420,'window placement saved');
@@ -92,7 +94,7 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  assert.equal(web2.id,web2Id);assert.equal(loads.length,before2,'no reload');assert.equal(await evaluate(web2,'document.documentElement.dataset.kept'),'again');
  await until(()=>evaluate(shell,'!!document.querySelector(".browser-sidebar")'),'sidebar back in main window');
  await until(()=>pane2.view.getVisible()&&pane2.view.getBounds().x+pane2.view.getBounds().width===main.getContentSize()[0],'page placed in the sidebar');
- assert.equal(prefs().mode,'sidebar');assert.equal(BrowserWindow.getAllWindows().length,1);
+ assert.equal(prefs().mode,'sidebar');assert.equal(appWindows().length,1);
  console.log('BROWSER_WINDOW_OK');server.close();app.exit(0);
 })().catch(error=>{console.error(error.stack);server.close();app.exit(1)});
 `);

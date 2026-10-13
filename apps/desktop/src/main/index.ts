@@ -15,6 +15,7 @@ import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
 import { contextMenuItems, menuPosition } from './context-menu';
 import { DesktopSettingsWindow } from './settings-window';
+import { SessionCardWindow, sessionCardRequest } from './session-card-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
@@ -48,6 +49,8 @@ const secureSettings = (contents: Electron.WebContents): void => {
   contents.on('will-redirect', event => event.preventDefault());
 };
 const settingsWindow = new DesktopSettingsWindow(__dirname, () => service.snapshot(), secureSettings);
+// Sidebar Session card: a native popup right of the sidebar. It has no IPC of its own.
+const sessionCard = new SessionCardWindow(() => mainWindow, __dirname, secureSettings);
 
 const service = new DesktopConnections((snapshot) => {
   settingsWindow.publish();
@@ -185,6 +188,10 @@ const registerDesktopApi = (): void => {
       if (manager !== tabs || !manager.tabs.has(tabId)) return;
       try { manager.menuAction(tabId, item.action); } catch { /* A busy tab stays open. */ }
     } }))).popup({ window: mainWindow, ...position });
+  });
+  handle('desktop:session-card', async (event, value: unknown) => {
+    shellSender(event); const card = sessionCardRequest(value);
+    if (card) await sessionCard.show(card); else sessionCard.hide();
   });
   // Main-window menus (sidebar Session rows). The renderer builds the items; only the chosen id comes back.
   handle('desktop:context-menu', (event, items: unknown, x: unknown, y: unknown) => {
@@ -409,12 +416,14 @@ const createMainWindow = (): BrowserWindow => {
     if (!isSameDocumentNavigation(window.webContents.getURL(), url)) event.preventDefault();
   });
   window.webContents.on("will-redirect", (event) => event.preventDefault());
-  window.once("ready-to-show", () => window.show());
-  window.on('close', () => { tabs?.dispose(); });
+  window.once("ready-to-show", () => { window.show(); sessionCard.prepare(); });
+  // The card belongs to a row at a fixed place; any window change closes it.
+  for (const name of ['blur', 'move', 'resize', 'minimize', 'hide', 'enter-full-screen', 'leave-full-screen'] as const) window.on(name as 'blur', () => sessionCard.hide());
+  window.on('close', () => { sessionCard.dispose(); tabs?.dispose(); });
   window.on("closed", () => {
     if (mainWindow !== window) return;
     mainWindow = null;
-    settingsWindow.close();
+    settingsWindow.close(); sessionCard.dispose();
     tabs?.dispose(); tabs = undefined; browser = undefined;
     publishedSnapshot = undefined;
     service.closeSessionPages();

@@ -16,7 +16,9 @@ test('Electron: production right browser previews attachments and generated page
     await writeFile(join(folder,'dist/main/index.cjs'),bundle.outputFiles[0].text);
     await writeFile(join(folder,'local.html'),'<h1 id="local">Local draft preview</h1>');
     await writeFile(join(folder,'harness.cjs'),String.raw`
-const {app,BrowserWindow,session,nativeImage}=require('electron');const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const {app,BrowserWindow,session,nativeImage}=require('electron');
+// The sidebar Session card is a hidden, non-focusable helper window; count only the user's windows.
+const appWindows=()=>BrowserWindow.getAllWindows().filter(w=>w.isFocusable());const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.setPath('downloads',path.join(__dirname,'downloads'));app.commandLine.appendSwitch('disable-gpu');
 const {service:accounts,sidebarForTest,tabsForTest,settingsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary;
@@ -40,7 +42,7 @@ const evaluate=(contents,code)=>contents.executeJavaScript(code,true).catch(erro
 async function until(check,label){console.log('CHECK '+label);const end=Date.now()+12000;while(Date.now()<end){if(await check())return;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label+'; native contents '+JSON.stringify(require('electron').webContents.getAllWebContents().map(c=>({id:c.id,url:c.getURL(),frames:c.mainFrame.framesInSubtree.map(f=>({url:f.url,id:f.routingId}))}))));}
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base='http://127.0.0.1:'+server.address().port;
- await app.whenReady();await until(()=>BrowserWindow.getAllWindows().length,'window');const window=BrowserWindow.getAllWindows()[0],shell=window.webContents;
+ await app.whenReady();await until(()=>appWindows().length,'window');const window=appWindows()[0],shell=window.webContents;
  await until(()=>evaluate(shell,'!!document.querySelector(".native-workspace")'),'workspace');
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(a)+')');const manager=tabsForTest(),tab=[...manager.tabs.values()][0],chat=tab.view.webContents,browser=sidebarForTest();
  await until(()=>evaluate(chat,'document.querySelectorAll(".attachment-row").length===4'),'attachment cards');
@@ -127,22 +129,22 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await evaluate(shell,'window.hermesDesktop.openBrowser('+JSON.stringify(base+'/second')+')');await evaluate(shell,'window.hermesDesktop.browserAction("back")');await until(()=>web.getURL()===base+'/first','back navigation');await evaluate(shell,'window.hermesDesktop.browserAction("forward")');await until(()=>web.getURL()===base+'/second','forward navigation');
  await evaluate(shell,'window.hermesDesktop.browserAction("reload")');await until(()=>requests.filter(r=>r.url==='/second').length>=2,'reload');
  assert.equal(await evaluate(chat,'(m=>!!m&&getComputedStyle(m).position==="absolute")(document.querySelector(".message-markdown .katex-mathml"))'),true,'reply formulas use KaTeX CSS');
- await evaluate(chat,'document.querySelector(".message-markdown a").click()');await until(()=>web.getURL()===base+'/linked','message link opens in same sidebar');assert.equal(BrowserWindow.getAllWindows().length,1);
- await evaluate(web,'window.open('+JSON.stringify(base+'/popup')+',"_blank")');await until(()=>web.getURL()===base+'/popup','popup stays in sidebar');assert.equal(BrowserWindow.getAllWindows().length,1);
+ await evaluate(chat,'document.querySelector(".message-markdown a").click()');await until(()=>web.getURL()===base+'/linked','message link opens in same sidebar');assert.equal(appWindows().length,1);
+ await evaluate(web,'window.open('+JSON.stringify(base+'/popup')+',"_blank")');await until(()=>web.getURL()===base+'/popup','popup stays in sidebar');assert.equal(appWindows().length,1);
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(b)+')');await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');web.focus();web.sendInputEvent({type:'keyDown',keyCode:'Tab',modifiers:['control']});web.sendInputEvent({type:'keyUp',keyCode:'Tab',modifiers:['control']});await until(()=>!pane.view.getVisible(),'focused browser retains app tab shortcut');assert.equal(web.isDestroyed(),false);
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');await until(()=>pane.view.getVisible(),'browser retained with tab');assert.equal(web.getURL(),base+'/popup');
  const retainedChat=chat.id,retainedBrowser=web.id;
  await evaluate(chat,'(()=>{const e=document.querySelector("[aria-label=Message]");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(e,"Retained settings draft");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
  await evaluate(chat,'document.querySelector(".message-list").dataset.settingsRetained="yes"');
  await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');
- await until(()=>settingsForTest().isOpen&&BrowserWindow.getAllWindows().length===2,'Settings opens as a separate native window');
+ await until(()=>settingsForTest().isOpen&&appWindows().length===2,'Settings opens as a separate native window');
  const settings=settingsForTest().contents;
  await until(()=>evaluate(settings,'!!document.querySelector(".settings-window [role=tablist]")'),'Settings window renders two-column page');
  assert.equal(await evaluate(settings,'!!document.querySelector(".native-workspace,.message-list")'),false,'Settings window has no conversation content');
  assert.equal(pane.view.getVisible()&&tab.view.getVisible(),true,'Session and preview stay visible while Settings is open');
  assert.equal(manager.snapshot(chat).tabActive,true,'Session stays active and usable');
  await evaluate(shell,'document.querySelector("[aria-label=Settings]").click()');await new Promise(r=>setTimeout(r,200));
- assert.equal(BrowserWindow.getAllWindows().length,2,'second click focuses the single Settings window');
+ assert.equal(appWindows().length,2,'second click focuses the single Settings window');
  await assert.rejects(evaluate(settings,'window.hermesDesktop.newTab()'),/Settings action unavailable/);
  await assert.rejects(evaluate(settings,'window.hermesDesktop.sendMessage({text:"x",attachmentIds:[]})'),/Settings action unavailable/);
  const count=manager.tabs.size;settings.sendInputEvent({type:'keyDown',keyCode:'w',modifiers:['control']});settings.sendInputEvent({type:'keyUp',keyCode:'w',modifiers:['control']});
@@ -151,7 +153,7 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  await until(()=>settingsForTest().isOpen,'Ctrl+, opens Settings');
  const reopened=settingsForTest().contents;await until(()=>evaluate(reopened,'!!document.querySelector(".settings-window")'),'reopened Settings renders');
  reopened.sendInputEvent({type:'keyDown',keyCode:'Escape'});reopened.sendInputEvent({type:'keyUp',keyCode:'Escape'});
- await until(()=>!settingsForTest().isOpen&&BrowserWindow.getAllWindows().length===1,'Escape closes only Settings');
+ await until(()=>!settingsForTest().isOpen&&appWindows().length===1,'Escape closes only Settings');
  assert.equal(pane.view.getVisible()&&tab.view.getVisible(),true);assert.equal(chat.id,retainedChat);assert.equal(web.id,retainedBrowser);
  // Ctrl+Shift+L from the sidebar or the browser pane reaches only the active Session page; plain Ctrl+L does not.
  await evaluate(chat,'window.todoHits=0;window.hermesDesktop.onToggleTodo(()=>window.todoHits++);void 0');
