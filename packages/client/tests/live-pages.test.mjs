@@ -9,9 +9,10 @@ const until=async predicate=>{const end=Date.now()+3000;while(!predicate()){asse
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 function fixture(multi=true){
   const sockets=[], paths=[], gates=new Map(), statusGates=new Map(), rows={A:[{id:'a1',ref_seq:1,role:'assistant',text:'A'}],B:[{id:'b2',ref_seq:2,role:'assistant',text:'B'}]};
-  let available=['A','B'];
+  let available=['A','B'], holdWatch=false;
   const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>{},
-    http:{async request(method,path,_token,body,signal){
+    http:{async download(path){paths.push(['GET',path]);return {status:200,body:new TextEncoder().encode('image bytes')};},
+    async request(method,path,_token,body,signal){
       paths.push([method,path]);
       if(path==='/v1/capabilities')return {status:200,body:{protocol:1,history_latest:true,history_full:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
       if(method==='POST'&&path==='/v1/channels/p/threads'){available=[...available,body.client_thread_id];return {status:201,body:{thread:{id:body.client_thread_id,project_id:'p',title:body.title,archived:false}}};}
@@ -30,12 +31,12 @@ function fixture(multi=true){
       throw new Error('unexpected '+path);
     }},
     socket:{async connect(){let listener,closeListener,closed=false;const pending=[], watches=new Map();
-      const socket={sent:[],watches,get closed(){return closed},emit(frame){const data=typeof frame==='string'?frame:JSON.stringify(frame);if(listener)listener(data);else pending.push(data)},onMessage(fn){listener=fn;pending.splice(0).forEach(fn)},onClose(fn){closeListener=fn},send(data){this.sent.push(data);if(data==='ping'){queueMicrotask(()=>this.emit('pong'));return;}const command=JSON.parse(data);if(command.mode==='remove'){if(watches.get(command.thread_id)===command.request_id)watches.delete(command.thread_id);return;}if(!command.mode)watches.clear();if(command.thread_id)watches.set(command.thread_id,command.request_id);queueMicrotask(()=>this.emit({...command,type:'watching'}))},close(){if(!closed){closed=true;closeListener?.()}}};
+      const socket={sent:[],watches,get closed(){return closed},emit(frame){const data=typeof frame==='string'?frame:JSON.stringify(frame);if(listener)listener(data);else pending.push(data)},onMessage(fn){listener=fn;pending.splice(0).forEach(fn)},onClose(fn){closeListener=fn},send(data){this.sent.push(data);if(data==='ping'){queueMicrotask(()=>this.emit('pong'));return;}const command=JSON.parse(data);if(command.mode==='remove'){if(watches.get(command.thread_id)===command.request_id)watches.delete(command.thread_id);return;}if(!command.mode)watches.clear();if(command.thread_id)watches.set(command.thread_id,command.request_id);if(!holdWatch)queueMicrotask(()=>this.emit({...command,type:'watching'}))},close(){if(!closed){closed=true;closeListener?.()}}};
       sockets.push(socket);queueMicrotask(()=>socket.emit({type:'hello',protocol:1,open_session_live:true,multi_session_live:multi}));return socket;
     }}});
   const watch=id=>sockets.find(s=>!s.closed&&s.watches.has(id));
   const hint=id=>{const socket=watch(id);socket.emit({thread_id:id,request_id:socket.watches.get(id),type:'conversation_changed'});};
-  return {sdk,sockets,paths,rows,gates,statusGates,watch,hint,remove:id=>{available=available.filter(value=>value!==id);for(const s of sockets.filter(s=>!s.closed))s.emit({type:'directory_changed'});}};
+  return {sdk,sockets,paths,rows,gates,statusGates,watch,hint,holdWatch:value=>{holdWatch=value;},remove:id=>{available=available.filter(value=>value!==id);for(const s of sockets.filter(s=>!s.closed))s.emit({type:'directory_changed'});}};
 }
 
 test('A and B live simultaneously; covered A updates, B release keeps A exact objects and boundaries',async()=>{
@@ -135,5 +136,21 @@ test('a Thread this client just created shows at once; the watch and history rea
     const again=f.sdk.acquirePage('th_fresh');const gate=deferred();f.gates.set('th_fresh',gate);let later=0;
     const reopening=again.openConversation('th_fresh',undefined,undefined,()=>later++);
     await tick();assert.equal(later,0);gate.resolve();await reopening;assert.equal(later,1);
+  }finally{f.sdk.close();}
+});
+
+test('attachment bytes download while a reconnect waits for the watch ack; ownership still applies',async()=>{
+  const f=fixture();try{
+    await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
+    const a=f.sdk.acquirePage('A');await a.openConversation('A');
+    f.holdWatch(true);f.sockets[0].close();
+    await until(()=>f.sockets.length===2&&f.sockets[1].watches.has('A'));
+    // The page keeps its content, and history reads still wait for the watch ack.
+    assert.equal(a.messages.get('A')[0].text,'A');
+    await assert.rejects(a.history('A'),/Conversation is not open/);
+    assert.equal(new TextDecoder().decode(await a.download('A','att1')),'image bytes');
+    await assert.rejects(a.download('B','att2'),/Conversation is not open/);
+    f.sdk.releasePage('A',a);
+    await assert.rejects(a.download('A','att1'),/Conversation is not open/);
   }finally{f.sdk.close();}
 });

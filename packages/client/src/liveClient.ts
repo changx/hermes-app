@@ -456,8 +456,10 @@ export class LiveSessionClient extends HermesClient {
   override async search(id:string,text:string,after?:string,limit=20,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.search(id,text,after,limit,s.signal)}finally{s.done()}}
   override async getInteraction(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getInteraction(id,key,s.signal)}finally{s.done()}}
   override async answerInteraction(item:Interaction,choice:string){if(item.thread_id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.answerInteraction(item,choice)}
-  override async getAttachment(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getAttachment(id,key,s.signal)}finally{s.done()}}
-  override async download(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.download(id,key,s.signal)}finally{s.done()}}
+  // Attachment bytes are immutable per id, so no change hint can be missed: page ownership and
+  // release-abort scope suffice. Waiting for the watch ack here made images fail during reconnects.
+  override async getAttachment(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getAttachment(id,key,s.signal)}finally{s.done()}}
+  override async download(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.download(id,key,s.signal)}finally{s.done()}}
   override async upload(id:string,name:string,bytes:Uint8Array,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.upload(id,name,bytes,s.signal)}finally{s.done();this.prune()}}
 
   private async runLive(controller:AbortController):Promise<void>{
