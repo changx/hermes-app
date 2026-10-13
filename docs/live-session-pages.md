@@ -103,3 +103,19 @@ Jamie 已授权合并并发布。候选保留 main `44be4be` 的频道工具栏�
 现有手机测试入口 `exps://agent.tuly.space` 已更新，只重启 Expo。公网 iOS/Android manifest 与各自 exact launchAsset 均返回 200、runtime 57；正文缓存、公共脚本、共享监听及既有草稿/页面代码均在所服务 bundle 中。初次无 Expo User-Agent 的 Python 请求返回 403，改用 Expo/57 后读取成功。
 
 发布前后开发与 Jamie Gateway PID/start 状态、插件文件哈希及手机 lockfile 均未变化。未操作签名账户、安装插件、重启 Gateway 或改写聊天数据。运行源码回滚基线 `0de8ffa` 保留于 `rollback/render-reuse-before-0.1.21`；正常回滚使用明确的 Git revert，不能重置聊天数据库。发布与资源验证不代替 iPhone/macOS 真机性能验收。
+
+## 附件下载不等待 watch 确认
+
+页面的历史、搜索和审批读取仍先等待 watch 确认，以免订阅交接期间漏掉变更提示。附件字节按 ID 不可变，不存在漏掉变更的问题，所以 `LiveSessionClient.download` 和 `getAttachment` 只检查页面所有权（`id === wanted`）并使用释放时中止的取消范围，不再检查 `watchReady`。
+
+此前这两个方法也要求 `watchReady`（`dd19443` 引入，无记录理由）。每次重连、回前台或切换会话时，`watchReady` 暂为 false，页面仍显示已有内容；此时进入视口的图片下载立即失败，图片组件不自动重试，用户看到 retry 提示。
+
+共享客户端测试 `live-pages.test.mjs` 覆盖：重连后 watch 未确认时，历史读取被拒绝，下载成功；其他页面和已释放页面的下载仍被拒绝。旧代码在该测试中报 `Conversation is not open`。
+
+### v0.1.77 发布（2026-10-13）
+
+Jamie 授权合并发布。修复提交 `82deb76`，发布提交与标签 `v0.1.77` 为 `87481ca`，已推送 main。候选验证：共享客户端 78/78；桌面 0 失败（148 通过，其余跳过）；手机 tsc 零诊断、测试 191 通过 0 失败 1 跳过、iOS/Android 导出成功。
+
+桌面发布 CI `38380513766` 成功。下载的 `Hermes-0.1.77-macOS-arm64.zip` SHA-256 `d763e9e61613f5fd50eab71227412537f335ea9a201222fc9a609ed17412052f` 校验通过，Info.plist 版本 0.1.77，ASAR `dist/main/index.cjs` 中 `LiveSessionClient.download` 只检查 `id !== this.wanted`。
+
+手机测试入口只重启 Expo（PID 2761470 → 3795516）。公网 iOS/Android manifest 与 launchAsset 均为 200、SDK 57.0.0；bundle 中 `watchReady` 出现次数由 20 降为 18。Gateway PID 3564617 与插件哈希不变，未改插件或核心。回滚基线 `rollback/attachment-watch-gate-before-release`（`7b191eb`）。iPhone 与 Mac 真机验收未做。
