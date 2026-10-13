@@ -145,3 +145,5 @@ Verification:
 - `sidebar-session-card.test.mjs` (Chromium, real pointer and keyboard) now checks the request sent to main: delay, full title, row position, sidebar edge, text size, states, labels; warm switch; close on leave, click, scroll and Escape.
 - `browser-window-native` and `browser-sidebar-native` count only focusable windows, so the hidden card window does not change their one-window-per-Session and single-Settings checks.
 - Not done: macOS look (native rounded corners and shadow) and pointer feel on Jamie's Mac, merge, release.
+
+Release (2026-10-12): merged as `feat/sidebar-card-popup`; desktop v0.1.75 (`dccec33`), workflow run `38356125548` on `macmini-m4`. Mac mini checks: 195 tests, 148 passed, 0 failed, 47 skipped (browser tests need env vars); npm audit 0. `Hermes-0.1.75-macOS-arm64.zip` downloaded: `sha256sum -c` OK, Info.plist 0.1.75, the ASAR has `renderer/session-card.{html,css,js}` and the `desktop:session-card` channel in main and preload. No plugin, Gateway or mobile change. Open: look and pointer feel on Jamie's Mac.
