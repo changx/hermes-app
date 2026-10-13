@@ -42,6 +42,8 @@ Requested by Jamie: every Session row opens the Session menu on a long press, wh
 
 Verification: `tests/session-menu.test.mjs` (item order, label support, busy wait, archive confirm, every row list uses the shared menu), `tests/recents-search.test.mjs` (Recents rows on each connection), `tests/channel-archive.test.mjs` (Channel list). iPhone acceptance is pending.
 
+Development release: `cd8007d` (merge of `fix/recents-long-press`) was released to `exps://agent.tuly.space`, lockfile unchanged. Only `hermes-app-expo.service` was restarted (PID 2680628 → 2761470). The `hermes-gateway.service` PID 2694627 and the plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each launchAsset returns HTTP 200 and contains the new hint and archive text. Evidence: private `workspace/hermes-app/20261012-recents-long-press/`. Rollback baseline: `576327a`. iPhone acceptance is pending.
+
 ## Not included
 
 - Home and Channel headers keep their Settings gear.
