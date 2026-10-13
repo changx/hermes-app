@@ -63,6 +63,13 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     const evidence = {};
 
     assert.equal(await evaluate(`document.querySelectorAll('.tree-thread[data-thread-id][title]').length`), 0, 'no native title tooltip on Session rows');
+    // Row order: title, draft, Running, connection name; each item fully right of the one before.
+    const order = await evaluate(`(()=>{const r=document.querySelector('${'#sidebar-recents-list [data-thread-id="long"]'}');return ['.thread-title','.thread-draft','.thread-status','.thread-connection-name'].map(s=>{const b=r.querySelector(s).getBoundingClientRect();return {s,left:b.left,right:b.right,top:b.top,bottom:b.bottom}})})()`);
+    for (let i = 1; i < order.length; i++) {
+      assert.ok(order[i].left >= order[i - 1].right - 0.5, `row order: ${JSON.stringify(order)}`);
+      assert.ok(order[i].top < order[0].bottom && order[i].bottom > order[0].top, `same line: ${JSON.stringify(order)}`);
+    }
+    assert.ok(order[2].right - order[2].left > 40, 'Running is not squeezed');
     const truncated = await evaluate(`(()=>{const t=document.querySelector('${row('long')} .thread-title');return t.scrollWidth>t.clientWidth})()`);
     assert.ok(truncated, 'the row truncates the long title');
 

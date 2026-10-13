@@ -147,3 +147,13 @@ Verification:
 - Not done: macOS look (native rounded corners and shadow) and pointer feel on Jamie's Mac, merge, release.
 
 Release (2026-10-12): merged as `feat/sidebar-card-popup`; desktop v0.1.75 (`dccec33`), workflow run `38356125548` on `macmini-m4`. Mac mini checks: 195 tests, 148 passed, 0 failed, 47 skipped (browser tests need env vars); npm audit 0. `Hermes-0.1.75-macOS-arm64.zip` downloaded: `sha256sum -c` OK, Info.plist 0.1.75, the ASAR has `renderer/session-card.{html,css,js}` and the `desktop:session-card` channel in main and preload. No plugin, Gateway or mobile change. Open: look and pointer feel on Jamie's Mac.
+
+## Session row order
+
+Branch: `feat/sidebar-row-order`; base `origin/main`.
+
+Request (Jamie, 2026-10-12): sidebar Session rows show title, draft, Running, connection, in that order. Before, the connection name came right after the title.
+
+- New order on one line: title, `draft`, `Running`, connection name (Recents, Todo and search with several connections), then the unread dot and the todo flag, which the request did not name and which stay at the end.
+- The title shrinks first. `Running` no longer shrinks (`flex-shrink: 0`, like `draft`); the connection name still truncates at 45% of the row.
+- Verification: `desktop:check` with Chrome and Electron, 195 passed, 0 skipped. `sidebar-session-card.test.mjs` checks the four items left to right on one line in a real Chromium layout, with `Running` not squeezed. Not done: look on Jamie's Mac, merge, release.
