@@ -151,20 +151,35 @@ const registerDesktopApi = (): void => {
     if (!['stop', 'resume', 'done'].includes(action as string)) throw new Error('Invalid browser action');
     browser?.control(tab.id, action as 'stop' | 'resume' | 'done');
   });
-  handle('desktop:preview-attachment', async (event, id: unknown) => {
+  handle('desktop:preview-attachment', async (event, id: unknown, sequence: unknown) => {
     const tab = browserTab(event), thread = target(event), key = tab.connectionKey;
-    const attachmentId = text(id, 200), request = browser?.startPreview(tab.id);
-    let file;
-    try { file = await service.attachmentPreview(attachmentId, thread); } catch (error) { request?.failed(); throw error; }
+    const attachmentId = text(id, 200);
+    if (sequence !== undefined && (!Array.isArray(sequence) || sequence.length > 500)) throw new Error('Invalid desktop request');
+    const ids = sequence === undefined ? [] : sequence.map(value => text(value, 200));
     const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && tab.connectionKey === key && service.hasConnection(key);
-    if (!current() || !request?.current()) return;
-    const assets = service.previewResources(thread);
-    return browser?.document(tab.id, file, async name => {
+    const sibling = (assets: Array<{ id: string; name: string }>) => async (name: string) => {
       const matches = assets.filter(item => item.name === name);
       if (!current() || matches.length !== 1) return undefined;
       const resource = await service.attachmentPreview(matches[0].id, thread);
       return current() ? resource : undefined;
-    });
+    };
+    // Several attachments: a gallery of all of them, opened at the chosen one.
+    const items = ids.length > 1 ? service.previewItems(thread, ids) : [];
+    const start = items.findIndex(item => item.id === attachmentId);
+    if (items.length > 1 && start >= 0) {
+      const request = browser?.startPreview(tab.id);
+      if (!request?.current()) return;
+      return browser?.gallery(tab.id, items, start, async index => {
+        if (!current()) return undefined;
+        const file = await service.attachmentPreview(items[index].id, thread);
+        return current() ? file : undefined;
+      }, sibling(service.previewResources(thread)));
+    }
+    const request = browser?.startPreview(tab.id);
+    let file;
+    try { file = await service.attachmentPreview(attachmentId, thread); } catch (error) { request?.failed(); throw error; }
+    if (!current() || !request?.current()) return;
+    return browser?.document(tab.id, file, sibling(service.previewResources(thread)));
   });
   handle('desktop:preview-local-file', async (event, input: unknown) => {
     const tab = browserTab(event);

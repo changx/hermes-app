@@ -1,4 +1,4 @@
-import { AttachmentView } from "./attachment-view";
+import { AttachmentSequence, AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
 import { SettingsButton } from './settings';
 import { TooltipLayer } from './tooltip';
@@ -197,7 +197,11 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     if (atBottom) setNewCount(0);
   };
   const latest = () => { followingRef.current = true; const node = list.current; if (node) node.scrollTop = node.scrollHeight; setFollowing(true); setNewCount(0); };
-  return <div className="timeline-wrap">
+  // Preview moves between all attachments of the open Session; read at click time so rows stay memoized.
+  const messagesRef = useRef(snapshot.messages);
+  messagesRef.current = snapshot.messages;
+  const attachmentSequence = useCallback(() => messagesRef.current.flatMap(message => message.attachments.filter(item => item.state === "available").map(item => item.id)), []);
+  return <AttachmentSequence.Provider value={attachmentSequence}><div className="timeline-wrap">
     <div className="message-list" aria-live="polite" ref={list} onScroll={scroll}>
       <div className="timeline-content" ref={contents}>
       {snapshot.canLoadOlder || snapshot.loadingHistory ? <div className="history-loading-slot">
@@ -219,7 +223,7 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
       </div>
     </div>
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
-  </div>;
+  </div></AttachmentSequence.Provider>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage
   && before.snapshot.interactions.length === after.snapshot.interactions.length && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
 

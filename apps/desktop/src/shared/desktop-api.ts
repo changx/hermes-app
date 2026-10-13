@@ -176,7 +176,8 @@ export interface HermesDesktopApi {
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
-  previewAttachment(attachmentId: string): Promise<void>;
+  /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */
+  previewAttachment(attachmentId: string, sequence?: readonly string[]): Promise<void>;
   previewLocalFile(file: File): Promise<void>;
   browserAction(action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void>;
   /** Stop Hermes, let Hermes continue after a takeover, or tell Hermes the user finished. */

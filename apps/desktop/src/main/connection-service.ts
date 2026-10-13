@@ -1271,6 +1271,17 @@ export class DesktopConnectionService {
     return { name: attachment.name ?? 'Attachment', mime: attachment.mime ?? 'application/octet-stream', bytes };
   }
 
+  /** Attachments of this Session for the preview gallery, in the given (message) order. Skips files that cannot be previewed. */
+  previewItems(threadId: string, ids: readonly string[]): Array<{ id: string; name: string; mime: string }> {
+    const client = this.requireClient(), seen = new Set<string>(), items: Array<{ id: string; name: string; mime: string }> = [];
+    for (const id of ids) {
+      const item = client.attachments.get(id);
+      if (!item || seen.has(id) || item.thread_id !== threadId || item.state !== 'available' || !item.size || item.size > MAX_ATTACHMENT_BYTES) continue;
+      seen.add(id); items.push({ id, name: item.name ?? 'Attachment', mime: item.mime ?? 'application/octet-stream' });
+    }
+    return items;
+  }
+
   previewResources(threadId: string): Array<{ id: string; name: string }> {
     const client = this.requireClient();
     return [...client.attachments.values()].filter(item => item.thread_id === threadId && item.state === 'available'

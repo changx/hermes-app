@@ -34,6 +34,35 @@ The right-side browser previews attachments through the private `hermes-preview:
 - Video (MP4/M4V/MOV/WebM/Ogg) and audio (MP3/M4A/AAC/WAV/FLAC/Ogg/Opus): served with media MIME types and opened in Chromium's media page. The scheme has the `stream` privilege and answers `Range` requests, so seeking works.
 - Images, text, HTML and web links: unchanged.
 
+## Gallery: swipe between attachments (2026-10-13)
+
+Request (Jamie): image and attachment previews on phone and desktop are a continuous sliding view, so the user can switch between files easily.
+
+### Phone
+
+- Tapping a message attachment opens a horizontal gallery. It holds every available attachment of the Thread in timeline order and starts at the tapped file. A swipe moves one file. The header shows the file name and a counter (`3 / 7`).
+- Every file type uses the same `FilePreview` page as before. Only the current page and its neighbours are mounted. Each page copies its file to a private cache file and deletes the copy when the page leaves.
+- A zoomed image keeps the swipe for panning. Zoom out to move to the next file.
+- Video and audio pause when their page is no longer the current page.
+- Downloads: one store per Thread page (`apps/mobile/src/attachmentFiles.ts`) serves message thumbnails and the gallery, so a file downloads once. A page that opens shows a spinner while its file downloads. A failed page says so and retries on tap.
+- Behaviour change: a tap on a non-image file opens the viewer at once with a spinner. Earlier, the viewer opened only after the download finished.
+- Unsent composer images open in the same gallery, in composer order.
+
+### Desktop
+
+- Preview on a message attachment opens the right-side browser with a gallery page (`hermes-preview://<host>/__hermes_gallery__`). It holds every available attachment of the open Session in message order and starts at the chosen file. Files above the 10 MiB preview limit are left out.
+- Move with a two-finger horizontal swipe (scroll snap, one file per swipe), the ← and → keys, or the side buttons. The counter is at the bottom. The browser title shows the current file name.
+- Images, video and audio are shown directly. Other files load the single-file preview (`/__hermes_item__/<index>/<name>`) in a frame, so PDF, Markdown, text and HTML look the same as before. HTML runs in a sandboxed frame without the preview origin.
+- Only the current slide and its neighbours hold content, so a file downloads only when its slide comes near. Downloaded files stay in memory up to 64 MiB for each gallery (least recently used first out). Media pauses when its slide leaves.
+- Gallery page CSP: `default-src 'none'`, a fresh nonce for its own script and style, `img-src`/`media-src`/`frame-src 'self'`, no network access.
+- A Session with one attachment and the new-chat composer still use the single-file preview.
+
+### Verification
+
+- Phone: TypeScript check passes. Mobile tests: 194 pass, 0 fail, 1 skipped (a Chromium article test that needs `HERMES_TEST_CHROME`). New `tests/attachment-gallery.test.mjs` covers the order, duplicates, unavailable files and page index. iOS and Android exports pass.
+- Desktop: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop:check` passes 196/196 with 0 skipped. The new Electron/Xvfb test `tests/attachment-gallery-native.test.mjs` clicks Preview in a Session with 7 files across two messages. It checks the start slide, the title and counter, that only neighbours download, the sandboxed HTML slide, the → key, a trackpad horizontal scroll over a text frame, a rendered PDF slide, Markdown with a sibling image, video and audio metadata, media pause on leave, reload, and resize. The existing sidebar test now opens its single-file previews directly, because Preview in a message with several files opens the gallery.
+- Not yet done: iPhone and Mac checks on the real devices.
+
 ## Not included
 
 - PDF and Office rendering on Android.

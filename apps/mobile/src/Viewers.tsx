@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
@@ -67,6 +67,9 @@ export function useViewer(): Viewers {
 function ViewerBody({ id }: { id: string | null }) {
   const { entries, release } = useViewer();
   const entry = id ? entries.get(id) : undefined;
+  // Content such as a gallery can rename the page; `Stack.Screen` reapplies this title on focus changes.
+  const [title, setTitle] = useState(entry?.title || 'View');
+  const options = useMemo(() => ({ title }), [title]);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -76,9 +79,18 @@ function ViewerBody({ id }: { id: string | null }) {
     };
   }, [id, release]);
   return <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-    <Stack.Screen options={{ title: entry?.title || 'View' }} />
-    {entry?.content ?? <Text style={{ padding: 20 }}>This view is no longer available. Open it again from the conversation.</Text>}
+    <Stack.Screen options={options} />
+    <ViewerTitle.Provider value={setTitle}>
+      {entry?.content ?? <Text style={{ padding: 20 }}>This view is no longer available. Open it again from the conversation.</Text>}
+    </ViewerTitle.Provider>
   </SafeAreaView>;
+}
+
+const ViewerTitle = createContext<((title: string) => void) | null>(null);
+/** Sets the title of the viewer page that shows this content. */
+export function useViewerTitle(title: string) {
+  const setTitle = useContext(ViewerTitle);
+  useEffect(() => { setTitle?.(title); }, [setTitle, title]);
 }
 
 export function ViewerScreen() {

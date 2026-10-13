@@ -157,6 +157,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     './sendNotice': sendNotice,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
+    './attachmentFiles': { AttachmentFiles: class { dispose() {} } },
     './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
     './AgentSettings': { useAgentName: () => name },
     './settingsRoutes': { connectionSettingsRoute: connection => ({ pathname: '/settings/connection', params: { connection } }) },

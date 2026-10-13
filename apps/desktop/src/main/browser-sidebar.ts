@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DesktopBrowserMode, DesktopBrowserState, DesktopSnapshot } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
-import { browserUrl, chromeUserAgent, pdfExtension, pdfViewerResource, PREVIEW_ASSET_PATH, previewAssetType, previewResponse, type PreviewDocument } from '../shared/browser-policy';
+import { browserUrl, chromeUserAgent, GALLERY_PATH, galleryItemPath, galleryPage, pdfExtension, pdfViewerResource, PREVIEW_ASSET_PATH, previewAssetType, previewResponse, unavailableResponse, type GalleryEntry, type PreviewDocument } from '../shared/browser-policy';
 
 // The app's own preview files (Markdown renderer, KaTeX, styles) next to the main bundle.
 const previewAssets = join(__dirname, '..', 'renderer');
@@ -17,7 +17,28 @@ function previewAsset(path: string): Response {
 import { BrowserControlError, blockedSubresource, clientHints, CONTROL_TEXT, InputLedger, keyFor, navigable, validUserAgentData, withClientHints, type BrowserAction, type BrowserControlState, type UserAgentData } from '../shared/browser-control';
 
 type Bounds = { x: number; y: number; width: number; height: number; visible: boolean };
-type PreviewState = { host: string; file: PreviewDocument; resolve?: (name: string) => Promise<PreviewDocument | undefined>; resources: Map<string, PreviewDocument>; pending: Map<string, Promise<PreviewDocument | undefined>>; size: number };
+/** Gallery items download when their slide comes near and stay in memory up to this size (least recently used go first). */
+const GALLERY_CACHE_BYTES = 64 * 1024 * 1024;
+type GalleryState = { entries: readonly GalleryEntry[]; start: number; load: (index: number) => Promise<PreviewDocument | undefined>; cache: Map<number, PreviewDocument>; pending: Map<number, Promise<PreviewDocument | undefined>>; bytes: number };
+type PreviewState = { host: string; file?: PreviewDocument; gallery?: GalleryState; resolve?: (name: string) => Promise<PreviewDocument | undefined>; resources: Map<string, PreviewDocument>; pending: Map<string, Promise<PreviewDocument | undefined>>; size: number };
+async function galleryItem(gallery: GalleryState, index: number): Promise<PreviewDocument | undefined> {
+  const hit = gallery.cache.get(index);
+  if (hit) { gallery.cache.delete(index); gallery.cache.set(index, hit); return hit; }
+  let pending = gallery.pending.get(index);
+  if (!pending) {
+    pending = gallery.load(index).catch(() => undefined).finally(() => gallery.pending.delete(index));
+    gallery.pending.set(index, pending);
+  }
+  const file = await pending;
+  if (file && !gallery.cache.has(index)) {
+    gallery.cache.set(index, file); gallery.bytes += file.bytes.byteLength;
+    for (const [key, value] of gallery.cache) {
+      if (gallery.bytes <= GALLERY_CACHE_BYTES) break;
+      if (key !== index) { gallery.cache.delete(key); gallery.bytes -= value.bytes.byteLength; }
+    }
+  }
+  return file;
+}
 type Pane = {
   id: string; view: WebContentsView; state: DesktopBrowserState; document?: PreviewState; generation: number; previewRequest: number; partition: string;
   control?: BrowserControlState; ledger: InputLedger; idle?: NodeJS.Timeout; resume: Set<() => void>; handoff?: () => void; action?: AbortController;
@@ -292,9 +313,24 @@ export class DesktopBrowserSidebar {
         const pane = [...state.panes].find(item => item.document?.host === url.host), doc = pane?.document;
         if (!pane || !doc || request.method !== 'GET' || url.username || url.password) return new Response('Preview unavailable', { status: 404 });
         if (url.pathname.startsWith(PREVIEW_ASSET_PATH)) return previewAsset(url.pathname);
-        const name = decodeURIComponent(url.pathname.slice(1));
+        const gallery = doc.gallery;
+        if (gallery && url.pathname === GALLERY_PATH) {
+          const page = galleryPage(gallery.entries, gallery.start);
+          return new Response(page.html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': page.csp } });
+        }
+        const item = gallery ? galleryItemPath(url.pathname) : undefined;
+        if (gallery && !item) return new Response('Not found', { status: 404 });
+        const name = item ? item.name : decodeURIComponent(url.pathname.slice(1));
         if (name.includes('/') || name.includes('\\') || name === '..') return new Response('Not found', { status: 404 });
-        if (name === doc.file.name) return previewResponse(doc.file, false, request.headers.get('range'));
+        if (gallery && item) {
+          const entry = gallery.entries[item.index];
+          if (!entry) return new Response('Not found', { status: 404 });
+          if (name === entry.name) {
+            const file = await galleryItem(gallery, item.index);
+            if (pane.document !== doc) return new Response('Preview unavailable', { status: 404 });
+            try { return file ? previewResponse(file, false, request.headers.get('range')) : unavailableResponse(); } catch { return unavailableResponse(); }
+          }
+        } else if (doc.file && name === doc.file.name) return previewResponse(doc.file, false, request.headers.get('range'));
         let resource = doc.resources.get(name);
         if (!resource && doc.resolve) {
           let pending = doc.pending.get(name);
@@ -385,6 +421,14 @@ export class DesktopBrowserSidebar {
     pane.document = { host: randomUUID(), file, resolve, resources: new Map(), pending: new Map(), size: file.bytes.byteLength };
     this.update(id, { title: file.name, url: '', error: undefined });
     await this.navigate(id, `hermes-preview://${pane.document.host}/${encodeURIComponent(file.name)}`, true);
+  }
+  /** Several attachments side by side; `load` downloads one when its slide comes near. */
+  async gallery(id: string, entries: readonly GalleryEntry[], start: number, load: (index: number) => Promise<PreviewDocument | undefined>, resolve?: (name: string) => Promise<PreviewDocument | undefined>): Promise<void> {
+    if (!entries.length || !entries[start]) throw new Error('Nothing to preview.');
+    const pane = this.create(id);
+    pane.document = { host: randomUUID(), gallery: { entries: [...entries], start, load, cache: new Map(), pending: new Map(), bytes: 0 }, resolve, resources: new Map(), pending: new Map(), size: 0 };
+    this.update(id, { title: entries[start].name, url: '', error: undefined });
+    await this.navigate(id, `hermes-preview://${pane.document.host}${GALLERY_PATH}`, true);
   }
   action(id: string, action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): void {
     const pane = this.panes.get(id); if (!pane) return;

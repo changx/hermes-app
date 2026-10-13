@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Image, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { File } from 'expo-file-system';
@@ -10,12 +10,17 @@ import { MessageContent } from './MessageContent';
 import { openLink } from './openLink';
 import { PREVIEW_MARKDOWN_BYTES, PREVIEW_TEXT_BYTES, type PreviewKind } from './filePreviewKind';
 
-export function ImageViewer({ uri }: { uri: string }) {
-  const { width, height } = useWindowDimensions();
+/** `onZoom` reports when the image is larger than the page, so a gallery can stop paging. */
+export function ImageViewer({ uri, width: pageWidth, onZoom }: { uri: string; width?: number; onZoom?: (zoomed: boolean) => void }) {
+  const window = useWindowDimensions(), width = pageWidth ?? window.width, height = window.height;
   const insets = useSafeAreaInsets();
   const [scale, setScale] = useState(1);
+  const zoomed = useRef(false);
+  const report = (next: boolean) => { if (zoomed.current !== next) { zoomed.current = next; onZoom?.(next); } };
+  useEffect(() => { if (Platform.OS !== 'ios') report(scale > 1); }, [scale]);
   return <View style={styles.dark}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.zoomContent} minimumZoomScale={1} maximumZoomScale={4} centerContent
+      scrollEventThrottle={32} onScroll={Platform.OS === 'ios' ? event => report((event.nativeEvent.zoomScale ?? 1) > 1.01) : undefined}>
       <Image source={{ uri }} resizeMode="contain" style={{ width: width * scale, height: (height - insets.top - insets.bottom - 70) * scale }} />
     </ScrollView>
     {Platform.OS !== 'ios' && <View style={styles.controls}>
@@ -53,11 +58,11 @@ function HtmlPage({ html }: { html: string }) {
     onOpenWindow={event => { if (/^https?:/i.test(event.nativeEvent.targetUrl)) openLink(event.nativeEvent.targetUrl); }} />;
 }
 
-function MediaPlayer({ uri, audio }: { uri: string; audio: boolean }) {
+function MediaPlayer({ uri, audio, active }: { uri: string; audio: boolean; active: boolean }) {
   const player = useVideoPlayer(uri, instance => { instance.loop = false; });
   const focused = useIsFocused();
   const [failed, setFailed] = useState(false);
-  useEffect(() => { if (!focused) player.pause(); }, [focused, player]);
+  useEffect(() => { if (!focused || !active) player.pause(); }, [focused, active, player]);
   useEffect(() => {
     const status = player.addListener('statusChange', ({ status: next }) => { if (next === 'error') setFailed(true); });
     const app = AppState.addEventListener('change', state => { if (state !== 'active') player.pause(); });
@@ -92,14 +97,14 @@ function TextFile({ uri, kind }: { uri: string; kind: 'markdown' | 'text' | 'htm
 }
 
 /** One viewer for every supported type. `uri` is a private local copy whose name keeps the original extension. */
-export function FilePreview({ uri, kind }: { uri: string; kind: PreviewKind }) {
+export function FilePreview({ uri, kind, active = true, width, onZoom }: { uri: string; kind: PreviewKind; active?: boolean; width?: number; onZoom?: (zoomed: boolean) => void }) {
   switch (kind) {
-    case 'image': return <ImageViewer uri={uri} />;
+    case 'image': return <ImageViewer uri={uri} width={width} onZoom={onZoom} />;
     case 'pdf': case 'document':
       return Platform.OS === 'ios' ? <NativeDocument uri={uri} />
         : <Notice text={kind === 'pdf' ? 'PDF preview is not available on this device yet.' : 'This document cannot be previewed on this device yet.'} />;
     case 'markdown': case 'text': case 'html': return <TextFile uri={uri} kind={kind} />;
-    case 'video': case 'audio': return <MediaPlayer uri={uri} audio={kind === 'audio'} />;
+    case 'video': case 'audio': return <MediaPlayer uri={uri} audio={kind === 'audio'} active={active} />;
     default: return <Notice text="This file type cannot be opened in the app yet." />;
   }
 }

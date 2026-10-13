@@ -1,12 +1,16 @@
-import { useRef, useState } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 import type { DesktopAttachment } from '../shared/desktop-api';
 import { ThumbnailFace, useAttachmentImage } from './attachment-thumbnail';
 
+/** The open Session's attachment IDs in message order, read when Preview is clicked. */
+export const AttachmentSequence = createContext<(() => string[]) | null>(null);
+
 export const AttachmentView = ({ attachment }: { attachment: DesktopAttachment }) => {
   const host = useRef<HTMLDivElement>(null);
+  const sequence = useContext(AttachmentSequence);
   const { image, src, failed, fail, retry } = useAttachmentImage(host, attachment);
   const [actionError, setActionError] = useState('');
-  const preview = () => { setActionError(''); void window.hermesDesktop.previewAttachment(attachment.id).catch(() => setActionError('The file could not be previewed. Try Save or Open externally.')); };
+  const preview = () => { setActionError(''); void window.hermesDesktop.previewAttachment(attachment.id, sequence?.()).catch(() => setActionError('The file could not be previewed. Try Save or Open externally.')); };
   const open = () => { setActionError(''); void window.hermesDesktop.downloadAttachment(attachment.id, 'open').catch(() => setActionError('The file could not be opened. Try again.')); };
   const save = () => { setActionError(''); void window.hermesDesktop.downloadAttachment(attachment.id, 'save').catch(() => setActionError('The file could not be saved. Try again.')); };
   const available = attachment.state === 'available';

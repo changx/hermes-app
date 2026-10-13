@@ -22,6 +22,7 @@ import { projectTimeline } from './timeline';
 import { VisibleReceiptHydrator } from './receiptHydration';
 import { RenderResourceProvider } from './RenderResources';
 import { AttachmentComposer, MessageAttachments, releaseComposerDraft } from './Attachments';
+import { AttachmentFiles } from './attachmentFiles';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
@@ -109,8 +110,14 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   }, [composerScope]);
   const draftAttachments = attachmentDraft.scope === composerScope ? attachmentDraft.items : [];
   const attachmentsBusy = attachmentDraft.scope === composerScope && attachmentDraft.busy;
-  const renderAttachments = useCallback((row: TimelineRow) => client && row.attachments?.length
-    ? <MessageAttachments client={client} threadId={threadId} attachments={row.attachments} /> : null, [client, threadId]);
+  // One download store per Thread page: rows and the gallery share files, so each downloads once.
+  const attachmentFiles = useMemo(() => new AttachmentFiles(client, threadId), [client, threadId]);
+  useEffect(() => () => attachmentFiles.dispose(), [attachmentFiles]);
+  // Read at tap time, so the gallery shows every attachment the timeline holds then.
+  const galleryRows = useRef<readonly TimelineRow[]>([]);
+  const gallery = useCallback(() => galleryRows.current.map(row => row.attachments), []);
+  const renderAttachments = useCallback((row: TimelineRow) => row.attachments?.length
+    ? <MessageAttachments files={attachmentFiles} attachments={row.attachments} gallery={gallery} /> : null, [attachmentFiles, gallery]);
   const [located, setLocated] = useState(false);
   const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
@@ -248,6 +255,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const draft = client.drafts.get(threadId);
   const rows = useMemo(() => projectTimeline(visibleMessages, null, threadId, draft, client.supportsSendIdentity, records, client.receipts, interactions, messages),
     [visibleMessages, threadId, draft, client, client.supportsSendIdentity, records, receiptSignature, interactions, messages]);
+  galleryRows.current = rows;
   const result = client?.threads.get(threadId);
   useEffect(() => {
     if (!client || !focused || !foreground || !located || !result?.completed_unread || !result.result_version || !result.result_ref || !visibleRefs.includes(result.result_ref)) return;

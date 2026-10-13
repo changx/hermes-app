@@ -103,3 +103,78 @@ export function previewResponse(document: PreviewDocument, rawAsset = false, ran
   if (!part) return new Response(body as BodyInit, { headers });
   return new Response(body.slice(part.start, part.end + 1) as BodyInit, { status: 206, headers: { ...headers, 'Content-Range': `bytes ${part.start}-${part.end}/${body.byteLength}` } });
 }
+
+/** A Session's attachments side by side: `hermes-preview://<host>/__hermes_gallery__`. */
+export const GALLERY_PATH = '/__hermes_gallery__';
+/** One gallery item: `/__hermes_item__/<index>/<name>`. Its relative links resolve next to it, so
+ * `/__hermes_item__/<index>/<other name>` names a sibling resource (Markdown images, page assets). */
+export const GALLERY_ITEM_PATH = '/__hermes_item__/';
+export type GalleryEntry = { name: string; mime: string };
+export type GallerySlide = 'image' | 'video' | 'audio' | 'html' | 'frame';
+/** Images and media show directly; every other file uses the single-file preview in a frame. */
+export function gallerySlide(name: string, mime: string): GallerySlide {
+  const type = previewMime(name, mime);
+  if (/^image\/(png|jpeg|gif|webp|bmp|avif)$/.test(type)) return 'image';
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('audio/')) return 'audio';
+  return type === 'text/html' ? 'html' : 'frame';
+}
+export function galleryItemUrl(index: number, name: string): string { return `${GALLERY_ITEM_PATH}${index}/${encodeURIComponent(name)}`; }
+/** Splits an item path into its index and the requested name. */
+export function galleryItemPath(pathname: string): { index: number; name: string } | undefined {
+  if (!pathname.startsWith(GALLERY_ITEM_PATH)) return undefined;
+  const match = /^(\d{1,4})\/([^/]+)$/.exec(pathname.slice(GALLERY_ITEM_PATH.length));
+  if (!match) return undefined;
+  try { return { index: Number(match[1]), name: decodeURIComponent(match[2]) }; } catch { return undefined; }
+}
+export const GALLERY_UNAVAILABLE = 'This file could not be previewed. Use Save or Open externally.';
+export function unavailableResponse(): Response {
+  return new Response(`<!doctype html><meta charset="utf-8"><title>Preview unavailable</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:white;color:#4b5563;font:15px/1.5 system-ui;padding:24px;box-sizing:border-box;text-align:center}</style><p>${GALLERY_UNAVAILABLE}</p>`,
+    { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" } });
+}
+/**
+ * The gallery page: one full-size slide per attachment in a horizontal scroll-snap track.
+ * A trackpad swipe, the arrow keys or the side buttons move between slides. Only the current
+ * slide and its neighbours hold content; media pauses when its slide leaves. Only the page's
+ * own script runs (nonce). HTML attachments run in a sandboxed frame without this origin.
+ */
+export function galleryPage(entries: readonly GalleryEntry[], start: number): { html: string; csp: string } {
+  if (!entries.length) throw new Error('Nothing to preview.');
+  const key = nonce(), first = Math.min(Math.max(0, Math.trunc(start) || 0), entries.length - 1);
+  const slides = entries.map((entry, index) => `<section class="slide" data-kind="${gallerySlide(entry.name, entry.mime)}" data-src="${escapeHtml(galleryItemUrl(index, entry.name))}" data-title="${escapeHtml(entry.name)}" role="group" aria-roledescription="slide" aria-label="${escapeHtml(`${entry.name}, ${index + 1} of ${entries.length}`)}"></section>`).join('');
+  const style = 'html,body{margin:0;height:100%;overflow:hidden;background:#111827;color:#e5e7eb;font:13px/1.4 system-ui}'
+    + '#track{display:flex;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;outline:none}'
+    + '#track::-webkit-scrollbar{display:none}'
+    + '.slide{flex:0 0 100%;height:100%;scroll-snap-align:start;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+    + '.slide img{max-width:100%;max-height:100%;object-fit:contain;user-select:none}.slide video{max-width:100%;max-height:100%}.slide audio{width:min(480px,90%)}'
+    + '.slide iframe{width:100%;height:100%;border:0;background:white}.slide p{margin:24px;text-align:center;color:#d1d5db}'
+    + '.nav{position:fixed;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;border-radius:17px;background:rgba(17,24,39,.62);color:white;font:22px/34px system-ui;cursor:pointer;padding:0}'
+    + '.nav:hover{background:rgba(17,24,39,.85)}.nav:disabled{display:none}#prev{left:8px}#next{right:8px}'
+    + '#counter{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);padding:2px 10px;border-radius:10px;background:rgba(17,24,39,.62);color:white;font-variant-numeric:tabular-nums;pointer-events:none}'
+    + (entries.length < 2 ? '.nav,#counter{display:none}' : '');
+  const script = `(()=>{const track=document.getElementById('track'),slides=[...track.children],n=slides.length,prev=document.getElementById('prev'),next=document.getElementById('next'),counter=document.getElementById('counter');`
+    + `const unavailable=${JSON.stringify(GALLERY_UNAVAILABLE)};let index=-1;`
+    + `const fail=s=>{s.replaceChildren();const p=document.createElement('p');p.textContent=unavailable;s.append(p);};`
+    + `const fill=s=>{if(s.firstChild)return;const k=s.dataset.kind,src=s.dataset.src;let e;`
+    + `if(k==='image'){e=document.createElement('img');e.alt=s.dataset.title;e.draggable=false;}`
+    + `else if(k==='video'||k==='audio'){e=document.createElement(k);e.controls=true;e.preload='metadata';}`
+    + `else{e=document.createElement('iframe');e.title=s.dataset.title;if(k==='html')e.setAttribute('sandbox','allow-scripts allow-forms allow-popups');}`
+    + `if(k!=='html'&&k!=='frame')e.addEventListener('error',()=>fail(s),{once:true});e.src=src;s.append(e);};`
+    + `const show=i=>{if(i===index)return;index=i;slides.forEach((s,j)=>{if(Math.abs(j-i)<=1)fill(s);else s.replaceChildren();if(j!==i){s.inert=true;s.querySelectorAll('video,audio').forEach(m=>m.pause());}else s.inert=false;});`
+    + `document.title=slides[i].dataset.title;counter.textContent=(i+1)+' / '+n;prev.disabled=i===0;next.disabled=i===n-1;};`
+    + `const width=()=>track.clientWidth||1,current=()=>Math.min(n-1,Math.max(0,Math.round(track.scrollLeft/width())));`
+    + `const reduce=matchMedia('(prefers-reduced-motion: reduce)');`
+    + `const go=i=>{i=Math.min(n-1,Math.max(0,i));track.scrollTo({left:i*width(),behavior:reduce.matches?'auto':'smooth'});};`
+    + `let timer;track.addEventListener('scroll',()=>{clearTimeout(timer);timer=setTimeout(()=>show(current()),120);},{passive:true});track.addEventListener('scrollend',()=>show(current()));`
+    + `prev.addEventListener('click',()=>go(index-1));next.addEventListener('click',()=>go(index+1));`
+    + `addEventListener('keydown',e=>{const t=e.target;if(e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey||t instanceof HTMLMediaElement||t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;`
+    + `if(e.key==='ArrowLeft'){e.preventDefault();go(index-1);}else if(e.key==='ArrowRight'){e.preventDefault();go(index+1);}});`
+    + `new ResizeObserver(()=>{track.scrollLeft=index*width();}).observe(track);`
+    + `index=-1;show(${first});track.scrollLeft=${first}*width();track.focus({preventScroll:true});})();`;
+  const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(entries[first].name)}</title>`
+    + `<style nonce="${key}">${style}</style><div id="track" tabindex="-1" role="region" aria-roledescription="carousel" aria-label="Attachments">${slides}</div>`
+    + `<button type="button" class="nav" id="prev" aria-label="Previous attachment">‹</button><button type="button" class="nav" id="next" aria-label="Next attachment">›</button><div id="counter" aria-live="polite"></div>`
+    + `<script nonce="${key}">${script}</script>`;
+  const csp = `default-src 'none'; script-src 'nonce-${key}'; style-src 'nonce-${key}'; img-src 'self'; media-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  return { html, csp };
+}

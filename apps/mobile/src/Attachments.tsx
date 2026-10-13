@@ -4,38 +4,24 @@ import { Text } from './FontSize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
-import { File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { toByteArray } from 'base64-js';
 import { useIsFocused } from 'expo-router';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
 import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, uploadedInOrder } from './attachmentHelpers';
-import { FilePreview } from './FilePreview';
-import { previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
+import { AttachmentGallery, type GalleryItem } from './AttachmentGallery';
+import { attachmentSlot, forgetFile, ownedFile, type AttachmentFiles } from './attachmentFiles';
+import { gallerySequence } from './gallerySequence';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
-let fileSequence = 0;
-function ownedFile(): File { return new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}`); }
-function forgetFile(file: File) { try { if (file.exists) file.delete(); } catch { /* cache cleanup is best effort */ } }
 function Action({ label, title = label, onPress, disabled = false }: { label: string; title?: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.action, disabled && styles.disabled]}><Text style={styles.actionText}>{title}</Text></Pressable>;
 }
 
 export { ImageViewer } from './FilePreview';
-
-// Row-owned files can disappear while a Stack route is still visible. Copy on
-// demand and transfer only this copy's lifecycle to the viewer's onClose.
-async function openLocalCopy(uri: string, title: string, kind: PreviewKind, openViewer: ReturnType<typeof useViewer>['openViewer'], stillValid: () => boolean) {
-  // AVPlayer and WKWebView choose their decoder from the file extension.
-  const file = new File(Paths.cache, `hermes-attachment-${Date.now()}-${++fileSequence}${previewSuffix(title)}`);
-  try {
-    await new File(uri).copy(file);
-    if (!stillValid()) { forgetFile(file); return; }
-    openViewer(title, <FilePreview uri={file.uri} kind={kind} />, () => forgetFile(file));
-  } catch (error) { forgetFile(file); throw error; }
-}
 
 export type AttachmentComposerHandle = {
   uploadTo: (threadId: string) => Promise<Attachment[]>;
@@ -216,12 +202,14 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     update(itemsRef.current.map(entry => entry.key === key ? { ...entry, status: 'uploading', error: undefined } : entry));
     void upload(key, item.source, epoch.current);
   };
+  // Unsent images side by side, in composer order. Each page copies its source file.
   const previewImage = (item: DraftAttachment) => {
-    if (!item.source.uri) return;
-    const generation = epoch.current;
-    void openLocalCopy(item.source.uri, item.source.name, 'image', openViewer,
-      () => generation === epoch.current && itemsRef.current.some(entry => entry.key === item.key))
-      .catch(() => { if (generation === epoch.current) setNotice('Could not open the image. Please try again.'); });
+    const images = itemsRef.current.filter(entry => isImage(entry.source.mime, entry.source.name) && entry.source.uri);
+    const index = images.findIndex(entry => entry.key === item.key);
+    if (index < 0) return;
+    const pages: GalleryItem[] = images.map(entry => ({ key: String(entry.key), title: entry.source.name, open: async () => ({ uri: entry.source.uri!, kind: 'image' as const }) }));
+    try { openViewer(item.source.name, <AttachmentGallery items={pages} initialIndex={index} />); }
+    catch { setNotice('Could not open the image. Please try again.'); }
   };
   const uploadTo = async (targetThreadId: string) => {
     if (threadId) return uploadedInOrder(itemsRef.current);
@@ -299,95 +287,48 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
   </View>;
 }
 
-let activeDownloads = 0;
-const downloadWaiters: Array<() => void> = [];
-async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
-  if (signal.aborted) throw new Error('aborted');
-  const release = () => { const next = downloadWaiters.shift(); if (next) next(); else activeDownloads--; };
-  if (activeDownloads >= 3) await new Promise<void>((resolve, reject) => {
-    const resume = () => { signal.removeEventListener('abort', abort); resolve(); };
-    const abort = () => { const index = downloadWaiters.indexOf(resume); if (index >= 0) downloadWaiters.splice(index, 1); reject(new Error('aborted')); };
-    if (signal.aborted) { reject(new Error('aborted')); return; }
-    signal.addEventListener('abort', abort, { once: true }); downloadWaiters.push(resume);
-  });
-  else activeDownloads++;
-  if (signal.aborted) { release(); throw new Error('aborted'); }
-  return release;
-}
-
-/** Authenticated SDK bytes only; no token-bearing URLs or external viewers. Images download eagerly, other files on tap. */
-type Loaded = { uri?: string; kind?: PreviewKind; status: 'loading' | 'ready' | 'error' };
-export function MessageAttachments({ client, threadId, attachments }: { client: HermesClient; threadId: string; attachments: Attachment[] }) {
-  const [loaded, setLoaded] = useState<Record<string, Loaded>>({});
+/**
+ * Images download eagerly into the Thread's shared files; other files download when opened.
+ * A tap opens every available attachment of the Thread side by side, starting at the tapped one.
+ */
+type RowState = 'loading' | 'ready' | 'error';
+export function MessageAttachments({ files, attachments, gallery }: { files: AttachmentFiles; attachments: Attachment[]; gallery?: () => ReadonlyArray<readonly Attachment[] | undefined> }) {
+  const [state, setState] = useState<Record<string, RowState>>({});
   const { openViewer } = useViewer();
   const focused = useIsFocused(), focusedRef = useRef(focused); focusedRef.current = focused;
-  const cache = useRef(new Map<string, File>()), pending = useRef(new Map<string, Promise<Loaded | undefined>>()), controllers = useRef(new Map<string, AbortController>());
-  const ready = useRef(new Map<string, Loaded>()), generation = useRef(0);
-  const load = (attachment: Attachment): Promise<Loaded | undefined> => {
-    const done = ready.current.get(attachment.id);
-    if (attachment.state !== 'available') return Promise.resolve(undefined);
-    if (done) return Promise.resolve(done);
-    const running = pending.current.get(attachment.id);
-    if (running) return running;
-    const controller = new AbortController(), current = generation.current;
-    controllers.current.set(attachment.id, controller);
-    setLoaded(old => ({ ...old, [attachment.id]: { status: 'loading' } }));
-    const task = (async (): Promise<Loaded | undefined> => {
-      let release: (() => void) | undefined;
-      try {
-        release = await attachmentSlot(controller.signal);
-        if (attachment.size && attachment.size > MAX_ATTACHMENT_BYTES) throw new Error('too large');
-        const bytes = await client.download(threadId, attachment.id, controller.signal);
-        if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
-        if (controller.signal.aborted || current !== generation.current) return undefined;
-        const file = ownedFile(); file.create();
-        try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
-        cache.current.set(attachment.id, file);
-        const entry: Loaded = { status: 'ready', uri: file.uri, kind: previewKind(attachment.name || '', attachment.mime, bytes) };
-        ready.current.set(attachment.id, entry);
-        setLoaded(old => ({ ...old, [attachment.id]: entry }));
-        return entry;
-      } catch {
-        if (!controller.signal.aborted && current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } }));
-        return undefined;
-      } finally {
-        release?.();
-        if (controllers.current.get(attachment.id) === controller) { controllers.current.delete(attachment.id); pending.current.delete(attachment.id); }
-      }
-    })();
-    pending.current.set(attachment.id, task);
-    return task;
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { setState({}); }, [files]);
+  const load = (attachment: Attachment) => {
+    if (files.peek(attachment.id)) return;
+    setState(old => ({ ...old, [attachment.id]: 'loading' }));
+    files.load(attachment).then(
+      entry => { if (alive.current && entry) setState(old => ({ ...old, [attachment.id]: 'ready' })); },
+      () => { if (alive.current) setState(old => ({ ...old, [attachment.id]: 'error' })); });
   };
   useEffect(() => {
-    setLoaded({});
-    return () => {
-      generation.current++; controllers.current.forEach(controller => controller.abort()); controllers.current.clear(); pending.current.clear(); ready.current.clear();
-      cache.current.forEach(forgetFile); cache.current.clear();
-    };
-  }, [client, threadId]);
-  useEffect(() => {
-    for (const attachment of attachments) if (attachment.state === 'available' && isImage(attachment.mime, attachment.name)) void load(attachment);
-  }, [attachments, client, threadId]);
-  // One tap downloads (if needed) and opens. A download that finishes after the user left this page does not open a viewer.
-  const open = async (attachment: Attachment) => {
-    const current = generation.current;
-    const entry = await load(attachment);
-    if (!entry?.uri || !entry.kind || current !== generation.current || !focusedRef.current) return;
-    const title = attachment.name || 'Attachment';
-    await openLocalCopy(entry.uri, title, entry.kind, openViewer, () => current === generation.current && focusedRef.current)
-      .catch(() => { if (current === generation.current) setLoaded(old => ({ ...old, [attachment.id]: { status: 'error' } })); });
+    for (const attachment of attachments) if (attachment.state === 'available' && isImage(attachment.mime, attachment.name)) load(attachment);
+  }, [attachments, files]);
+  const open = (attachment: Attachment) => {
+    if (!focusedRef.current) return;
+    // A failed thumbnail retries with the tap as well.
+    if (state[attachment.id] === 'error' && isImage(attachment.mime, attachment.name)) load(attachment);
+    const { items, index } = gallerySequence(gallery?.() ?? [attachments], attachment);
+    const pages: GalleryItem[] = items.map(item => ({ key: item.id, title: item.name || 'Attachment', open: () => files.load(item) }));
+    try { openViewer(pages[index].title, <AttachmentGallery items={pages} initialIndex={index} />); }
+    catch { setState(old => ({ ...old, [attachment.id]: 'error' })); }
   };
   return <View style={styles.root}>{attachments.map(attachment => {
-    const entry = loaded[attachment.id];
+    const ready = files.peek(attachment.id), status = ready ? 'ready' : state[attachment.id];
     const image = isImage(attachment.mime, attachment.name);
     const label = attachment.name || 'Unnamed attachment';
     return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`View attachment: ${label}`} style={styles.tile}
-      disabled={attachment.state !== 'available'} onPress={() => { void open(attachment); }}>
+      disabled={attachment.state !== 'available'} onPress={() => open(attachment)}>
       {image && <View style={styles.thumb}>
-        {entry?.uri && <Image source={{ uri: entry.uri }} style={styles.thumb} />}
+        {ready && <Image source={{ uri: ready.uri }} style={styles.thumb} />}
       </View>}
       <View style={styles.fileText}><Text style={styles.title} numberOfLines={2}>{label}</Text>
-        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : entry?.status === 'loading' ? 'Loading…' : entry?.status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
+        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : status === 'loading' ? 'Loading…' : status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
       </View>
     </Pressable>;
   })}
