@@ -8,6 +8,7 @@ import { automationThreadState, confirmAutomationDelete, runStarted } from '../.
 import { automationStatus, automationTiming, scheduleLabel } from '../../automationText';
 import { routeId } from '../../routeId';
 import { useSessionNavigation } from '../../sessionNavigation';
+import { useSessionMenu } from '../../useSessionMenu';
 import { automationChangeable, type Automation, type AutomationThread } from '../../../../../packages/client/src/automations';
 
 const START_WATCH_MS = 120_000, START_POLL_MS = 4_000;
@@ -41,6 +42,8 @@ function Detail({ automationId }: { automationId: string }) {
   }, [client, automationId]);
   // Reload on return: reading a Thread clears its unread mark.
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+  // Long press on a conversation: the shared Session menu. The page list is a snapshot, so reload after a change.
+  const menu = useSessionMenu(() => void load());
   // Run takes effect at the next scheduler tick (up to a minute): check until the run shows.
   useEffect(() => {
     if (!starting) return;
@@ -134,6 +137,7 @@ function Detail({ automationId }: { automationId: string }) {
           onPress={() => confirmAutomationDelete(job.name, () => void deleteJob(), Alert.alert)} />}
       </View>}
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+      {!!menu.error && <Text accessibilityRole="alert" style={s.error}>{menu.error}</Text>}
       <ScheduleSheet visible={scheduleOpen} current={job.schedule} onClose={() => setScheduleOpen(false)}
         onSave={async text => {
           const saved = await act('schedule', () => client.setAutomationSchedule(automationId, text),
@@ -144,6 +148,7 @@ function Detail({ automationId }: { automationId: string }) {
     </View>}
     renderItem={({ item }) => { const { running, unread } = automationThreadState(item, client.threads.get(item.id));
       return <Pressable accessibilityRole="button" onPress={() => navigation.thread(item.id)}
+      {...menu.rowProps({ slot, client, id: item.id, title: item.title })}
       accessibilityLabel={[item.title, channelName(item.channelId), running ? 'Running' : undefined, unread ? 'Completed, unread' : undefined].filter(Boolean).join(', ')}
       style={({ pressed }) => [s.card, pressed && s.pressed]}>
       <View style={s.fill}>

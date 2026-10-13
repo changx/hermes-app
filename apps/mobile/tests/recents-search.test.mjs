@@ -40,14 +40,16 @@ test('quick labels: five most used across connections that support labels', () =
 });
 
 // Production Recents tab with the real row and search logic; platform views are stand-ins.
-const state = { connections: [], pushed: [], opened: [] };
+const state = { connections: [], pushed: [], opened: [], alerts: [], prompts: [] };
 globalThis.__recentsTest = state;
 const mocks = {
-  'react-native': `export const FlatList=p=>require('react').createElement('FlatList',p,(p.data.length?p.data.map((item,index)=>require('react').createElement(require('react').Fragment,{key:p.keyExtractor(item)},p.renderItem({item,index}))):p.ListEmptyComponent)); export const Pressable='Pressable',View='View'; export const StyleSheet={create:x=>x};`,
+  'react-native': `export const FlatList=p=>require('react').createElement('FlatList',p,(p.data.length?p.data.map((item,index)=>require('react').createElement(require('react').Fragment,{key:p.keyExtractor(item)},p.renderItem({item,index}))):p.ListEmptyComponent)); export const Pressable='Pressable',View='View'; export const StyleSheet={create:x=>x};
+    export const Platform={OS:'ios'}; export const Alert={alert:(title,message,buttons)=>globalThis.__recentsTest.alerts.push({title,buttons}),prompt:(title,message,buttons,type,value)=>globalThis.__recentsTest.prompts.push({title,buttons,value})};`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   'expo-router': `export const useRouter=()=>({push:p=>globalThis.__recentsTest.pushed.push(p)});`,
   'react-native-safe-area-context': `export const SafeAreaView='SafeAreaView'; export const useSafeAreaInsets=()=>({top:0,bottom:34,left:0,right:0});`,
   '../../App': `export const HeaderIcon='HeaderIcon',Notice='Notice'; export const useConnections=()=>({ready:true,connections:globalThis.__recentsTest.connections,revision:1,listError:''});`,
+  './App': `export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}});`,
   '../../FontSize': `export const Text='Text',TextInput='TextInput';`,
   '../../MessageTime': `export const MessageTime='MessageTime';`,
   '../../TabHeader': `export const TabHeader=p=>require('react').createElement('TabHeader',null,p.children);`,
@@ -119,5 +121,51 @@ test('Recents tab: Todo section above Recent lists every flagged Thread, running
     assert.deepEqual(quick(root).map(n => n.props.accessibilityLabel).filter(l => /todo/i.test(l)), [], 'the flag is not a quick label');
     await act(async () => { root.root.findByType('TextInput').props.onChangeText('fresh'); });
     assert.deepEqual(root.root.findByType('FlatList').props.data.map(item => item.key), ['search:primary:t-new'], 'a search shows one result list, no sections');
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('Recents tab: long press opens the Session menu; each action runs on the row\'s own connection', async () => {
+  const base = sources(), calls = [];
+  const home = base[0].client, work = base[1].client;
+  home.saveThreadLabels = async (id, markers) => { calls.push(['labels', id, markers]); home.threads.set(id, { ...home.threads.get(id), markers }); return { markers }; };
+  home.updateThread = async (id, patch) => { calls.push(['rename', id, patch.title]); };
+  home.archiveThread = async id => { calls.push(['archive', 'home', id]); };
+  work.archiveThread = async id => { calls.push(['archive', 'work', id]); };
+  state.connections = base; state.alerts = []; state.prompts = []; state.pushed = [];
+  let root; await act(async () => { root = create(React.createElement(Recents)); });
+  const row = title => root.root.find(n => n.type === 'Pressable' && n.props.onLongPress && (n.props.accessibilityLabel ?? '').startsWith(title + ','));
+  const button = (alert, text) => alert.buttons.find(b => b.text === text);
+  try {
+    await act(async () => { row('Login crash').props.onLongPress(); });
+    const menu = state.alerts.at(-1);
+    assert.equal(menu.title, 'Login crash');
+    assert.deepEqual(menu.buttons.map(b => b.text), ['Mark as todo', 'Rename session', 'Edit labels', 'Archive session', 'Cancel']);
+    await act(async () => { button(menu, 'Mark as todo').onPress(); });
+    assert.deepEqual(calls.at(-1), ['labels', 'a', ['bug', 'iOS', 'todo']]);
+    await act(async () => { button(menu, 'Edit labels').onPress(); });
+    assert.deepEqual(state.pushed.at(-1), { pathname: '/threads/[threadId]/labels', params: { threadId: 'a', connection: 'primary' } });
+    await act(async () => { button(menu, 'Rename session').onPress(); });
+    assert.equal(state.prompts.at(-1).value, 'Login crash');
+    await act(async () => { button(state.prompts.at(-1), 'Save').onPress('  Login crash on iOS  '); });
+    assert.deepEqual(calls.at(-1), ['rename', 'a', 'Login crash on iOS']);
+    await act(async () => { button(menu, 'Archive session').onPress(); });
+    assert.equal(state.alerts.at(-1).title, 'Archive this session?', 'archive asks first');
+    assert.equal(calls.filter(c => c[0] === 'archive').length, 0);
+    await act(async () => { button(state.alerts.at(-1), 'Archive').onPress(); });
+    assert.deepEqual(calls.at(-1), ['archive', 'home', 'a']);
+
+    // A connection without label support: no todo or label items.
+    await act(async () => { row('Bug triage').props.onLongPress(); });
+    assert.deepEqual(state.alerts.at(-1).buttons.map(b => b.text), ['Rename session', 'Archive session', 'Cancel']);
+    assert.deepEqual(row('Bug triage').props.accessibilityActions.map(a => a.name), ['rename', 'archive'], 'the same actions for screen readers');
+    await act(async () => { button(state.alerts.at(-1), 'Archive session').onPress(); });
+    await act(async () => { button(state.alerts.at(-1), 'Archive').onPress(); });
+    assert.deepEqual(calls.at(-1), ['archive', 'work', 'z']);
+
+    home.archiveThread = async () => { throw new Error('offline'); };
+    await act(async () => { row('Release notes').props.onLongPress(); });
+    await act(async () => { button(state.alerts.at(-1), 'Archive session').onPress(); });
+    await act(async () => { button(state.alerts.at(-1), 'Archive').onPress(); });
+    assert.equal(root.root.findAll(n => n.type === 'Text' && n.props.accessibilityRole === 'alert').map(n => n.props.children).join(), 'Could not complete that action. Try again later.');
   } finally { await act(async () => root.unmount()); }
 });

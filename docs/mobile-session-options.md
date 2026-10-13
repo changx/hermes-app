@@ -28,6 +28,20 @@ Verification: mobile TypeScript passes. Mobile tests: 112 total, 111 pass. The o
 
 Development release: `f50d113` was released to `exps://agent.tuly.space` (fast-forward from `a806d5d`, lockfile unchanged). Only `hermes-app-expo.service` was restarted (PID 1389957 → 1462471). The `hermes-gateway.service` PID 1305834 and the plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each launchAsset returns HTTP 200, contains the new route and page markers, and does not contain the old sheet text. Evidence: private `workspace/hermes-app/mobile-labels-page/`. Rollback baseline: `a806d5d`. iPhone acceptance is pending.
 
+## Session menu on every Session row
+
+Requested by Jamie: every Session row opens the Session menu on a long press, wherever the row shows, unless the row turns it off explicitly.
+
+- Rows with the menu: the Channel list, the Recents tab (Todo, Recent and search results), and the conversation list on an Automation page.
+- One item list and order everywhere (`src/sessionMenu.ts`): `Mark as todo`/`Remove todo`, `Rename session`, `Edit labels`, `Archive session`. The todo and label items show only when the connection supports labels. Archive asks first.
+- Rename: the Channel list keeps its inline rename field (all platforms). Recents and Automation pages use the system text prompt, which exists only on iOS, so Android has no rename there.
+- Each row gets the hint `Open session. Long press for options.` and the same items as screen-reader actions. While an action runs, the long press and the actions wait.
+- Recents and Automation pages use `useSessionMenu` (`src/useSessionMenu.ts`). Each action runs on the row's own connection. A failed action shows a short message on the page. The Automation page reloads its list after a change, because that list is a page snapshot.
+- A row turns the menu off with `disabled: true` on its menu target.
+- Message links to a Session (`hermesapp://session/…`) are links in text, not Session rows; they have no Session menu.
+
+Verification: `tests/session-menu.test.mjs` (item order, label support, busy wait, archive confirm, every row list uses the shared menu), `tests/recents-search.test.mjs` (Recents rows on each connection), `tests/channel-archive.test.mjs` (Channel list). iPhone acceptance is pending.
+
 ## Not included
 
 - Home and Channel headers keep their Settings gear.

@@ -36,6 +36,7 @@ Status: released in client v0.1.65 with plugin 0.2.22 (2026-10-11). Thread origi
 
 - Rows from every saved connection, running first, then newest activity (see [todo-flag.md](todo-flag.md); a Todo section is above the list). Each row shows the Thread title, its channel and, with more than one connection, the connection name, then time, Running and the unread dot.
 - The list refreshes with the directory and once per minute, so the 72-hour window moves.
+- A long press on a row opens the shared Session menu (see [mobile-session-options.md](mobile-session-options.md#session-menu-on-every-session-row)) on that row's connection.
 
 ### New conversation (from Recents)
 
