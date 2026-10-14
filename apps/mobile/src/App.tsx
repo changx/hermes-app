@@ -307,9 +307,16 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     setTodoBusy(true); setError('');
     void setThreadTodo(owner, threadId, !todo).then(failure => { if (failure && focusedRef.current) setError(failure); }).finally(() => setTodoBusy(false));
   };
+  // Header subtitle: connection (only when several exist) and the channel name.
+  const headerSubtitle = (channelId?: string) =>
+    [multiple ? connectionName : '', channelId ? client?.channels.get(channelId)?.name : ''].filter(Boolean).join(' · ') || undefined;
+  const headerTitle = (title: string, channelId?: string) => {
+    const subtitle = headerSubtitle(channelId);
+    return subtitle ? { headerTitle: () => <HeaderTitle title={title} subtitle={subtitle} /> } : {};
+  };
   if (!config || !client) return <Notice text="Opening conversation…" />;
   if (starting && client.channels.has(starting.channelId)) return <View style={styles.flex}>
-    <Stack.Screen options={{ title: starting.title, ...(multiple ? { headerTitle: () => <HeaderTitle title={starting.title} subtitle={connectionName} /> } : {}), headerRight: undefined }} />
+    <Stack.Screen options={{ title: starting.title, ...headerTitle(starting.title, starting.channelId), headerRight: undefined }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows} position={entryPosition} onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
@@ -333,12 +340,12 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   // Source navigation must mount the list only after the target rows exist, so its
   // native initial index points at the exact message rather than the latest.
   if (anchor !== undefined && !located) return <View style={styles.flex}>
-    <Stack.Screen options={{ title: selected.title || 'Conversation' }} />
+    <Stack.Screen options={{ title: selected.title || 'Conversation', ...headerTitle(selected.title || 'Conversation', selected.project_id) }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {historyBusy ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
   </View>;
   return <View style={styles.flex}>
-    <Stack.Screen options={{ title: selected.title || 'Conversation', ...(multiple ? { headerTitle: () => <HeaderTitle title={selected.title || 'Conversation'} subtitle={connectionName} /> } : {}),
+    <Stack.Screen options={{ title: selected.title || 'Conversation', ...headerTitle(selected.title || 'Conversation', selected.project_id),
       headerRight: () => <SessionOptionsButton onPress={() => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } })}
         todo={accountClient?.supportsSessionLabels ? { on: todo, busy: todoBusy || status !== 'online', onPress: toggleTodo } : undefined} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
