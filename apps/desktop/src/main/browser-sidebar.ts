@@ -202,7 +202,12 @@ export class DesktopBrowserSidebar {
     win.on('resize', remember); win.on('move', remember);
     win.on('focus', () => this.options.focusChanged?.()); win.on('blur', () => this.options.focusChanged?.());
     // Closing the window closes this Session's browser, like the sidebar's close button.
-    win.on('close', event => { if (pane.window === win && this.panes.get(pane.id) === pane) { event.preventDefault(); this.remove(pane.id); this.changed(); } });
+    // Never prevent this close: on macOS, quit closes this window first and a prevented close cancels the quit.
+    win.on('close', () => {
+      if (pane.window !== win || this.panes.get(pane.id) !== pane) return;
+      win.contentView.removeChildView(pane.view); pane.window = undefined; pane.slot = undefined; pane.windowBaseline = undefined;
+      this.remove(pane.id); this.changed();
+    });
     if (renderer) void win.loadFile(renderer.html); else win.showInactive();
   }
   /** Ends separate-window hosting. With `keep`, the page moves back into the main window. */

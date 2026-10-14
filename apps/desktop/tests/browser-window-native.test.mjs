@@ -77,8 +77,11 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  // Ctrl+W in a page in a separate window closes only that window, never a workspace tab.
  webB.focus();webB.sendInputEvent({type:'keyDown',keyCode:'W',modifiers:['control']});webB.sendInputEvent({type:'keyUp',keyCode:'W',modifiers:['control']});
  await until(()=>webB.isDestroyed()&&!browser.panes.has(tabB.id)&&winB.isDestroyed(),'Ctrl+W closes only Session B browser window');assert.equal(manager.tabs.has(tabB.id),true,'Session B tab stays open');
- // Closing a window closes that Session's browser; the conversation stays.
+ // Closing a window closes that Session's browser, the conversation stays, and the close is never prevented
+ // (macOS quit closes this window first; a prevented close cancels the whole quit).
+ let closePrevented;winA.on('close',event=>{closePrevented=event.defaultPrevented;});
  winA.close();await until(()=>webA.isDestroyed()&&!browser.panes.has(tabA.id),'closing window A closes its browser');assert.equal(manager.tabs.has(tabA.id),true);assert.equal(appWindows().length,1);
+ assert.equal(closePrevented,false,'browser window close is not prevented');await until(()=>winA.isDestroyed(),'window A destroyed');
  // Reopen: window mode and placement are remembered.
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tabA.id)+')');
  const remembered=prefs().bounds;assert.ok(remembered&&remembered.width>=420,'window placement saved');
@@ -95,7 +98,14 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  await until(()=>evaluate(shell,'!!document.querySelector(".browser-sidebar")'),'sidebar back in main window');
  await until(()=>pane2.view.getVisible()&&pane2.view.getBounds().x+pane2.view.getBounds().width===main.getContentSize()[0],'page placed in the sidebar');
  assert.equal(prefs().mode,'sidebar');assert.equal(appWindows().length,1);
- console.log('BROWSER_WINDOW_OK');server.close();app.exit(0);
+ // Quit with a separate browser window open: the first quit must finish (Cmd+Q and the app menu call app.quit()).
+ // Linux re-quits from window-all-closed, so a cancelled quit shows up here as that event.
+ await evaluate(shell,'document.querySelector(".browser-sidebar .browser-mode-toggle").click()');
+ await until(()=>pane2.window&&pane2.window.isVisible(),'separate window open before quit');
+ let allClosed=0;app.on('window-all-closed',()=>{allClosed++;});
+ app.on('will-quit',event=>{event.preventDefault();server.close();if(allClosed){console.error('FAIL: a window close handler cancelled the quit');app.exit(1);return;}console.log('BROWSER_WINDOW_OK');app.exit(0);});
+ app.quit();
+ await until(()=>false,'app quits on the first request');
 })().catch(error=>{console.error(error.stack);server.close();app.exit(1)});
 `);
     const output = execFileSync('xvfb-run', ['-a', require('electron'), '--no-sandbox', join(folder, 'harness.cjs')], { encoding: 'utf8', timeout: 110000, env: process.env, maxBuffer: 2_000_000 });

@@ -30,3 +30,13 @@ Status: implemented on branch `feat/desktop-browser-window`, verified on Linux/X
 - `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm run desktop:check`: 134 passed, 0 skipped.
 - New Electron test `browser-window-native` (production main/preload/renderers, fixture transport): switch in both directions from the real toolbar buttons, same page object, no network reload, live page and form state and history kept, no focus taken by either window, one window per Session, cascade, toolbar Back acts on its own Session while another tab is active, Agent snapshot and screenshot in a window, refused non-browser IPC, no conversation content in the window, Ctrl+W and window close release only that browser, remembered size, saved mode. Stable in three runs.
 - Not verified: macOS window focus and Spaces/full-screen behavior, real pointer feel. Linux/Xvfb focus checks are not macOS proof.
+
+## Quit with a browser window open
+
+Jamie (2026-10-13): one Cmd+Q, or one click on Quit Hermes in the app menu, closed the windows but did not quit the app. A second request quit it.
+
+- Cause: the browser window's `close` handler called `event.preventDefault()` and then destroyed the window itself. On macOS, quit closes the newest window first, which is the browser window. Electron treats a prevented close as a cancelled quit (`Browser::OnWindowCloseCancelled`), so the other windows still closed but `will-quit` never came. On macOS, `window-all-closed` does not quit the app.
+- Linux hides the defect: quit closes the main window first, which removes the browser windows, and `window-all-closed` quits again.
+- Fix: the browser window's `close` handler no longer prevents the close. It detaches the page view and releases the Session's browser, and the window closes normally. Ctrl+W in the window and the close button behave as before.
+- Test: `browser-window-native` checks that a browser window close is not prevented, and that one `app.quit()` with a separate browser window open reaches `will-quit` without `window-all-closed`. Without the fix, the close check fails.
+- Mac mini (Electron 44.4.5, macOS 26, production main code with the test fixture, one `app.quit()`): before the fix, the browser window close was prevented, all windows closed, and the app stayed running with no windows. After the fix, `will-quit` came 222 ms after the quit request. With the browser in the sidebar and no separate window, the app quit at once before the fix too.
