@@ -143,7 +143,14 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
    await until(()=>evaluate(shell,'!document.querySelector(".native-workspace").classList.contains("sidebar-resizing")'),'pointer released');
  };
  await resizeTo(380);assert.equal(await evaluate(shell,'localStorage.getItem("hermes.desktop.sidebar-width")'),'380');
+ // A sidebar drag re-lays out only the visible tab and publishes no snapshot; a hidden tab takes the bounds when shown.
+ const hidden=[...manager.tabs.values()][0],revisionBefore=manager.revision,hiddenBefore=JSON.stringify(hidden.view.getBounds());
  await resizeTo(150);await resizeTo(600);
+ assert.equal(manager.revision,revisionBefore,'sidebar drag publishes no snapshot');
+ assert.equal(JSON.stringify(hidden.view.getBounds()),hiddenBefore,'hidden tab not resized during the drag');
+ await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(hidden.id)+')');await until(()=>manager.activeTabId===hidden.id,'hidden tab activated');
+ assert.deepEqual(hidden.view.getBounds(),draft.view.getBounds(),'activated tab gets the current bounds');assert.equal(hidden.view.getVisible(),true);
+ await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(draft.id)+')');await until(()=>manager.activeTabId===draft.id&&draft.view.getVisible(),'draft tab back');
  const nativeWidth=draft.view.getBounds();assert.equal(nativeWidth.x+nativeWidth.width,window.getContentSize()[0]);
  assert.equal(manager.tabs.size,3);assert.equal(draft.view.webContents.id,originalView);
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===0,'resized sidebar collapse');

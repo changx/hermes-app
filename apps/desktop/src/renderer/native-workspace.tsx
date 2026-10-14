@@ -29,6 +29,17 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   const browserWidth = !browserOpen ? 0 : clampBrowserWidth(preferredBrowserWidth ?? automaticBrowserWidth(availableWidth), browserAvailable);
   const sidebarWidth = clampSidebarWidth(preferredWidth, availableWidth - browserWidth);
   const latestWidth = useRef(sidebarWidth); latestWidth.current = sidebarWidth;
+  // Sidebar drag: the width goes straight to the CSS variable once per frame, with no React render per pointer move.
+  // State (and storage) take the final width when the drag ends.
+  const dragWidth = useRef<number | null>(null), dragFrame = useRef(0), handle = useRef<HTMLDivElement>(null);
+  const endSidebarDrag = useRef(() => {});
+  endSidebarDrag.current = () => {
+    if (dragFrame.current) { cancelAnimationFrame(dragFrame.current); dragFrame.current = 0; }
+    const width = dragWidth.current ?? latestWidth.current; dragWidth.current = null;
+    // Write the final width here too: React skips the style when the final width equals the width before the drag.
+    shell.current?.style.setProperty('--sidebar-width', `${width}px`); handle.current?.setAttribute('aria-valuenow', String(width));
+    drag.current = null; setDragging(null); setPreferredWidth(width); persistWidth(width);
+  };
   const latestAvailable = useRef(availableWidth); latestAvailable.current = availableWidth - browserWidth;
   const latestBrowserWidth = useRef(browserWidth); latestBrowserWidth.current = browserWidth;
   const latestBrowserAvailable = useRef(browserAvailable); latestBrowserAvailable.current = browserAvailable;
@@ -48,8 +59,8 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   useEffect(() => {
     const stop = () => {
       const kind = drag.current?.kind; if (!kind) return;
-      drag.current = null; setDragging(null);
-      if (kind === 'sidebar') persistWidth(latestWidth.current); else persistBrowserWidth(latestBrowserWidth.current);
+      if (kind === 'sidebar') { endSidebarDrag.current(); return; }
+      drag.current = null; setDragging(null); persistBrowserWidth(latestBrowserWidth.current);
     };
     const move = (event: PointerEvent) => {
       const start = drag.current; if (!start || start.pointerId !== event.pointerId) return;
@@ -58,8 +69,13 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
         const width = clampBrowserWidth(start.startWidth - (event.clientX - start.startX), latestBrowserAvailable.current);
         latestBrowserWidth.current = width; setPreferredBrowserWidth(width); return;
       }
-      const width = clampSidebarWidth(start.startWidth + event.clientX - start.startX, latestAvailable.current);
-      latestWidth.current = width; setPreferredWidth(width);
+      dragWidth.current = clampSidebarWidth(start.startWidth + event.clientX - start.startX, latestAvailable.current);
+      if (dragFrame.current) return;
+      dragFrame.current = requestAnimationFrame(() => {
+        dragFrame.current = 0; const width = dragWidth.current; if (width === null) return;
+        shell.current?.style.setProperty('--sidebar-width', `${width}px`);
+        handle.current?.setAttribute('aria-valuenow', String(width));
+      });
     };
     const release = (event: PointerEvent) => { if (drag.current?.pointerId === event.pointerId) stop(); };
     window.addEventListener('pointermove', move);
@@ -85,13 +101,18 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   }, []);
   const threadsById = new Map(snapshot.threads.map(thread => [thread.id, thread]));
   const invoke = (operation: Promise<void>) => { setError(''); void operation.catch(() => setError('The tab action could not be completed. Try again.')); };
+  // One IPC per real change: the effect re-runs and the ResizeObserver often report the same rectangle.
+  const sentBounds = useRef('');
   useEffect(() => {
     const element = content.current; if (!element) return;
     let disposed = false;
     const update = () => {
-      const bounds = element.getBoundingClientRect();
-      if (!disposed) void window.hermesDesktop.setContentBounds({ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height,
-        visible: !overlayOpen && snapshot.phase === 'connected' && !!snapshot.activeTabId }).catch(() => { if (!disposed) setError('The conversation view could not be positioned.'); });
+      const r = element.getBoundingClientRect();
+      const bounds = { x: r.left, y: r.top, width: r.width, height: r.height, visible: !overlayOpen && snapshot.phase === 'connected' && !!snapshot.activeTabId };
+      const key = JSON.stringify(bounds);
+      if (disposed || key === sentBounds.current) return;
+      sentBounds.current = key;
+      void window.hermesDesktop.setContentBounds(bounds).catch(() => { if (!disposed) { sentBounds.current = ''; setError('The conversation view could not be positioned.'); } });
     };
     update(); const observer = new ResizeObserver(update); observer.observe(element);
     window.addEventListener('resize', update);
@@ -110,13 +131,13 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
     {!sidebarHidden && <aside className="sidebar native-sidebar">
       <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} search={search} onSearch={setSearch} />
     </aside>}
-    {!sidebarHidden && <div className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
+    {!sidebarHidden && <div ref={handle} className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary) return;
         event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = { kind: 'sidebar', pointerId: event.pointerId, startX: event.clientX, startWidth: sidebarWidth }; setDragging('sidebar');
       }}
-      onLostPointerCapture={() => { if (drag.current?.kind === 'sidebar') { drag.current = null; setDragging(null); persistWidth(latestWidth.current); } }}
+      onLostPointerCapture={() => { if (drag.current?.kind === 'sidebar') endSidebarDrag.current(); }}
       onDoubleClick={() => { const width = clampSidebarWidth(DEFAULT_SIDEBAR_WIDTH, availableWidth - browserWidth); setPreferredWidth(width); persistWidth(width); }}
       onKeyDown={event => {
         const next = event.key === 'ArrowLeft' ? sidebarWidth - 10 : event.key === 'ArrowRight' ? sidebarWidth + 10 : event.key === 'Home' ? MIN_SIDEBAR_WIDTH : event.key === 'End' ? sidebarMaximum(availableWidth - browserWidth) : undefined;
