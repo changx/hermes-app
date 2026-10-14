@@ -450,14 +450,12 @@ dialog.labels-editor::backdrop { background: #0005; }
 .native-sidebar .tree-thread.selected { background: var(--app-selected); }
 /* Sidebar Session card text for screen readers; the visible card is a native popup window (src/card/). */
 .native-sidebar .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.native-sidebar-footer { padding: 6px 8px 10px; }
-.native-sidebar-footer .sidebar-action { color: var(--app-label); }
 .sidebar-edge-toggle { position: absolute; z-index: 20; left: calc(var(--sidebar-width, 280px) - 36px); top: calc(8px + (var(--app-font-size, 16px) * 2 - 28px) / 2); background: var(--app-rail); }
 .sidebar-edge-toggle:hover { background: var(--app-border); }
 .sidebar-collapsed .sidebar-edge-toggle { left: 8px; }
 .native-workspace-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* Tab bar: tabs scroll in .desktop-tabs and pass under the opaque action panel fixed at the right. */
-.desktop-tabbar { --tab-actions-width: 76px; position: relative; display: flex; flex: 0 0 48px; min-width: 0; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
+.desktop-tabbar { --tab-actions-width: 108px; position: relative; display: flex; flex: 0 0 48px; min-width: 0; border-bottom: 1px solid var(--app-border); background: var(--app-rail); }
 .desktop-tabs { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 4px; padding: 6px 12px; overflow-x: auto; scrollbar-width: none; scroll-padding-inline-end: var(--tab-actions-width); background: var(--app-rail); }
 /* End space as wide as the panel, so the last tab can scroll fully out from under it. */
 .desktop-tabs::after { content: ""; flex: 0 0 calc(var(--tab-actions-width) - 16px); align-self: stretch; }

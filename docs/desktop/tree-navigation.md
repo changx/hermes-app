@@ -64,7 +64,7 @@ Branch: `feat/desktop-sidebar`. Requested by Jamie (2026-10-06): the sidebar sti
 Layout, top to bottom:
 - **Actions:** *New chat* and *New project* as icon rows. *New project* moved from the footer and is enabled while any connection is online.
 - **Projects** section title, with the label filter icon on the right of the title (later replaced by the session search box below New chat; see [desktop-session-search.md](../desktop-session-search.md)). Then the flat Project tree across all connections; the Hermes name appears under a Project only when several connections are saved.
-- **Footer:** one *Settings* row with a gear icon. The single server name is removed; connections are listed and managed in Settings.
+- **Footer:** one *Settings* row with a gear icon. The single server name is removed; connections are listed and managed in Settings. (Later moved to the tab actions; the sidebar has no footer now. See [desktop-tabs.md](../desktop-tabs.md#settings-in-the-tab-actions).)
 
 Typography and spacing, measured from the reference (2x screenshot): rows about 31px high, section titles the same size as rows in a muted colour, no uppercase or bold, regular-weight Project names. In this app the sidebar text follows the user's text-size setting (default 16px); rows are 2× the text size.
 

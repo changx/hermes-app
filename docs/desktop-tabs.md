@@ -140,6 +140,15 @@ Jamie (2026-10-09): New tab and Browser are two icon buttons fixed at the right 
 
 Release v0.1.60 (2026-10-10, authorized by Jamie: "合并发布"): feature `e2aa57f`, release commit `325bca5`, tag `v0.1.60`, built on the Mac mini (122 pass, 0 fail, 33 skipped; `npm audit` 0 vulnerabilities). The downloaded zip matches its `.sha256` and the built file; Info.plist shows 0.1.60; the packaged icon font is byte-identical to `assets/work-icons.ttf`. Release v0.1.58 was pruned; v0.1.59 is kept for rollback. Mobile: `hermes-app-expo.service` restarted (PID 385457 → 452778); iOS and Android manifests report SDK 57.0.0, both launch bundles return HTTP 200, and the served icon font equals the repository font (hash `123afa5a…`). Mac visual check is still open.
 
+### Settings in the tab actions
+
+Jamie (2026-10-13): the Settings entry moves from the sidebar footer to the tab actions, between New tab and Browser.
+
+- Order, left to right: New tab (`plus`), Settings (`gear`, E010), Browser (`panelRight`). The sidebar has no footer now.
+- Settings is an icon-only button (`.desktop-tab-settings`) with the accessible name `Settings` and the tooltip `Settings (⌘,)`. It is never disabled, so Settings opens while offline. The click and Cmd/Ctrl+, behavior are unchanged.
+- `--tab-actions-width` grows from 76px to 108px (three 28px buttons, two 4px gaps, 16px padding). The tab list end space and scroll padding follow this variable.
+- Tests: `tab-status` checks the three buttons in order inside the panel at all widths and sizes. `sidebar-redesign` checks that the sidebar has no Settings entry and that the tab-bar gear opens Settings.
+
 ## Composer focus when the app becomes active
 
 Requested by Jamie: when the desktop app comes back to the front and the visible tab is a Session page, the cursor goes to that page's composer.

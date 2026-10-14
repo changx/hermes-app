@@ -27,14 +27,15 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
       flushSync(()=>root.render(<NativeWorkspace snapshot={snapshot} draftThreads={new Set()} onEditLabels={()=>{}} onCreateProject={()=>{projects++}} onProjectOptions={()=>{}} onSettings={()=>{settings++}} overlayOpen={false} />));
       (async()=>{try{
         await document.fonts.ready; await new Promise(r=>setTimeout(r,50));
-        const aside=document.querySelector('aside.native-sidebar'), footer=aside.querySelector('.native-sidebar-footer');
-        ensure('footer shows no single server name',!footer.textContent.includes('personal.example')&&!footer.textContent.includes('work.example'));
-        ensure('footer is one Settings action',footer.querySelectorAll('button').length===1&&footer.querySelector('button span:not(.app-icon)').textContent==='Settings');
-        const gear=footer.querySelector('.app-icon');
+        const aside=document.querySelector('aside.native-sidebar');
+        ensure('sidebar has no footer and no Settings entry',!aside.querySelector('.native-sidebar-footer')&&!aside.querySelector('[aria-label="Settings"]'));
+        const settingsButton=document.querySelector('.desktop-tab-actions .desktop-tab-settings');
+        ensure('Settings sits in the tab bar between New tab and browser',!!settingsButton&&settingsButton.getAttribute('aria-label')==='Settings'&&settingsButton.previousElementSibling?.classList.contains('desktop-tab-add')&&settingsButton.nextElementSibling?.classList.contains('desktop-browser-toggle'));
+        const gear=settingsButton.querySelector('.app-icon');
         ensure('settings icon uses icon font',getComputedStyle(gear).fontFamily.includes('HermesWorkIcons')&&gear.textContent==='\\ue010'&&gear.getAttribute('aria-hidden')==='true');
         ensure('icon font loaded',document.fonts.check('17px HermesWorkIcons','\\ue010'));
         ensure('no emoji or text glyph icons in sidebar',!/[⚙✎＋▸▾‹›]/.test(aside.textContent));
-        footer.querySelector('button').click(); ensure('settings opens',settings===1);
+        settingsButton.click(); ensure('settings opens',settings===1);
         const actions=[...aside.querySelectorAll('.sidebar-actions button span:not(.app-icon)')].map(b=>b.textContent);
         ensure('top actions',actions.join('|')==='New chat');
         aside.querySelector('.sidebar-section-header [aria-label="New project"]').click(); ensure('new project opens',projects===1);
@@ -51,7 +52,7 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
         ensure('sidebar follows text size',cs(row).fontSize==='20px'&&cs(title).fontSize==='20px');
         document.documentElement.style.setProperty('--app-font-size','16px');
         const box=aside.getBoundingClientRect();
-        checks.geometry={width:box.width,actionRow:aside.querySelector('.sidebar-action').getBoundingClientRect().height,row:row.getBoundingClientRect().height,footerTop:footer.getBoundingClientRect().top};
+        checks.geometry={width:box.width,actionRow:aside.querySelector('.sidebar-action').getBoundingClientRect().height,row:row.getBoundingClientRect().height,footerTop:aside.getBoundingClientRect().bottom};
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' } });
     const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
