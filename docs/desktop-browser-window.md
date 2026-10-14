@@ -42,3 +42,17 @@ Jamie (2026-10-13): one Cmd+Q, or one click on Quit Hermes in the app menu, clos
 - Mac mini (Electron 44.4.5, macOS 26, production main code with the test fixture, one `app.quit()`): before the fix, the browser window close was prevented, all windows closed, and the app stayed running with no windows. After the fix, `will-quit` came 222 ms after the quit request. With the browser in the sidebar and no separate window, the app quit at once before the fix too.
 
 Release v0.1.81 (2026-10-13, authorized by Jamie: "合并发布"): fix `04bd4c1`, release commit `ac57dc7`, tag `v0.1.81`. Candidate `desktop:check` on Linux with Chromium and Electron/Xvfb: 196 passed, 0 failed. Mac mini workflow run `38501624124`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.81. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build, and the browser window `close` handler in the package has no `preventDefault`. Releases kept: v0.1.81 and v0.1.80. No mobile, plugin, Expo or Gateway change. Quit on Jamie's Mac is not checked yet.
+
+## Quit cancelled by any window; unusable window after reopen
+
+Jamie (2026-10-13, after v0.1.81): Cmd+Q still closed the window without quitting. After reopening the window, nothing in it worked.
+
+- Cause of the unusable window: the second quit pass (`before-quit` after drafts are saved) closed the connection service at once. Any later cancel left the app running with a closed connection. A reopened window then rendered, but a Session row click opened nothing.
+- Which window cancelled the quit on Jamie's Mac is not known. Any prevented window close cancels the whole quit in Electron, for example a page's `beforeunload` in a sign-in popup.
+- Fix:
+  - The service, Mac control and browser control close in `will-quit`, which runs only when the quit goes ahead.
+  - On that pass, helper windows (Settings, Session card, separate browser windows, popups) are destroyed, so none of them can cancel the quit. They hold no unsaved state.
+  - If a quit is still cancelled and all windows then close, `window-all-closed` (which Electron skips during a real quit) quits again. A cancelled quit also resets the draft save, so the next quit saves drafts again.
+  - The main window tears down its tabs and Session card in `closed`, not `close`. A cancelled close no longer leaves a window without tabs.
+- Test `quit-native` (production main code with the test fixture, real clicks): a helper window that refuses to close does not stop one quit request, and the service closes only in `will-quit`; a cancelled main-window close leaves the connection open and a Session row click still opens the Session, and the next quit finishes; close and reopen still opens Sessions.
+- Mac mini (Electron 44.4.5, macOS 26, same harness): before the fix, a refusing helper window left the app running with no windows and a closed service; after a cancelled main-window close, a Session row click opened nothing. After the fix, both quit requests finished, and the Session opened after the cancelled close. Close and reopen worked in both builds.

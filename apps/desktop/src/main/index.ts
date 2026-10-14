@@ -434,7 +434,7 @@ const createMainWindow = (): BrowserWindow => {
   window.once("ready-to-show", () => { window.show(); sessionCard.prepare(); });
   // The card belongs to a row at a fixed place; any window change closes it.
   for (const name of ['blur', 'move', 'resize', 'minimize', 'hide', 'enter-full-screen', 'leave-full-screen'] as const) window.on(name as 'blur', () => sessionCard.hide());
-  window.on('close', () => { sessionCard.dispose(); tabs?.dispose(); });
+  // Tear down in "closed" only: a "close" can still be cancelled, and a cancelled close must leave working tabs.
   window.on("closed", () => {
     if (mainWindow !== window) return;
     mainWindow = null;
@@ -492,11 +492,25 @@ app.whenReady().then(async () => {
 
 let readyToQuit = false;
 let flushingDrafts = false;
+let quitting = false;
 app.on("before-quit", event => {
-  if (readyToQuit) { browserControl?.close(); macDriver.close(); service.close(); return; }
+  if (readyToQuit) {
+    quitting = true;
+    // A later quit request (if this one is still cancelled) saves drafts again first.
+    readyToQuit = false; flushingDrafts = false;
+    // Electron cancels the whole quit when any window's close is prevented (a handler, or a page's beforeunload,
+    // for example in a sign-in popup). Helper windows (Settings, Session card, browser windows and popups) hold
+    // no unsaved state, so destroy them; only the main window closes normally.
+    for (const window of BrowserWindow.getAllWindows()) if (window !== mainWindow && !window.isDestroyed()) window.destroy();
+    return;
+  }
   event.preventDefault();
   if (flushingDrafts) return;
   flushingDrafts = true;
   void service.flushLocalDrafts().finally(() => { readyToQuit = true; app.quit(); });
 });
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+// Tear down only when the quit really proceeds. A cancelled quit used to leave the app running with a closed
+// connection, so a reopened window could not open or send anything.
+app.on("will-quit", () => { browserControl?.close(); macDriver.close(); service.close(); });
+// During a quit Electron skips this event; it fires only when the quit was cancelled after the windows closed.
+app.on("window-all-closed", () => { if (process.platform !== "darwin" || quitting) app.quit(); });
