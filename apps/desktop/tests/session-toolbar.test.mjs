@@ -32,12 +32,12 @@ test('Chromium: Session page has no title bar; tools float at the top right with
         ensure('no title or project text',!outside.includes('Session Title Beta')&&!outside.includes('Project Alpha'));
         const actions=bar.querySelector('.conversation-actions'), labels=bar.querySelector('.toolbar-labels');
         const names=[...actions.querySelectorAll('button')].map(b=>b.getAttribute('aria-label'));
-        ensure('tools present',names.join('|')==='Mark as todo|Copy link|Edit labels|Rename|Archive|Settings');
+        ensure('tools present, no Settings (it lives in the tab bar)',names.join('|')==='Mark as todo|Copy link|Edit labels|Rename|Archive'&&!bar.querySelector('[aria-label="Settings"]'));
         ensure('icon buttons have in-app tooltips, not native titles',[...actions.querySelectorAll('button')].every(b=>b.dataset.tooltip&&!b.title&&b.querySelector('svg')&&!b.textContent.trim()));
         const hover=async(el)=>{el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,600));return document.querySelector('.app-tooltip');};
         const away=async()=>{list.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await new Promise(r=>setTimeout(r,30));};
         const vw=document.documentElement.clientWidth;
-        for(const name of ['Copy link','Archive','Settings']){const b=bar.querySelector('[aria-label="'+name+'"]'),tip=await hover(b);ensure('tooltip shows: '+name,tip&&tip.textContent===b.dataset.tooltip);const t=tip.getBoundingClientRect(),bb=b.getBoundingClientRect();ensure('tooltip below and inside the window: '+name,t.top>=bb.bottom&&t.left>=0&&t.right<=vw);checks['tip '+name]=[t.left,t.top,t.width];await away();ensure('tooltip hides: '+name,!document.querySelector('.app-tooltip'));}
+        for(const name of ['Copy link','Archive']){const b=bar.querySelector('[aria-label="'+name+'"]'),tip=await hover(b);ensure('tooltip shows: '+name,tip&&tip.textContent===b.dataset.tooltip);const t=tip.getBoundingClientRect(),bb=b.getBoundingClientRect();ensure('tooltip below and inside the window: '+name,t.top>=bb.bottom&&t.left>=0&&t.right<=vw);checks['tip '+name]=[t.left,t.top,t.width];await away();ensure('tooltip hides: '+name,!document.querySelector('.app-tooltip'));}
         { const b=bar.querySelector('[aria-label="Rename"]'); await hover(b); b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); await new Promise(r=>setTimeout(r,20)); ensure('press hides tooltip',!document.querySelector('.app-tooltip')); b.querySelector('svg').dispatchEvent(new PointerEvent('pointerover',{bubbles:true})); await new Promise(r=>setTimeout(r,600)); ensure('tooltip stays hidden after press',!document.querySelector('.app-tooltip')); await away(); }
         const card=page.querySelector('.attachment-card'); card.scrollIntoView(); await new Promise(r=>{let quiet;const done=()=>{document.removeEventListener('scroll',reset,true);r();};const reset=()=>{clearTimeout(quiet);quiet=setTimeout(done,250);};document.addEventListener('scroll',reset,true);reset();}); // a scroll hides tooltips; wait until the timeline stops scrolling
         const name=card.querySelector('.attachment-name'), acts=[...card.querySelectorAll('.attachment-actions > *')];
@@ -64,9 +64,9 @@ test('Chromium: Session page has no title bar; tools float at the top right with
         ensure('label clicks ask the sidebar to search, in order',calls.join('|')==='search:design|search:iOS'); calls.length=0;
         ensure('label click opens no editor',!document.querySelector('dialog.labels-editor'));
         checks.labelRows=rows.size;
-        bar.querySelector('[aria-label="Copy link"]').click(); bar.querySelector('[aria-label="Archive"]').click(); bar.querySelector('[aria-label="Settings"]').click();
+        bar.querySelector('[aria-label="Copy link"]').click(); bar.querySelector('[aria-label="Archive"]').click();
         await new Promise(r=>setTimeout(r,20));
-        ensure('buttons act',calls.join('|')==='copy|archive|settings');
+        ensure('buttons act',calls.join('|')==='copy|archive');
         bar.querySelector('[aria-label="Rename"]').click(); await new Promise(r=>setTimeout(r,20));
         const renameDialog=document.querySelector('[role="dialog"][aria-label="Rename session"]');
         ensure('rename dialog opens with the current title',!!renameDialog&&renameDialog.querySelector('input').value===snapshot.threads.find(t=>t.id===snapshot.selectedThreadId).title);

@@ -26,7 +26,6 @@ const TOOL_ICONS = {
   label: 'M3.5 4.5v4.6l7.4 7.4 5.6-5.6-7.4-7.4H4.5zM7 7h.01',
   rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
   archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
-  settings: 'M10 7.2a2.8 2.8 0 100 5.6 2.8 2.8 0 000-5.6zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4',
 } as const;
 // Todo flag: the pennant fills when the Session is flagged.
 const TodoIcon = ({ on }: { on: boolean }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 17V3.5" /><path className={on ? 'todo-pennant-on' : undefined} d="M5.5 4h9.5l-2.4 3.5 2.4 3.5H5.5z" /></svg>;
@@ -429,7 +428,6 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
           {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
           <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!currentThread} onClick={() => { if (currentThread) setRenameTarget(currentThread); }}><ToolIcon name="rename" /></button>
           <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={archive}><ToolIcon name="archive" /></button>
-          <SettingsButton icon={<ToolIcon name="settings" />} tooltip />
         </div>
         {snapshot.supportsSessionLabels && <ToolbarLabels markers={withoutTodo(currentThread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}
       </div>
