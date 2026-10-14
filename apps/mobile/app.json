@@ -5,13 +5,19 @@
     "scheme": "hermesapp",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "space.tuly.hermesapp.dev"
     },
     "android": {
-      "package": "space.tuly.hermesapp.dev"
+      "package": "space.tuly.hermesapp.dev",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundImage": "./assets/adaptive-background.png",
+        "backgroundColor": "#FED5CF"
+      }
     },
     "plugins": [
       "expo-secure-store",

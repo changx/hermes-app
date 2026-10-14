@@ -41,6 +41,7 @@ const paths = await packager({
   overwrite: true,
   asar: true,
   prune: true,
+  icon: resolve(root, "resources/icon.icns"),
   appBundleId: "com.changx.hermes.desktop",
   appVersion: desktopPackage.version,
   buildVersion: "1",
