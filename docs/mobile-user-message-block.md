@@ -147,7 +147,7 @@ Jamie 要求自己的消息显示日期和时间，不使用 `8h ago` 等相对�
 
 候选阶段未合并主分支、推送或发布，未重启服务。用户随后已授权发布：两轮修改以 `abb2faf` 合入并推送 main，桌面 v0.1.15 已发布，手机 `exps://agent.tuly.space` 已更新。iOS/Android 公网 manifest 及确切 JS launchAsset 均 HTTP 200，确认 80% 宽度、过程折叠、分隔线及隐藏 Agent 时间。仅 Expo 重启，Gateway/插件及手机锁文件不变；根/桌面版本元数据升级，不改依赖图。完整证据与下载核验见 [发布记录](desktop-session-composer.md#published-desktop-v0115-and-mobile-test-entry)。原生视觉、滚动、键盘与辅助功能仍待真机验收，Expo Go 不等于独立安装包。
 
-## 最新补充：用户消息复制按钮（隔离候选）
+## 最新补充：用户消息复制按钮（已发布 v0.1.86）
 
 Jamie 要求自己发送的消息也有复制按钮，复制消息原文。
 
@@ -157,3 +157,16 @@ Jamie 要求自己发送的消息也有复制按钮，复制消息原文。
 - 不改共享协议、插件、存储或 Hermes 核心。
 
 分支 `feat/user-message-copy`，基线 `f6f02a9`。手机 TypeScript 通过；新增断言在修改前失败（3 项），修改后通过；手机全测 201 passed / 0 failed / 1 skipped。桌面 TypeScript、构建及全测 197 passed / 0 failed / 8 skipped（Electron 用例需要专用环境）；实际 Chromium 检查确认按钮位于时间左侧、在气泡内，点击写入原文。iOS/Android 导出成功，两个 bundle 均含 `Copy message`。导出不是安装包；真机视觉与触摸手感仍待验收。
+
+### 发布结果
+
+Jamie 授权「合并发布」（2026-10-14）。功能提交 `0466580`，发布提交 `438390f`，tag `v0.1.86`；`origin/main` 从 `f6f02a9` 快进推送，运行目录同步快进。
+
+- 发布前桌面全测（Chrome + Electron/Xvfb）205/205 通过。Mac mini 工作流 `38566857329` 成功：205 个测试，156 通过，0 失败，49 跳过；`npm audit` 0 漏洞。
+- 下载包 `.sha256` 校验通过，ZIP 完整；Info.plist 0.1.86；可执行文件 arm64。ASAR 中 `dist/main/index.cjs`、`dist/preload/index.cjs`、`dist/renderer/index.js`、`dist/renderer/styles.css` 与本地已验证构建逐字节相同。保留的发行版：v0.1.86、v0.1.85。
+- Expo：手机 lockfile 未变，未运行 `npm ci`；只重启 `hermes-app-expo.service`（PID 1759630 → 2453715，05:50:08 PDT）。公网 iOS/Android manifest 均 HTTP 200、SDK 57.0.0；各自 launchAsset HTTP 200（12,700,639 / 13,026,808 字节），均含 `Copy message`。
+- Gateway PID 2069678 及开发插件哈希前后不变；未改插件、共享协议或 Hermes 核心。
+- 证据：Channel workspace `user-message-copy/`（`release.log`、`m_ios.json`、`m_android.json`、测试日志）。
+- 待验收：iPhone、Android 与 Mac 上的按钮外观、点击手感和剪贴板结果。
+
+回滚：`git revert 0466580` 后推送 main，再一条命令执行 `git -C /opt/projects/jamie/hermes-app merge --ff-only -q origin/main && systemctl --user restart hermes-app-expo.service`；桌面可重装 v0.1.85。
