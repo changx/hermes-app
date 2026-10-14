@@ -96,6 +96,18 @@ test('References and Branch finish under StrictMode effect replay', async () => 
   root.unmount();
 });
 
+test('user message Copy copies the exact original text', async () => {
+  state.copied.length = 0;
+  const raw = '  **原文** `code`\n- item  ';
+  let root;
+  await act(async () => { root = create(React.createElement(mod.exports.MessageCopyButton, { text: raw })); });
+  const copy = button(root, 'Copy message');
+  assert.equal(copy.props.testID, 'user-message-copy');
+  await act(async () => { copy.props.onPress(); });
+  assert.deepEqual(state.copied, [raw]);
+  root.unmount();
+});
+
 test('a final reply names its model at the end of the toolbar; no model shows nothing', async () => {
   let root = await mount({ actions: { exportMessage() {} }, row: { ...row, model: 'claude-opus-5-5' } });
   const label = root.root.find(n => n.props.testID === 'message-model');

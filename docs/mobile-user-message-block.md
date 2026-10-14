@@ -146,3 +146,14 @@ Jamie 要求自己的消息显示日期和时间，不使用 `8h ago` 等相对�
 分支 `fix/collapsible-work`，基线 `f748cc9`。双端与共享 TypeScript 通过，手机 **507/507**、桌面构建及 Chromium **124/124** 测试通过，均无跳过。历史加载测试已修正新增标题后的根节点选择，并验证原消息节点在 prepend 时保留。顺序 iOS/Android 清缓存导出通过，实际 HBC 文件回读确认新宽度与过程呈现字符串。证据：active Channel workspace `collapsible-work/`。
 
 候选阶段未合并主分支、推送或发布，未重启服务。用户随后已授权发布：两轮修改以 `abb2faf` 合入并推送 main，桌面 v0.1.15 已发布，手机 `exps://agent.tuly.space` 已更新。iOS/Android 公网 manifest 及确切 JS launchAsset 均 HTTP 200，确认 80% 宽度、过程折叠、分隔线及隐藏 Agent 时间。仅 Expo 重启，Gateway/插件及手机锁文件不变；根/桌面版本元数据升级，不改依赖图。完整证据与下载核验见 [发布记录](desktop-session-composer.md#published-desktop-v0115-and-mobile-test-entry)。原生视觉、滚动、键盘与辅助功能仍待真机验收，Expo Go 不等于独立安装包。
+
+## 最新补充：用户消息复制按钮（隔离候选）
+
+Jamie 要求自己发送的消息也有复制按钮，复制消息原文。
+
+- 手机与桌面的用户消息底部时间行，在时间左侧增加一个复制图标（与最终回复工具栏的 Copy 同一图形）。辅助功能名称为 `Copy message`。
+- 复制内容为消息原始文本 `text`（Markdown 源文、空格和换行不变），不是渲染后的文字。手机用既有 `copyWithToast` 显示 `Copied to clipboard`；桌面用既有 `copyText`，在按钮旁短暂显示 `Copied`。
+- 无文本（仅附件）的消息不显示按钮。手机发送失败消息已有 `Copy` 操作，不重复显示图标。
+- 不改共享协议、插件、存储或 Hermes 核心。
+
+分支 `feat/user-message-copy`，基线 `f6f02a9`。手机 TypeScript 通过；新增断言在修改前失败（3 项），修改后通过；手机全测 201 passed / 0 failed / 1 skipped。桌面 TypeScript、构建及全测 197 passed / 0 failed / 8 skipped（Electron 用例需要专用环境）；实际 Chromium 检查确认按钮位于时间左侧、在气泡内，点击写入原文。iOS/Android 导出成功，两个 bundle 均含 `Copy message`。导出不是安装包；真机视觉与触摸手感仍待验收。

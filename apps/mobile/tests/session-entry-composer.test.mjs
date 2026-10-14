@@ -21,7 +21,7 @@ const mocks = {
   './MessageContent': `export const MessageContent='MessageContent',copyMessageText=()=>{};`,
   './WorkChevron': `export const WorkChevron='WorkChevron';`,
   './MessageTime': `export const MessageTime='MessageTime';`,
-  './MessageToolbar': `export const MessageToolbar='MessageToolbar';`,
+  './MessageToolbar': `export const MessageToolbar='MessageToolbar',MessageCopyButton='MessageCopyButton';`,
   './sessionNavigation': `const s=globalThis.__entryTest; export const useSessionNavigation=()=>({link:h=>{(s.links||(s.links=[])).push(h)},thread(){}});`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/ChatTimeline.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'native-test-boundary', setup(b) {
@@ -60,11 +60,22 @@ test('user metadata moves below content, dates group days, and normal reaction i
     assert.equal(times.length,3);assert.ok(times.every(node=>node.props.clockOnly===true));
     const metadata=root.root.findAllByProps({testID:'user-message-time'});
     assert.equal(metadata.length,3);
+    const copies=root.root.findAllByType('MessageCopyButton');
+    assert.equal(copies.length,3);assert.ok(copies.every(node=>node.props.text==='Request'));
     for (const node of metadata) {
       const siblings=node.parent.children;
       assert.ok(siblings.findIndex(x=>typeof x==='object'&&x.type==='MessageContent')<siblings.indexOf(node));
       assert.equal(node.props.style.justifyContent,'flex-end');
+      assert.equal(node.children[0].type,'MessageCopyButton');
     }
+  } finally { await act(async()=>root.unmount()); }
+});
+test('user message copy button copies the original text and yields to the failed-message actions', async () => {
+  const raw = '  **原文** `code`\n- item  ';
+  const root = await mount({rows:[{key:'u',role:'user',text:raw,timestamp:1700000000},{key:'local:f',role:'user',text:'Failed',timestamp:1700000001,optimistic:true,status:'blocked'},{key:'a',role:'assistant',displayKind:'final',text:'Reply',timestamp:1700000002}]});
+  try {
+    const copies=root.root.findAllByType('MessageCopyButton');
+    assert.deepEqual(copies.map(node=>node.props.text),[raw]);
   } finally { await act(async()=>root.unmount()); }
 });
 test('failed send has no Working; abnormal processing remains a plain warning', async () => {

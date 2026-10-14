@@ -13,7 +13,8 @@ test('Chromium: early Working merges into process, completion hides feedback, an
     const bundle=await build({stdin:{resolveDir:new URL('../../../',import.meta.url).pathname,loader:'tsx',contents:`
       import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
-      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),getSnapshot:async()=>base};
+      const copied=[];
+      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),getSnapshot:async()=>base,copyText:async t=>{copied.push(t);}};
       const root=createRoot(document.getElementById('root'));
       const now=new Date(2026,9,5,22,11).getTime()/1000;
       const msg=(id,role,text,extra={})=>({id,role,text,toolCalls:[],attachments:[],createdAt:now,...extra});
@@ -48,9 +49,10 @@ test('Chromium: early Working merges into process, completion hides feedback, an
         const list=render('layout-'+width,[{...u,receiptState:'completed',processing:'completed'},msg('u2','user',rich,{createdAt:now+86400}),f]);
         document.querySelector('.session-tab-page').style.width=width+'px';
         const rect=e=>{const b=e.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width}};
-        layouts.push({width,scroll:list.scrollWidth,client:list.clientWidth,dates:[...list.querySelectorAll('.chat-date-separator')].map(x=>({box:rect(x),style:getComputedStyle(x).textAlign})),users:[...list.querySelectorAll('.message-user')].map(x=>({box:rect(x),content:rect(x.querySelector('.message-markdown')),time:rect(x.querySelector('time')),font:parseFloat(getComputedStyle(x.querySelector('time')).fontSize),body:parseFloat(getComputedStyle(x).fontSize)}))});
+        layouts.push({width,scroll:list.scrollWidth,client:list.clientWidth,dates:[...list.querySelectorAll('.chat-date-separator')].map(x=>({box:rect(x),style:getComputedStyle(x).textAlign})),users:[...list.querySelectorAll('.message-user')].map(x=>({box:rect(x),content:rect(x.querySelector('.message-markdown')),time:rect(x.querySelector('time')),copy:rect(x.querySelector('.user-message-copy')),copyLabel:x.querySelector('.user-message-copy').getAttribute('aria-label'),font:parseFloat(getComputedStyle(x.querySelector('time')).fontSize),body:parseFloat(getComputedStyle(x).fontSize)}))});
       }
-      document.getElementById('results').textContent=JSON.stringify({results,layouts});
+      for(const button of document.querySelectorAll('.message-user .user-message-copy'))button.click();
+      document.getElementById('results').textContent=JSON.stringify({results,layouts,copied,rich});
     `},bundle:true,minify:true,platform:'browser',format:'iife',write:false,define:{'process.env.NODE_ENV':'"production"'}});
     const css=await readFile(new URL('../src/renderer/styles.css',import.meta.url),'utf8');
     await writeFile(join(folder,'bundle.js'),bundle.outputFiles[0].text);
@@ -67,7 +69,9 @@ test('Chromium: early Working merges into process, completion hides feedback, an
     for(const layout of result.layouts){
       assert.ok(layout.scroll<=layout.client,'timeline stays within viewport');
       for(const date of layout.dates)assert.equal(date.style,'center');
-      for(const user of layout.users){assert.ok(user.time.top>=user.content.bottom);assert.ok(user.time.bottom<=user.box.bottom);assert.ok(Math.abs(user.time.right-(user.box.right-14))<1);assert.ok(user.font<user.body);}
+      for(const user of layout.users){assert.ok(user.time.top>=user.content.bottom);assert.ok(user.time.bottom<=user.box.bottom);assert.ok(Math.abs(user.time.right-(user.box.right-14))<1);assert.ok(user.font<user.body);
+        assert.equal(user.copyLabel,'Copy message');assert.ok(user.copy.width>0&&user.copy.right<=user.time.left,'copy sits left of the time');assert.ok(user.copy.top>=user.content.bottom&&user.copy.bottom<=user.box.bottom,'copy stays in the bubble');}
     }
+    assert.deepEqual(result.copied,['Request',result.rich],'Copy writes the original message text');
   } finally {await rm(folder,{recursive:true,force:true});}
 });

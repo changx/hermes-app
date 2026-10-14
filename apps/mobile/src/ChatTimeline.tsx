@@ -17,7 +17,7 @@ import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../
 import { hasRunningReceipt } from './receiptState';
 import { chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from '../../../packages/client/src/chatPresentation';
 import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
-import { MessageToolbar, type MessageActions } from './MessageToolbar';
+import { MessageCopyButton, MessageToolbar, type MessageActions } from './MessageToolbar';
 import { useSessionNavigation } from './sessionNavigation';
 
 /** Notice text with its Markdown session links (e.g. a branch link) as tappable spans. */
@@ -69,7 +69,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       {warning && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{warning}</Text>}
       {row.receipt?.state === 'queued' && <Pressable accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)}><Text style={styles.cancelText}>Cancel</Text></Pressable>}
     </View>}
-    {own && <View testID="user-message-time" style={styles.messageTime}><MessageTime seconds={row.timestamp} clockOnly /></View>}
+    {own && <View testID="user-message-time" style={styles.messageTime}>{!!row.text && !failedId && <MessageCopyButton text={row.text} />}<MessageTime seconds={row.timestamp} clockOnly /></View>}
   </View>;
   return <>{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <View style={styles.userMessageRow}>{content}</View> : content}</>;
 }, (prev, next) => prev.actions === next.actions && prev.canRetry === next.canRetry && prev.running === next.running && prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.model === next.row.model && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   workLabel: { color: '#727272', fontSize: 15 },
   workHidden: { display: 'none' },
   byline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }, attachment: { color: '#50647b', fontSize: 12, marginTop: 5 },
-  messageTime: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 5 },
+  messageTime: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 5 },
   dateSeparator: { alignItems: 'center', marginVertical: 16, marginHorizontal: 14 },
   dateLabel: { color: '#697b90', fontSize: 12 },
   failedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },

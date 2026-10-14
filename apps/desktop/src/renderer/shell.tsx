@@ -7,7 +7,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
-import { MessageIcon, MessageToolbar } from "./message-toolbar";
+import { MessageIcon, MessageToolbar, UserMessageCopy } from "./message-toolbar";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
@@ -111,7 +111,7 @@ const MessageRow = memo(({ message, continuation, hidden = false, toolbar = fals
     {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} />}
     {message.feedback && <div className="receipt">{message.feedback}</div>}
     {warning || message.receiptState === "queued" && message.receiptId ? <div className="receipt message-warning">{warning}{message.clientMessageId && warning ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
-    {message.role === "user" && <div className="user-message-time"><time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
+    {message.role === "user" && <div className="user-message-time">{message.text && <UserMessageCopy text={message.text} />}<time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
   </article>;
 });
 

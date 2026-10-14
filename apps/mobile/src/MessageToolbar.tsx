@@ -23,6 +23,14 @@ function ToolButton({ label, ios, android, onPress, disabled = false, busy = fal
   </Pressable>;
 }
 
+/** Copy icon in the user message's bottom row. Copies the original message text. */
+export function MessageCopyButton({ text }: { text: string }) {
+  return <Pressable testID="user-message-copy" accessibilityRole="button" accessibilityLabel="Copy message" hitSlop={8}
+    onPress={() => { void copyWithToast(text); }} style={({ pressed }) => [styles.inlineButton, pressed && styles.pressed]}>
+    <SymbolView name={{ ios: 'doc.on.doc', android: 'content_copy' }} size={13} tintColor="#8a94a0" weight="regular" fallback={<Text style={styles.fallback}>Copy</Text>} />
+  </Pressable>;
+}
+
 const sourceLabel = (url: string) => { try { const u = new URL(url); return u.hostname.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname); } catch { return url; } };
 
 /** Compact, always-visible row under a final reply: Branch, Copy, References, Export, Retry. */
@@ -65,6 +73,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 8, marginLeft: -6 },
   button: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   pressed: { backgroundColor: '#ebe8df' },
+  inlineButton: { width: 22, height: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 6, marginRight: 6 },
   disabled: { opacity: 0.4 },
   fallback: { color: '#7b8794', fontSize: 11 },
   sources: { marginTop: 4, gap: 2 },

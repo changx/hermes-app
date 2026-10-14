@@ -11,6 +11,16 @@ export const MESSAGE_ICONS = {
 } as const;
 export const MessageIcon = ({ name }: { name: keyof typeof MESSAGE_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={MESSAGE_ICONS[name]} /></svg>;
 
+/** Copy icon beside a user message's time. Copies the original message text. */
+export const UserMessageCopy = ({ text }: { text: string }) => {
+  const [note, setNote] = useState("");
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const onCopy = () => { void window.hermesDesktop.copyText(text).then(() => { if (mounted.current) setNote("Copied"); }, () => { if (mounted.current) setNote("Could not copy."); }); };
+  useEffect(() => { if (!note) return; const timer = setTimeout(() => setNote(""), 1400); return () => clearTimeout(timer); }, [note]);
+  return <>{note && <span className="user-message-copy-note" role="status">{note}</span>}<button type="button" className="user-message-copy" aria-label="Copy message" title="Copy" onClick={onCopy}><MessageIcon name="copy" /></button></>;
+};
+
 const sourceLabel = (url: string) => { try { const u = new URL(url); return u.hostname.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname); } catch { return url; } };
 const branchError = { busy: 'Wait until the current reply finishes, then try again.', unavailable: 'This reply cannot start a branch.', failed: 'Could not create the branch. Try again.' } as const;
 
