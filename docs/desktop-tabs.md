@@ -149,6 +149,8 @@ Jamie (2026-10-13): the Settings entry moves from the sidebar footer to the tab 
 - `--tab-actions-width` grows from 76px to 108px (three 28px buttons, two 4px gaps, 16px padding). The tab list end space and scroll padding follow this variable.
 - Tests: `tab-status` checks the three buttons in order inside the panel at all widths and sizes. `sidebar-redesign` checks that the sidebar has no Settings entry and that the tab-bar gear opens Settings.
 
+Release v0.1.80 (2026-10-13, authorized by Jamie: "merge and release"): feature `bb48290`, release commit `91c3cb4`, tag `v0.1.80`. Candidate suite on Linux with Chromium and Electron/Xvfb: 196 tests, 0 fail after a rerun of 3 Electron tests that first failed with "Text file busy" while Electron was still downloading. Mac mini workflow run `38496994324`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.80. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build. Releases kept: v0.1.80 and v0.1.79. No mobile, plugin, Expo or Gateway change. Mac visual check is open.
+
 ## Composer focus when the app becomes active
 
 Requested by Jamie: when the desktop app comes back to the front and the visible tab is a Session page, the cursor goes to that page's composer.
