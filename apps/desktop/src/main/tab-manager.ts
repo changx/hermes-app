@@ -10,7 +10,8 @@ export type TabMenuAction = 'close' | 'close-right' | 'close-others';
 type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId?: string; initialChannelId?: string;
   /** Automation tabs: the qualified job ID and the tab title (the job name). */ automationId?: string; title?: string;
   /** New chat tab whose first message starts an automation's settings conversation. */ automationEditor?: boolean;
-  kind: DesktopTabKind; busy: boolean; baseline?: DesktopSnapshot };
+  kind: DesktopTabKind; busy: boolean; baseline?: DesktopSnapshot;
+  /** The view has had real bounds at least once; hidden views keep them until they become visible. */ sized?: boolean };
 export class DesktopTabManager {
   readonly tabs = new Map<string, Tab>();
   activeTabId?: string;
@@ -222,16 +223,23 @@ export class DesktopTabManager {
   setBounds(bounds: typeof this.bounds): void {
     const [width, height] = this.window.getContentSize();
     for (const key of ['x','y','width','height'] as const) if (!Number.isFinite(bounds[key]) || bounds[key] < 0) throw new Error('Invalid content bounds');
-    this.bounds = { x: Math.min(width, Math.round(bounds.x)), y: Math.min(height, Math.round(bounds.y)),
+    const next = { x: Math.min(width, Math.round(bounds.x)), y: Math.min(height, Math.round(bounds.y)),
       width: Math.min(width - Math.min(width, Math.round(bounds.x)), Math.round(bounds.width)),
       height: Math.min(height - Math.min(height, Math.round(bounds.y)), Math.round(bounds.height)), visible: bounds.visible === true };
-    this.publish();
+    const old = this.bounds; this.bounds = next;
+    // Snapshots carry only `visible` (tabActive). A sidebar drag changes position and size many times per second,
+    // so it re-lays out the views but publishes nothing.
+    if (old.visible !== next.visible) { this.publish(); return; }
+    if (old.x !== next.x || old.y !== next.y || old.width !== next.width || old.height !== next.height) this.layout();
   }
   private layout(): void {
     this.browser?.layout(this.activeTabId, this.bounds.visible);
     for (const tab of this.tabs.values()) {
       const visible = tab.id === this.activeTabId && this.bounds.visible;
-      tab.view.setBounds(this.bounds); tab.view.setVisible(visible); tab.view.webContents.setAudioMuted(!visible);
+      // Only the visible tab follows the bounds. Each resize makes that page lay out its whole timeline again
+      // (and on macOS waits for its new frame), so hidden tabs take the current bounds when they become visible.
+      if (visible || !tab.sized) { tab.view.setBounds(this.bounds); tab.sized = this.bounds.width > 0 && this.bounds.height > 0; }
+      tab.view.setVisible(visible); tab.view.webContents.setAudioMuted(!visible);
     }
   }
   snapshot(contents?: WebContents): DesktopSnapshot {

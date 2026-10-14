@@ -55,6 +55,27 @@ Verification:
 - Private log and native screenshot: Channel workspace `sidebar-resize/`.
 - Not merged or published. Full installed-app restart and macOS pointer/visual acceptance remain separate from Linux renderer restoration checks.
 
+### Drag performance
+
+Jamie (2026-10-13): dragging the sidebar edge lags badly.
+
+Cause, measured with production main/preload/renderers, a fixture connection, 6 open Session tabs of 200 Markdown messages each, and real Electron input (`tmp/drag-probe.mjs` in the task worktree; evidence in Channel workspace `sidebar-resize-perf/`). Per pointer move the app did this:
+- The workspace renderer re-rendered the whole workspace, including the Project tree and Recents, and sent the content bounds twice (effect re-run plus ResizeObserver).
+- Main `setBounds` called `publish()`: a full snapshot for the workspace and for every tab, sent to 7 pages, so every Session page also re-rendered. Over one 100-move drag: about 1,100 snapshots.
+- `layout()` resized every tab view, also hidden ones, so every open Session page laid out its whole timeline again: about 800 hidden-view resizes per drag. On macOS each view resize also waits for that page's new frame.
+
+Fix:
+- Renderer: during a sidebar drag, the width goes to the `--sidebar-width` CSS variable at most once per animation frame. There is no React render per move. State and storage take the final width when the drag ends (pointer up, cancel, lost capture, window blur).
+- Renderer: content bounds are sent only when the rectangle or `visible` changes.
+- Main: `setBounds` publishes a snapshot only when `visible` changes, because snapshots carry only `tabActive`. A position or size change only re-lays out the views. Unchanged bounds do nothing.
+- Main: only the visible tab follows the bounds. A hidden tab keeps its last real size and takes the current bounds when it becomes visible (bounds first, then visible). A new tab still gets real bounds once.
+
+Result (same probe, Linux/Xvfb, 3 runs each): snapshots per drag about 1,100 → 0; hidden-view resizes about 800 → 0; active-view resizes about 160 → about 70 (one per frame). A 60-move burst at 8 ms intervals took 650–717 ms before and about 500 ms after, which is the length of the burst itself. Linux frames were 17 ms before and after, so Linux does not show the visible lag. The Mac mini could not measure paint: its screen is locked, and macOS painted the Session page once during the run. Visible smoothness on a real Mac is not verified.
+
+Test: `native-electron` checks that a sidebar drag publishes no snapshot, does not resize a hidden tab, and that the hidden tab gets the current bounds when activated. Without the fix, the first check fails.
+
+Not changed: the right preview sidebar drag still renders per move.
+
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side activity-window query; the current list API exposes cursor/limit, not an activity cutoff.
 
 ## Multi-connection sidebar redesign
