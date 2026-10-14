@@ -104,7 +104,7 @@ HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop
 Branch: `feat/desktop-floating-toolbar`; base `origin/main` `0010c74`.
 
 - The Session page has no title bar. The tab already shows the Session title; the Project name is not shown on the page.
-- The tools are one row of icon buttons that floats at the top right over the timeline: Copy link, Edit labels (when supported), Rename, Archive, Settings. Each button has an accessible name and a tooltip. Session labels stay at the left end of the row.
+- The tools are one row of icon buttons that floats at the top right over the timeline: Copy link, Edit labels (when supported), Rename, Archive. (Settings was removed from this row on 2026-10-13; it is in the tab actions.) Each button has an accessible name and a tooltip. Session labels stay at the left end of the row.
 - The timeline starts at the top of the page. The old header used 76px; the floating row is 36px high and covers only the top right corner. It has a translucent background so text under it stays readable.
 - Error banners stay above the timeline. No change to actions, IPC, drafts, scroll or history.
 
@@ -114,7 +114,7 @@ Verification: `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 
 
 Branch: `feat/desktop-tooltips-attachment`; base `main` `975357e`. Request: Jamie, 2026-10-08.
 
-- Session toolbar buttons (Copy link, Export conversation, Edit labels, Rename, Archive, Settings) and message attachment actions (Preview, Open externally, Save, View file, large image preview) show a tooltip on hover.
+- Session toolbar buttons (Copy link, Export conversation, Edit labels, Rename, Archive) and message attachment actions (Preview, Open externally, Save, View file, large image preview) show a tooltip on hover.
 - Native `title` tooltips did not show on the Session page. The page is a `WebContentsView`; that is the likely cause, not confirmed on macOS. The page now draws its own tooltip (`renderer/tooltip.tsx`): controls set `data-tooltip`, and one layer per Session page shows it after 450 ms, below the control (above it at the bottom edge), kept inside the window. Keyboard focus shows it at once. Click, scroll, Escape and window blur hide it. Accessible names stay on `aria-label`.
 - Attachment card: the thumbnail is at the left. The file name has its own line, with the size under it. All actions are on one line below, aligned with the name. Only a very narrow window wraps the actions.
 
@@ -148,6 +148,7 @@ Jamie (2026-10-13): the Settings entry moves from the sidebar footer to the tab 
 - Settings is an icon-only button (`.desktop-tab-settings`) with the accessible name `Settings` and the tooltip `Settings (⌘,)`. It is never disabled, so Settings opens while offline. The click and Cmd/Ctrl+, behavior are unchanged.
 - `--tab-actions-width` grows from 76px to 108px (three 28px buttons, two 4px gaps, 16px padding). The tab list end space and scroll padding follow this variable.
 - Tests: `tab-status` checks the three buttons in order inside the panel at all widths and sizes. `sidebar-redesign` checks that the sidebar has no Settings entry and that the tab-bar gear opens Settings.
+- Jamie (2026-10-13, later): the Session toolbar has no Settings button either. Its row is Mark as todo, Copy link, Export conversation (when supported), Edit labels (when supported), Rename, Archive. Settings opens from the tab-bar gear or Cmd/Ctrl+, (registered on every tab view). The pairing screen keeps its own Settings button, because the tab bar is not shown there. Tests: `session-toolbar` checks the row has no Settings button; `font-settings` checks the connected Session page has none and still opens Settings from the pairing screen button; `native-electron` checks the Session page has none and opens Settings with Ctrl+, from the Session tab.
 
 Release v0.1.80 (2026-10-13, authorized by Jamie: "merge and release"): feature `bb48290`, release commit `91c3cb4`, tag `v0.1.80`. Candidate suite on Linux with Chromium and Electron/Xvfb: 196 tests, 0 fail after a rerun of 3 Electron tests that first failed with "Text file busy" while Electron was still downloading. Mac mini workflow run `38496994324`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.80. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build. Releases kept: v0.1.80 and v0.1.79. No mobile, plugin, Expo or Gateway change. Mac visual check is open.
 
