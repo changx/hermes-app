@@ -76,6 +76,8 @@ Test: `native-electron` checks that a sidebar drag publishes no snapshot, does n
 
 Not changed: the right preview sidebar drag still renders per move.
 
+Release v0.1.82 (2026-10-13, authorized by Jamie: "合并发布"): released together with the other change in this version. Commits: Session toolbar Settings removal `5596703`, sidebar drag performance `3b49d8a`, merged in `integrate/release-0.1.82`; release commit `f736a66`, tag `v0.1.82`. Linux `desktop:check` on the merged tree with Chromium and Electron/Xvfb: 196 passed, 0 failed. Mac mini workflow run `38504645519`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.82. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build of the merged tree. Releases kept: v0.1.82 and v0.1.81. No mobile, plugin, Expo or Gateway change. Mac check of the toolbar and of the drag feel is open.
+
 This iteration windows already-synchronized thread summaries for display. It does not replace the shared client's synchronization protocol with a server-side activity-window query; the current list API exposes cursor/limit, not an activity cutoff.
 
 ## Multi-connection sidebar redesign
