@@ -23,6 +23,13 @@
 .settings-preview p { margin: 10px 0; }
 .settings-preview code, .settings-shortcuts kbd { font-size: var(--app-font-size); }
 .settings-shortcuts { width: 100%; margin: 0; }
+.settings-icon-options { display: flex; gap: 12px; flex-wrap: wrap; }
+.settings-icon-options button { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 112px; padding: 12px 8px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-background); color: var(--app-text); font: inherit; cursor: pointer; }
+.settings-icon-options button:hover:not(:disabled) { background: var(--app-hover); }
+.settings-icon-options button.selected { border: 2px solid var(--app-accent); padding: 11px 7px; background: var(--app-selected); font-weight: 600; }
+.settings-icon-options button:disabled { cursor: default; }
+.settings-icon-options button:disabled:not(.selected) { opacity: 0.6; }
+.settings-icon-options img { width: 64px; height: 64px; }
 .settings-shortcuts > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--app-border); }
 .settings-shortcuts dd { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; margin: 0; }
 .settings-shortcuts kbd { padding: 3px 7px; border: 1px solid var(--app-field-border); border-bottom-width: 2px; border-radius: 5px; background: var(--app-background); font-family: inherit; }

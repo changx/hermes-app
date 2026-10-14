@@ -86,6 +86,9 @@ await Promise.all([
   copyFile(resolve(root, "src/renderer/styles.css"), resolve(dist, "renderer/styles.css")),
   copyFile(resolve(root, "src/card/session-card.html"), resolve(dist, "renderer/session-card.html")),
   copyFile(resolve(root, "src/card/session-card.css"), resolve(dist, "renderer/session-card.css")),
+  // Dock icons for the App icon setting (main process) and its Settings thumbnails (renderer).
+  mkdir(resolve(dist, "renderer/app-icons"), { recursive: true }).then(() => Promise.all(["mochi", "bubble", "orb"]
+    .map(name => copyFile(resolve(root, "resources/app-icons", `${name}.png`), resolve(dist, "renderer/app-icons", `${name}.png`))))),
   // KaTeX layout for formulas in replies and Markdown previews. Chromium uses the woff2 fonts.
   copyFile(resolve(katexDist, "katex.min.css"), resolve(dist, "renderer/katex.css")),
   ...(await readdir(resolve(katexDist, "fonts"))).filter(name => name.endsWith(".woff2"))

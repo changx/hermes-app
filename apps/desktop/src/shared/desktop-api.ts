@@ -168,11 +168,19 @@ export type DesktopRuntimeInfo = Readonly<{
   versions: Readonly<{ chrome: string; electron: string }>;
 }>;
 
+/** Dock icon choices; `mochi` is the packaged default. */
+export const DESKTOP_APP_ICONS = ['mochi', 'bubble', 'orb'] as const;
+export type DesktopAppIconId = typeof DESKTOP_APP_ICONS[number];
+/** `dock`: this computer shows the choice in the Dock (macOS). */
+export type DesktopAppIconState = Readonly<{ icon: DesktopAppIconId; dock: boolean }>;
+
 export interface HermesDesktopApi {
   addConnection(request: PairingRequest): Promise<void>;
   removeConnection(connectionId: string): Promise<void>;
   /** Saves this device's name for a connection; an empty name restores the host name. */
   renameConnection(connectionId: string, name: string): Promise<void>;
+  getAppIcon(): Promise<DesktopAppIconState>;
+  setAppIcon(icon: DesktopAppIconId): Promise<DesktopAppIconState>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;

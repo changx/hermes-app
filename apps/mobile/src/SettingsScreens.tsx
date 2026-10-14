@@ -11,6 +11,8 @@ import { MAX_CONNECTIONS, serverName } from './connectionSlots';
 import { useApp, useConnections } from './connections';
 
 import { connectionSettingsRoute } from './settingsRoutes';
+import { AppIconSettings, useAppIcon } from './AppIcon';
+import { appIconLabel } from './appIconChoices';
 
 /**
  * Level 1, the single Settings entry. Sections follow where a setting takes effect:
@@ -20,6 +22,7 @@ export function SettingsHome() {
   const router = useRouter();
   const { connections, listError } = useConnections();
   const { choice } = useFontSize();
+  const appIcon = useAppIcon();
   const full = connections.length >= MAX_CONNECTIONS;
   return <SettingsPage>
     {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
@@ -31,6 +34,7 @@ export function SettingsHome() {
     </SettingsSection>
     <SettingsSection title="This device" footer="Applies on this device to every connection.">
       <SettingsRow first title="Font size" value={choice} onPress={() => router.push('/settings/font-size')} />
+      {appIcon.available && <SettingsRow title="App icon" value={appIconLabel(appIcon.current)} onPress={() => router.push('/settings/app-icon')} />}
     </SettingsSection>
   </SettingsPage>;
 }
@@ -108,6 +112,15 @@ export function FontSizePage() {
   return <SettingsPage>
     <SettingsSection footer="Applies on this device to every connection: interface text and conversation reading.">
       <SettingsBlock first><FontSizeSettings /></SettingsBlock>
+    </SettingsSection>
+  </SettingsPage>;
+}
+
+/** Level 2: Home Screen icon of this device. */
+export function AppIconPage() {
+  return <SettingsPage>
+    <SettingsSection footer="Changes the Hermes icon on this device's Home Screen. Your phone confirms the change with a short notice.">
+      <SettingsBlock first><AppIconSettings /></SettingsBlock>
     </SettingsSection>
   </SettingsPage>;
 }

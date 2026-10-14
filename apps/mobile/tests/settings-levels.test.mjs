@@ -17,6 +17,7 @@ const mocks = {
   './FontSize': `const s=globalThis.__settingsTest; export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({choice:s.font}); export const FontSizeSettings='FontSizeSettings';`,
   './AgentSettings': `export const AgentNameSettings='AgentNameSettings';`,
   './ModelSettings': `export const ModelSettings='ModelSettings';`,
+  './AppIcon': `const s=globalThis.__settingsTest; export const useAppIcon=()=>({available:!!s.iconAvailable,current:s.icon??'mochi'}); export const AppIconSettings='AppIconSettings';`,
   './connections': `const s=globalThis.__settingsTest; export const useConnections=()=>({connections:s.connections,listError:'',removeConnection:async slot=>{s.removed.push(slot)},renameConnection:async (slot,name)=>{if(s.failRename)throw Error('private detail');s.renamed.push([slot,name])},addConnection:async (server,code)=>{s.added.push([server,code]);return 'c'.repeat(24)}}); export const useApp=()=>s.app;`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SettingsScreens.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
@@ -47,6 +48,19 @@ test('Settings level 1 groups connections, then This device', async () => {
   assert.equal(state.pushed.at(-1), '/settings/add-connection');
   await press(root, 'Font size, Large');
   assert.equal(state.pushed.at(-1), '/settings/font-size');
+  assert.ok(!all.includes('App icon'), 'App icon row hidden without the native module (Expo Go)');
+  root.unmount();
+});
+
+test('Settings level 1 shows App icon under This device when the native module exists', async () => {
+  reset(); state.iconAvailable = true; state.icon = 'orb';
+  state.connections = [runtime('primary', 'personal.example')];
+  let root; await act(async () => { root = create(React.createElement(SettingsHome)); });
+  const all = texts(root);
+  assert.ok(all.indexOf('App icon') > all.indexOf('This device'), 'App icon inside This device');
+  await press(root, 'App icon, Orb');
+  assert.equal(state.pushed.at(-1), '/settings/app-icon');
+  state.iconAvailable = false; state.icon = undefined;
   root.unmount();
 });
 

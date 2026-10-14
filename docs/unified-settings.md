@@ -12,7 +12,7 @@ Jamie asked for one Settings experience across the app, not separate settings fo
 | --- | --- | --- |
 | On this Hermes · all your devices | Stored by the connected Hermes profile. Every paired device sees the change. | Default model |
 | On this device, for one connection | Stored only in this app, separately for each connection. | Agent display name (mobile), Remove connection |
-| This device, for every connection | Stored only in this app; applies to all connections. | Font size; Shortcuts (desktop, fixed) |
+| This device, for every connection | Stored only in this app; applies to all connections. | Font size; App icon; Shortcuts (desktop, fixed) |
 
 Status (server address, connection state, safe detail) is shown, not edited, and appears first on each connection page.
 
@@ -22,7 +22,7 @@ Not in Settings: Channel description, AGENTS.md, files and topic labels. They be
 
 1. **Connections:** list of saved connections with state, and Add connection.
 2. **One connection page:** *Status* → *On this Hermes · all your devices* (Default model) → *On this device* (Agent display name on mobile; Remove connection).
-3. **This device:** Font size; Shortcuts on desktop only.
+3. **This device:** Font size; App icon (see [app-icon.md](app-icon.md); mobile shows it only in builds with the native module, not in Expo Go); Shortcuts on desktop only.
 
 Labels and order are the same on both apps. Desktop has no Agent display name because the desktop interface does not show a custom Agent name; the setting is added only when desktop uses it.
 

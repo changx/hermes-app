@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { DesktopSnapshot } from '../shared/desktop-api';
+import type { DesktopAppIconId, DesktopAppIconState, DesktopSnapshot } from '../shared/desktop-api';
 import { ConnectionPage, ConnectionSettings } from './connection-settings';
 import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize } from './font-preference';
 
@@ -10,9 +10,44 @@ import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize
  *   (every device) from settings kept on this device.
  * - This device: preferences stored only in this app on this computer, for every connection.
  */
-export type SettingsPage = 'connection' | `connection:${string}` | 'font' | 'shortcuts';
+export type SettingsPage = 'connection' | `connection:${string}` | 'font' | 'icon' | 'shortcuts';
 type Page = SettingsPage;
 type NavItem = { id: Page; label: string; detail?: string; issue?: boolean };
+
+const APP_ICON_CHOICES: readonly { id: DesktopAppIconId; label: string }[] = [
+  { id: 'mochi', label: 'Mochi' }, { id: 'bubble', label: 'Bubble' }, { id: 'orb', label: 'Orb' },
+];
+
+function AppIconSettings() {
+  const [state, setState] = useState<DesktopAppIconState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    window.hermesDesktop.getAppIcon().then(value => { if (live) setState(value); })
+      .catch(() => { if (live) setError('Your app icon choice could not be loaded.'); });
+    return () => { live = false; };
+  }, []);
+  const choose = (icon: DesktopAppIconId) => {
+    if (saving || state?.icon === icon) return;
+    setSaving(true); setError('');
+    window.hermesDesktop.setAppIcon(icon).then(setState)
+      .catch(() => setError('Could not change the app icon. Your current icon is still in use.'))
+      .finally(() => setSaving(false));
+  };
+  return <div className="settings-section">
+    <p className="settings-description">Changes the Hermes icon in the Dock on this computer while Hermes is open. Finder and Launchpad keep the default icon.</p>
+    {state && !state.dock && <p className="settings-description">The Dock icon is available on macOS. Your choice is saved for this computer.</p>}
+    <div className="settings-icon-options" role="radiogroup" aria-label="App icon">{APP_ICON_CHOICES.map(choice => {
+      const selected = state?.icon === choice.id;
+      return <button key={choice.id} type="button" role="radio" aria-checked={selected} disabled={!state || saving}
+        className={selected ? 'selected' : undefined} onClick={() => choose(choice.id)}>
+        <img src={`app-icons/${choice.id}.png`} alt="" width={64} height={64} /><span>{choice.label}</span>
+      </button>;
+    })}</div>
+    {error && <p role="alert">{error}</p>}
+  </div>;
+}
 
 function FontSettings() {
   const [size, setSize] = useState(getFontSize);
@@ -59,7 +94,7 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const groups: { title: string; items: NavItem[] }[] = [
     { title: 'Connections', items: [{ id: 'connection', label: 'All connections' },
       ...rows.map(row => ({ id: `connection:${row.id}` as Page, label: row.name, detail: row.server, issue: row.state === 'blocked' }))] },
-    { title: 'This device', items: [{ id: 'font', label: 'Font size' }, { id: 'shortcuts', label: 'Shortcuts' }] },
+    { title: 'This device', items: [{ id: 'font', label: 'Font size' }, { id: 'icon', label: 'App icon' }, { id: 'shortcuts', label: 'Shortcuts' }] },
   ];
   const items = groups.flatMap(group => group.items);
   const known = (value?: string): value is Page => !!value && items.some(item => item.id === value);
@@ -102,6 +137,7 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
         {/* Connection pages stay mounted so model drafts and warnings survive page switches. */}
         {rows.filter(row => visited.has(`connection:${row.id}`) || shown === `connection:${row.id}`).map(row => <div key={row.id} hidden={shown !== `connection:${row.id}`}><ConnectionPage row={row} disabled={!!snapshot.connectionsError} /></div>)}
         {shown === 'font' && <FontSettings />}
+        {shown === 'icon' && <AppIconSettings />}
         {shown === 'shortcuts' && <Shortcuts />}
       </section>
     </div>

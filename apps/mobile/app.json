@@ -23,7 +23,30 @@
       "expo-secure-store",
       "expo-router",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-alternate-app-icons",
+        [
+          {
+            "name": "Bubble",
+            "ios": "./assets/app-icons/bubble.png",
+            "android": {
+              "foregroundImage": "./assets/app-icons/bubble-foreground.png",
+              "backgroundImage": "./assets/app-icons/bubble-background.png",
+              "backgroundColor": "#92DCED"
+            }
+          },
+          {
+            "name": "Orb",
+            "ios": "./assets/app-icons/orb.png",
+            "android": {
+              "foregroundImage": "./assets/app-icons/orb-foreground.png",
+              "backgroundImage": "./assets/app-icons/orb-background.png",
+              "backgroundColor": "#3D3668"
+            }
+          }
+        ]
+      ]
     ]
   }
 }

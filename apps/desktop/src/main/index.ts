@@ -15,6 +15,7 @@ import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
 import { contextMenuItems, menuPosition } from './context-menu';
 import { DesktopSettingsWindow } from './settings-window';
+import { DesktopAppIcon } from './app-icon';
 import { SessionCardWindow, sessionCardRequest } from './session-card-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
@@ -51,6 +52,9 @@ const secureSettings = (contents: Electron.WebContents): void => {
   contents.on('will-redirect', event => event.preventDefault());
 };
 const settingsWindow = new DesktopSettingsWindow(__dirname, () => service.snapshot(), secureSettings);
+// Dock icon chosen in Settings (this computer only). Images are packaged with the renderer thumbnails.
+const appIcon = new DesktopAppIcon<Electron.NativeImage>(join(app.getPath('userData'), 'app-icon.json'), join(__dirname, '../renderer/app-icons'),
+  { fromBuffer: buffer => nativeImage.createFromBuffer(buffer) }, app.dock);
 // Sidebar Session card: a native popup right of the sidebar. It has no IPC of its own.
 const sessionCard = new SessionCardWindow(() => mainWindow, __dirname, secureSettings);
 
@@ -95,7 +99,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 const registerDesktopApi = (): void => {
@@ -119,6 +123,8 @@ const registerDesktopApi = (): void => {
   handle('desktop:rename-connection', async (event, id: unknown, name: unknown) => {
     settingsSender(event); await service.renameConnection(text(id, 40), text(name, 200));
   });
+  handle('desktop:get-app-icon', event => { settingsSender(event); return appIcon.state(); });
+  handle('desktop:set-app-icon', (event, icon: unknown) => { settingsSender(event); return appIcon.set(icon); });
   handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
   handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
     trustedSender(event);
@@ -464,6 +470,7 @@ app.whenReady().then(async () => {
   // Installed applications only; do not change OS associations in development.
   if (app.isPackaged) app.setAsDefaultProtocolClient("hermesapp");
   registerDesktopApi();
+  void appIcon.load();
   powerMonitor.on("resume", () => { void service.resumeConnection(); });
   createMainWindow();
   browserControl = new DesktopBrowserControl({

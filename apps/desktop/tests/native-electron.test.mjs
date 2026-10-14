@@ -182,6 +182,13 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await evaluate(fc,'(()=>{const e=document.querySelector("[aria-label=\\"Text size\\"]");e.value="18";e.dispatchEvent(new Event("change",{bubbles:true}));})()');
  await until(()=>evaluate(shell,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font shared across views');
  await until(()=>evaluate(dc,'getComputedStyle(document.documentElement).fontSize==="18px"'),'font reaches open Session view');
+ await evaluate(fc,'document.querySelector("#settings-tab-icon").click()');await until(()=>evaluate(fc,'document.querySelectorAll("[role=radio]").length===3&&!!document.querySelector("[role=radio][aria-checked=true]")'),'app icon page reads the saved choice');
+ assert.equal(await evaluate(fc,'document.querySelector("[role=radio][aria-checked=true]").textContent'),'Mochi','default icon is Mochi');
+ await until(()=>evaluate(fc,'[...document.querySelectorAll(".settings-icon-options img")].every(img=>img.complete&&img.naturalWidth===512)'),'packaged icon thumbnails load under the renderer CSP');
+ await evaluate(fc,'[...document.querySelectorAll("[role=radio]")].find(b=>b.textContent==="Orb").click()');await until(()=>evaluate(fc,'document.querySelector("[role=radio][aria-checked=true]")?.textContent==="Orb"'),'app icon change confirmed through native IPC');
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','app-icon.json'),'utf8')),{icon:'orb'},'choice saved in userData');
+ assert.equal(await evaluate(dc,'window.hermesDesktop.setAppIcon("bubble").then(()=>"accepted",()=>"rejected")'),'rejected','Session views cannot change the app icon');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','app-icon.json'),'utf8')).icon,'orb');
  BrowserWindow.fromWebContents(fc).close();await until(()=>!settingsForTest().isOpen,'Settings window closed');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-native-tabs.png'),(await window.capturePage()).toPNG());}
  await evaluate(shell,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)');

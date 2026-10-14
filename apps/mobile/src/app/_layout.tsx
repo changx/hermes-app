@@ -59,6 +59,7 @@ function NativeRoutes() {
         <Stack.Screen name="settings/connection" options={{ title: 'Connection' }} />
         <Stack.Screen name="settings/add-connection" options={{ title: 'Add connection' }} />
         <Stack.Screen name="settings/font-size" options={{ title: 'Font size' }} />
+        <Stack.Screen name="settings/app-icon" options={{ title: 'App icon' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />
       </Stack.Protected>
     </Stack>
