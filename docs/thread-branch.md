@@ -5,6 +5,7 @@
 - 已合入并发布：客户端 `main` `c4e59da`（桌面 v0.1.46、Expo 测试入口），插件 `main` `62aaafb`（v0.2.8、v0.2.9），核心 `local/main` `8735238716`。发布记录见 [message-toolbar-release-0.1.46](message-toolbar-release-0.1.46.md)。
 - 插件 0.2.9 已在 hermes-app-dev 生效（2026-10-07 18:22 重启；迁移与线上验收通过，见发布记录）。
 - 真机验收（iPhone、Android、macOS）尚未进行。
+- 修复（插件 v0.2.35，2026-10-14）：核心读取 transcript 时会清理并去掉 user/assistant 文本前后的空白，`/branch` 复制的是处理后的文本。原消息带前后空白（例如末尾空格）时无法对应到副本，之后的锚点都返回 `history_mismatch`。插件现在也用核心的 `SessionDB._loaded_view_content` 比较；其他差异仍拒绝。已安装到共享 `current`，等待 Gateway 重启后生效。
 
 ## 已确认的产品决定（Jamie）
 
