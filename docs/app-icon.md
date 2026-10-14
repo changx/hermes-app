@@ -1,6 +1,8 @@
 # 应用图标
 
-状态：已确认需求，候选实现，待发布。
+状态：已发布（桌面 v0.1.84）。
+
+Release v0.1.84 (2026-10-13, authorized by Jamie: "合并发布"): icon commit `5c797fa`, release commit `6a564d3`, tag `v0.1.84`. Mac mini workflow run `38511882499`: 199 tests, 150 pass, 0 fail, 49 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check (`88c63b16…68ef`); Info.plist shows 0.1.84, and `Contents/Resources/electron.icns` is byte-identical to `apps/desktop/resources/icon.icns`. Releases kept: v0.1.84 and v0.1.83. Expo: only `hermes-app-expo.service` restarted (PID 210935 → 1699651); the public iOS and Android manifests show SDK 57 and `icon: ./assets/icon.png` (Android also `adaptiveIcon`), and each launchAsset and `icon.png` return HTTP 200. Expo Go does not show the app icon, so the phone icon is not visible until an independent install package exists. No plugin, Gateway or Hermes core change. The Dock icon on Jamie's Mac is not checked yet.
 
 ## 已确认需求
 
