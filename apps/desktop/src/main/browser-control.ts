@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { trackSocket } from './socket-registry';
 import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, MAC_ACTION, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
 import type { DesktopTabKind } from '../shared/desktop-api';
 
@@ -84,7 +85,7 @@ export class DesktopBrowserControl {
     if (this.closed || link.blocked) return;
     const url = link.account.baseUrl.replace(/^http/, 'ws') + '/v1/desktop-browser';
     let ws: WebSocket;
-    try { ws = this.deps.connect ? this.deps.connect(url, link.account.token) : new WebSocket(url, { headers: { Authorization: `Bearer ${link.account.token}` }, followRedirects: false, maxPayload: 1024 * 1024, handshakeTimeout: 15_000 }); }
+    try { ws = this.deps.connect ? this.deps.connect(url, link.account.token) : trackSocket(new WebSocket(url, { headers: { Authorization: `Bearer ${link.account.token}` }, followRedirects: false, maxPayload: 1024 * 1024, handshakeTimeout: 15_000 })); }
     catch { this.retry(link); return; }
     link.ws = ws; link.ready = false; link.bindings = undefined;
     ws.on('message', (data, binary) => {

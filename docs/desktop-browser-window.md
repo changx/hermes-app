@@ -43,16 +43,23 @@ Jamie (2026-10-13): one Cmd+Q, or one click on Quit Hermes in the app menu, clos
 
 Release v0.1.81 (2026-10-13, authorized by Jamie: "合并发布"): fix `04bd4c1`, release commit `ac57dc7`, tag `v0.1.81`. Candidate `desktop:check` on Linux with Chromium and Electron/Xvfb: 196 passed, 0 failed. Mac mini workflow run `38501624124`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.81. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build, and the browser window `close` handler in the package has no `preventDefault`. Releases kept: v0.1.81 and v0.1.80. No mobile, plugin, Expo or Gateway change. Quit on Jamie's Mac is not checked yet.
 
-## Quit cancelled by any window; unusable window after reopen
+## Graceful shutdown
 
-Jamie (2026-10-13, after v0.1.81): Cmd+Q still closed the window without quitting. After reopening the window, nothing in it worked.
+Jamie (2026-10-13, after v0.1.82): Cmd+Q still closed the window without quitting, and after reopening, nothing in the window worked. Jamie then asked for a graceful shutdown.
 
-- Cause of the unusable window: the second quit pass (`before-quit` after drafts are saved) closed the connection service at once. Any later cancel left the app running with a closed connection. A reopened window then rendered, but a Session row click opened nothing.
-- Which window cancelled the quit on Jamie's Mac is not known. Any prevented window close cancels the whole quit in Electron, for example a page's `beforeunload` in a sign-in popup.
-- Fix:
-  - The service, Mac control and browser control close in `will-quit`, which runs only when the quit goes ahead.
-  - On that pass, helper windows (Settings, Session card, separate browser windows, popups) are destroyed, so none of them can cancel the quit. They hold no unsaved state.
-  - If a quit is still cancelled and all windows then close, `window-all-closed` (which Electron skips during a real quit) quits again. A cancelled quit also resets the draft save, so the next quit saves drafts again.
-  - The main window tears down its tabs and Session card in `closed`, not `close`. A cancelled close no longer leaves a window without tabs.
-- Test `quit-native` (production main code with the test fixture, real clicks): a helper window that refuses to close does not stop one quit request, and the service closes only in `will-quit`; a cancelled main-window close leaves the connection open and a Session row click still opens the Session, and the next quit finishes; close and reopen still opens Sessions.
-- Mac mini (Electron 44.4.5, macOS 26, same harness): before the fix, a refusing helper window left the app running with no windows and a closed service; after a cancelled main-window close, a Session row click opened nothing. After the fix, both quit requests finished, and the Session opened after the cancelled close. Close and reopen worked in both builds.
+Cause of the unusable window: the old quit code closed the connection service when the quit started. If any window then refused to close (Electron cancels the whole quit then), the app kept running with a closed connection. A reopened window rendered, but a Session row click opened nothing. Which window refused on Jamie's Mac is not known; any refusing window or page `beforeunload` (for example a sign-in popup) has this effect.
+
+The app now runs one ordered quit sequence (`src/main/shutdown.ts`, called from `before-quit` in `src/main/index.ts`) for every quit request: Cmd+Q, the app menu, and macOS logout or restart. Electron's own window closing on quit is not used. Steps, each with a time limit:
+1. Stop new work (1 s): Agent browser control and Mac control stop; no new outbox send starts. A message sent now stays in the durable outbox and is sent after the next start.
+2. Settle and save (sends up to 3 s): sends already in progress finish; queued draft, outbox and credential writes complete.
+3. Close windows the normal way: helper windows first (Settings, Session card, separate browser windows, popups; limit 1.5 s), then the main window with its tabs and pages (limit 2 s). Pages get their unload events. A page's "leave this page?" refusal is ignored during quit (`will-prevent-unload`). A window still open at its limit is destroyed.
+4. Close connections: the Hermes live connections and the browser-control connection close, and the app waits up to 1 s for their WebSocket close handshakes (`src/main/socket-registry.ts`).
+5. Quit. With no windows left, nothing can cancel it.
+
+While the sequence runs, no window is reopened (Dock click, session links). The main window tears down its tabs and Session card in `closed`, not `close`, so a refused close leaves working tabs. The main process prints one `[shutdown]` line with each step's time and outcome; it has no user content.
+
+Tests:
+- `quit-native` (production main code with the test fixture, Electron/Xvfb, real clicks): a helper window that refuses to close is destroyed at its limit and the quit finishes; a popup page with `beforeunload` closes at once; a send in progress finishes before the connection closes; a main window that refuses once is destroyed at its limit and the quit finishes; close and reopen still opens Sessions. With the `beforeunload` handling or the send settling removed, the matching check fails.
+- `shutdown` (unit): steps run in order, a slow step is abandoned at its limit, a failing step does not stop the rest; the socket wait follows real local WebSocket close handshakes and reports a socket that does not close.
+- Mac mini (Electron 44.4.5, macOS 26, same harness as `quit-native`): a send in progress finished 777 ms after the quit request, then the windows closed, then the connection; the `beforeunload` popup closed after 69 ms; a refusing main window was destroyed at 2 s and the quit finished; close and reopen worked. The old code on the same harness left the app running with a closed connection, and a Session row click opened nothing.
+- Not verified: a real WebSocket close against the Hermes server on Jamie's Mac; the fixture has no live socket.

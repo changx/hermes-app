@@ -98,12 +98,10 @@ const prefs=()=>JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','brow
  await until(()=>evaluate(shell,'!!document.querySelector(".browser-sidebar")'),'sidebar back in main window');
  await until(()=>pane2.view.getVisible()&&pane2.view.getBounds().x+pane2.view.getBounds().width===main.getContentSize()[0],'page placed in the sidebar');
  assert.equal(prefs().mode,'sidebar');assert.equal(appWindows().length,1);
- // Quit with a separate browser window open: the first quit must finish (Cmd+Q and the app menu call app.quit()).
- // Linux re-quits from window-all-closed, so a cancelled quit shows up here as that event.
+ // Quit with a separate browser window open: one quit request (Cmd+Q and the app menu call app.quit()) must finish.
  await evaluate(shell,'document.querySelector(".browser-sidebar .browser-mode-toggle").click()');
  await until(()=>pane2.window&&pane2.window.isVisible(),'separate window open before quit');
- let allClosed=0;app.on('window-all-closed',()=>{allClosed++;});
- app.on('will-quit',event=>{event.preventDefault();server.close();if(allClosed){console.error('FAIL: a window close handler cancelled the quit');app.exit(1);return;}console.log('BROWSER_WINDOW_OK');app.exit(0);});
+ app.on('will-quit',event=>{event.preventDefault();server.close();console.log('BROWSER_WINDOW_OK');app.exit(0);});
  app.quit();
  await until(()=>false,'app quits on the first request');
 })().catch(error=>{console.error(error.stack);server.close();app.exit(1)});

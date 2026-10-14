@@ -20,6 +20,8 @@ import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
 import { installHttpKeepAlive } from "./transport";
+import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord } from "./shutdown";
+import { socketsClosed } from "./socket-registry";
 
 installHttpKeepAlive();
 
@@ -448,7 +450,7 @@ const createMainWindow = (): BrowserWindow => {
 };
 
 const focusSessionLink = (url: string): void => {
-  if (!url.startsWith("hermesapp:")) return;
+  if (!url.startsWith("hermesapp:") || shutdownPhase !== "running") return;
   service.openSessionLink(url);
   if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
   else if (app.isReady()) createMainWindow();
@@ -487,30 +489,43 @@ app.whenReady().then(async () => {
   await service.initialize();
   const url = process.argv.find(value => value.startsWith("hermesapp:"));
   if (url) focusSessionLink(url);
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
+  app.on("activate", () => { if (shutdownPhase === "running" && BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
 });
 
-let readyToQuit = false;
-let flushingDrafts = false;
-let quitting = false;
+// Graceful shutdown. Every quit request (Cmd+Q, the app menu, macOS logout or restart) runs one ordered
+// sequence, and only then lets Electron quit. Electron's own window closing on quit is not used: any window
+// whose close is refused cancels it, which left the app running without windows.
+type ShutdownPhase = "running" | "stopping" | "done";
+let shutdownPhase: ShutdownPhase = "running";
+let lastShutdown: ShutdownRecord[] = [];
+const gracefulShutdown = async (): Promise<void> => {
+  lastShutdown = await runShutdown([
+    // 1. No new work: Agent browser and Mac control stop taking commands; no new sends start.
+    { name: "stop-intake", timeoutMs: 1_000, run: () => { browserControl?.close(); macDriver.close(); } },
+    // 2. Sends already in progress may finish; queued draft, outbox and credential writes complete.
+    { name: "settle-and-save", timeoutMs: 4_000, run: () => service.prepareShutdown(3_000) },
+    // 3. Windows close the normal way: helper windows first, then the main window (its tabs and pages).
+    { name: "close-windows", timeoutMs: 4_000, run: async () => {
+      allowUnloadDuringQuit();
+      const helpers = BrowserWindow.getAllWindows().filter(window => window !== mainWindow);
+      const forced = await closeWindows(helpers, 1_500);
+      return [...forced, ...await closeWindows(mainWindow ? [mainWindow] : [], 2_000)];
+    } },
+    // 4. Server connections close and their WebSocket close handshakes finish.
+    { name: "close-connections", timeoutMs: 1_500, run: async () => { service.close(); return { clean: await socketsClosed(1_000) }; } },
+  ]);
+};
 app.on("before-quit", event => {
-  if (readyToQuit) {
-    quitting = true;
-    // A later quit request (if this one is still cancelled) saves drafts again first.
-    readyToQuit = false; flushingDrafts = false;
-    // Electron cancels the whole quit when any window's close is prevented (a handler, or a page's beforeunload,
-    // for example in a sign-in popup). Helper windows (Settings, Session card, browser windows and popups) hold
-    // no unsaved state, so destroy them; only the main window closes normally.
-    for (const window of BrowserWindow.getAllWindows()) if (window !== mainWindow && !window.isDestroyed()) window.destroy();
-    return;
-  }
+  if (shutdownPhase === "done") return;
   event.preventDefault();
-  if (flushingDrafts) return;
-  flushingDrafts = true;
-  void service.flushLocalDrafts().finally(() => { readyToQuit = true; app.quit(); });
+  if (shutdownPhase === "stopping") return;
+  shutdownPhase = "stopping";
+  void gracefulShutdown().finally(() => {
+    // Developer log only (main-process stdout): step, time and outcome; no user content.
+    console.log("[shutdown] " + JSON.stringify(lastShutdown));
+    shutdownPhase = "done"; app.quit();
+  });
 });
-// Tear down only when the quit really proceeds. A cancelled quit used to leave the app running with a closed
-// connection, so a reopened window could not open or send anything.
+// Safety net only: the sequence above has already closed these.
 app.on("will-quit", () => { browserControl?.close(); macDriver.close(); service.close(); });
-// During a quit Electron skips this event; it fires only when the quit was cancelled after the windows closed.
-app.on("window-all-closed", () => { if (process.platform !== "darwin" || quitting) app.quit(); });
+app.on("window-all-closed", () => { if (process.platform !== "darwin" && shutdownPhase === "running") app.quit(); });

@@ -113,6 +113,8 @@ export class DesktopConnectionService {
   private delivering = new Set<string>();
   private connectionIssue: string | undefined;
   private closed = false;
+  /** Quit started: no new sends start; records stay in the outbox for the next launch. */
+  private stopping = false;
   private sendRetryAfter = new Map<string, number>();
   private checkedReceipts = new Set<string>();
   private outboxStorageFault = false;
@@ -155,7 +157,7 @@ export class DesktopConnectionService {
   }
 
   private scheduleOutbox(): void {
-    if (this.closed || this.outboxStorageFault || this.outboxTimer || this.connectionState !== "online" || !this.outbox.some((item) => !item.receiptId && item.state === "pending" || item.receiptRefSeq !== undefined)) return;
+    if (this.closed || this.stopping || this.outboxStorageFault || this.outboxTimer || this.connectionState !== "online" || !this.outbox.some((item) => !item.receiptId && item.state === "pending" || item.receiptRefSeq !== undefined)) return;
     this.outboxTimer = setTimeout(() => {
       this.outboxTimer = undefined;
       void this.flushOutbox();
@@ -1007,6 +1009,20 @@ export class DesktopConnectionService {
 
   async flushLocalDrafts(): Promise<void> { await this.localDraftStore.flush(); }
 
+  /**
+   * Graceful shutdown, first part: start no new sends, let the sends already in progress finish (up to
+   * `timeoutMs`), then wait for queued draft, outbox and credential writes. The connection stays open.
+   * A send cut off by the deadline stays in the durable outbox and is checked again on the next launch.
+   */
+  async prepareShutdown(timeoutMs: number): Promise<{ sendsSettled: boolean }> {
+    this.stopping = true; clearTimeout(this.outboxTimer); this.outboxTimer = undefined;
+    const end = Date.now() + timeoutMs;
+    while ((this.delivering.size > 0 || this.flushingOutbox) && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 20));
+    const sendsSettled = this.delivering.size === 0 && !this.flushingOutbox;
+    await Promise.all([this.localDraftStore.flush(), this.outboxStore.flush(), this.store.flush()]);
+    return { sendsSettled };
+  }
+
   async loadLocalDrafts(identity: string) {
     if (!this.connection || this.connection.id !== identity) throw new Error('Connection changed');
     return this.localDraftStore.list(identity);
@@ -1126,7 +1142,7 @@ export class DesktopConnectionService {
 
   private async deliver(value: OutboxRecord): Promise<void> {
     const client = this.client, connection = this.connection;
-    if (this.closed || this.outboxStorageFault || !client || !connection || value.state === "blocked" || this.delivering.has(value.id) || this.connectionState !== "online" || Date.now() < (this.sendRetryAfter.get(value.id) ?? 0)) return;
+    if (this.closed || this.stopping || this.outboxStorageFault || !client || !connection || value.state === "blocked" || this.delivering.has(value.id) || this.connectionState !== "online" || Date.now() < (this.sendRetryAfter.get(value.id) ?? 0)) return;
     if (value.receiptId && value.receiptRefSeq === undefined && this.checkedReceipts.has(value.id)) return;
     // A later message of a session started here waits until its starting record created it.
     if (!value.create && !client.threads.has(value.threadId) && this.pendingThread(value.threadId)) return;

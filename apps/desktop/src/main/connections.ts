@@ -285,6 +285,12 @@ export class DesktopConnections {
     await r.account.service.saveLocalDraft(identity, r.raw, draft);
   }
   async flushLocalDrafts(): Promise<void> { await this.drafts.flush(); }
+  /** Graceful shutdown, first part, for every connection at once. See DesktopConnectionService.prepareShutdown. */
+  async prepareShutdown(timeoutMs: number): Promise<{ sendsSettled: boolean }> {
+    const results = await Promise.all([...this.accounts.values()].map(a => a.service.prepareShutdown(timeoutMs)));
+    await Promise.all([this.drafts.flush(), this.outbox.flush()]);
+    return { sendsSettled: results.every(r => r.sendsSettled) };
+  }
   sessionLink(id?: string): string { if (!id) return this.current().service.sessionLink(); const r = this.route(id); return r.account.service.sessionLink(r.raw); }
   openSessionLink(value: string, contextThread?: string): void {
     // A short in-message link belongs to the connection of the Session that shows it.

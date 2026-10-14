@@ -80,6 +80,8 @@ const data = (value: unknown): OutboxData => {
 
 export class OutboxStore {
   private mutation: Promise<void> = Promise.resolve();
+  /** Resolves when every queued write has finished. */
+  async flush(): Promise<void> { await this.mutation; }
 
   private async read(): Promise<OutboxData> {
     let raw: string;

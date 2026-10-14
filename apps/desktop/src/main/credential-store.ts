@@ -71,6 +71,8 @@ const assertState = (value: unknown): SecureState => {
 
 export class CredentialStore {
   private mutation: Promise<void> = Promise.resolve();
+  /** Resolves when every queued write has finished. */
+  async flush(): Promise<void> { await this.mutation; }
   constructor(private readonly filename = 'connection.secure.json') {
     if (!/^connection(?:-[0-9a-f]{24})?\.secure\.json$/.test(filename)) throw new Error('invalid credential path');
   }

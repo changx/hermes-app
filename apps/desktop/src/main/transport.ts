@@ -1,6 +1,7 @@
 import type { ConditionalHeaders, HttpTransport, SocketFactory } from "@hermes-app/client";
 import { Agent, setGlobalDispatcher } from "undici";
 import WebSocket from "ws";
+import { trackSocket } from "./socket-registry";
 
 /** Node's fetch (undici) closes an idle HTTPS connection after 4 s, so the first
  * request after the user types (create, send) paid a new TLS handshake: 0.5-1.2 s
@@ -154,7 +155,7 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
       if (signal.aborted) return Promise.reject(new Error("aborted"));
       return new Promise((resolve, reject) => {
         const url = base.replace(/^http/, "ws") + path;
-        const ws = new WebSocket(url, { headers: authorization(token), followRedirects: false, maxPayload: MAX_REPLY_BYTES });
+        const ws = trackSocket(new WebSocket(url, { headers: authorization(token), followRedirects: false, maxPayload: MAX_REPLY_BYTES }));
         let settled = false;
         let closed = false;
         let messageListener: ((data: string) => void) | null = null;
