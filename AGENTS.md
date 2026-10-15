@@ -144,6 +144,7 @@
 - [docs/generated-titles-search.md](docs/generated-titles-search.md)
 - [docs/unified-settings.md](docs/unified-settings.md)
 - [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
+- [docs/send-cancel-inline.md](docs/send-cancel-inline.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
 - [docs/session-labels.md](docs/session-labels.md)
 - [docs/todo-flag.md](docs/todo-flag.md)

@@ -111,8 +111,9 @@ const MessageRow = memo(({ message, continuation, hidden = false, toolbar = fals
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
     {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} />}
     {message.feedback && <div className="receipt">{message.feedback}</div>}
-    {warning || message.receiptState === "queued" && message.receiptId ? <div className="receipt message-warning">{warning}{message.clientMessageId && warning ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}{message.receiptId && message.receiptState === "queued" ? <button type="button" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}</div> : null}
-    {message.role === "user" && <div className="user-message-time">{message.text && <UserMessageCopy text={message.text} />}<time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
+    {warning ? <div className="receipt message-warning">{warning}{message.clientMessageId ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}</div> : null}
+    {/* Cancel sits in the time line, so it appears and disappears without changing the message height. */}
+    {message.role === "user" && <div className="user-message-time">{message.receiptId && message.receiptState === "queued" ? <button type="button" className="user-message-cancel" aria-label="Cancel queued message" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : null}{message.text && <UserMessageCopy text={message.text} />}<time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
   </article>;
 });
 
