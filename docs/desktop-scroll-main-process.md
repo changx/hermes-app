@@ -37,3 +37,12 @@
 
 - 自动：桌面 `tsc`、`npm run build`、`npm test`（217 项：209 项通过，8 项 Electron 原生测试在宿主机跳过）。新测试在修改前的代码上失败。
 - 真机：Jamie 的 Mac 上，打开报告的长 Session，在其他 Session 运行 Agent 时滚动，确认不再卡顿。此项待发布后验收。
+
+## 发布（2026-10-15，Jamie 授权：「确认，改完合并发布」）
+
+- `main` 快进 `cdaa915..860d541`，标签 `v0.1.92`。标签运行 38730927895 成功（217 项：167 项通过，0 项失败，50 项跳过；audit 0）。
+- `Hermes-0.1.92-macOS-arm64.zip`：校验和正确，Info.plist 版本为 0.1.92。ASAR 中的 `dist/main/index.cjs`、`dist/preload/index.cjs`、`dist/renderer/index.js`、`dist/renderer/styles.css` 与本地构建逐字节相同。
+- 只改桌面主进程：不重启 Expo，不安装插件，不重启 Gateway。
+- 证据：`~/.hermes/profiles/jamie/workspace/hermes-app/2026-10-15-desktop-scroll-main-process/`。
+- 回滚：桌面 `v0.1.91`（`aae8d82`）。
+- 待验收：Jamie 的 Mac 真机滚动。
