@@ -52,16 +52,16 @@ export class DesktopConnections {
   }
   private current(): Account {
     const account = this.accounts.get(this.active);
-    if (account?.service.snapshot().phase === 'connected') return account;
-    const available = [...this.accounts.values()].find(a => a.service.snapshot().phase === 'connected');
+    if (account?.service.status().phase === 'connected') return account;
+    const available = [...this.accounts.values()].find(a => a.service.status().phase === 'connected');
     return available ?? account ?? this.accounts.get('primary')!;
   }
   private forIdentity(key: string): Account {
-    const account = [...this.accounts.values()].find(a => a.service.snapshot().connectionKey === key);
+    const account = [...this.accounts.values()].find(a => a.service.status().connectionKey === key);
     if (!account) throw new Error('Connection unavailable'); return account;
   }
-  hasConnection(key?: string): boolean { return !!key && [...this.accounts.values()].some(a => a.service.snapshot().connectionKey === key); }
-  connectionForChannel(id?: string): string | undefined { return (id ? this.route(id).account : this.current()).service.snapshot().connectionKey; }
+  hasConnection(key?: string): boolean { return !!key && [...this.accounts.values()].some(a => a.service.status().connectionKey === key); }
+  connectionForChannel(id?: string): string | undefined { return (id ? this.route(id).account : this.current()).service.status().connectionKey; }
   threadIdentity(raw: string, channel?: string): string { return this.encode(channel ? this.route(channel).account : this.current(), raw)!; }
   /** Paired, connected servers for the App-side browser control connection. */
   browserAccounts() {
@@ -71,11 +71,11 @@ export class DesktopConnections {
         unqualify: (id: string) => { try { const r = this.route(id); return r.account === account ? r.raw : undefined; } catch { return undefined; } } }];
     });
   }
-  private hostName(account: Account, snap = account.service.snapshot(undefined, false)): string | undefined {
+  private hostName(account: Account, snap: { connectionName?: string } = account.service.status()): string | undefined {
     return snap.connectionName ?? (account.server ? new URL(account.server).hostname : undefined);
   }
-  private nameOf(account: Account, snap?: DesktopSnapshot): string | undefined { return this.names[account.id] ?? this.hostName(account, snap); }
-  private projected(account: Account, thread?: string, pages = true): DesktopSnapshot {
+  private nameOf(account: Account, snap?: { connectionName?: string }): string | undefined { return this.names[account.id] ?? this.hostName(account, snap); }
+  private projected(account: Account, thread?: string | null, pages = true): DesktopSnapshot {
     const snap = account.service.snapshot(thread, pages), name = this.nameOf(account, snap);
     return { ...snap, connectionName: name,
       selectedChannelId: this.encode(account, snap.selectedChannelId), selectedThreadId: this.encode(account, snap.selectedThreadId),
@@ -89,9 +89,10 @@ export class DesktopConnections {
     const route = thread ? this.route(thread) : undefined;
     const account = route?.account ?? (connectionKey ? this.forIdentity(connectionKey) : this.current());
     const selected = this.projected(account, route?.raw, pages);
-    const all = [...this.accounts.values()].map(a => this.projected(a, undefined, pages));
+    // Only catalogue fields are read from these; `null` skips each account's selected Session messages.
+    const all = [...this.accounts.values()].map(a => this.projected(a, null, pages));
     const connections: DesktopConnection[] = [...this.accounts.values()].flatMap(a => {
-      const s = a.service.snapshot(undefined, false);
+      const s = a.service.status();
       if (a.id === 'primary' && !s.connectionKey && s.phase !== 'pairing' && !s.errorMessage) return [];
       return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: this.nameOf(a, s) ?? 'Saved connection',
         defaultName: this.hostName(a, s) ?? 'Saved connection', ...(this.names[a.id] ? { customName: true } : {}),
@@ -132,7 +133,7 @@ export class DesktopConnections {
       if (!this.ready || this.closed) throw new Error('The saved connection list is unavailable. Reopen Hermes.');
       if (this.snapshot().connections!.some(row => row.server === request.baseUrl)) throw new Error('This server is already saved.');
       if (this.snapshot().connections!.length >= 8) throw new Error('Remove a connection before adding another. This version supports eight connections.');
-      const emptyPrimary = !this.primary.snapshot().connectionKey && this.primary.snapshot().phase === 'unpaired' && !this.primary.snapshot().errorMessage;
+      const primary = this.primary.status(), emptyPrimary = !primary.connectionKey && primary.phase === 'unpaired' && !primary.errorMessage;
       if (emptyPrimary) {
         this.accounts.get('primary')!.server = request.baseUrl;
         void this.primary.pair(request); return;
@@ -192,7 +193,7 @@ export class DesktopConnections {
   closeSessionPages(): void { for (const a of this.accounts.values()) a.service.closeSessionPages(); }
   async createChannel(connectionKey: string, input: ChannelInput): Promise<string> {
     const account = this.forIdentity(connectionKey);
-    if (account.service.snapshot().connectionState !== 'online') throw new Error('The selected connection is unavailable.');
+    if (account.service.status().connectionState !== 'online') throw new Error('The selected connection is unavailable.');
     const id = await account.service.createChannel(input);
     if (this.forIdentity(connectionKey) !== account) throw new Error('Project creation was not confirmed.');
     return this.encode(account, id)!;
@@ -203,9 +204,9 @@ export class DesktopConnections {
   async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: this.nameOf(r.account) }; }
   /** The connection that owns a qualified Automation ID. */
-  connectionForAutomation(id: string): string | undefined { return this.route(id).account.service.snapshot(undefined, false).connectionKey; }
+  connectionForAutomation(id: string): string | undefined { return this.route(id).account.service.status().connectionKey; }
   private qualifyAutomation(account: Account, job: Automation): DesktopAutomation {
-    const snap = account.service.snapshot(undefined, false);
+    const snap = account.service.status();
     return { ...job, id: this.encode(account, job.id)!, connectionKey: snap.connectionKey, connectionName: this.nameOf(account, snap),
       targets: job.targets.map(t => ({ ...t, channelId: this.encode(account, t.channelId)!, ...(t.threadId ? { threadId: this.encode(account, t.threadId)! } : {}) })),
       ...(job.editorChannelId ? { editorChannelId: this.encode(account, job.editorChannelId)! } : {}),
@@ -217,7 +218,7 @@ export class DesktopConnections {
    * those connections for their next page. Older servers return every job at once.
    */
   async automations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList> {
-    const connected = [...this.accounts.values()].filter(a => a.service.snapshot(undefined, false).phase === 'connected' && a.service.supportsAutomations());
+    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsAutomations());
     const accounts = cursors ? connected.filter(a => cursors[a.id] !== undefined && a.service.supportsAutomationsPaged()) : connected;
     const failed: string[] = [], next: Record<string, string> = {};
     const rows = (await Promise.all(accounts.map(async account => {
@@ -271,8 +272,8 @@ export class DesktopConnections {
   async getModelSettings(key: string) { return this.forIdentity(key).service.getModelSettings(key); }
   async setModelSettings(key: string, provider: string, model: string, confirm: boolean) { return this.forIdentity(key).service.setModelSettings(key, provider, model, confirm); }
   async loadWorkspaceDrafts(): Promise<Record<string, DesktopLocalDraft>> {
-    const all = await Promise.all([...this.accounts.values()].filter(a => a.service.snapshot().draftIdentity).map(async a => {
-      const drafts = await a.service.loadLocalDrafts(a.service.snapshot().draftIdentity!);
+    const all = await Promise.all([...this.accounts.values()].filter(a => a.service.status().connectionKey).map(async a => {
+      const drafts = await a.service.loadLocalDrafts(a.service.status().connectionKey!);
       return Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [this.encode(a, id)!, draft]));
     })); return Object.assign({}, ...all);
   }

@@ -94,6 +94,8 @@ export class DesktopConnectionService {
   private revision = 0;
   private phase: DesktopSnapshot["phase"] = "restoring";
   private connectionState: ConnectionState = "suspended";
+  /** Desktop rows by client row object; valid while the row's receipt object is also unchanged. */
+  private readonly projectedMessages = new WeakMap<object, { receipt: unknown; message: DesktopSnapshot["messages"][number] }>();
   private statusMessage: string | undefined;
   private errorMessage: string | undefined;
   private selectedChannelId: string | undefined;
@@ -182,6 +184,16 @@ export class DesktopConnectionService {
   }
 
   serverAddress(): string | undefined { return this.connection?.baseUrl; }
+  /**
+   * Connection state with the same values as `snapshot()`, without projecting Sessions or messages.
+   * Status checks run many times for each change, on the main process that also delivers input to the pages.
+   */
+  status(): Readonly<{ phase: DesktopSnapshot["phase"]; connectionKey?: string; connectionState: ConnectionState; connectionName?: string; statusMessage?: string; errorMessage?: string }> {
+    const errorMessage = this.errorMessage ?? this.connectionIssue;
+    return { phase: this.phase, connectionKey: this.connection?.id, connectionState: this.connectionState,
+      connectionName: this.connection?.baseUrl ? new URL(this.connection.baseUrl).hostname : undefined,
+      ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}), ...(errorMessage ? { errorMessage } : {}) };
+  }
   /** Endpoint for the App-side browser control connection, only while paired and connected. */
   browserEndpoint(): { baseUrl: string; token: string; connectionKey: string } | undefined {
     return this.phase === 'connected' && this.connection ? { baseUrl: this.connection.baseUrl, token: this.connection.token, connectionKey: this.connection.id } : undefined;
@@ -239,7 +251,8 @@ export class DesktopConnectionService {
     catch (error) { if (error instanceof HttpError && error.status === 404) return null; throw error; }
   }
 
-  snapshot(pageId = this.selectedThreadId, includePages = true): DesktopSnapshot {
+  /** `pageId: null` projects the catalogue and connection state without any Session page. */
+  snapshot(pageId: string | null | undefined = this.selectedThreadId, includePages = true): DesktopSnapshot {
     const pageState = pageId ? this.pageStates.get(pageId) : undefined;
     const channels = [...(this.client?.channels.values() ?? [])]
       .map(({ id, name, description }) => ({ id, name, ...(description ? { description } : {}) }))
@@ -276,9 +289,14 @@ export class DesktopConnectionService {
       ? [...(this.client?.messages.get(pageId) ?? [])].filter(({ role,ref_seq }) => role !== "analysis" && role !== "reasoning" && (pageState?.start === undefined || ref_seq >= pageState.start))
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
-    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map(({ id, ref_seq, role, text, display_kind, notice_kind, model, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] }) => {
+    const messages: Array<DesktopSnapshot["messages"][number]> = durable.map((raw) => {
+      const { id, ref_seq, role, text, display_kind, notice_kind, model, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] } = raw;
       const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
-      return {
+      // The client keeps unchanged rows and receipts as the same objects. Reusing their projection keeps
+      // the row identical, so each tab's snapshot delta skips it without serializing it.
+      const cached = this.projectedMessages.get(raw);
+      if (cached && cached.receipt === receipt) return cached.message;
+      const message = {
         id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
         role: role === "assistant" || role === "commentary" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
         text,
@@ -293,6 +311,8 @@ export class DesktopConnectionService {
         toolCalls: tool_calls.map(({ id: toolId, name, label, detail, caption, icon }) => ({ id: toolId, name, label, ...(detail ? { detail } : {}), ...(caption ? { caption } : {}), ...(icon ? { icon } : {}) })),
         attachments: attachments.map((attachment) => this.projectAttachment(attachment)),
       };
+      this.projectedMessages.set(raw, { receipt, message });
+      return message;
     });
     if (pageId) {
       for (const pending of this.outbox) {

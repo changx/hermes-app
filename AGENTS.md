@@ -130,6 +130,7 @@
 - [docs/automation-workflow.md](docs/automation-workflow.md)（草案，未实现）
 - [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑：静态 `workdir`、编辑 Thread、控件、分页、删除；已发布）
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
+- [docs/desktop-scroll-main-process.md](docs/desktop-scroll-main-process.md)（长 Session 滚动卡顿：主进程发布成本）
 
 ### 共享行为、内容呈现与发布
 
