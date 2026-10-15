@@ -1,4 +1,4 @@
-import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text, TextInput, useFontSize } from './FontSize';
 import type { LayoutChangeEvent } from 'react-native';
@@ -13,7 +13,7 @@ import { MessageContent, copyMessageText } from './MessageContent';
 import { WorkChevron } from './WorkChevron';
 import { MessageTime } from './MessageTime';
 import { ComposerCard, ComposerSendButton } from './ComposerCard';
-import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from '../../../packages/client/src/workPresentation';
+import { reuseWorkViews, workGroups, workIsExpanded, type WorkChoice, type WorkGroupView } from '../../../packages/client/src/workPresentation';
 import { hasRunningReceipt } from './receiptState';
 import { chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from '../../../packages/client/src/chatPresentation';
 import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
@@ -39,7 +39,7 @@ const noticeLabel = (text: string) => text.replace(noticeLink, '$1');
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
-const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, highlighted, work, workExpanded = true, onWorkToggle, actions, canRetry = false, running = false }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; highlighted?: boolean; work?: WorkGroup; workExpanded?: boolean; onWorkToggle?: (group: WorkGroup, expanded: boolean) => void; actions?: MessageActions; canRetry?: boolean; running?: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, highlighted, work, workExpanded = true, onWorkToggle, actions, canRetry = false, running = false }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; highlighted?: boolean; work?: WorkGroupView; workExpanded?: boolean; onWorkToggle?: (group: WorkGroupView, expanded: boolean) => void; actions?: MessageActions; canRetry?: boolean; running?: boolean }) {
   const own = row.role === 'user';
   const revealed = useRef({ key: row.key, value: false });
   if (revealed.current.key !== row.key) revealed.current = { key: row.key, value: false };
@@ -123,11 +123,15 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const composerLineHeight = Platform.OS === 'ios' ? 22 : 19;
   const composerMaxHeight = composerLineHeight * scale * fontScale * 6;
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
-  const workMessages = rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp,
-    waiting: row.role === 'user' && (row.optimistic && ['queued', 'sending', 'ambiguous'].includes(row.status ?? '') || !!row.receipt && ['queued', 'running'].includes(row.receipt.state) && (row.receipt.processing == null || row.receipt.processing === 'running')) }));
+  const workMessages = useMemo(() => rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp,
+    waiting: row.role === 'user' && (row.optimistic && ['queued', 'sending', 'ambiguous'].includes(row.status ?? '') || !!row.receipt && ['queued', 'running'].includes(row.receipt.state) && (row.receipt.processing == null || row.receipt.processing === 'running')) })), [rows]);
   const paused = props.interactions.some(interaction => interaction.thread_id === props.threadId && interaction.state === 'pending');
   const running = !paused && (hasRunningReceipt(props.threadId, props.receipts) || hasWaitingRequest(workMessages));
-  const groups = workGroups(workMessages, running);
+  const groups = useMemo(() => workGroups(workMessages, running), [workMessages, running]);
+  // Rows receive views with stable identities; MessageRow compares `work` by identity.
+  const previousViews = useRef<ReadonlyMap<string, WorkGroupView>>(new Map());
+  const workViews = useMemo(() => reuseWorkViews(previousViews.current, groups), [groups]);
+  previousViews.current = workViews;
   // Retry re-runs only the latest turn (core /retry): the last final reply with no later input.
   const retryKey = (() => {
     for (let i = rows.length - 1; i >= 0; i--) {
@@ -138,7 +142,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   })();
   const dateSeparators = chatDateSeparators(workMessages);
   const awaitingWork = !paused && !props.locatingBusy && needsWorkPlaceholder(workMessages, groups, running);
-  const onWorkToggle = useCallback((group: WorkGroup, expanded: boolean) => setWorkChoices(old => ({ ...old, [`${props.threadId}:${group.key}`]: { completion: group.completion, expanded } })), [props.threadId]);
+  const onWorkToggle = useCallback((group: WorkGroupView, expanded: boolean) => setWorkChoices(old => ({ ...old, [`${props.threadId}:${group.key}`]: { completion: group.completion, expanded } })), [props.threadId]);
   const [highlightedRef, setHighlightedRef] = useState(props.targetRef);
   const [highlightVisible, setHighlightVisible] = useState(false);
   const sourceTarget = useRef(props.targetRef);
@@ -366,7 +370,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           {dateSeparators.has(item.key) && <View testID="chat-date-separator" style={styles.dateSeparator}><Text style={styles.dateLabel}>{dateSeparators.get(item.key)}</Text></View>}
           <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
             actions={props.messageActions} canRetry={item.key === retryKey} running={running || paused}
-            work={groups.get(item.key)} workExpanded={!groups.has(item.key) || workIsExpanded(groups.get(item.key)!, workChoices[`${props.threadId}:${groups.get(item.key)!.key}`])} onWorkToggle={onWorkToggle}
+            work={workViews.get(item.key)} workExpanded={!groups.has(item.key) || workIsExpanded(groups.get(item.key)!, workChoices[`${props.threadId}:${groups.get(item.key)!.key}`])} onWorkToggle={onWorkToggle}
             highlighted={highlightedRef !== undefined && item.refSeq === highlightedRef} />
         </View>)
           : props.locatingBusy ? <ConversationLoading active={props.active} /> : props.locatingMessage ? null : <Text style={styles.empty}>No messages yet</Text>}

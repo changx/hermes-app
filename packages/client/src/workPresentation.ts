@@ -32,6 +32,26 @@ export function workGroups(messages: readonly WorkMessage[], running: boolean): 
   finish(undefined, running);
   return result;
 }
+/** The group fields a message row shows; members are left out on purpose. */
+export type WorkGroupView = Readonly<Pick<WorkGroup, 'key' | 'completion' | 'label' | 'running'>>;
+/**
+ * Row key → group view. A view keeps its previous object while its shown fields
+ * are unchanged, so a new tool row does not render every earlier row of its group.
+ */
+export function reuseWorkViews(previous: ReadonlyMap<string, WorkGroupView>, groups: ReadonlyMap<string, WorkGroup>): Map<string, WorkGroupView> {
+  const result = new Map<string, WorkGroupView>(), made = new Map<WorkGroup, WorkGroupView>();
+  for (const [row, group] of groups) {
+    let view = made.get(group);
+    if (!view) {
+      const old = previous.get(group.key);
+      view = old && old.key === group.key && old.completion === group.completion && old.label === group.label && old.running === group.running
+        ? old : { key: group.key, completion: group.completion, label: group.label, running: group.running };
+      made.set(group, view);
+    }
+    result.set(row, view);
+  }
+  return result;
+}
 export function workIsExpanded(group: WorkGroup, choice?: WorkChoice): boolean {
   // Final arrival invalidates active overrides immediately, before paint/effects.
   return choice && choice.completion === group.completion ? choice.expanded : !group.completion;

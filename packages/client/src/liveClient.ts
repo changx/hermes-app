@@ -80,8 +80,19 @@ export class LiveSessionClient extends HermesClient {
 
   constructor(options:Options, owner?:LiveSessionClient){
     let self:LiveSessionClient|undefined;
-    super({...options,onChange:()=>{self?.prune();options.onChange?.()}},owner);
+    super({...options,onChange:()=>{self?.prune();self?.notifySubscribers();options.onChange?.()}},owner);
     this.liveOptions=options;this.owner=owner;self=this;
+  }
+  // Changes of this client only: a page's own content, or an account's directory and
+  // connection. A page view subscribes to its page and its account, not to every page.
+  private subscribers=new Set<()=>void>();
+  private changeCount=0;
+  /** Increases on every change of this client; a render can compare it later. */
+  get changeVersion():number{return this.changeCount}
+  subscribe(listener:()=>void):()=>void{this.subscribers.add(listener);return()=>{this.subscribers.delete(listener)}}
+  private notifySubscribers():void{
+    this.changeCount++;
+    for(const listener of [...this.subscribers]){try{listener()}catch{}}
   }
   private prune():void{
     this.retainContent(this.wanted);
