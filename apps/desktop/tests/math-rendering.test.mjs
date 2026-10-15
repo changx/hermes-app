@@ -16,6 +16,12 @@ const text = [
   'Broken $\\frac{a}{$ stays readable.',
   '',
   'Untrusted $\\href{javascript:alert(1)}{click}$ and $\\htmlData{x=1}{y}$.',
+  '',
+  '注：第三方页面写的价格（$59）和官方价格（$69.99）不一致。',
+  '',
+  'Costs $5 and $10 per month, and **bold** stays.',
+  '',
+  'Spaced $ x $ is prose; tight $x_1$ is math.',
 ].join('\n');
 
 const bundle = await build({ stdin: { resolveDir: new URL('..', import.meta.url).pathname, loader: 'tsx', contents: `
@@ -46,6 +52,14 @@ test('Math: invalid TeX stays readable and untrusted commands do not create link
   assert.match(html, /<mtext>\\href<\/mtext>/, '\\href is rejected as untrusted text');
   assert.doesNotMatch(html, /<a [^>]*href=/i, 'no link generated from \\href without trust');
   assert.doesNotMatch(html, /data-x=/, 'no data attribute from \\htmlData without trust');
+});
+
+test('Math: prices with $ stay prose; the delimiter rule matches mobile', () => {
+  assert.match(html, /价格（\$59）和官方价格（\$69\.99）不一致。/, 'prices are plain text');
+  assert.match(html, /Costs \$5 and \$10 per month, and <strong>bold<\/strong> stays\./);
+  assert.match(html, /Spaced \$ x \$ is prose/);
+  assert.match(html, /<annotation encoding="application\/x-tex">x_1<\/annotation>/, 'tight inline math still renders');
+  assert.doesNotMatch(html, /<annotation[^>]*>(59|5 and)/, 'no formula made from prices');
 });
 
 // Real Chromium: KaTeX CSS from the bundled package lays the formula out, and Mermaid's

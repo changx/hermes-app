@@ -4,6 +4,7 @@ import { getMermaid } from "./mermaid-engine";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { remarkStrictInlineMath } from "./strict-inline-math";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
 
@@ -81,7 +82,7 @@ const documentComponents: Components = {
   ...markdownComponents,
   img: ({ src, alt }) => typeof src === "string" && src ? <img src={src} alt={alt ?? ""} loading="lazy" /> : <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
 };
-const remarkPlugins = [remarkGfm, remarkMath, remarkSessionLinks];
+const remarkPlugins = [remarkGfm, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
 const rehypePlugins = [rehypeKatex];
 const transformUrl = (url: string) => allowedLink(url) ?? "";
 const transformDocumentUrl = (url: string, key: string) => (key === "src" ? documentImage(url) : allowedLink(url)) ?? "";
