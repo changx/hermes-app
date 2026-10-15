@@ -75,6 +75,7 @@ const api: HermesDesktopApi = Object.freeze({
   },
   markResultRead: (threadId: string, version: number, ref: number): Promise<void> => ipcRenderer.invoke("desktop:result-read", threadId, version, ref),
   retryConnection: (): Promise<void> => ipcRenderer.invoke("desktop:retry-connection"),
+  dismissError: (threadId?: string): Promise<void> => ipcRenderer.invoke("desktop:dismiss-error", threadId),
   createChannel: (input: ProjectCreationInput): Promise<string> => ipcRenderer.invoke("desktop:create-channel", input),
   updateChannel: (channelId: string, input: ChannelInput): Promise<void> => ipcRenderer.invoke("desktop:update-channel", channelId, input),
   deleteChannel: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-channel", channelId),

@@ -339,6 +339,7 @@ export class DesktopConnections {
   async previewAttachmentImage(attachment: string, id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.previewAttachmentImage(attachment, r.raw); }
   async downloadAttachment(attachment: string, action: 'save' | 'open', id?: string): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.downloadAttachment(attachment, action, r.raw); }
   async retryConnection(): Promise<void> { await this.current().service.retryConnection(); }
+  dismissError(id?: string): void { (id ? this.route(id).account : this.current()).service.dismissError(); }
   async resumeConnection(): Promise<void> { await Promise.all([...this.accounts.values()].map(a => a.service.resumeConnection())); }
   close(): void { this.closed = true; for (const a of this.accounts.values()) a.service.close(); }
 }

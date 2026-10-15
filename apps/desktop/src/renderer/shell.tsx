@@ -2,6 +2,7 @@ import { AttachmentSequence, AttachmentView } from "./attachment-view";
 import { AttachmentThumbnail } from './attachment-thumbnail';
 import { SettingsButton } from './settings';
 import { TooltipLayer } from './tooltip';
+import { ErrorBanner } from './error-banner';
 import { ProjectDialog } from './project-dialog';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
@@ -415,7 +416,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   </NativeWorkspace>;
   if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;
   return <main className="session-tab-page" aria-label="Hermes session">
-    {snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{draftError && <div className="error-banner" role="alert">{draftError}</div>}{todoError && <div className="error-banner" role="alert">{todoError}</div>}
+    <ErrorBanner snapshot={snapshot} />{draftError && <div className="error-banner" role="alert">{draftError}</div>}{todoError && <div className="error-banner" role="alert">{todoError}</div>}
     <div className="session-main">
       {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline; all labels wrap below the buttons, so the toolbar height varies. */}
       <div className="session-toolbar" role="toolbar" aria-label="Session tools">

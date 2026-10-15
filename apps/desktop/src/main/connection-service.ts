@@ -44,6 +44,8 @@ const createConnection = (baseUrl: string): StoredConnection => {
   return { version: 1, baseUrl: normalizeBaseUrl(baseUrl), id, token: `ha_dev_${id}_${secret}` };
 };
 
+// How long a stale-request notice stays after its status refresh.
+const INTERACTION_NOTICE_MS = 6_000;
 const wait = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   if (signal.aborted) { reject(new Error("aborted")); return; }
   const finish = () => { signal.removeEventListener("abort", abort); resolve(); };
@@ -336,6 +338,7 @@ export class DesktopConnectionService {
       loadingHistory: pageState?.historyLoading ?? false,
       ...(this.statusMessage ? { statusMessage: this.statusMessage } : {}),
       ...(this.errorMessage || this.connectionIssue ? { errorMessage: this.errorMessage ?? this.connectionIssue } : {}),
+      ...(this.errorMessage && this.phase === "connected" ? { errorDismissible: true } : {}),
       channels,
       threads,
       messages,
@@ -714,6 +717,21 @@ export class DesktopConnectionService {
 
   private actionError(message: string): void {
     this.errorMessage = message;
+    this.changed();
+  }
+
+  // Clears only this message; a newer error stays visible.
+  private clearActionError(message: string): void {
+    if (this.errorMessage !== message) return;
+    this.errorMessage = undefined;
+    this.changed();
+  }
+
+  // The user closes an action error. A live connection problem stays until
+  // the connection recovers, so it is not dismissible.
+  dismissError(): void {
+    if (!this.errorMessage || this.phase !== "connected") return;
+    this.errorMessage = undefined;
     this.changed();
   }
 
@@ -1229,7 +1247,15 @@ export class DesktopConnectionService {
     const item = this.client?.interactions.get(interactionId);
     if (!item || item.thread_id !== threadId || item.state !== "pending" || !item.choices.includes(choice)) return;
     try { await this.client!.answerInteraction(item, choice); }
-    catch { this.actionError("That request is no longer pending. Hermes will refresh its status."); await this.client?.getInteraction(item.thread_id, item.id).catch(() => {}); }
+    catch {
+      const message = "That request is no longer pending. Hermes will refresh its status.";
+      this.actionError(message);
+      // After the refreshed status arrives, the request card shows the real
+      // state, so the notice is obsolete. Keep it briefly so the user sees why
+      // the choice did not apply.
+      const refreshed = await this.client?.getInteraction(item.thread_id, item.id).then(() => true, () => false);
+      if (refreshed) { const timer: ReturnType<typeof setTimeout> = setTimeout(() => this.clearActionError(message), INTERACTION_NOTICE_MS); (timer as { unref?: () => void }).unref?.(); }
+    }
   }
 
   async pickAndUploadAttachments(targetThreadId?: string): Promise<readonly DesktopAttachment[]> {

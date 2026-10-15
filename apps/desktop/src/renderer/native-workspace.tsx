@@ -4,6 +4,7 @@ import { NavigationPanel } from './navigation-panel';
 import { addQueryLabel, emptySessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
+import { ErrorBanner } from './error-banner';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
 import { automaticBrowserWidth, browserMaximum, clampBrowserWidth, loadBrowserWidth, MIN_BROWSER_WIDTH, saveBrowserWidth } from './browser-width';
 
@@ -173,7 +174,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
         <button type="button" className="desktop-browser-toggle desktop-tab-action" aria-label={snapshot.browserMode === 'window' ? 'Toggle browser window' : 'Toggle preview sidebar'} title={snapshot.browserMode === 'window' ? 'Browser window' : 'Preview sidebar'} aria-expanded={browserActive} disabled={!snapshot.activeTabId} onClick={() => invoke(browserActive ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}><Icon name="panelRight" /></button>
       </div>
       </div>
-      <main ref={content} className="native-view-slot">{snapshot.errorMessage && <div className="error-banner" role="alert">{snapshot.errorMessage}</div>}{!snapshot.activeTabId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="empty-session" role="status" aria-live="polite" aria-busy="true"><h1>Loading your conversations…</h1></div> : <div className="empty-session"><h1>Start a conversation</h1><p>Open a recent session or create a new chat.</p>{snapshot.phase === 'connected' && <button type="button" onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>New chat</button>}</div>)}</main>
+      <main ref={content} className="native-view-slot"><ErrorBanner snapshot={snapshot} />{!snapshot.activeTabId && (snapshot.loadingConversations && !snapshot.errorMessage ? <div className="empty-session" role="status" aria-live="polite" aria-busy="true"><h1>Loading your conversations…</h1></div> : <div className="empty-session"><h1>Start a conversation</h1><p>Open a recent session or create a new chat.</p>{snapshot.phase === 'connected' && <button type="button" onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}>New chat</button>}</div>)}</main>
     </section>
     {browserOpen && <div className="browser-resize-handle" role="separator" tabIndex={0} aria-label="Resize preview sidebar" aria-orientation="vertical" aria-valuemin={MIN_BROWSER_WIDTH} aria-valuemax={browserMaximum(browserAvailable)} aria-valuenow={browserWidth}
       onPointerDown={event => {

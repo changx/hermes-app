@@ -117,6 +117,8 @@ export type DesktopSnapshot = Readonly<{
   loadingHistory?: boolean;
   statusMessage?: string;
   errorMessage?: string;
+  /** True when errorMessage reports a finished action, not a live connection problem; the user may close it. */
+  errorDismissible?: boolean;
   channels: readonly DesktopChannel[];
   threads: readonly DesktopThread[];
   messages: readonly DesktopMessage[];
@@ -245,6 +247,8 @@ export interface HermesDesktopApi {
   onToggleTodo?(listener: () => void): () => void;
   markResultRead(threadId: string, version: number, ref: number): Promise<void>;
   retryConnection(): Promise<void>;
+  /** Closes the action error banner of the connection that owns threadId (or the current connection). */
+  dismissError(threadId?: string): Promise<void>;
   /** Resolves with the new Project's identity after server readback. */
   createChannel(input: ProjectCreationInput): Promise<string>;
   updateChannel(channelId: string, input: ChannelInput): Promise<void>;
