@@ -66,7 +66,11 @@ test('user metadata moves below content, dates group days, and normal reaction i
       const siblings=node.parent.children;
       assert.ok(siblings.findIndex(x=>typeof x==='object'&&x.type==='MessageContent')<siblings.indexOf(node));
       assert.equal(node.props.style.justifyContent,'flex-end');
-      assert.equal(node.children[0].type,'MessageCopyButton');
+      // Order: reserved Cancel space (invisible placeholder when not queued), copy, time.
+      assert.equal(node.children[0].props.testID,'user-message-cancel-slot');
+      assert.equal(node.children[0].props.importantForAccessibility,'no-hide-descendants');
+      assert.equal(node.children[1].type,'MessageCopyButton');
+      assert.equal(node.children[2].type,'MessageTime');
     }
   } finally { await act(async()=>root.unmount()); }
 });

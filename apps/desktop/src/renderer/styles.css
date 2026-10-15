@@ -614,7 +614,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .user-message-copy:hover { background: var(--app-hover); color: var(--app-text); }
 .user-message-copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .user-message-copy-note { color: var(--app-muted); font-size: calc(var(--app-font-size) * .75); }
-.user-message-cancel { height: 20px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--app-link); font-size: calc(var(--app-font-size) * .75); line-height: 20px; cursor: pointer; }
+.user-message-cancel { box-sizing: border-box; display: inline-flex; align-items: center; height: 20px; margin: 0 0 0 8px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--app-link); font-family: inherit; font-size: calc(var(--app-font-size) * .75); line-height: 20px; cursor: pointer; }
+.user-message-cancel-slot { visibility: hidden; pointer-events: none; }
 .user-message-cancel:hover { background: var(--app-hover); }
 .chat-date-separator { margin: 16px 14px; text-align: center; color: var(--app-muted); font-size: calc(var(--app-font-size) * .75); }
 .awaiting-agent-work .work-toggle { cursor: default; }

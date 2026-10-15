@@ -9,6 +9,7 @@ When a message waits in the queue, both clients show Cancel. The button was in a
 - Cancel sits in the message's time line, left of the copy icon and the time. It uses the time's small text size.
 - Cancel appears and disappears without changing the message height, and the time does not move.
 - Warnings (failed, outcome unknown) and Retry safely stay in their own row. These states are final, so the row does not come and go.
+- The Cancel space is always reserved. When Cancel is not shown, an invisible placeholder with the same text and size holds the space (desktop `visibility: hidden` + `aria-hidden`; mobile `opacity: 0`, hidden from accessibility, no touches). The user bubble is therefore at least as wide as Cancel + copy + time plus an 8 px margin left of Cancel, so even a very short message keeps the same width when Cancel appears or disappears. The reserve follows the font size because it is real text.
 - Desktop: `.user-message-cancel` in `apps/desktop/src/renderer/shell.tsx`. Mobile: `testID="user-message-cancel"` in `apps/mobile/src/ChatTimeline.tsx`.
 
 ## Redraws during a send
