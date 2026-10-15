@@ -1,6 +1,6 @@
 # Attachment size
 
-Status: released in desktop v0.1.91 and the Expo test entry (2026-10-15); plugin 0.2.38 release below. iPhone and Mac checks open.
+Status: released 2026-10-15 (desktop v0.1.91, Expo test entry, plugin 0.2.38 installed). The server limit takes effect after the Gateway restart. iPhone and Mac checks open.
 
 ## What the user sees
 - A message attachment can be up to 100 MB (100 MiB) on desktop and phone. Before, the limit was 10 MB.
@@ -34,3 +34,10 @@ App connections reach the server through Cloudflare (`agent.tuly.space`). Measur
 - Desktop: new tests in `attachment-paste.test.mjs` (11 MiB and 100 MiB disk files upload, 100 MiB + 1 is refused before any upload) and `transport.test.mjs` (100 MiB upload accepted, + 1 refused, workspace write keeps 10 MiB).
 - Plugin: real loopback HTTP test accepts exactly 100 MiB and refuses one byte more without a partial file.
 - Open: real 100 MB upload from the iPhone and the Mac through `agent.tuly.space`.
+
+## Release (2026-10-15, authorized by Jamie: "合并发布", plugin option 1 "你可以继续发布了")
+- App: `main` fast-forwarded `0427855..aae8d82`, tag `v0.1.91`. Tag run 38713493695 succeeded (215 tests, 165 pass, 0 fail, 50 skipped on the runner; audit 0). `Hermes-0.1.91-macOS-arm64.zip`: checksum OK, Info.plist 0.1.91; ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js`, `dist/renderer/styles.css` byte-identical to the local build. The release also carries the shared-client part of the mobile battery fix (`b2f52e2`), already live on Expo.
+- Expo: runtime checkout at `aae8d82`, lockfile unchanged, `hermes-app-expo.service` restarted (PID 416273 → 637989). Public iOS and Android manifests 200, SDK 57.0.0, launch assets 200; markers `over 100 MB` (1), `FileSystemUploadTask` (2), `too large to preview in the app` (2) on both. Gateway PID 116641 unchanged.
+- Plugin 0.2.38 (`bc50692`, tag `v0.2.38`; also ships the `hermes-app:channels` skill from 0.2.37): `current` → `releases/0.2.38` for jamie and hermes-app-dev; release dir identical to `git archive v0.2.38`. P1 delta against `main`: 0 new failures (30 pre-existing on both). Active after Jamie restarts `hermes-gateway.service`.
+- Evidence: `~/.hermes/profiles/jamie/workspace/hermes-app/2026-10-15-attachments-100mib/`.
+- Rollback: App `v0.1.90` / `0427855` (runtime checkout + Expo restart); plugin `ln -sfn releases/0.2.36` on `current`, then Gateway restart.
