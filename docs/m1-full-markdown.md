@@ -100,3 +100,12 @@
 - 证据目录：`/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/markdown-verification/`，包括 `parent-tests.log`、`parent-ts.log`、`parent-export.log`、`parent-audit.json`、`browser-final/browser-results.json`。
 - `AGENTS.md` 本轮追加渲染要求的写入因保护文件审批超时被阻止，未重试，文件未修改；实际范围已记在本文中。
 - 发布已完成：代码提交 `1272ee6`，只更新 Expo 开发入口及前端依赖；公网 iOS/Android manifest 和实际 launchAsset bundle 都返回成功且包含新渲染器，Expo 登录账户校验通过。开发 Gateway、Jamie 主 Gateway 的 PID/启动时间和开发插件哈希发布前后完全一致。证据 `release-before.json`、`release-install.log`、`release-verification.json`；回滚基线 `f6e0132` 保留在 Git。iPhone 播放器、排版和手势体验仍待 Jamie 测试。
+
+Release record — prices with `$` are not inline math, desktop v0.1.90 (2026-10-14):
+
+- Commits: `b740d16` (fix), `1ee5d50` (release, tag `v0.1.90`), pushed atomically to `origin/main`. Rollback branch: `rollback/desktop-currency-dollars-before-release` at `1e2e359`.
+- Candidate checks: desktop typecheck and build OK; `npm test` with Chromium and Electron enabled: 213 tests, 213 pass, 0 fail, 0 skipped. The new price case fails without the fix.
+- Workflow run 38693740842 on `macmini-m4`: success; 213 tests, 163 pass, 0 fail, 50 skipped; audit 0 vulnerabilities. Releases kept: v0.1.90, v0.1.89.
+- Package: `Hermes-0.1.90-macOS-arm64.zip` (132,556,373 bytes), `sha256sum -c` OK, version 0.1.90; extracted main, preload, renderer and styles byte-identical to the candidate build.
+- Desktop only: mobile, shared client and plugin not changed; no Expo restart, no Gateway restart.
+- Open: visual check on Jamie's Mac.
