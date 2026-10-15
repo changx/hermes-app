@@ -1,6 +1,6 @@
 # Attachment size
 
-Status: implemented on branch `feat/attachments-100mib` (App) and plugin 0.2.37. Not released. iPhone and Mac checks open.
+Status: released in desktop v0.1.91 and the Expo test entry (2026-10-15); plugin 0.2.38 release below. iPhone and Mac checks open.
 
 ## What the user sees
 - A message attachment can be up to 100 MB (100 MiB) on desktop and phone. Before, the limit was 10 MB.
@@ -16,7 +16,7 @@ Status: implemented on branch `feat/attachments-100mib` (App) and plugin 0.2.37.
 App connections reach the server through Cloudflare (`agent.tuly.space`). Measured on 2026-10-15: POST bodies up to 104,857,600 bytes reached the origin (401); 104,857,601 bytes and more got 413 from Cloudflare. A larger limit needs a chunked upload protocol. Jamie chose 100 MB.
 
 ## Implementation
-- Plugin 0.2.37 (`hermes-app-plugin` `docs/attachment-size.md`): 100 MiB per upload, 1 GiB unsent uploads per Thread.
+- Plugin 0.2.38 (`hermes-app-plugin` `docs/attachment-size.md`): 100 MiB per upload, 1 GiB unsent uploads per Thread.
 - Shared client (`packages/client/src/index.ts`):
   - Upload and download deadlines grow with the file size: the normal request deadline plus the bytes at 128 KiB/s (`TRANSFER_BYTES_PER_SECOND`). 100 MiB adds about 13 minutes. Before, every transfer had 15 s.
   - Optional transport methods `uploadFile` / `downloadFile` move a local file without reading it into JS memory. `HermesClient.uploadFile`, `downloadFile` and `supportsFileTransfer`; `LiveSessionClient` and `LivePageClient` forward them like `upload` / `download`.

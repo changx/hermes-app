@@ -88,7 +88,7 @@ P1-03 原始交付未含 P1-04 审批/附件/主动任务投递或 P1-05 TS 客�
 
 ### 附件
 
-`POST /v1/threads/{id}/attachments` 接收原始请求流，`X-File-Name` 为供下载展示的单个文件名；每文件最多 100 MiB（104,857,600 字节，等于 App 连接前端 Cloudflare 接受的最大请求体；插件 0.2.37 起，此前 10 MiB；超限返回 413），每消息最多 8 个附件，单 Thread 未附上传最多 64 个或共 1 GiB（超限返回 429，用户删除不用的上传后重试），空文件、路径分隔符及控制换行被拒绝。文件写入 profile 内 `hermes-app/attachments/` 的随机临时文件，`fsync` 后原子更名为 `att_` 不透明 ID；传输中断、超限或元数据写入失败会移除临时/孤立文件。服务端根据文件名选安全 MIME，HTML/SVG/JavaScript 强制作为二进制下载。
+`POST /v1/threads/{id}/attachments` 接收原始请求流，`X-File-Name` 为供下载展示的单个文件名；每文件最多 100 MiB（104,857,600 字节，等于 App 连接前端 Cloudflare 接受的最大请求体；插件 0.2.38 起，此前 10 MiB；超限返回 413），每消息最多 8 个附件，单 Thread 未附上传最多 64 个或共 1 GiB（超限返回 429，用户删除不用的上传后重试），空文件、路径分隔符及控制换行被拒绝。文件写入 profile 内 `hermes-app/attachments/` 的随机临时文件，`fsync` 后原子更名为 `att_` 不透明 ID；传输中断、超限或元数据写入失败会移除临时/孤立文件。服务端根据文件名选安全 MIME，HTML/SVG/JavaScript 强制作为二进制下载。
 
 `GET /v1/threads/{id}/attachments/{attachment_id}` 严格检查 Thread/元数据、`O_NOFOLLOW`、普通文件与大小；返回 `Content-Disposition: attachment` 和 `nosniff`。`DELETE` 只可删除**尚未附到收据**的上传；已附文件随归档 Thread 保留，不能借此删除原文或其他 Thread 文件。`POST /v1/threads/{id}/messages` 可加 `"attachments":["att_..."]`；接收事务校验同 Thread、未被领取，并绑定收据。重试同一 client ID 必须保持正文及附件 ID 完全相同。派发时将受控本地路径、MIME 和未内联标记放进核心 `MessageEvent.media_urls/media_types/media_text_inlined`，让 Agent 使用现有附件机制。插件仅保存文件元数据和收据引用，不另建聊天正文库。失败未附上传由用户显式 DELETE；启动时仅清理本插件命名且没有元数据的孤立文件和中断上传临时文件（最多检查 10000 项），不自动广泛清理或删除归档历史。
 
