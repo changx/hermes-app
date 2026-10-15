@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, KeyboardAvoidingView, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { Text } from './FontSize';
@@ -9,7 +9,7 @@ import * as Crypto from 'expo-crypto';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
-import { HttpError, type Attachment, type Interaction, type Message } from '../../../packages/client/src/index';
+import { HttpError, type Attachment, type Interaction, type Message, type Receipt } from '../../../packages/client/src/index';
 import type { MessageActions } from './MessageToolbar';
 import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
@@ -26,7 +26,8 @@ import { AttachmentFiles } from './attachmentFiles';
 import { isAgentTyping, TypingIndicator } from './TypingIndicator';
 import { SymbolView, type AndroidSymbol, type SFSymbol } from 'expo-symbols';
 import type { TimelineRow } from './timeline';
-import { useApp, useConnections } from './connections';
+import { useApp, useAppScope, useConnections } from './connections';
+import { usePageVersion } from './pageUpdates';
 
 export { AppProvider, ConnectionScope, routeConnection, useApp, useConnections } from './connections';
 
@@ -59,15 +60,16 @@ export function SessionOptionsButton({ onPress, todo }: { onPress: () => void; t
 }
 const EMPTY_MESSAGES: Message[] = [];
 
-export function ThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
-  const { config } = useApp();
+// Memo: the route renders again for every account-wide change; this page must not.
+export const ThreadScreen = memo(function ThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
+  const { config } = useAppScope();
   // Native Stack owns mount/unmount. Blur is only a visibility signal, not
   // permission to destroy a page that a detail reader/settings has covered.
   return <OpenedThreadScreen key={`${config?.id ?? ''}:${threadId}`} threadId={threadId} targetRef={targetRef} />;
-}
+});
 
 function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetRef?: number }) {
-  const { client: account } = useApp();
+  const { client: account } = useAppScope();
   const [owner, setOwner] = useState<{ account: LivePageClient; id: string; page: LiveSessionClient } | null>(null);
   // Registration is a committed lifetime, never a render side effect. A render
   // that suspends/is discarded owns nothing. Effect replay reacquires a fresh
@@ -83,10 +85,12 @@ function OpenedThreadScreen({ threadId, targetRef }: { threadId: string; targetR
   return <RenderResourceProvider><MountedThreadScreen client={owner.page} threadId={threadId} targetRef={targetRef} /></RenderResourceProvider>;
 }
 
-function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
+const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSessionClient; threadId: string; targetRef?: number }) {
   const router = useRouter();
-  const { client: accountClient, config, slot, name: connectionName, multiple, agentName, revision, records, connectionEpoch, status, error: connectionError,
-    textDrafts, composerDrafts, forgottenConnections, outboxRef } = useApp();
+  // Battery: this page renders for changes of its own page and account only, and
+  // waits while it is hidden. See docs/mobile-battery.md.
+  const { client: accountClient, config, slot, name: connectionName, multiple, agentName, records, connectionEpoch, status, error: connectionError,
+    textDrafts, composerDrafts, forgottenConnections, outboxRef } = useAppScope();
   const focused = useIsFocused();
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
@@ -135,8 +139,17 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const tailRepairRef = useRef<{ controller: AbortController } | null>(null);
   const appActive = useRef(AppState.currentState === 'active');
   const [foreground, setForeground] = useState(appActive.current);
-  const [visibleRefs, setVisibleRefs] = useState<number[]>([]);
-  const onVisibleRefs = useCallback((refs: number[]) => setVisibleRefs(old => old.length === refs.length && old.every((v, i) => v === refs[i]) ? old : refs), []);
+  const pageVersion = usePageVersion(client, accountClient, focused && foreground);
+  // Visible rows change many times while scrolling. Keep them in a ref; only the
+  // completed-result row being in view is state, so scrolling does not render the page.
+  const visibleRefs = useRef<readonly number[]>([]);
+  const resultRefSeq = useRef<number | undefined>(undefined);
+  const [resultInView, setResultInView] = useState<number | undefined>(undefined);
+  const onVisibleRefs = useCallback((refs: number[]) => {
+    visibleRefs.current = refs;
+    const target = resultRefSeq.current;
+    setResultInView(target !== undefined && refs.includes(target) ? target : undefined);
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => { appActive.current = state === 'active'; setForeground(appActive.current); });
@@ -239,6 +252,7 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
       timelineRef.current?.followLatest();
     }, 'Could not retry. Try again.'),
   }), [accountClient, accountClient?.supportsThreadBranch, accountClient?.supportsMessageSources]);
+  const startingActions = useMemo<MessageActions>(() => ({ exportMessage: messageActions.exportMessage }), [messageActions]);
 
   // A new session whose first message is saved but whose create is not confirmed yet:
   // show it at once from the outbox record; the normal open runs once the server has it.
@@ -248,8 +262,8 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   const visibleMessages = ready ? messages : EMPTY_MESSAGES;
   // Scoped receipt/interaction maps mutate in place. Their small signatures are
   // dependencies, while transcript objects never enter a serialized signature.
-  const receiptSignature = JSON.stringify([...client.receipts.values()]);
-  const interactionSignature = JSON.stringify([...client.interactions.values()]);
+  const receiptSignature = JSON.stringify([...client.receipts.values()].filter(r => r.thread_id === threadId));
+  const interactionSignature = JSON.stringify([...client.interactions.values()].filter(i => i.thread_id === threadId));
   const receipts = useMemo(() => [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')), [client, threadId, receiptSignature]);
   const interactions = useMemo(() => [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending'), [client, threadId, interactionSignature]);
   const draft = client.drafts.get(threadId);
@@ -257,10 +271,12 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
     [visibleMessages, threadId, draft, client, client.supportsSendIdentity, records, receiptSignature, interactions, messages]);
   galleryRows.current = rows;
   const result = client?.threads.get(threadId);
+  resultRefSeq.current = result?.result_ref;
   useEffect(() => {
-    if (!client || !focused || !foreground || !located || !result?.completed_unread || !result.result_version || !result.result_ref || !visibleRefs.includes(result.result_ref)) return;
+    if (!client || !focused || !foreground || !located || !result?.completed_unread || !result.result_version || !result.result_ref) return;
+    if (resultInView !== result.result_ref && !visibleRefs.current.includes(result.result_ref)) return;
     void client.markResultRead(threadId, result.result_version, result.result_ref).catch(() => {});
-  }, [client, threadId, focused, foreground, located, visibleRefs, result?.completed_unread, result?.result_version, result?.result_ref, connectionEpoch, status]);
+  }, [client, threadId, focused, foreground, located, resultInView, result?.completed_unread, result?.result_version, result?.result_ref, connectionEpoch, status]);
 
   const visibleReceiptSignature = JSON.stringify(visibleMessages.filter(m => m.role === 'user' && m.receipt_id && m.client_message_id)
     .map(m => [m.receipt_id, m.client_message_id]));
@@ -290,15 +306,29 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
   };
   useEffect(() => {
     if (focused && client && located && client.tailIncomplete.has(threadId)) void recoverLatest();
-  }, [focused, revision, client, threadId, located, connectionEpoch, status]);
+  }, [focused, pageVersion, client, threadId, located, connectionEpoch, status]);
   useEffect(() => {
     const lostOwnership = client && (client.currentThreadId !== threadId || client.currentConversationKey !== ownedWatch.current);
     if (focused && client && client.threads.has(threadId) && (!located || lostOwnership) && !historyBusy && (anchor === undefined || !error)) void openThread(threadId, anchor);
-  }, [focused, client, threadId, revision, connectionEpoch]);
+  }, [focused, client, threadId, pageVersion, connectionEpoch]);
   useEffect(() => {
     return () => { ++openingRef.current; tailRepairRef.current?.controller.abort(); tailRepairRef.current = null; receiptHydrator.current?.cancel(); };
   }, [client, threadId]);
 
+  // Stable identities: every message row compares these props, so a new function on
+  // each render would render the whole transcript again.
+  const deleteFailed = useLatestCallback((id: string) => run(async () => {
+    const box = outboxRef.current;
+    if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+    await box.deleteFailed(threadId, id);
+  }, 'Could not finish deleting this saved message. Try again; do not clear your app data.'));
+  const retryFailed = useLatestCallback((id: string) => run(async () => {
+    const box = outboxRef.current;
+    if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
+    await box.retryFailed(threadId, id);
+  }, 'Could not retry this message. It is still saved on this device.'));
+  const cancelQueued = useLatestCallback((r: Receipt) => run(async () => { await client.cancelQueued(threadId, r.id); }));
+  const onAnswerText = useCallback((id: string, value: string) => setAnswers(old => ({ ...old, [id]: value })), []);
   const selected = accountClient?.threads.get(threadId);
   const todo = hasTodo(selected?.markers);
   const toggleTodo = () => {
@@ -322,18 +352,9 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
       text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={false} name={agentName.name} />}
       receipts={receipts} interactions={interactions} answers={answers}
-      onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
-      onDeleteFailed={id => run(async () => {
-        const box = outboxRef.current;
-        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
-        await box.deleteFailed(threadId, id);
-      }, 'Could not finish deleting this saved message. Try again; do not clear your app data.')}
-      onRetryFailed={id => run(async () => {
-        const box = outboxRef.current;
-        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
-        await box.retryFailed(threadId, id);
-      }, 'Could not retry this message. It is still saved on this device.')}
-      onCancel={() => {}} onStop={() => {}} busy={busy} messageActions={{ exportMessage: messageActions.exportMessage }} />
+      onAnswerText={onAnswerText} onAnswer={answer}
+      onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}
+      onCancel={ignore} onStop={ignore} busy={busy} messageActions={startingActions} />
   </View>;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
     return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
@@ -358,24 +379,23 @@ function MountedThreadScreen({ client, threadId, targetRef }: { client: LiveSess
       onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
-      typingIndicator={<TypingIndicator active={isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
+      typingIndicator={<TypingIndicator active={focused && isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
       composerAccessory={(parts, onHeight) => <AttachmentComposer key={composerScope} send={parts.send} expanded={parts.expanded} onPressField={parts.onPressField} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{parts.input}</AttachmentComposer>}
       receipts={receipts} interactions={interactions} answers={answers}
-      onAnswerText={(id, value) => setAnswers(old => ({ ...old, [id]: value }))} onAnswer={answer}
-      onDeleteFailed={id => run(async () => {
-        const box = outboxRef.current;
-        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
-        await box.deleteFailed(threadId, id);
-      }, 'Could not finish deleting this saved message. Try again; do not clear your app data.')}
-      onRetryFailed={id => run(async () => {
-        const box = outboxRef.current;
-        if (!focusedRef.current || !config || !box || box.storage.connectionId !== config.id) return;
-        await box.retryFailed(threadId, id);
-      }, 'Could not retry this message. It is still saved on this device.')}
-      onCancel={r => run(async () => { await client.cancelQueued(threadId, r.id); })}
+      onAnswerText={onAnswerText} onAnswer={answer}
+      onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}
+      onCancel={cancelQueued}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy}
       messageActions={messageActions} />
   </View>;
+});
+
+const ignore = () => {};
+/** A function with one identity for the page's life that always runs the latest `fn`. */
+function useLatestCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  latest.current = fn;
+  return useCallback((...args: A) => latest.current(...args), []);
 }
 
 export function Notice({ text }: { text: string }) {

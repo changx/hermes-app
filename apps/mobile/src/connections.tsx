@@ -72,6 +72,16 @@ export function useApp(): AppContextValue {
   return context;
 }
 export function useOptionalApp(): AppContextValue | null { return useContext(AppContext); }
+/** The connection scope without the account-wide `revision`. Its value changes only
+ * when this connection's own fields change, so a Thread page that reads it does not
+ * render again for every change on every page. Pair it with `usePageVersion`. */
+export type AppScopeValue = Omit<AppContextValue, 'revision'>;
+const AppScopeContext = createContext<AppScopeValue | null>(null);
+export function useAppScope(): AppScopeValue {
+  const context = useContext(AppScopeContext);
+  if (!context) throw new Error('A connection scope is required');
+  return context;
+}
 
 type Mutable = { -readonly [K in keyof ConnectionRuntime]: ConnectionRuntime[K] };
 const emptyRuntime = (saved: SavedSlot): Mutable => {
@@ -319,15 +329,18 @@ export function ConnectionScope({ slot, children, fallback = null }: { slot: str
   const agentName = useAgentName(config?.id ?? null);
   const outboxRef = useRef<MobileOutbox | null>(null);
   outboxRef.current = runtime?.outbox ?? null;
-  const value = useMemo<AppContextValue | null>(() => runtime ? {
-    ready: shared.ready, slot, name: runtime.name, config, client: runtime.client, agentName, revision: shared.revision,
+  const scope = useMemo<AppScopeValue | null>(() => runtime ? {
+    ready: shared.ready, slot, name: runtime.name, config, client: runtime.client, agentName,
     records: runtime.records, connectionEpoch: runtime.connectionEpoch, loading: runtime.loading,
     status: runtime.status === 'pairing' ? 'connecting' : runtime.status, error: runtime.error || shared.draftError,
     multiple: shared.connections.length > 1,
     textDrafts: shared.textDrafts, composerDrafts: shared.composerDrafts, forgottenConnections: shared.forgottenConnections, outboxRef,
-  } : null, [runtime, shared.ready, shared.revision, shared.draftError, shared.connections.length, slot, config, agentName, shared.textDrafts, shared.composerDrafts, shared.forgottenConnections]);
+  } : null, [runtime, shared.ready, shared.draftError, shared.connections.length, slot, config, agentName, shared.textDrafts, shared.composerDrafts, shared.forgottenConnections]);
+  const value = useMemo<AppContextValue | null>(() => scope ? { ...scope, revision: shared.revision } : null, [scope, shared.revision]);
   if (!value) return <>{fallback}</>;
-  return <AppContext.Provider value={value}><NavigationScope connection={slot} owner={config?.id ?? slot}>{children}</NavigationScope></AppContext.Provider>;
+  return <AppScopeContext.Provider value={scope}><AppContext.Provider value={value}>
+    <NavigationScope connection={slot} owner={config?.id ?? slot}>{children}</NavigationScope>
+  </AppContext.Provider></AppScopeContext.Provider>;
 }
 
 /** Route parameter for a connection. Older routes without it use the primary slot. */

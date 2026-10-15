@@ -32,6 +32,32 @@ Jamie asked to reduce phone battery use and approved the proposed design (A + B 
 
 `Connection interrupted. Retrying in Ns…` updates once per second at the second boundary. It used to update every 250 ms.
 
+### D. Rendering of Thread pages
+
+A code review found that the app did more React work than the content needed. The cause was not the network.
+
+- **One account-wide signal.** Before, every SDK change on any page or connection increased one `revision`. Every retained Thread page, the Recents list and the channel pages then rendered again.
+- **Rows rendered again with no change.** Each render gave every message row new callback functions (`onCancel`, `onDeleteFailed`, `onRetryFailed`) and a new `WorkGroup` object. `MessageRow` compares these by identity, so its `memo` never held. The full transcript is one plain `ScrollView`, so every row took part.
+- **Scrolling rendered the page.** The visible row list was page state. It changed many times during a scroll, and each change rendered the page.
+- **Hidden animation.** The `Agent is running` dots ran on a retained page that another page covered.
+
+Changes:
+
+1. Each `LiveSessionClient` has `subscribe()` and `changeVersion`. A page notifies only its own subscribers; the account notifies for directory changes. The app callback (`onChange`) still runs for every change, so the outbox, the lists and `revision` are unchanged.
+2. A Thread page reads `useAppScope()`, the connection scope without `revision`, and `usePageVersion(page, account, shown)`. It renders for changes of its page and its account. While it is hidden or the app is in the background, it notes the change and renders once when it is shown again. The SDK still receives all data and keeps the subscription; only the React work waits. `ThreadScreen` and the page are `memo`, and `useAgentName()` returns a stable object, so the route's own renders do not reach the page.
+3. Row callbacks have one identity for the page's life (`useLatestCallback`). Rows receive a group view (`reuseWorkViews`) that keeps its object while its key, label, completion and running state are unchanged. A new tool row in a running turn renders only that row.
+4. Visible rows are kept in a ref. Only "the completed-result row is in view" is state, so the read mark still runs, but scrolling does not render the page.
+5. The receipt and approval signatures read only this Thread's entries.
+6. `TypingIndicator` is active only on the shown page.
+
+Limits: the transcript is still not virtualized (see [m1-history-scrollview.md](m1-history-scrollview.md)). Other screens (Recents, channel lists) still follow `revision`. Android keeps its composer blur.
+
+Candidate verification (branch `perf/mobile-render-battery`, clean `npm ci` in the worktree):
+
+- New tests fail on the old code and pass on the new code: a hidden page waits and renders once when shown; another page's change does not render the shown page; row callbacks keep one identity; scrolling does not render the page; a new tool row renders only itself (old code rendered every earlier row of the group again); the running indicator stops on a covered page. Behavior tests confirm that the result read mark, retry handling and the "Worked for" heading are unchanged.
+- SDK 83/83; mobile 209 pass, 1 skipped, 0 fail; mobile TypeScript; full desktop check with Chrome and Electron enabled (`desktop:check`): 212/212, 0 skipped; iOS/Android exports contain the new code.
+- These tests count renders. They do not measure battery use or heat. Compare Expo Go in iPhone Settings › Battery with the same use before and after the release.
+
 ## Shared SDK
 
 `LiveSessionClient` adds `idleLivenessMs`, `backoffJitter`, `setLivenessIdle()` and `networkChanged()`. Their defaults keep the previous behavior, so desktop is unchanged. Pages delegate both methods to the account connection.

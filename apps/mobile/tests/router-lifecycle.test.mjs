@@ -15,6 +15,7 @@ import * as todo from '../../../packages/client/src/todo.ts';
 
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const agentTyping = { value: false };
 const sdkBundle = await build({ entryPoints: [new URL('../../../packages/client/src/livePages.ts', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false });
 const sdkModule = { exports: {} }; new Function('module', 'exports', sdkBundle.outputFiles[0].text)(sdkModule, sdkModule.exports);
 const { LivePageClient } = sdkModule.exports;
@@ -23,6 +24,7 @@ const transpile = file => ts.transpileModule(readFileSync(new URL(file, import.m
 }).outputText;
 const code = transpile('../src/App.tsx'), connectionsCode = transpile('../src/connections.tsx'), navigationCode = transpile('../src/sessionNavigation.tsx');
 const receiptStateModule = {}; runInNewContext(transpile('../src/receiptState.ts'), { exports: receiptStateModule });
+const pageUpdatesModule = {}; runInNewContext(transpile('../src/pageUpdates.ts'), { exports: pageUpdatesModule, require: id => { if (id === 'react') return React; throw Error(id); } });
 // Controllable clock/timers for the activity window only; everything else uses real timers.
 const activityClock = { now: 1_000_000, timers: new Map(), next: 0 };
 const advanceActivity = ms => { activityClock.now += ms; for (const [id, timer] of [...activityClock.timers].sort((a, b) => a[1].at - b[1].at)) if (timer.at <= activityClock.now) { activityClock.timers.delete(id); timer.fn(); } };
@@ -40,7 +42,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   const livenessCalls = [], netListeners = new Set(); let networkCalls = 0;
   const appState = { currentState: 'active', addEventListener: (_name, listener) => { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
   const scenes = new Map();
-  const timelines = new Map(), reads = [], events = [], retries = [];
+  const timelines = new Map(), reads = [], events = [], retries = [], renders = new Map();
   const Focus = React.createContext(true);
   const router = { push: value => events.push(['push', value]), replace: value => events.push(['replace', value]), back() {}, canGoBack: () => true };
   const config = { id: 'connection-a', baseUrl: 'https://example.test', token: 'synthetic-only' };
@@ -56,6 +58,9 @@ async function harness({ multiple = false, list = false, strict = false, product
         const page = Object.create(this);
         for (const field of ['messages','receipts','interactions','drafts']) page[field] = new Map();
         page.tailIncomplete = new Set();
+        // Like LiveSessionClient pages: a page change notifies that page only, then the app.
+        page.subscribers = new Set(); page.changeVersion = 0;
+        page.change = () => { page.changeVersion++; for (const listener of [...page.subscribers]) listener(); this.appChange(); };
         this.pages.set(id,page);
       }
       return this.pages.get(id);
@@ -63,7 +68,10 @@ async function harness({ multiple = false, list = false, strict = false, product
     page(id) { return multiple ? this.pages.get(id) : this; }
     releasePage(id) { if (!multiple) this.closeConversation(); else { this.pages.get(id)?.closeConversation(); this.pages.delete(id); } }
     constructor(options) {
-      sdkCount++; clients.push(this); this.options = options; this.connectionState = 'online'; this.supportsLatest = true; this.isCatalogueReady = true;
+      sdkCount++; clients.push(this); this.connectionState = 'online';
+      // Like LiveSessionClient: a change notifies this client's subscribers, then the app.
+      this.subscribers = new Set(); this.changeVersion = 0; this.appChange = options.onChange;
+      this.options = { ...options, onChange: () => { this.changeVersion++; for (const listener of [...this.subscribers]) listener(); options.onChange(); } }; this.supportsLatest = true; this.isCatalogueReady = true;
       this.pages = new Map();
       this.channels = new Map([['p_one', { id: 'p_one' }]]);
       this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
@@ -71,6 +79,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     }
     async connect() { this.connectionState = 'online'; this.options.onConnectionState('online'); }
     async getThread() {}
+    async markResultRead(...args) { reads.push(args); }
     setLivenessIdle(idle) { livenessCalls.push(idle); } networkChanged() { networkCalls++; }
     suspendConnection() { paused++; this.connectionState = 'suspended'; this.options.onConnectionState('suspended'); }
     close() { closed++; }
@@ -85,6 +94,7 @@ async function harness({ multiple = false, list = false, strict = false, product
         await statusGate;
       }
     }
+    subscribe(listener) { this.subscribers.add(listener); return () => this.subscribers.delete(listener); }
     closeConversation() { this.currentThreadId = null; this.messages.clear(); this.receipts.clear(); this.interactions.clear(); }
     resumeTail() {}
 
@@ -149,16 +159,17 @@ async function harness({ multiple = false, list = false, strict = false, product
     './ChatTimeline': { ChatTimeline: React.forwardRef((props, ref) => {
       const scene = React.useRef({ offset: 0, following: true, media: {}, selection: null }); scenes.set(props.threadId, scene.current);
       React.useEffect(() => () => { scene.current.disposed = true; }, []);
-      timelines.set(props.threadId, props); React.useImperativeHandle(ref, () => ({ followLatest() {} }));
+      timelines.set(props.threadId, props); renders.set(props.threadId, (renders.get(props.threadId) ?? 0) + 1); React.useImperativeHandle(ref, () => ({ followLatest() {} }));
       return React.createElement('Chat', { threadId: props.threadId, text: props.text });
     }) },
     './SessionLabels': { LabelPills: 'LabelPills', LabelsEditorPage: 'LabelsEditorPage' }, './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
     './timeline': timeline,
     './sendNotice': sendNotice,
+    './pageUpdates': pageUpdatesModule,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
     './attachmentFiles': { AttachmentFiles: class { dispose() {} } },
-    './TypingIndicator': { isAgentTyping: () => false, TypingIndicator: 'TypingIndicator' },
+    './TypingIndicator': { isAgentTyping: () => agentTyping.value, TypingIndicator: 'TypingIndicator' },
     './AgentSettings': { useAgentName: () => name },
     './settingsRoutes': { connectionSettingsRoute: connection => ({ pathname: '/settings/connection', params: { connection } }) },
     'expo-symbols': { SymbolView: 'SymbolView' },
@@ -191,7 +202,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   await render();
   await act(async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); });
   await render();
-  return { finishStatus, render, timelines, scenes, reads, events, retries, clients, boxes, secure, secondSlot, get shared() { return shared; }, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, livenessCalls, get networkCalls() { return networkCalls; },
+  return { finishStatus, render, timelines, renders, scenes, reads, events, retries, clients, boxes, secure, secondSlot, get shared() { return shared; }, get api() { return api; }, get opens() { return opened; }, get pauses() { return paused; }, livenessCalls, get networkCalls() { return networkCalls; },
     async netInfo(state) { await act(async () => { for (const listener of [...netListeners]) listener(state); }); }, get counts() { return { sdkCount, boxCount, closed }; },
     get draftThreads() { return root.root.findByType('ChannelScreens').props.draftThreads; },
     async network(state, deadline, client = api.client) { await act(async () => { client.options.onRetryScheduled(deadline); client.options.onConnectionState(state); }); },
@@ -563,4 +574,96 @@ test('battery: a device network change wakes each connection once, only in the f
     await h.netInfo({ type: 'wifi', isConnected: true });
     assert.equal(h.networkCalls, 1, 'background stays paused');
   } finally { await h.close(); }
+});
+
+test('battery: a hidden retained page waits for its changes; other pages do not render it', async () => {
+  const h = await harness({ multiple: true });
+  try {
+    await h.render(['t_one', 't_two']);
+    const a = h.api.client.page('t_one'), b = h.api.client.page('t_two');
+    const shown = () => h.renders.get('t_two'), hidden = () => h.renders.get('t_one');
+    const before = { shown: shown(), hidden: hidden() };
+    a.messages.set('t_one', [{ id: 'late', ref_seq: 1, role: 'assistant', text: 'Arrived while hidden' }]);
+    await act(async () => a.change());
+    assert.equal(hidden(), before.hidden, 'a hidden page does not render for its own change');
+    assert.equal(shown(), before.shown, 'the shown page does not render for another page');
+    b.messages.set('t_two', [{ id: 'own', ref_seq: 1, role: 'assistant', text: 'Shown page reply' }]);
+    await act(async () => b.change());
+    assert.equal(shown(), before.shown + 1);
+    assert.equal(h.timelines.get('t_two').rows.at(-1).text, 'Shown page reply');
+    assert.equal(hidden(), before.hidden);
+    await h.render('t_one');
+    assert.ok(hidden() > before.hidden, 'showing the page applies the waiting change');
+    assert.equal(h.timelines.get('t_one').rows.at(-1).text, 'Arrived while hidden');
+    assert.equal(h.scenes.get('t_one').disposed, undefined, 'the retained scene is kept');
+  } finally { await h.close(); }
+});
+
+test('battery: a page renders once when shown again, not once per hidden change', async () => {
+  const h = await harness({ multiple: true });
+  try {
+    await h.render(['t_one', 't_two']);
+    const a = h.api.client.page('t_one'), before = h.renders.get('t_one');
+    for (let i = 1; i <= 5; i++) {
+      a.messages.set('t_one', Array.from({ length: i }, (_, n) => ({ id: 'm' + n, ref_seq: n + 1, role: 'assistant', text: 'Step ' + n })));
+      await act(async () => a.change());
+    }
+    assert.equal(h.renders.get('t_one'), before);
+    await h.render('t_one');
+    assert.ok(h.renders.get('t_one') - before <= 3, `few renders on return, not one per change (${h.renders.get('t_one') - before})`);
+    assert.equal(h.timelines.get('t_one').rows.length, 5);
+  } finally { await h.close(); }
+});
+
+test('battery: row callbacks keep one identity across renders and still act on this thread', async () => {
+  const h = await harness();
+  try {
+    const first = h.timelines.get('t_one');
+    await h.revision();
+    await act(async () => first.onText('typing'));
+    const later = h.timelines.get('t_one');
+    assert.notEqual(later, first, 'the page rendered again');
+    for (const name of ['onRetryFailed', 'onDeleteFailed', 'onCancel', 'onAnswerText', 'renderAttachments', 'messageActions'])
+      assert.equal(later[name], first[name], name);
+    await act(async () => first.onRetryFailed('original-id'));
+    assert.deepEqual(h.retries, [['t_one', 'original-id']]);
+  } finally { await h.close(); }
+});
+
+test('battery: scrolling does not render the page; the completed result row is still marked read', async () => {
+  const h = await harness();
+  try {
+    const timeline = () => h.timelines.get('t_one'), before = h.renders.get('t_one');
+    for (const refs of [[1, 2], [2, 3], [3, 4], [4, 5]]) await act(async () => timeline().onVisibleRefs(refs));
+    assert.equal(h.renders.get('t_one'), before, 'visible rows alone do not render the page');
+    assert.deepEqual(h.reads, []);
+    Object.assign(h.api.client.threads.get('t_one'), { completed_unread: true, result_version: 3, result_ref: 7 });
+    await h.revision();
+    assert.deepEqual(h.reads, [], 'the result row is not in view');
+    await act(async () => timeline().onVisibleRefs([6, 7]));
+    assert.deepEqual(h.reads, [['t_one', 3, 7]]);
+  } finally { await h.close(); }
+});
+
+test('battery: a result row already in view is marked read when the result arrives', async () => {
+  const h = await harness();
+  try {
+    await act(async () => h.timelines.get('t_one').onVisibleRefs([6, 7]));
+    Object.assign(h.api.client.threads.get('t_one'), { completed_unread: true, result_version: 4, result_ref: 7 });
+    await h.revision();
+    assert.deepEqual(h.reads, [['t_one', 4, 7]]);
+  } finally { await h.close(); }
+});
+
+test('battery: the running indicator stops on a covered page and returns when it is shown', async () => {
+  agentTyping.value = true;
+  const h = await harness({ multiple: true });
+  try {
+    assert.equal(h.timelines.get('t_one').typingIndicator.props.active, true);
+    await h.render(['t_one', 't_two']);
+    assert.equal(h.timelines.get('t_one').typingIndicator.props.active, false, 'no animation behind another page');
+    assert.equal(h.timelines.get('t_two').typingIndicator.props.active, true);
+    await h.render('t_one');
+    assert.equal(h.timelines.get('t_one').typingIndicator.props.active, true);
+  } finally { agentTyping.value = false; await h.close(); }
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from './FontSize';
 import * as SecureStore from 'expo-secure-store';
@@ -102,7 +102,10 @@ export function useAgentName(connectionId: string | null): {
       finish();
     }
   };
-  return { name: shown.name, ready: shown.ready, error: shown.error, saving: shown.saving, save, reload };
+  // A stable object keeps connection-scope contexts unchanged between renders.
+  // save/reload read only connectionId, renderedGeneration, refs and state setters.
+  return useMemo(() => ({ name: shown.name, ready: shown.ready, error: shown.error, saving: shown.saving, save, reload }),
+    [shown.name, shown.ready, shown.error, shown.saving, connectionId, renderedGeneration]);
 }
 
 type Props = {
