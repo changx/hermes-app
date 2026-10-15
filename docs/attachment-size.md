@@ -1,6 +1,6 @@
 # Attachment size
 
-Status: released 2026-10-15 (desktop v0.1.91, Expo test entry, plugin 0.2.38 installed). The server limit takes effect after the Gateway restart. iPhone and Mac checks open.
+Status: released 2026-10-15 (desktop v0.1.91, Expo test entry, plugin 0.2.38 active since the Gateway restart at 02:57). iPhone and Mac checks open.
 
 ## What the user sees
 - A message attachment can be up to 100 MB (100 MiB) on desktop and phone. Before, the limit was 10 MB.
@@ -41,3 +41,4 @@ App connections reach the server through Cloudflare (`agent.tuly.space`). Measur
 - Plugin 0.2.38 (`bc50692`, tag `v0.2.38`; also ships the `hermes-app:channels` skill from 0.2.37): `current` → `releases/0.2.38` for jamie and hermes-app-dev; release dir identical to `git archive v0.2.38`. P1 delta against `main`: 0 new failures (30 pre-existing on both). Active after Jamie restarts `hermes-gateway.service`.
 - Evidence: `~/.hermes/profiles/jamie/workspace/hermes-app/2026-10-15-attachments-100mib/`.
 - Rollback: App `v0.1.90` / `0427855` (runtime checkout + Expo restart); plugin `ln -sfn releases/0.2.36` on `current`, then Gateway restart.
+- After Jamie's Gateway restart (02:57:00, PID 714210, after the 02:52 install): through `https://agent.tuly.space`, a 104,857,600-byte upload returned 201 and downloaded back at the same size (then deleted); 104,857,601 bytes were refused at the edge with no partial file left. `hermes-jamie.tuly.space` has the same edge limit (401 at 104,857,600 bytes, 413 at one byte more). `hermes-app:channels` loads. Open: iPhone (reload Expo Go) and Mac (install v0.1.91) uploads between 10 and 100 MB.
