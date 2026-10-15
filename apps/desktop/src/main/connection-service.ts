@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { attachmentInputs, MAX_ATTACHMENT_BYTES, type AttachmentInput } from '../shared/attachment-input';
+import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, MAX_WORKSPACE_FILE_BYTES, type AttachmentInput } from '../shared/attachment-input';
 import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
@@ -830,10 +830,10 @@ export class DesktopConnectionService {
         if (typeof input === 'string') {
           if (!isAbsolute(input)) throw new Error('Invalid path');
           const info = await stat(input);
-          if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
+          if (!info.isFile() || info.size < 1 || info.size > MAX_WORKSPACE_FILE_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
           bytes = new Uint8Array(await readFile(input));
         } else bytes = input.bytes;
-        if (bytes.byteLength < 1 || bytes.byteLength > MAX_ATTACHMENT_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
+        if (bytes.byteLength < 1 || bytes.byteLength > MAX_WORKSPACE_FILE_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
         if (this.client !== client) throw new Error('Connection changed');
         // Create-only: an existing server file is never replaced.
         await client.workspace.writeFile(channelId, name, bytes, null);
@@ -1274,20 +1274,23 @@ export class DesktopConnectionService {
     const client = this.requireClient(), threadId = targetThreadId ?? this.selectedThreadId;
     if (!threadId) return [];
     if (!client.isThreadAvailable(threadId)) throw new Error("This conversation is unavailable.");
-    const files: Array<{ name: string; bytes: Uint8Array }> = [];
-    for (const input of attachmentInputs(inputs)) {
-      if (typeof input !== 'string') { files.push(input); continue; }
-      const filePath = input;
+    // Check every file before the first upload; read each one only when its turn comes,
+    // so at most one 100 MiB file is in memory at a time.
+    const files = attachmentInputs(inputs);
+    for (const filePath of files) {
+      if (typeof filePath !== 'string') continue;
       if (!filePath || !isAbsolute(filePath)) throw new Error("The attachment path is invalid.");
       const info = await stat(filePath);
-      if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) throw new Error("Each attachment must be a file between 1 byte and 10 MiB.");
-      files.push({ name: basename(filePath), bytes: new Uint8Array(await readFile(filePath)) });
+      if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) throw new Error("Each attachment must be a file between 1 byte and 100 MiB.");
     }
-    attachmentInputs(files); // Recheck actual bytes after a potentially racing disk read.
     const uploaded: DesktopAttachment[] = [];
     try {
       if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
-      for (const file of files) uploaded.push(this.projectAttachment(await client.upload(threadId, file.name, file.bytes)));
+      for (const input of files) {
+        const file = typeof input === 'string' ? { name: basename(input), bytes: new Uint8Array(await readFile(input)) } : input;
+        attachmentInputs([file]); // Recheck actual bytes after a potentially racing disk read.
+        uploaded.push(this.projectAttachment(await client.upload(threadId, file.name, file.bytes)));
+      }
       if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
     } catch {
       await Promise.all(uploaded.map(({ id }) => client.deleteUnattached(threadId, id).catch(() => {})));
@@ -1307,7 +1310,7 @@ export class DesktopConnectionService {
     const client = this.requireClient();
     const attachment = await client.getAttachment(threadId, attachmentId);
     if (!attachment || attachment.id !== attachmentId || attachment.thread_id !== threadId || attachment.state !== 'available'
-      || !attachment.size || attachment.size > MAX_ATTACHMENT_BYTES || this.client !== client) throw new Error('The file is unavailable.');
+      || !attachment.size || attachment.size > MAX_PREVIEW_BYTES || this.client !== client) throw new Error('The file is unavailable.');
     const bytes = await client.download(threadId, attachmentId);
     if (this.client !== client || !client.isThreadAvailable(threadId) || bytes.byteLength !== attachment.size) throw new Error('The file is unavailable.');
     return { name: attachment.name ?? 'Attachment', mime: attachment.mime ?? 'application/octet-stream', bytes };
@@ -1318,7 +1321,7 @@ export class DesktopConnectionService {
     const client = this.requireClient(), seen = new Set<string>(), items: Array<{ id: string; name: string; mime: string }> = [];
     for (const id of ids) {
       const item = client.attachments.get(id);
-      if (!item || seen.has(id) || item.thread_id !== threadId || item.state !== 'available' || !item.size || item.size > MAX_ATTACHMENT_BYTES) continue;
+      if (!item || seen.has(id) || item.thread_id !== threadId || item.state !== 'available' || !item.size || item.size > MAX_PREVIEW_BYTES) continue;
       seen.add(id); items.push({ id, name: item.name ?? 'Attachment', mime: item.mime ?? 'application/octet-stream' });
     }
     return items;
@@ -1369,7 +1372,7 @@ export class DesktopConnectionService {
     const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available"
-        || !/^image\/(png|jpeg|gif|webp)$/.test(attachment.mime ?? "") || !attachment.size || attachment.size > 10 * 1024 * 1024) {
+        || !/^image\/(png|jpeg|gif|webp)$/.test(attachment.mime ?? "") || !attachment.size || attachment.size > MAX_PREVIEW_BYTES) {
       throw new Error("The image is unavailable.");
     }
     const bytes = await client.download(threadId, attachmentId);

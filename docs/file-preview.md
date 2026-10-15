@@ -68,7 +68,7 @@ Release v0.1.79 (2026-10-13, authorized by Jamie: "合并发布"): `main` fast-f
 ## Not included
 
 - PDF and Office rendering on Android.
-- Media streaming above the 10 MiB attachment limit.
+- Desktop in-app preview above 10 MiB. Attachments can be up to 100 MiB ([Attachment size](attachment-size.md)); larger files use Save or Open on desktop. On the phone they download to a file and video/audio/images/PDF open; text above 10 MiB shows a too-large notice.
 - Archive browsing and editing.
 - Desktop Channel Files (the desktop has no Channel Files page).
 

@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './FontSize';
 import { MessageContent } from './MessageContent';
 import { openLink } from './openLink';
-import { PREVIEW_MARKDOWN_BYTES, PREVIEW_TEXT_BYTES, type PreviewKind } from './filePreviewKind';
+import { PREVIEW_MARKDOWN_BYTES, PREVIEW_MAX_BYTES, PREVIEW_TEXT_BYTES, type PreviewKind } from './filePreviewKind';
 
 /** `onZoom` reports when the image is larger than the page, so a gallery can stop paging. */
 export function ImageViewer({ uri, width: pageWidth, onZoom }: { uri: string; width?: number; onZoom?: (zoomed: boolean) => void }) {
@@ -75,14 +75,17 @@ function MediaPlayer({ uri, audio, active }: { uri: string; audio: boolean; acti
 }
 
 function TextFile({ uri, kind }: { uri: string; kind: 'markdown' | 'text' | 'html' }) {
-  const [state, setState] = useState<{ text: string; size: number } | 'error' | null>(null);
+  const [state, setState] = useState<{ text: string; size: number } | 'error' | 'large' | null>(null);
   useEffect(() => {
     let active = true;
     const file = new File(uri);
+    // Attachments can be 100 MiB; the text viewer reads the whole file into one string, so it stops at the preview limit.
+    if (file.size > PREVIEW_MAX_BYTES) { setState('large'); return; }
     file.text().then(text => { if (active) setState({ text, size: file.size }); }, () => { if (active) setState('error'); });
     return () => { active = false; };
   }, [uri]);
   if (state === 'error') return <Notice text="Could not read this file. Go back and try again." />;
+  if (state === 'large') return <Notice text="This file is too large to preview in the app." />;
   if (!state) return <View style={styles.page}><ActivityIndicator /></View>;
   if (kind === 'html') return <HtmlPage html={state.text} />;
   if (!state.text) return <Notice text="This file is empty." />;

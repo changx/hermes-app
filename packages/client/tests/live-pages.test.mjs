@@ -12,6 +12,8 @@ function fixture(multi=true){
   let available=['A','B'], holdWatch=false, onChange=()=>{};
   const sdk=new LivePageClient({token:()=> 'synthetic',livenessMs:50,backoffMs:[5],onChange:()=>onChange(),
     http:{async download(path){paths.push(['GET',path]);return {status:200,body:new TextEncoder().encode('image bytes')};},
+    async downloadFile(path,_token,destination){paths.push(['FILE',path,destination]);return {status:200,size:11};},
+    async uploadFile(path,_token,name,file){paths.push(['UPLOAD',path,file.uri]);const thread=path.split('/')[3];return {status:201,body:{attachment:{id:'att_up',thread_id:thread,name,mime:'video/mp4',size:file.size}}};},
     async request(method,path,_token,body,signal){
       paths.push([method,path]);
       if(path==='/v1/capabilities')return {status:200,body:{protocol:1,history_latest:true,history_full:true,history_around:true,attachment_origin:true,message_send_identity:true,open_session_live:true}};
@@ -152,6 +154,20 @@ test('attachment bytes download while a reconnect waits for the watch ack; owner
     await assert.rejects(a.download('B','att2'),/Conversation is not open/);
     f.sdk.releasePage('A',a);
     await assert.rejects(a.download('A','att1'),/Conversation is not open/);
+  }finally{f.sdk.close();}
+});
+
+test('file transfers go through the page that owns the conversation',async()=>{
+  const f=fixture();try{
+    await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
+    const a=f.sdk.acquirePage('A');await a.openConversation('A');
+    assert.equal(await f.sdk.downloadFile('A','att1','file:///cache/one'),11);
+    assert.deepEqual(f.paths.find(p=>p[0]==='FILE'),['FILE','/v1/threads/A/attachments/att1','file:///cache/one']);
+    await assert.rejects(f.sdk.downloadFile('B','att2','file:///cache/two'),/Conversation page is not alive/);
+    const uploaded=await f.sdk.uploadFile('A','clip.mp4',{uri:'file:///cache/clip.mp4',size:42});
+    assert.equal(uploaded.size,42);assert.equal(f.sdk.attachments.get('att_up')?.thread_id,'A');
+    f.sdk.releasePage('A',a);
+    await assert.rejects(a.downloadFile('A','att1','file:///cache/three'),/Conversation is not open/);
   }finally{f.sdk.close();}
 });
 

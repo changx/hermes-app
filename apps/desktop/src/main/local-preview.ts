@@ -1,6 +1,6 @@
 import { open } from 'node:fs/promises';
 import { basename, isAbsolute } from 'node:path';
-import { attachmentInputs, MAX_ATTACHMENT_BYTES } from '../shared/attachment-input';
+import { attachmentInputs, MAX_PREVIEW_BYTES } from '../shared/attachment-input';
 import type { PreviewDocument } from '../shared/browser-policy';
 
 export async function localPreview(value: unknown): Promise<PreviewDocument> {
@@ -10,7 +10,7 @@ export async function localPreview(value: unknown): Promise<PreviewDocument> {
   const handle = await open(input, 'r');
   try {
     const info = await handle.stat();
-    if (!info.isFile() || !info.size || info.size > MAX_ATTACHMENT_BYTES) throw new Error('Unsupported file size');
+    if (!info.isFile() || !info.size || info.size > MAX_PREVIEW_BYTES) throw new Error('Unsupported file size');
     const bytes = new Uint8Array(info.size);
     let offset = 0;
     while (offset < bytes.length) {

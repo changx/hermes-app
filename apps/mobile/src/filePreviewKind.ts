@@ -1,6 +1,7 @@
 export type PreviewKind = 'image' | 'pdf' | 'markdown' | 'html' | 'text' | 'video' | 'audio' | 'document' | 'other';
 
-// The attachment and workspace transfer limit. Larger files are refused before download.
+// In-app preview limit: workspace files above it are not downloaded, and text attachments above it are not read.
+// Message attachments can be larger (100 MiB) and still play or open as files.
 export const PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 // Plain text above this size is shown as its first part only; Markdown above it is shown as text.
 export const PREVIEW_TEXT_BYTES = 1024 * 1024;

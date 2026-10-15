@@ -81,7 +81,7 @@ test('preload keeps disk files as paths and converts pathless clipboard files to
   const result = await filesForUpload([disk, image], f => f === disk ? '/fixture/disk.txt' : '');
   assert.equal(result[0], '/fixture/disk.txt'); assert.deepEqual(result[1], { name: 'image.png', bytes: new Uint8Array([7, 7, 7]) });
   await assert.rejects(filesForUpload(Array(9).fill(image), () => ''), /eight/);
-  await assert.rejects(filesForUpload([file('huge', MAX_ATTACHMENT_BYTES + 1)], () => ''), /10 MiB/);
+  await assert.rejects(filesForUpload([file('huge', MAX_ATTACHMENT_BYTES + 1)], () => ''), /100 MiB/);
 });
 test('main rejects malformed names, counts and bytes before upload', () => {
   for (const value of [null, Array(9).fill('/fixture/file'), [''], [{ name: '../image', bytes: new Uint8Array([1]) }], [{ name: 'a\n', bytes: new Uint8Array([1]) }], [{ name: 'a', bytes: [1] }], [{ name: 'a', bytes: new Uint8Array() }], [{ name: 'a', bytes: new Uint8Array(MAX_ATTACHMENT_BYTES + 1) }]]) assert.throws(() => attachmentInputs(value));
@@ -103,5 +103,23 @@ test('service uploads mixed clipboard bytes and disk files to explicit target; p
     calls.length = 0;
     await assert.rejects(service.uploadAttachmentInputs([{ name: 'bad/name', bytes: new Uint8Array([1]) }], 'target'));
     assert.equal(calls.length, 0);
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
+test('service uploads a disk file above the old 10 MiB limit and rejects one over 100 MiB before any upload', async () => {
+  const { truncate } = await import('node:fs/promises');
+  const folder = await mkdtemp(join(tmpdir(), 'size-service-'));
+  const service = new DesktopConnectionService(() => {}), calls = [];
+  const client = { isThreadAvailable: id => id === 'target', upload: async (id, name, bytes) => { calls.push([name, bytes.byteLength]); return { ...attachment('big-' + calls.length, name), thread_id: id }; }, deleteUnattached: async () => {} };
+  service.client = client; service.connection = {}; service.phase = 'connected'; service.changed = () => {};
+  try {
+    assert.equal(MAX_ATTACHMENT_BYTES, 100 * 1024 * 1024);
+    const medium = join(folder, 'clip.mp4'); await writeFile(medium, ''); await truncate(medium, 11 * 1024 * 1024);
+    const full = join(folder, 'full.mp4'); await writeFile(full, ''); await truncate(full, MAX_ATTACHMENT_BYTES);
+    const over = join(folder, 'over.mp4'); await writeFile(over, ''); await truncate(over, MAX_ATTACHMENT_BYTES + 1);
+    assert.equal((await service.uploadAttachmentInputs([medium, full], 'target')).length, 2);
+    assert.deepEqual(calls, [['clip.mp4', 11 * 1024 * 1024], ['full.mp4', MAX_ATTACHMENT_BYTES]]);
+    calls.length = 0;
+    await assert.rejects(service.uploadAttachmentInputs([medium, over], 'target'), /100 MiB/);
+    assert.equal(calls.length, 0, 'every file is checked before the first upload');
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

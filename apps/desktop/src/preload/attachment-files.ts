@@ -1,8 +1,8 @@
-import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_FILES, type AttachmentInput } from '../shared/attachment-input';
+import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_FILES, type AttachmentInput } from '../shared/attachment-input';
 
 export async function filesForUpload(files: readonly File[], pathForFile: (file: File) => string): Promise<AttachmentInput[]> {
   if (files.length > MAX_ATTACHMENT_FILES || files.some(file => !file.size || file.size > MAX_ATTACHMENT_BYTES)) {
-    throw new Error('Choose up to eight files, each between 1 byte and 10 MiB.');
+    throw new Error(ATTACHMENT_SIZE_RULE);
   }
   const inputs: AttachmentInput[] = [];
   for (const file of files) {

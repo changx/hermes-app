@@ -8,12 +8,12 @@ import { File } from 'expo-file-system';
 import { toByteArray } from 'base64-js';
 import { useIsFocused } from 'expo-router';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
-import { chooseAttachments, draftBusy, isImage, MAX_ATTACHMENT_BYTES, uploadedInOrder } from './attachmentHelpers';
+import { chooseAttachments, draftBusy, isImage, MAX_CLIPBOARD_IMAGE_BYTES, MAX_THUMBNAIL_BYTES, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
 import { AttachmentGallery, type GalleryItem } from './AttachmentGallery';
-import { attachmentSlot, forgetFile, ownedFile, type AttachmentFiles } from './attachmentFiles';
+import { attachmentSlot, forgetFile, ownedFile, uploadSource, type AttachmentFiles } from './attachmentFiles';
 import { gallerySequence } from './gallerySequence';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
@@ -82,12 +82,9 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     let release: (() => void) | undefined;
     try {
       release = await attachmentSlot(controller.signal);
-      const bytes = source.data ?? await new File(source.uri!).bytes();
-      if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
-      if (generation !== epoch.current || controller.signal.aborted) return;
-      // Actual SDK signature is upload(threadId, name, Uint8Array, signal).
       if (!threadId) throw new Error('thread required');
-      const attachment = await client.upload(threadId, source.name, bytes, controller.signal);
+      const attachment = await uploadSource(client, threadId, source, controller.signal, () => generation !== epoch.current || controller.signal.aborted);
+      if (!attachment) return;
       if (generation !== epoch.current || controller.signal.aborted) return;
       const current = itemsRef.current;
       if (current.some(item => item.key === key)) update(current.map(item => item.key === key ? { ...item, status: 'ready', attachment, error: undefined } : item));
@@ -146,7 +143,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     let file: File | undefined;
     try {
       const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(data.data);
-      if (!match || match[2].length > Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4 + 4) throw new Error('invalid clipboard image');
+      if (!match || match[2].length > Math.ceil(MAX_CLIPBOARD_IMAGE_BYTES / 3) * 4 + 4) throw new Error('invalid clipboard image');
       const bytes = toByteArray(match[2]);
       const name = match[1] === 'png' ? 'pasted-image.png' : 'pasted-image.jpg';
       const checked = chooseAttachments(itemsRef.current.length, [{ name, mime: `image/${match[1]}`, data: bytes }]);
@@ -227,9 +224,8 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
         let release: (() => void) | undefined;
         try {
           release = await attachmentSlot(controller.signal);
-          const bytes = item.source.data ?? await new File(item.source.uri!).bytes();
-          if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES || generation !== epoch.current) throw new Error('invalid attachment');
-          const attachment = await client.upload(targetThreadId, item.source.name, bytes, controller.signal);
+          const attachment = await uploadSource(client, targetThreadId, item.source, controller.signal, () => generation !== epoch.current);
+          if (!attachment) throw new Error('stale attachment');
           if (generation !== epoch.current) throw new Error('stale attachment');
           uploaded.push(attachment);
           update(itemsRef.current.map(entry => entry.key === item.key ? { ...entry, status: 'ready', attachment } : entry));
@@ -307,7 +303,9 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
       () => { if (alive.current) setState(old => ({ ...old, [attachment.id]: 'error' })); });
   };
   useEffect(() => {
-    for (const attachment of attachments) if (attachment.state === 'available' && isImage(attachment.mime, attachment.name)) load(attachment);
+    // Large images download only when tapped, so a 100 MB photo does not load on its own over cellular.
+    for (const attachment of attachments) if (attachment.state === 'available' && isImage(attachment.mime, attachment.name)
+      && (attachment.size ?? 0) <= MAX_THUMBNAIL_BYTES) load(attachment);
   }, [attachments, files]);
   const open = (attachment: Attachment) => {
     if (!focusedRef.current) return;

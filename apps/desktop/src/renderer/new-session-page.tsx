@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AgentModelSettings, ThreadModelChoice } from '@hermes-app/client';
 import { threadModelKey, threadModelLabel, threadModelRequest } from '@hermes-app/client/threadModel';
 import type { DesktopAttachment, DesktopSnapshot } from '../shared/desktop-api';
+import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES } from '../shared/attachment-input';
 import { AttachmentThumbnail } from './attachment-thumbnail';
 
 /** New chat tab. With `automationEditor` it is New automation: the first message starts the settings
@@ -36,7 +37,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const choose = (items: readonly File[]) => {
     if (working.current || uploads.current.length || saved.current) return;
     const next = [...files, ...items];
-    if (next.length > 8 || next.some(file => file.size < 1 || file.size > 10 * 1024 * 1024)) { setError('Choose up to eight files, each between 1 byte and 10 MiB.'); return; }
+    if (next.length > 8 || next.some(file => file.size < 1 || file.size > MAX_ATTACHMENT_BYTES)) { setError(ATTACHMENT_SIZE_RULE); return; }
     setFiles(next); setError('');
   };
   const submit = async (confirmModel = false) => {

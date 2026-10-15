@@ -1,5 +1,5 @@
 import { LiveSessionClient } from './liveClient';
-import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction } from './index';
+import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction, type LocalFile } from './index';
 import type { LiveFrame } from './liveProtocol';
 import type { OpenTimingObserver } from './openTiming';
 
@@ -117,6 +117,10 @@ export class LivePageClient extends LiveSessionClient {
   override async answerInteraction(item: Interaction,choice: string) { return this.requirePage(item.thread_id).answerInteraction(item,choice); }
   override async getAttachment(id: string,key: string,signal?: AbortSignal) { return this.requirePage(id).getAttachment(id,key,signal); }
   override async download(id: string,key: string,signal?: AbortSignal) { return this.requirePage(id).download(id,key,signal); }
+  override async downloadFile(id: string,key: string,destination: string,signal?: AbortSignal) { return this.requirePage(id).downloadFile(id,key,destination,signal); }
+  override async uploadFile(id: string,name: string,file: LocalFile,signal?: AbortSignal) {
+    return this.pages.get(id)?.uploadFile(id,name,file,signal) ?? super.uploadFile(id,name,file,signal);
+  }
   override async upload(id: string,name: string,bytes: Uint8Array,signal?: AbortSignal) {
     return this.pages.get(id)?.upload(id,name,bytes,signal) ?? super.upload(id,name,bytes,signal);
   }

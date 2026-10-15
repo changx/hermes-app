@@ -137,6 +137,7 @@
 - [docs/app-icon.md](docs/app-icon.md)（应用图标：mochi-wings 默认图标、各平台资源与重新生成）
 - [docs/thread-branch.md](docs/thread-branch.md)
 - [docs/file-preview.md](docs/file-preview.md)
+- [docs/attachment-size.md](docs/attachment-size.md)（附件大小：单件 100 MiB，Cloudflare 请求体上限；预览仍 10 MiB）
 - [docs/multi-connection.md](docs/multi-connection.md)
 - [docs/multi-connection-release-0.1.36.md](docs/multi-connection-release-0.1.36.md)
 - [docs/connection-names.md](docs/connection-names.md)

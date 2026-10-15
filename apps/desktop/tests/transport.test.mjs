@@ -137,7 +137,7 @@ test("attachment download accepts a proxy-compressed reply without Content-Lengt
     if (request.url.endsWith("/br")) { response.writeHead(200, { "content-type": "text/markdown", "content-encoding": "br" }); response.end(brotliCompressSync(text)); return; }
     if (request.url.endsWith("/gzip")) { const body = gzipSync(text); response.writeHead(200, { "content-type": "text/markdown", "content-encoding": "gzip", "content-length": String(body.length) }); response.end(body); return; }
     if (request.url.endsWith("/plain")) { response.writeHead(200, { "content-type": "text/markdown", "content-length": String(text.length) }); response.end(text); return; }
-    if (request.url.endsWith("/huge")) { response.writeHead(200, { "content-type": "application/octet-stream", "content-encoding": "gzip" }); response.end(gzipSync(Buffer.alloc(10 * 1024 * 1024 + 1))); return; }
+    if (request.url.endsWith("/huge")) { response.writeHead(200, { "content-type": "application/octet-stream", "content-encoding": "gzip" }); response.end(gzipSync(Buffer.alloc(100 * 1024 * 1024 + 1))); return; }
     response.writeHead(404); response.end();
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -179,4 +179,22 @@ test("the main-process HTTP connection stays open across a pause longer than 4 s
   await new Promise(resolve => setTimeout(resolve, 4_500));
   assert.equal((await http.request("GET", "/v1/capabilities", "test-token")).status, 200);
   assert.equal(connections, 1, "the second request reuses the first connection");
+});
+
+test("attachment uploads allow 100 MiB; workspace file writes keep 10 MiB", async (t) => {
+  let bodies = 0;
+  const server = createServer((request, response) => {
+    let size = 0;
+    request.on("data", chunk => { size += chunk.length; });
+    request.on("end", () => { bodies++; response.writeHead(201, { "content-type": "application/json" }); response.end(JSON.stringify({ size })); });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  const MiB = 1024 * 1024;
+  const reply = await http.upload("/v1/threads/t/attachments", "token", "clip.mp4", new Uint8Array(100 * MiB));
+  assert.equal(reply.status, 201); assert.equal(reply.body.size, 100 * MiB);
+  await assert.rejects(http.upload("/v1/threads/t/attachments", "token", "clip.mp4", new Uint8Array(100 * MiB + 1)), /size is unsupported/);
+  await assert.rejects(http.putBytes("/v1/channels/c/file?path=a.bin", "token", { "If-None-Match": "*" }, new Uint8Array(10 * MiB + 1)), /size is unsupported/);
+  assert.equal(bodies, 1);
 });

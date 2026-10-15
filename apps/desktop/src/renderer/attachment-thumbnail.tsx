@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { DesktopAttachment } from '../shared/desktop-api';
-import { MAX_ATTACHMENT_BYTES } from '../shared/attachment-input';
+import { MAX_PREVIEW_BYTES } from '../shared/attachment-input';
 
 export function imageThumbnailSupported(name: string, mime = '', local = false): boolean {
   const type = mime.toLowerCase().split(';')[0];
@@ -29,7 +29,9 @@ async function imageSlot(): Promise<() => void> {
 export function useAttachmentImage(host: RefObject<HTMLElement | null>, attachment?: DesktopAttachment, file?: File) {
   const key = file ?? attachment?.id;
   const name = file?.name ?? attachment?.name ?? 'Attachment', mime = file?.type ?? attachment?.mime ?? '';
-  const image = imageThumbnailSupported(name, mime, !!file);
+  // Images above the preview limit show the file face, not an image or a failed thumbnail.
+  const size = file?.size ?? attachment?.size ?? 0;
+  const image = imageThumbnailSupported(name, mime, !!file) && size <= MAX_PREVIEW_BYTES;
   const [value, setValue] = useState<{ key: typeof key; src?: string; failed?: boolean }>({ key });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -39,7 +41,7 @@ export function useAttachmentImage(host: RefObject<HTMLElement | null>, attachme
     if (file) {
       let url: string | undefined;
       try {
-        if (!file.size || file.size > MAX_ATTACHMENT_BYTES) throw new Error('Unsupported file size');
+        if (!file.size || file.size > MAX_PREVIEW_BYTES) throw new Error('Unsupported file size');
         url = URL.createObjectURL(file); setValue({ key, src: url });
       } catch { setValue({ key, failed: true }); }
       return () => { alive = false; if (url) URL.revokeObjectURL(url); };

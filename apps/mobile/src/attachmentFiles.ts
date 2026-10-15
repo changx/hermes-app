@@ -1,6 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
-import { MAX_ATTACHMENT_BYTES } from './attachmentHelpers';
+import { MAX_ATTACHMENT_BYTES, type PickedAttachment } from './attachmentHelpers';
 import { previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
 
 let fileSequence = 0;
@@ -23,6 +23,31 @@ export async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
   else activeTransfers++;
   if (signal.aborted) { release(); throw new Error('aborted'); }
   return release;
+}
+
+/**
+ * Upload one picked source. A file goes through the native file upload, so up to
+ * 100 MiB never enters JS memory; pasted bytes go as bytes. Resolves undefined
+ * when `stale()` is true just before the upload starts.
+ */
+export async function uploadSource(client: HermesClient, threadId: string, source: PickedAttachment, signal: AbortSignal,
+  stale: () => boolean): Promise<Attachment | undefined> {
+  if (source.uri && !source.data && client.supportsFileTransfer) {
+    const size = new File(source.uri).size;
+    if (!size || size > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
+    if (stale()) return undefined;
+    return client.uploadFile(threadId, source.name, { uri: source.uri, size }, signal);
+  }
+  const bytes = source.data ?? await new File(source.uri!).bytes();
+  if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
+  if (stale()) return undefined;
+  return client.upload(threadId, source.name, bytes, signal);
+}
+
+/** The first bytes of a file, for signature checks, without reading the whole file. */
+function leadingBytes(file: File, length: number): Uint8Array {
+  const handle = file.open();
+  try { return handle.readBytes(Math.min(length, file.size)); } finally { handle.close(); }
 }
 
 export type LoadedAttachment = { uri: string; kind: PreviewKind };
@@ -55,13 +80,26 @@ export class AttachmentFiles {
       try {
         release = await attachmentSlot(controller.signal);
         if (attachment.size && attachment.size > MAX_ATTACHMENT_BYTES) throw new Error('too large');
-        const bytes = await this.client.download(this.threadId, attachment.id, controller.signal);
-        if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
-        if (controller.signal.aborted || generation !== this.generation) return undefined;
-        const file = ownedFile(previewSuffix(name)); file.create();
-        try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
+        let file: File, head: Uint8Array;
+        if (this.client.supportsFileTransfer) {
+          // Native download straight into the cache file: up to 100 MiB never enters JS memory.
+          file = ownedFile(previewSuffix(name));
+          try {
+            const size = await this.client.downloadFile(this.threadId, attachment.id, file.uri, controller.signal);
+            if (!size || size > MAX_ATTACHMENT_BYTES || size !== file.size || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
+            head = leadingBytes(file, 16);
+          } catch (error) { forgetFile(file); throw error; }
+          if (controller.signal.aborted || generation !== this.generation) { forgetFile(file); return undefined; }
+        } else {
+          const bytes = await this.client.download(this.threadId, attachment.id, controller.signal);
+          if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
+          if (controller.signal.aborted || generation !== this.generation) return undefined;
+          file = ownedFile(previewSuffix(name)); file.create();
+          try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
+          head = bytes.subarray(0, 16);
+        }
         this.files.push(file);
-        const entry: LoadedAttachment = { uri: file.uri, kind: previewKind(name, attachment.mime, bytes) };
+        const entry: LoadedAttachment = { uri: file.uri, kind: previewKind(name, attachment.mime, head) };
         this.ready.set(attachment.id, entry);
         return entry;
       } catch (error) {

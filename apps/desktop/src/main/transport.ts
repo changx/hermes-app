@@ -2,6 +2,7 @@ import type { ConditionalHeaders, HttpTransport, SocketFactory } from "@hermes-a
 import { Agent, setGlobalDispatcher } from "undici";
 import WebSocket from "ws";
 import { trackSocket } from "./socket-registry";
+import { MAX_ATTACHMENT_BYTES, MAX_WORKSPACE_FILE_BYTES } from "../shared/attachment-input";
 
 /** Node's fetch (undici) closes an idle HTTPS connection after 4 s, so the first
  * request after the user types (create, send) paid a new TLS handshake: 0.5-1.2 s
@@ -11,9 +12,10 @@ export const installHttpKeepAlive = (): void => {
   setGlobalDispatcher(new Agent({ keepAliveTimeout: 60_000, keepAliveMaxTimeout: 600_000 }));
 };
 
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+// AGENTS.md keeps its 10 MiB text guard, separate from the 100 MiB attachment limit.
+const AGENTS_TEXT_BYTES = 10 * 1024 * 1024;
 const MAX_REPLY_BYTES = 64 * 1024;
-const MAX_AGENTS_REPLY_BYTES = 6 * MAX_ATTACHMENT_BYTES + 4096;
+const MAX_AGENTS_REPLY_BYTES = 6 * AGENTS_TEXT_BYTES + 4096;
 const MAX_WORKSPACE_REPLY_BYTES = 1024 * 1024;
 const ETAG = /^"[0-9a-f]{64}"$/;
 
@@ -95,7 +97,7 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
     conditionalRequest: (method, path, token, headers, body, signal) => json(method, path, token, body, signal, headers),
     async putBytes(path, token, headers, bytes, signal) {
       if (!/^\/v1\/channels\/[A-Za-z0-9_-]+\/file\?path=[^&#]+$/.test(path)) throw new Error("Invalid workspace file path.");
-      if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error("File size is unsupported.");
+      if (!bytes.byteLength || bytes.byteLength > MAX_WORKSPACE_FILE_BYTES) throw new Error("File size is unsupported.");
       const response = await fetch(base + path, {
         method: "PUT",
         headers: { ...authorization(token), ...precondition(headers), "Content-Type": "application/octet-stream" },

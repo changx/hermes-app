@@ -1,4 +1,11 @@
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+// Message attachment upload limit: the Cloudflare edge in front of the App
+// connections accepts request bodies up to 100 MiB.
+export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+// In-app preview (browser sidebar, gallery, image thumbnails) stays at 10 MiB.
+export const MAX_PREVIEW_BYTES = 10 * 1024 * 1024;
+// Channel workspace files: the server keeps its own 10 MiB file limit.
+export const MAX_WORKSPACE_FILE_BYTES = 10 * 1024 * 1024;
+export const ATTACHMENT_SIZE_RULE = 'Choose up to eight files, each between 1 byte and 100 MiB.';
 export const MAX_ATTACHMENT_FILES = 8;
 export type AttachmentInput = string | { name: string; bytes: Uint8Array };
 
