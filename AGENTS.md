@@ -139,6 +139,7 @@
 - [docs/thread-branch.md](docs/thread-branch.md)
 - [docs/file-preview.md](docs/file-preview.md)
 - [docs/attachment-size.md](docs/attachment-size.md)（附件大小：单件 100 MiB，Cloudflare 请求体上限；预览仍 10 MiB）
+- [docs/paste-names-agent-files.md](docs/paste-names-agent-files.md)（桌面粘贴文件自动命名；Agent 文件不限大小、公网链接直接下载）
 - [docs/multi-connection.md](docs/multi-connection.md)
 - [docs/multi-connection-release-0.1.36.md](docs/multi-connection-release-0.1.36.md)
 - [docs/connection-names.md](docs/connection-names.md)

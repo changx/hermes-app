@@ -153,6 +153,46 @@ test("attachment download accepts a proxy-compressed reply without Content-Lengt
   assert.equal((await http.download("/v1/threads/t/attachments/missing", "token")).status, 404);
 });
 
+test("attachment Save/Open streams files above 100 MiB to disk and removes incomplete files", async (t) => {
+  const { mkdtemp, readFile, rm, stat } = await import("node:fs/promises");
+  const { createHash } = await import("node:crypto");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const size = 150 * 1024 * 1024, block = Buffer.alloc(1024 * 1024, 7), seen = [];
+  const expected = createHash("sha256");
+  for (let i = 0; i < size / block.length; i++) expected.update(block);
+  const server = createServer((request, response) => {
+    seen.push(request.headers["accept-encoding"]);
+    if (request.url.endsWith("/big")) {
+      response.writeHead(200, { "content-type": "application/zip", "content-length": String(size) });
+      let sent = 0;
+      const pump = () => { while (sent < size) { sent += block.length; if (!response.write(block)) { response.once("drain", pump); return; } } response.end(); };
+      pump(); return;
+    }
+    if (request.url.endsWith("/cut")) { response.writeHead(200, { "content-length": "1000" }); response.write(Buffer.alloc(10)); setTimeout(() => response.destroy(), 20); return; }
+    response.writeHead(404); response.end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const folder = await mkdtemp(join(tmpdir(), "hermes-download-"));
+  t.after(async () => { server.close(); await rm(folder, { recursive: true, force: true }); });
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  const target = join(folder, "big.zip.partial");
+  const reply = await http.downloadFile("/v1/threads/t/attachments/big", "token", target);
+  assert.deepEqual(reply, { status: 200, size });
+  const info = await stat(target);
+  assert.equal(info.size, size);
+  assert.equal(info.mode & 0o777, 0o600);
+  const actual = createHash("sha256").update(await readFile(target)).digest("hex");
+  assert.equal(actual, expected.digest("hex"));
+  const cut = join(folder, "cut.partial");
+  await assert.rejects(http.downloadFile("/v1/threads/t/attachments/cut", "token", cut));
+  await assert.rejects(stat(cut), { code: "ENOENT" });
+  const missing = join(folder, "missing.partial");
+  assert.equal((await http.downloadFile("/v1/threads/t/attachments/missing", "token", missing)).status, 404);
+  await assert.rejects(stat(missing), { code: "ENOENT" });
+  assert.ok(seen.every((value) => value === "identity"), JSON.stringify(seen));
+});
+
 // Undici closes an idle connection after 4 s by default when the server sends no Keep-Alive
 // hint (as through Cloudflare), so a prompt typed after a pause paid a new TLS handshake.
 // The installed dispatcher keeps the connection for 60 s.

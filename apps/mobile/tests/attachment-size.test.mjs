@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { chooseAttachments, MAX_ATTACHMENT_BYTES, MAX_THUMBNAIL_BYTES } from '../src/attachmentHelpers.ts';
+import { browserDownloadUrl, chooseAttachments, MAX_ATTACHMENT_BYTES, MAX_THUMBNAIL_BYTES, tooLargeForApp } from '../src/attachmentHelpers.ts';
 import { validSendContent } from '../src/send.ts';
 const require = createRequire(import.meta.url);
 const { build } = require('../../../node_modules/esbuild');
@@ -119,4 +119,20 @@ test('an app without native file tasks keeps the byte path', () => {
   assert.equal(http.uploadFile, undefined); assert.equal(http.downloadFile, undefined);
   assert.equal(typeof http.upload, 'function'); assert.equal(typeof http.download, 'function');
   assert.equal(typeof nativeTransport('https://agent.example').http.uploadFile, 'function');
+});
+
+test('Agent files above the app download limit open their public link in the browser', () => {
+  const link = 'https://agent.tuly.space/media/att_' + '0'.repeat(32) + '/dataset.zip';
+  assert.equal(tooLargeForApp({ size: MAX_ATTACHMENT_BYTES }), false);
+  assert.equal(tooLargeForApp({ size: MAX_ATTACHMENT_BYTES + 1 }), true);
+  assert.equal(tooLargeForApp({}), false);
+  assert.equal(browserDownloadUrl({ size: MAX_ATTACHMENT_BYTES, public_url: link }), undefined, 'files the app can hold still open in the app');
+  assert.equal(browserDownloadUrl({ size: 2 * 1024 * MiB, public_url: link }), link);
+  assert.equal(browserDownloadUrl({ size: 2 * 1024 * MiB }), undefined);
+  const source = fs.readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
+  const open = source.slice(source.indexOf('const open = (attachment: Attachment)'), source.indexOf('return <View style={styles.root}>{attachments.map'));
+  assert.match(open, /if \(tooLargeForApp\(attachment\)\) \{[\s\S]*Linking\.openURL\(url\)[\s\S]*return;\s*\}/, 'a large file never starts an in-app download');
+  assert.ok(open.indexOf('tooLargeForApp(attachment)') < open.indexOf('gallerySequence('), 'checked before the gallery opens');
+  assert.match(open, /filter\(item => item\.id === attachment\.id \|\| !tooLargeForApp\(item\)\)/, 'the gallery skips files it cannot load');
+  assert.match(source, /Large file\. Tap to download in your browser/);
 });

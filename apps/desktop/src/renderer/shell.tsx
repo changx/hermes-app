@@ -21,6 +21,7 @@ import { hasTodo, withoutTodo } from '../../../../packages/client/src/todo';
 import { setSessionTodo } from './todo-toggle';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES } from "../shared/attachment-input";
+import { namePastedFiles } from './pasted-files';
 
 // Stroke icons for the floating Session toolbar. Decorative: each button carries its accessible name.
 const TOOL_ICONS = {
@@ -330,7 +331,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     {/* ChatGPT-style input card: attachments, borderless textarea, then a tool row with plus and a round send button. */}
     <div className="composer-box" onClick={event => { if (event.target === event.currentTarget || event.target === toolbar.current) input.current?.focus(); }}>
       {attachments.length ? <div className="composer-attachments">{attachments.map(item => <span className="composer-attachment" key={item.id}><AttachmentThumbnail attachment={item} />{item.name}<button type="button" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => remove(item)}>×</button><button type="button" aria-label={`Preview ${item.name}`} onClick={() => { setError(''); void window.hermesDesktop.previewAttachment(item.id).catch(() => { if (mounted.current) setError('The file could not be previewed.'); }); }}>Preview</button></span>)}</div> : null}
-      <textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(files)); } }} />
+      <textarea ref={input} rows={1} aria-label="Message" placeholder={threadId ? "Message Hermes" : "Choose a thread to write a message"} disabled={!threadId || busy} value={text} onChange={event => update(event.target.value)} onKeyDown={keyDown} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); safely(attach(namePastedFiles(files, attachments.map(({ name }) => name)))); } }} />
       <div className="composer-toolbar" ref={toolbar}>
         <button type="button" className="attach-button" onClick={() => safely(attach())} disabled={!threadId || busy || attachments.length >= 8} aria-label="Attach files" title="Attach files"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg></button>
         <button type="button" className="send-button" aria-label="Send message" title="Send message" onClick={() => safely(submit())} disabled={!threadId || busy || (!text.trim() && !attachments.length)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" /></svg></button>

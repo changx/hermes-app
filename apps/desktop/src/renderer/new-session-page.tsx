@@ -4,6 +4,7 @@ import { threadModelKey, threadModelLabel, threadModelRequest } from '@hermes-ap
 import type { DesktopAttachment, DesktopSnapshot } from '../shared/desktop-api';
 import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES } from '../shared/attachment-input';
 import { AttachmentThumbnail } from './attachment-thumbnail';
+import { namePastedFiles } from './pasted-files';
 
 /** New chat tab. With `automationEditor` it is New automation: the first message starts the settings
  * conversation in which the agent drafts and creates the automation; only projects whose server supports it are listed. */
@@ -110,7 +111,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
         <div><button type="button" onClick={() => { setConfirmation(''); setModelLocked(false); }}>Cancel</button>
           <button type="button" onClick={() => { void submit(true); }}>Use this model</button></div>
       </div>}
-      <textarea autoFocus aria-label="First message" placeholder={automation ? 'What should run, and when?' : 'What would you like to work on?'} rows={12} maxLength={100_000} value={message} disabled={busy || attempted} onChange={event => setMessage(event.target.value)} onPaste={event => { const items = [...event.clipboardData.files]; if (items.length) { event.preventDefault(); choose(items); } }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
+      <textarea autoFocus aria-label="First message" placeholder={automation ? 'What should run, and when?' : 'What would you like to work on?'} rows={12} maxLength={100_000} value={message} disabled={busy || attempted} onChange={event => setMessage(event.target.value)} onPaste={event => { const items = [...event.clipboardData.files]; if (items.length) { event.preventDefault(); choose(namePastedFiles(items, files.map(({ name }) => name))); } }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
       <input ref={picker} type="file" hidden multiple onChange={event => { choose([...event.target.files ?? []]); event.target.value = ''; }} />
       {!!files.length && <ul className="session-files">{files.map((file, index) => <li key={index}><AttachmentThumbnail file={file} /><span className="session-file-name">{file.name}</span><button type="button" disabled={busy || attempted} aria-label={`Remove ${file.name}`} onClick={() => setFiles(old => old.filter((_, i) => i !== index))}>×</button><button type="button" aria-label={`Preview ${file.name}`} disabled={busy || attempted} onClick={() => { setError(''); void window.hermesDesktop.previewLocalFile(file).catch(() => setError('The file could not be previewed.')); }}>Preview</button></li>)}</ul>}
       {error && <p role="alert">{error}</p>}

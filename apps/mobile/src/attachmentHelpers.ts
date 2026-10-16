@@ -16,6 +16,15 @@ export function safeFilename(name: string, mime?: string | null): string {
   const value = (name || fallback).replace(/[\\/\r\n\0]/g, '_').trim();
   return value && value !== '.' && value !== '..' ? value.slice(0, 180) : fallback;
 }
+/**
+ * Files above the upload limit are too large to download into the app (Agent files have no
+ * size limit). The browser downloads them from their public link instead; undefined = no link.
+ */
+export function tooLargeForApp(attachment: { size?: number }): boolean { return (attachment.size ?? 0) > MAX_ATTACHMENT_BYTES; }
+export function browserDownloadUrl(attachment: { size?: number; public_url?: string }): string | undefined {
+  return tooLargeForApp(attachment) ? attachment.public_url : undefined;
+}
+
 export function isImage(mime?: string | null, name?: string): boolean {
   // The adapter determines MIME by filename, not picker-supplied metadata.
   return /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(name || '') && (!mime || mime.startsWith('image/'));

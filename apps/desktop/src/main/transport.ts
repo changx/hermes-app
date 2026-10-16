@@ -2,6 +2,7 @@ import type { ConditionalHeaders, HttpTransport, SocketFactory } from "@hermes-a
 import { Agent, setGlobalDispatcher } from "undici";
 import WebSocket from "ws";
 import { trackSocket } from "./socket-registry";
+import { open, rm } from "node:fs/promises";
 import { MAX_ATTACHMENT_BYTES, MAX_WORKSPACE_FILE_BYTES } from "../shared/attachment-input";
 
 /** Node's fetch (undici) closes an idle HTTPS connection after 4 s, so the first
@@ -149,6 +150,38 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
       for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
       if (length !== null && size !== Number(length)) throw new Error("Attachment download is incomplete.");
       return { status: response.status, body };
+    },
+    // Save/Open: stream to disk, so any size works without holding the file in memory.
+    // Agent files have no size cap. Removes the partial file on any failure.
+    async downloadFile(path, token, destination, signal) {
+      const response = await fetch(base + path, { headers: { ...authorization(token), "Accept-Encoding": "identity" }, redirect: "error", signal });
+      if (!response.ok) { await response.body?.cancel().catch(() => {}); return { status: response.status, size: 0 }; }
+      const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+      const length = encoding === "identity" ? response.headers.get("content-length") : null;
+      if (length !== null && !/^\d+$/.test(length)) { await response.body?.cancel().catch(() => {}); throw new Error("Attachment size is unsupported."); }
+      const output = await open(destination, "wx", 0o600);
+      let size = 0;
+      try {
+        const reader = response.body?.getReader();
+        if (reader) {
+          try {
+            while (true) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              size += chunk.value.byteLength;
+              await output.write(chunk.value);
+            }
+          } finally { reader.releaseLock(); }
+        }
+        await output.sync();
+        if (length !== null && size !== Number(length)) throw new Error("Attachment download is incomplete.");
+      } catch (error) {
+        await output.close().catch(() => {});
+        await rm(destination, { force: true });
+        throw error;
+      }
+      await output.close();
+      return { status: response.status, size };
     },
   };
 

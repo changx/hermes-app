@@ -10,7 +10,8 @@ Status: released 2026-10-15 (desktop v0.1.91, Expo test entry, plugin 0.2.38 act
 - In-app preview keeps its 10 MB limit:
   - Desktop: the preview gallery and image thumbnails leave out files above 10 MB. Save and Open work up to 100 MB.
   - Phone: video, audio, images and PDF of any allowed size open from the downloaded file. Text, Markdown and HTML above 10 MB show "This file is too large to preview in the app."
-- Unchanged: Channel workspace files (10 MiB), AGENTS.md (10 MiB text), outbound files from the agent (10 MiB), pasted clipboard images on the phone (10 MiB).
+- Unchanged: Channel workspace files (10 MiB), AGENTS.md (10 MiB text), pasted clipboard images on the phone (10 MiB).
+- Files from the Agent: no size limit (candidate; was 10 MiB). See [Pasted file names and Agent file downloads](paste-names-agent-files.md).
 
 ## Why 100 MiB
 App connections reach the server through Cloudflare (`agent.tuly.space`). Measured on 2026-10-15: POST bodies up to 104,857,600 bytes reached the origin (401); 104,857,601 bytes and more got 413 from Cloudflare. A larger limit needs a chunked upload protocol. Jamie chose 100 MB.

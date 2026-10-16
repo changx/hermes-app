@@ -1357,8 +1357,6 @@ export class DesktopConnectionService {
     const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
-    const bytes = await client.download(threadId, attachmentId);
-    if (attachment.size !== undefined && bytes.byteLength !== attachment.size) throw new Error("The attachment is incomplete. Try again.");
     const safeName = (attachment.name ?? "Attachment").replace(/[\x00-\x1f\x7f/\\:]/g, "_").slice(0, 180) || "Attachment";
     let target: string;
     if (action === "save") {
@@ -1370,9 +1368,13 @@ export class DesktopConnectionService {
       await mkdir(folder, { recursive: true, mode: 0o700 });
       target = join(folder, `${randomUUID()}${extname(safeName).slice(0, 20)}`);
     }
-    const temporary = `${target}.partial`;
+    const temporary = `${target}.${randomUUID().slice(0, 8)}.partial`;
     await mkdir(dirname(target), { recursive: true });
-    await writeFile(temporary, bytes, { mode: 0o600 });
+    // Stream to disk: Agent files have no size limit, so never hold the whole file in memory.
+    try {
+      const size = await client.downloadFile(threadId, attachmentId, temporary);
+      if (attachment.size !== undefined && size !== attachment.size) throw new Error("The attachment is incomplete. Try again.");
+    } catch (error) { await rm(temporary, { force: true }); throw error; }
     await rename(temporary, target);
     if (action === "open") {
       const failure = await shell.openPath(target);

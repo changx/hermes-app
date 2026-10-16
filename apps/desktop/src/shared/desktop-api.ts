@@ -189,6 +189,8 @@ export interface HermesDesktopApi {
   /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */
   previewAttachment(attachmentId: string, sequence?: readonly string[]): Promise<void>;
   previewLocalFile(file: File): Promise<void>;
+  /** True when the file has a disk path (Finder copy, drop, picker); false for pasted bytes. */
+  isDiskFile?(file: File): boolean;
   browserAction(action: 'back' | 'forward' | 'reload' | 'stop' | 'close'): Promise<void>;
   /** Stop Hermes, let Hermes continue after a takeover, or tell Hermes the user finished. */
   browserControl(action: 'stop' | 'resume' | 'done'): Promise<void>;
