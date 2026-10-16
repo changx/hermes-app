@@ -1,6 +1,6 @@
 # Pasted file names and Agent file downloads
 
-Status: released 2026-10-16 except the desktop package. Plugin 0.2.39 installed (`current` → `releases/0.2.39`, files equal to tag `v0.2.39`); it takes effect after the Gateway restart. Expo test entry live at 02:12 PDT (iOS/Android manifests 200, SDK 57, new strings in both bundles). Desktop tag `v0.1.93` (`18c985d`) is pushed; its build waits for the Mac mini runner, which was offline. Mac and iPhone checks open.
+Status: released 2026-10-16 except the desktop package. Plugin 0.2.39 installed (`current` → `releases/0.2.39`, files equal to tag `v0.2.39`); it takes effect after the Gateway restart. Expo test entry live at 02:12 PDT (iOS/Android manifests 200, SDK 57, new strings in both bundles). Desktop tag `v0.1.93` (`18c985d`) was pushed, but its queued build was cancelled; these changes ship in desktop v0.1.94 ([Large uploads](large-uploads.md)). Mac and iPhone checks open.
 
 ## What the user sees
 

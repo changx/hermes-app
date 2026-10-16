@@ -1,6 +1,6 @@
 # Large uploads (chunked, up to 2 GB)
 
-Status: candidate (App branch `feat/chunked-uploads`, plugin branch `feat/chunked-uploads`). Not released. Mac and iPhone checks open.
+Status: released 2026-10-16 except the desktop package. Plugin 0.2.40 installed (`current` → `releases/0.2.40`, files equal to tag `v0.2.40`); it takes effect after the Gateway restart, together with 0.2.39. Expo test entry live at 04:33 PDT (iOS/Android manifests 200, SDK 57, new code in both bundles). Desktop tag `v0.1.94` (`d9b6d2a`, also contains v0.1.93's changes; the queued v0.1.93 build was cancelled) waits for the Mac mini runner, which is offline. Mac and iPhone checks open.
 
 ## What the user sees
 - On desktop and phone, you can attach a file of up to 2 GB (2 GiB). Before, the limit was 100 MB.
