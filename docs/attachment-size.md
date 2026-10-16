@@ -1,5 +1,7 @@
 # Attachment size
 
+> 2026-10-16 candidate: files on disk up to 2 GB upload in chunks; see [Large uploads](large-uploads.md). The 100 MiB rule below still applies to one request and to pasted bytes.
+
 Status: released 2026-10-15 (desktop v0.1.91, Expo test entry, plugin 0.2.38 active since the Gateway restart at 02:57). iPhone and Mac checks open.
 
 ## What the user sees

@@ -109,6 +109,20 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
       const retry = retryAfterMs(response.headers.get("retry-after"));
       return { status: response.status, body: await responseBody(response), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
     },
+    // One chunk of a chunked upload (files above the 100 MB edge limit).
+    async uploadChunk(path, token, bytes, signal) {
+      if (!/^\/v1\/threads\/[A-Za-z0-9_-]+\/uploads\/up_[0-9a-f]{32}\?offset=\d+$/.test(path)) throw new Error("Invalid upload path.");
+      if (!bytes.byteLength || bytes.byteLength > 64 * 1024 * 1024) throw new Error("Chunk size is unsupported.");
+      const response = await fetch(base + path, {
+        method: "PUT",
+        headers: { ...authorization(token), "Content-Type": "application/octet-stream" },
+        body: bytes as unknown as BodyInit,
+        redirect: "error",
+        signal,
+      });
+      const retry = retryAfterMs(response.headers.get("retry-after"));
+      return { status: response.status, body: await responseBody(response), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
+    },
     async upload(path, token, name, bytes, signal) {
       if (!name || name.length > 180 || name === "." || name === ".." || /[/\\\x00\r\n]/.test(name)) throw new Error("Invalid attachment name.");
       if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error("Attachment size is unsupported.");

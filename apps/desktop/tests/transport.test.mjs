@@ -238,3 +238,26 @@ test("attachment uploads allow 100 MiB; workspace file writes keep 10 MiB", asyn
   await assert.rejects(http.putBytes("/v1/channels/c/file?path=a.bin", "token", { "If-None-Match": "*" }, new Uint8Array(10 * MiB + 1)), /size is unsupported/);
   assert.equal(bodies, 1);
 });
+
+test("chunk uploads PUT raw bytes to a validated upload path only", async (t) => {
+  const seen = [];
+  const server = createServer((request, response) => {
+    const parts = [];
+    request.on("data", (part) => parts.push(part));
+    request.on("end", () => {
+      seen.push([request.method, request.url, request.headers.authorization, request.headers["content-type"], Buffer.concat(parts).length]);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ upload: { received: 5 } }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  const path = "/v1/threads/th_1/uploads/up_" + "a".repeat(32) + "?offset=0";
+  const reply = await http.uploadChunk(path, "token", new Uint8Array(5));
+  assert.equal(reply.status, 200); assert.equal(reply.body.upload.received, 5);
+  assert.deepEqual(seen, [["PUT", path, "Bearer token", "application/octet-stream", 5]]);
+  await assert.rejects(http.uploadChunk("/v1/threads/th_1/attachments", "token", new Uint8Array(5)), /Invalid upload path/);
+  await assert.rejects(http.uploadChunk(path, "token", new Uint8Array(64 * 1024 * 1024 + 1)), /Chunk size/);
+  assert.equal(seen.length, 1);
+});

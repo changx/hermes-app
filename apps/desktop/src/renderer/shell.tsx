@@ -20,8 +20,8 @@ import { LabelsEditor, ToolbarLabels } from './session-labels';
 import { hasTodo, withoutTodo } from '../../../../packages/client/src/todo';
 import { setSessionTodo } from './todo-toggle';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
-import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES } from "../shared/attachment-input";
-import { namePastedFiles } from './pasted-files';
+import { ATTACHMENT_SIZE_RULE } from "../shared/attachment-input";
+import { fileSizeLimit, namePastedFiles } from './pasted-files';
 
 // Stroke icons for the floating Session toolbar. Decorative: each button carries its accessible name.
 const TOOL_ICONS = {
@@ -304,7 +304,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   };
   const attach = async (files?: readonly File[]) => {
     if (!threadId || working.current) return;
-    if (files && (attachments.length + files.length > 8 || files.some(file => file.size < 1 || file.size > MAX_ATTACHMENT_BYTES))) {
+    if (files && (attachments.length + files.length > 8 || files.some(file => file.size < 1 || file.size > fileSizeLimit(file)))) {
       setError(ATTACHMENT_SIZE_RULE); return;
     }
     restoreFocus.current = document.activeElement === input.current;

@@ -5,7 +5,11 @@ export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 export const MAX_PREVIEW_BYTES = 10 * 1024 * 1024;
 // Channel workspace files: the server keeps its own 10 MiB file limit.
 export const MAX_WORKSPACE_FILE_BYTES = 10 * 1024 * 1024;
-export const ATTACHMENT_SIZE_RULE = 'Choose up to eight files, each between 1 byte and 100 MiB.';
+// Files on disk above 100 MiB upload in chunks (server `chunked_uploads`), up to 2 GiB.
+// Pasted bytes without a file stay at MAX_ATTACHMENT_BYTES: they are held in memory.
+export const MAX_FILE_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
+export const ATTACHMENT_SIZE_RULE = 'Choose up to eight files, each between 1 byte and 2 GB.';
+export const PASTED_SIZE_RULE = 'Pasted files can be up to 100 MB. Save larger ones to disk and attach them.';
 export const MAX_ATTACHMENT_FILES = 8;
 export type AttachmentInput = string | { name: string; bytes: Uint8Array };
 

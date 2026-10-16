@@ -1,6 +1,6 @@
 import type { Attachment, Receipt } from '../../../packages/client/src/index';
 import { validTimestampSeconds } from './messageTime.ts';
-import { MAX_ATTACHMENT_BYTES } from './attachmentHelpers.ts';
+import { MAX_FILE_ATTACHMENT_BYTES } from './attachmentHelpers.ts';
 
 export const DEFAULT_BASE = 'https://agent.tuly.space';
 export interface Connection { baseUrl: string; token: string; id: string }
@@ -55,7 +55,7 @@ export function validSendContent(threadId: string, text: string, attachments: re
     if (!a || typeof a !== 'object' || typeof a.id !== 'string' || !/^att_[A-Za-z0-9_-]+$/.test(a.id) ||
         seen.has(a.id) || a.thread_id !== threadId || a.state !== 'available' || a.receipt_id != null ||
         typeof a.name !== 'string' || !a.name.length || a.name.length > 180 || a.name === '.' || a.name === '..' ||
-        /[/\\\x00\r\n]/.test(a.name) || !Number.isSafeInteger(a.size) || a.size! <= 0 || a.size! > MAX_ATTACHMENT_BYTES ||
+        /[/\\\x00\r\n]/.test(a.name) || !Number.isSafeInteger(a.size) || a.size! <= 0 || a.size! > MAX_FILE_ATTACHMENT_BYTES ||
         typeof a.mime !== 'string' || !a.mime.length)
       throw new Error('This attachment is invalid or belongs to another conversation.');
     seen.add(a.id);

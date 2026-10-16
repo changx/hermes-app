@@ -1,9 +1,12 @@
 import type { Attachment } from '../../../packages/client/src/index';
 
-// The adapter caps bodies at 100 MiB (the Cloudflare request-body limit), requires
-// nonempty bytes and a filename <=180 chars.
+// One request body is at most 100 MiB (the Cloudflare request-body limit); the adapter
+// requires nonempty bytes and a filename <=180 chars.
 export const MAX_ATTACHMENTS = 8;
 export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+// Picked files above MAX_ATTACHMENT_BYTES upload in chunks (server `chunked_uploads`) and
+// download natively into a file, so they never enter JS memory whole.
+export const MAX_FILE_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
 // A pasted image arrives as a base64 string in JS memory, so it keeps the old 10 MiB bound.
 export const MAX_CLIPBOARD_IMAGE_BYTES = 10 * 1024 * 1024;
 // Images up to this size download on their own for the message thumbnail; larger ones when tapped.
@@ -20,10 +23,12 @@ export function safeFilename(name: string, mime?: string | null): string {
  * Files above the upload limit are too large to download into the app (Agent files have no
  * size limit). The browser downloads them from their public link instead; undefined = no link.
  */
-export function tooLargeForApp(attachment: { size?: number }): boolean { return (attachment.size ?? 0) > MAX_ATTACHMENT_BYTES; }
-export function browserDownloadUrl(attachment: { size?: number; public_url?: string }): string | undefined {
-  return tooLargeForApp(attachment) ? attachment.public_url : undefined;
+export function tooLargeForApp(attachment: { size?: number }, limit = MAX_ATTACHMENT_BYTES): boolean { return (attachment.size ?? 0) > limit; }
+export function browserDownloadUrl(attachment: { size?: number; public_url?: string }, limit = MAX_ATTACHMENT_BYTES): string | undefined {
+  return tooLargeForApp(attachment, limit) ? attachment.public_url : undefined;
 }
+/** The largest attachment this client can hold in the app: native file transfer avoids JS memory. */
+export function appDownloadLimit(nativeFiles: boolean): number { return nativeFiles ? MAX_FILE_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES; }
 
 export function isImage(mime?: string | null, name?: string): boolean {
   // The adapter determines MIME by filename, not picker-supplied metadata.
@@ -37,8 +42,10 @@ export function chooseAttachments(existing: number, incoming: PickedAttachment[]
     if (accepted.length >= room) { error = 'You can add up to 8 attachments.'; break; }
     const name = safeFilename(source.name, source.mime);
     const size = source.data?.byteLength ?? source.size;
-    if (!name || !source.uri && !source.data || !Number.isFinite(size) || !size || size < 0 || size > MAX_ATTACHMENT_BYTES) {
-      error = 'Some files are empty, unreadable, or over 100 MB. Please select them again.';
+    // Bytes in memory (pasted) keep the single-request limit; files on disk can upload in chunks.
+    const limit = source.data ? MAX_ATTACHMENT_BYTES : MAX_FILE_ATTACHMENT_BYTES;
+    if (!name || !source.uri && !source.data || !Number.isFinite(size) || !size || size < 0 || size > limit) {
+      error = 'Some files are empty, unreadable, or over 2 GB. Please select them again.';
       continue;
     }
     accepted.push({ ...source, name, size });

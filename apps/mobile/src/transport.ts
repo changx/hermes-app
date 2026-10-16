@@ -89,8 +89,18 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
       throw error;
     }
   };
+  // One chunk of a chunked upload (picked files above the 100 MB edge limit), at most 64 MiB.
+  const uploadChunk: NonNullable<HttpTransport['uploadChunk']> = async (path, token, bytes, signal) => {
+    if (!/^\/v1\/threads\/[A-Za-z0-9_-]+\/uploads\/up_[0-9a-f]{32}\?offset=\d+$/.test(path)) throw new Error('Invalid upload path.');
+    if (bytes.byteLength > 64 * 1024 * 1024) throw new Error('Chunk size is unsupported.');
+    const response = await fetch(base + path, { method: 'PUT', headers: { ...authorization(token), 'Content-Type': 'application/octet-stream' }, body: binaryBody(bytes), signal });
+    const raw = await response.text();
+    if (raw.length > MAX_REPLY_BYTES) throw new Error('The upload response is too large.');
+    const delay = retryAfterMs(response.headers.get('retry-after'));
+    return { status: response.status, body: raw && (response.headers.get('content-type') ?? '').includes('json') ? JSON.parse(raw) : raw || null, ...(delay === undefined ? {} : { retryAfterMs: delay }) };
+  };
   return {
-    http: { request, conditionalRequest: (method,path,token,headers,body,signal) => jsonRequest(method,path,token,body,signal,headers),
+    http: { request, uploadChunk, conditionalRequest: (method,path,token,headers,body,signal) => jsonRequest(method,path,token,body,signal,headers),
       async upload(path, token, name, bytes, signal) {
         if (!validName(name)) throw new Error('Invalid attachment name.');
         const response = await fetch(base + path, { method: 'POST', headers: {

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { AgentModelSettings, ThreadModelChoice } from '@hermes-app/client';
 import { threadModelKey, threadModelLabel, threadModelRequest } from '@hermes-app/client/threadModel';
 import type { DesktopAttachment, DesktopSnapshot } from '../shared/desktop-api';
-import { ATTACHMENT_SIZE_RULE, MAX_ATTACHMENT_BYTES } from '../shared/attachment-input';
+import { ATTACHMENT_SIZE_RULE } from '../shared/attachment-input';
 import { AttachmentThumbnail } from './attachment-thumbnail';
-import { namePastedFiles } from './pasted-files';
+import { fileSizeLimit, namePastedFiles } from './pasted-files';
 
 /** New chat tab. With `automationEditor` it is New automation: the first message starts the settings
  * conversation in which the agent drafts and creates the automation; only projects whose server supports it are listed. */
@@ -38,7 +38,7 @@ export function NewSessionPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const choose = (items: readonly File[]) => {
     if (working.current || uploads.current.length || saved.current) return;
     const next = [...files, ...items];
-    if (next.length > 8 || next.some(file => file.size < 1 || file.size > MAX_ATTACHMENT_BYTES)) { setError(ATTACHMENT_SIZE_RULE); return; }
+    if (next.length > 8 || next.some(file => file.size < 1 || file.size > fileSizeLimit(file))) { setError(ATTACHMENT_SIZE_RULE); return; }
     setFiles(next); setError('');
   };
   const submit = async (confirmModel = false) => {

@@ -42,7 +42,7 @@ test('composer paste uploads into exact session draft, retains text and never se
     assert.equal(tree.root.findAllByProps({ className: 'composer-attachments' })[0].findAllByProps({ className: 'composer-attachment' }).length, 2);
     assert.equal(await paste(tree, 'Message', Array.from({ length: 7 }, () => file())), true);
     assert.equal(calls.length, 1, 'reject remaining-capacity overflow before upload');
-    assert.equal(await paste(tree, 'Message', [file('huge.png', MAX_ATTACHMENT_BYTES + 1)]), true);
+    assert.equal(await paste(tree, 'Message', [file('huge.mov', 2 * 1024 ** 3 + 1)]), true);
     assert.equal(calls.length, 1);
     await act(async () => tree.root.findByProps({ 'aria-label': 'Send message' }).props.onClick());
     assert.deepEqual(calls[1], { text: 'Keep this draft', attachmentIds: ['paste-0', 'paste-1'] });
@@ -82,7 +82,11 @@ test('preload keeps disk files as paths and converts pathless clipboard files to
   const result = await filesForUpload([disk, image], f => f === disk ? '/fixture/disk.txt' : '');
   assert.equal(result[0], '/fixture/disk.txt'); assert.deepEqual(result[1], { name: 'image.png', bytes: new Uint8Array([7, 7, 7]) });
   await assert.rejects(filesForUpload(Array(9).fill(image), () => ''), /eight/);
-  await assert.rejects(filesForUpload([file('huge', MAX_ATTACHMENT_BYTES + 1)], () => ''), /100 MiB/);
+  await assert.rejects(filesForUpload([file('huge', MAX_ATTACHMENT_BYTES + 1)], () => ''), /Pasted files can be up to 100 MB/);
+  const bigDisk = file('big.mov', MAX_ATTACHMENT_BYTES + 1);
+  bigDisk.arrayBuffer = () => { throw Error('Do not read disk-backed bytes in preload'); };
+  assert.deepEqual(await filesForUpload([bigDisk], () => '/fixture/big.mov'), ['/fixture/big.mov'], 'disk files above 100 MB go by path');
+  await assert.rejects(filesForUpload([file('too.mov', 2 * 1024 ** 3 + 1)], () => '/fixture/too.mov'), /2 GB/);
 });
 test('main rejects malformed names, counts and bytes before upload', () => {
   for (const value of [null, Array(9).fill('/fixture/file'), [''], [{ name: '../image', bytes: new Uint8Array([1]) }], [{ name: 'a\n', bytes: new Uint8Array([1]) }], [{ name: 'a', bytes: [1] }], [{ name: 'a', bytes: new Uint8Array() }], [{ name: 'a', bytes: new Uint8Array(MAX_ATTACHMENT_BYTES + 1) }]]) assert.throws(() => attachmentInputs(value));
@@ -150,6 +154,8 @@ test('both composers name pasted screenshots before upload and before the New ch
     assert.match(calls[0][0], /^Pasted \d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.png$/);
     assert.notEqual(calls[0][0], calls[0][1]);
     assert.ok(!calls[0].includes(calls[1][0]), 'a later paste does not reuse a name already in the draft');
+    await paste(tree, 'Message', [new File([new Uint8Array(1)], 'image.png', { type: 'image/png' })].map(f => Object.defineProperty(f, 'size', { value: MAX_ATTACHMENT_BYTES + 1 })));
+    assert.equal(calls.length, 2, 'pasted bytes above 100 MB are refused before upload; disk files may be larger');
   } finally { await act(async () => tree.unmount()); }
   environment({ isDiskFile: () => false, getSnapshot: async () => snapshot });
   const page = await mount(NewSessionPage, { snapshot });
@@ -179,4 +185,34 @@ test('Save streams the attachment to disk through downloadFile, never through in
     await assert.rejects(service.downloadAttachment('att-big', 'save', 't'), /incomplete/);
     assert.deepEqual(await readdir(folder), ['dataset.zip'], 'a size mismatch leaves no partial file');
   } finally { delete electron.dialog; await rm(folder, { recursive: true, force: true }); }
+});
+
+test('service uploads a disk file above 100 MiB in chunks from disk, one chunk at a time', async () => {
+  const { truncate, open: openFile } = await import('node:fs/promises');
+  const folder = await mkdtemp(join(tmpdir(), 'chunk-service-'));
+  const service = new DesktopConnectionService(() => {}), calls = [];
+  const size = MAX_ATTACHMENT_BYTES + 3;
+  const client = { isThreadAvailable: id => id === 'target', supportsChunkedUpload: true, uploadMaxBytes: 2 * 1024 ** 3,
+    upload: async (id, name, bytes) => { calls.push(['single', name, bytes.byteLength]); return { ...attachment('small', name), thread_id: id }; },
+    uploadChunked: async (id, name, total, read) => {
+      const head = await read(0, 4), tail = await read(total - 3, 3);
+      calls.push(['chunked', id, name, total, Buffer.from(head).toString(), Buffer.from(tail).toString()]);
+      return { id: 'att_big', thread_id: id, name, mime: 'video/quicktime', size: total, state: 'available' };
+    }, deleteUnattached: async () => {} };
+  service.client = client; service.connection = {}; service.phase = 'connected'; service.changed = () => {};
+  try {
+    const big = join(folder, 'big.mov'); await writeFile(big, 'head'); await truncate(big, size);
+    const handle = await openFile(big, 'r+'); await handle.write(Buffer.from('end'), 0, 3, size - 3); await handle.close();
+    const small = join(folder, 'small.txt'); await writeFile(small, 'notes');
+    const result = await service.uploadAttachmentInputs([small, big], 'target');
+    assert.deepEqual(result.map(a => a.id), ['small', 'att_big']);
+    assert.deepEqual(calls, [['single', 'small.txt', 5], ['chunked', 'target', 'big.mov', size, 'head', 'end']]);
+    // Without server support the large file is refused before any upload.
+    calls.length = 0; client.supportsChunkedUpload = false;
+    await assert.rejects(service.uploadAttachmentInputs([small, big], 'target'), /100 MiB/);
+    assert.equal(calls.length, 0);
+    client.supportsChunkedUpload = true;
+    const over = join(folder, 'over.mov'); await writeFile(over, ''); await truncate(over, 2 * 1024 ** 3 + 1);
+    await assert.rejects(service.uploadAttachmentInputs([over], 'target'), /2 GB/);
+  } finally { await rm(folder, { recursive: true, force: true }); }
 });

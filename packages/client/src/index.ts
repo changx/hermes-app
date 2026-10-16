@@ -29,7 +29,7 @@ export interface BinaryReply { status: number; body: Uint8Array }
 /** A local file that a platform transport sends or fills without loading it into JS memory (for example a mobile file URI). */
 export interface LocalFile { uri: string; size: number }
 export interface FileReply { status: number; size: number }
-export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; conditionalRequest?(method: string, path: string, token: string, headers: ConditionalHeaders, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; putBytes?(path: string, token: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply>; uploadFile?(path: string, token: string, name: string, file: LocalFile, signal?: AbortSignal): Promise<HttpReply>; downloadFile?(path: string, token: string, destination: string, signal?: AbortSignal): Promise<FileReply> }
+export interface HttpTransport { request(method: string, path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; conditionalRequest?(method: string, path: string, token: string, headers: ConditionalHeaders, body?: unknown, signal?: AbortSignal): Promise<HttpReply>; upload?(path: string, token: string, name: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; putBytes?(path: string, token: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply>; download?(path: string, token: string, signal?: AbortSignal): Promise<BinaryReply>; uploadFile?(path: string, token: string, name: string, file: LocalFile, signal?: AbortSignal): Promise<HttpReply>; downloadFile?(path: string, token: string, destination: string, signal?: AbortSignal): Promise<FileReply>; uploadChunk?(path: string, token: string, bytes: Uint8Array, signal?: AbortSignal): Promise<HttpReply> }
 export interface Socket { onMessage(handler: (data: string) => void): void; onClose(handler: () => void): void; close(): void; send?(data: string): void }
 export interface SocketFactory { connect(path: string, token: string, signal: AbortSignal): Promise<Socket> }
 export type ConnectionState = 'connecting' | 'syncing' | 'online' | 'retrying' | 'suspended' | 'blocked';
@@ -154,6 +154,17 @@ const timeout = (value: number | undefined, fallback: number): number => value =
 // Attachment transfers get the normal request deadline plus time for their bytes
 // at 128 KiB/s (about 1 Mbit/s): 100 MiB adds about 13 minutes.
 export const TRANSFER_BYTES_PER_SECOND = 128 * 1024;
+/** One request body through the Cloudflare edge: larger files use chunked uploads. */
+export const SINGLE_UPLOAD_BYTES = 100 * 1024 * 1024;
+/** Reads exactly `length` bytes at `offset` of a local file. */
+export type ChunkReader = (offset: number, length: number) => Promise<Uint8Array>;
+const CHUNK_RETRIES = 6;
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) { reject(new Error('aborted')); return; }
+  const timer = setTimeout(() => { signal?.removeEventListener('abort', stop); resolve(); }, ms);
+  const stop = () => { clearTimeout(timer); reject(new Error('aborted')); };
+  signal?.addEventListener('abort', stop, { once: true });
+});
 const transferTimeout = (value: number | undefined, size: number | undefined): number =>
   timeout(value, 15000) + Math.ceil(Math.max(0, size ?? 0) / TRANSFER_BYTES_PER_SECOND * 1000);
 // Even if an adapter ignores abort, its late promise cannot mutate SDK state.
@@ -219,6 +230,9 @@ export class HermesClient {
   supportsAutomationEditors = false;
   /** Server accepts a model choice when a Thread is created (`thread_model`). */
   supportsThreadModel = false;
+  /** Files above the 100 MB edge limit upload in chunks (`uploadChunked`), up to `uploadMaxBytes`. */
+  supportsChunkedUpload = false;
+  uploadMaxBytes = SINGLE_UPLOAD_BYTES;
   readonly workspace: WorkspaceApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
@@ -337,7 +351,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -357,6 +371,8 @@ export class HermesClient {
     this.supportsAutomationControls = owner.supportsAutomationControls;
     this.supportsAutomationEditors = owner.supportsAutomationEditors;
     this.supportsThreadModel = owner.supportsThreadModel;
+    this.supportsChunkedUpload = owner.supportsChunkedUpload;
+    this.uploadMaxBytes = owner.uploadMaxBytes;
   }
   /** Conditional raw-byte write. Never retried: a lost reply is reconciled by the caller. */
   private async putPath(path: string, headers: ConditionalHeaders, bytes: Uint8Array, signal?: AbortSignal): Promise<Record<string, unknown>> {
@@ -492,6 +508,49 @@ export class HermesClient {
   /** Upload a local file through the transport without reading it into memory. */
   async uploadFile(threadId:string,name:string,file:LocalFile,signal?:AbortSignal):Promise<Attachment> {if(!this.options.http.uploadFile)throw new ProtocolError('file upload unavailable');const reply=await bounded(s=>this.options.http.uploadFile!('/v1/threads/'+idPath(threadId)+'/attachments',this.token(),name,file,s),transferTimeout(this.options.requestTimeoutMs,file.size),signal);return this.uploaded(threadId,reply)}
   get supportsFileTransfer():boolean {return Boolean(this.options.http.uploadFile&&this.options.http.downloadFile)}
+  /**
+   * Upload a large local file in ordered chunks (requires `supportsChunkedUpload`). Only one chunk is in
+   * memory at a time. A lost reply or a network failure retries from the byte the server confirmed; after
+   * repeated failures the server upload is deleted and the error is thrown.
+   */
+  async uploadChunked(threadId:string,name:string,size:number,read:ChunkReader,signal?:AbortSignal,onProgress?:(sent:number,size:number)=>void):Promise<Attachment> {
+    if(!this.supportsChunkedUpload||!this.options.http.uploadChunk)throw new ProtocolError('chunked upload unavailable');
+    if(!Number.isSafeInteger(size)||size<1||size>this.uploadMaxBytes)throw new ProtocolError('upload size unsupported');
+    const base='/v1/threads/'+idPath(threadId)+'/uploads';
+    const created=obj((await this.call('POST',base,{name,size},signal)).upload);
+    const url=base+'/'+idPath(str(created.id)), step=Math.min(64*1024*1024,Math.max(1024*1024,num(created.chunk_size)));
+    const received=(body:unknown):number=>{const value=num(obj(obj(body).upload).received);if(!Number.isSafeInteger(value)||value<0||value>size)throw new ProtocolError('invalid upload state');return value};
+    // Retry a step on network/server failures, resyncing the confirmed offset in between.
+    const retrying=async<T>(attempt:()=>Promise<T>,resync:()=>Promise<void>):Promise<T>=>{
+      for(let failures=0;;failures++){
+        try{return await attempt()}catch(error){
+          if(signal?.aborted||!isRetryableError(error)||failures>=CHUNK_RETRIES)throw error;
+          await pause(Math.min(1000*2**failures,15000),signal);
+          await resync().catch(()=>{});
+        }
+      }
+    };
+    let offset=0;
+    try{
+      const resync=async()=>{offset=received(await this.call('GET',url,undefined,signal))};
+      while(offset<size){
+        await retrying(async()=>{
+          const length=Math.min(step,size-offset),start=offset,bytes=await read(start,length);
+          if(bytes.byteLength!==length)throw new ProtocolError('local file changed');
+          const reply=await bounded(s=>this.options.http.uploadChunk!(url+'?offset='+start,this.token(),bytes,s),transferTimeout(this.options.requestTimeoutMs,length),signal);
+          // 409 carries the confirmed offset after a retried or out-of-order chunk.
+          if(reply.status!==200&&reply.status!==409)throw new HttpError(reply.status,reply.retryAfterMs,'upload');
+          offset=received(reply.body);
+        },resync);
+        onProgress?.(offset,size);
+      }
+      const done=await retrying(()=>this.call('POST',url+'/complete',undefined,signal),async()=>{});
+      return this.uploaded(threadId,{status:201,body:done});
+    }catch(error){
+      void this.call('DELETE',url).catch(()=>{});
+      throw error;
+    }
+  }
   private uploaded(threadId:string,reply:HttpReply):Attachment {if(reply.status!==201)throw new HttpError(reply.status,reply.retryAfterMs,'upload');const x=obj(reply.body),raw=obj(x.attachment);const a=validAttachment({...raw,state:'available',receipt_id:null});if(a.thread_id!==threadId)throw new ProtocolError('attachment thread mismatch');this.attachments.set(a.id,a);this.changed();return a}
   async getAttachment(threadId:string,id:string,signal?:AbortSignal):Promise<Attachment> {const epoch=this.projectionEpoch;const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id)+'/metadata',undefined,signal);const a=validAttachment(x.attachment);if(a.id!==id||a.thread_id!==threadId)throw new ProtocolError('attachment identity mismatch');if(epoch!==this.projectionEpoch)return a;this.attachments.set(id,a);this.changed();return a}
   async download(threadId:string,id:string,signal?:AbortSignal):Promise<Uint8Array> {if(!this.options.http.download)throw new ProtocolError('binary download unavailable');const reply=await bounded(s=>this.options.http.download!('/v1/threads/'+idPath(threadId)+'/attachments/'+idPath(id),this.token(),s),transferTimeout(this.options.requestTimeoutMs,this.attachments.get(id)?.size),signal);if(reply.status<200||reply.status>=300)throw new HttpError(reply.status,undefined,'download');return reply.body}

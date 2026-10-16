@@ -1,5 +1,5 @@
 import { LiveSessionClient } from './liveClient';
-import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction, type LocalFile } from './index';
+import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction, type LocalFile, type ChunkReader } from './index';
 import type { LiveFrame } from './liveProtocol';
 import type { OpenTimingObserver } from './openTiming';
 
@@ -120,6 +120,9 @@ export class LivePageClient extends LiveSessionClient {
   override async downloadFile(id: string,key: string,destination: string,signal?: AbortSignal) { return this.requirePage(id).downloadFile(id,key,destination,signal); }
   override async uploadFile(id: string,name: string,file: LocalFile,signal?: AbortSignal) {
     return this.pages.get(id)?.uploadFile(id,name,file,signal) ?? super.uploadFile(id,name,file,signal);
+  }
+  override async uploadChunked(id: string,name: string,size: number,read: ChunkReader,signal?: AbortSignal,onProgress?: (sent: number,size: number) => void) {
+    return this.pages.get(id)?.uploadChunked(id,name,size,read,signal,onProgress) ?? super.uploadChunked(id,name,size,read,signal,onProgress);
   }
   override async upload(id: string,name: string,bytes: Uint8Array,signal?: AbortSignal) {
     return this.pages.get(id)?.upload(id,name,bytes,signal) ?? super.upload(id,name,bytes,signal);

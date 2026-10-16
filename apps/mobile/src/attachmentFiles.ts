@@ -1,6 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
-import { MAX_ATTACHMENT_BYTES, type PickedAttachment } from './attachmentHelpers';
+import { appDownloadLimit, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, type PickedAttachment } from './attachmentHelpers';
 import { previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
 
 let fileSequence = 0;
@@ -27,11 +27,24 @@ export async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
 
 /**
  * Upload one picked source. A file goes through the native file upload, so up to
- * 100 MiB never enters JS memory; pasted bytes go as bytes. Resolves undefined
- * when `stale()` is true just before the upload starts.
+ * 100 MiB never enters JS memory; a larger file uploads in chunks read one at a time;
+ * pasted bytes go as bytes. Resolves undefined when `stale()` is true just before the
+ * upload starts.
  */
 export async function uploadSource(client: HermesClient, threadId: string, source: PickedAttachment, signal: AbortSignal,
   stale: () => boolean): Promise<Attachment | undefined> {
+  if (source.uri && !source.data && new File(source.uri).size > MAX_ATTACHMENT_BYTES) {
+    const file = new File(source.uri), size = file.size;
+    if (!client.supportsChunkedUpload || size > Math.min(client.uploadMaxBytes, MAX_FILE_ATTACHMENT_BYTES)) throw new Error('invalid size');
+    if (stale()) return undefined;
+    const handle = file.open();
+    try {
+      return await client.uploadChunked(threadId, source.name, size, async (offset, length) => {
+        handle.offset = offset;
+        return handle.readBytes(length);
+      }, signal);
+    } finally { handle.close(); }
+  }
   if (source.uri && !source.data && client.supportsFileTransfer) {
     const size = new File(source.uri).size;
     if (!size || size > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
@@ -79,14 +92,14 @@ export class AttachmentFiles {
       let release: (() => void) | undefined;
       try {
         release = await attachmentSlot(controller.signal);
-        if (attachment.size && attachment.size > MAX_ATTACHMENT_BYTES) throw new Error('too large');
+        if (attachment.size && attachment.size > appDownloadLimit(this.client.supportsFileTransfer)) throw new Error('too large');
         let file: File, head: Uint8Array;
         if (this.client.supportsFileTransfer) {
-          // Native download straight into the cache file: up to 100 MiB never enters JS memory.
+          // Native download straight into the cache file: the bytes never enter JS memory.
           file = ownedFile(previewSuffix(name));
           try {
             const size = await this.client.downloadFile(this.threadId, attachment.id, file.uri, controller.signal);
-            if (!size || size > MAX_ATTACHMENT_BYTES || size !== file.size || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
+            if (!size || size > MAX_FILE_ATTACHMENT_BYTES || size !== file.size || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
             head = leadingBytes(file, 16);
           } catch (error) { forgetFile(file); throw error; }
           if (controller.signal.aborted || generation !== this.generation) { forgetFile(file); return undefined; }

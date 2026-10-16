@@ -1,3 +1,5 @@
+import { MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES } from '../shared/attachment-input';
+
 // Names for pasted files that have no disk path (screenshots, images copied from a
 // browser). Chromium names them all "image.png", so several pastes look the same to
 // the user and to the Agent. Files copied from Finder keep their own names.
@@ -39,4 +41,9 @@ export function namePastedFiles(files: readonly File[], taken: Iterable<string>,
     used.add(name);
     return new File([file], name, { type: file.type, lastModified: file.lastModified });
   });
+}
+
+/** Largest size for one chosen file: disk files upload in chunks, pasted bytes go in one request. */
+export function fileSizeLimit(file: File, isDiskFile = globalThis.window?.hermesDesktop?.isDiskFile): number {
+  return isDiskFile && !isDiskFile(file) ? MAX_ATTACHMENT_BYTES : MAX_FILE_ATTACHMENT_BYTES;
 }

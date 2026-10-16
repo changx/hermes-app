@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, MAX_WORKSPACE_FILE_BYTES, type AttachmentInput } from '../shared/attachment-input';
-import { readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
+import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, MAX_WORKSPACE_FILE_BYTES, type AttachmentInput } from '../shared/attachment-input';
+import { open, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
 import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
@@ -1295,18 +1295,25 @@ export class DesktopConnectionService {
     if (!threadId) return [];
     if (!client.isThreadAvailable(threadId)) throw new Error("This conversation is unavailable.");
     // Check every file before the first upload; read each one only when its turn comes,
-    // so at most one 100 MiB file is in memory at a time.
+    // so at most one 100 MiB file (or one chunk of a larger file) is in memory at a time.
     const files = attachmentInputs(inputs);
+    const largest = client.supportsChunkedUpload ? Math.min(client.uploadMaxBytes, MAX_FILE_ATTACHMENT_BYTES) : MAX_ATTACHMENT_BYTES;
     for (const filePath of files) {
       if (typeof filePath !== 'string') continue;
       if (!filePath || !isAbsolute(filePath)) throw new Error("The attachment path is invalid.");
       const info = await stat(filePath);
-      if (!info.isFile() || info.size < 1 || info.size > MAX_ATTACHMENT_BYTES) throw new Error("Each attachment must be a file between 1 byte and 100 MiB.");
+      if (!info.isFile() || info.size < 1 || info.size > largest) {
+        throw new Error(largest > MAX_ATTACHMENT_BYTES ? "Each attachment must be a file between 1 byte and 2 GB." : "Each attachment must be a file between 1 byte and 100 MiB.");
+      }
     }
     const uploaded: DesktopAttachment[] = [];
     try {
       if (this.client !== client || !client.isThreadAvailable(threadId)) throw new Error('Session unavailable');
       for (const input of files) {
+        if (typeof input === 'string' && (await stat(input)).size > MAX_ATTACHMENT_BYTES) {
+          uploaded.push(this.projectAttachment(await this.uploadLargeFile(client, threadId, input)));
+          continue;
+        }
         const file = typeof input === 'string' ? { name: basename(input), bytes: new Uint8Array(await readFile(input)) } : input;
         attachmentInputs([file]); // Recheck actual bytes after a potentially racing disk read.
         uploaded.push(this.projectAttachment(await client.upload(threadId, file.name, file.bytes)));
@@ -1318,6 +1325,24 @@ export class DesktopConnectionService {
       throw new Error("Attachment upload was not confirmed.");
     }
     return uploaded;
+  }
+
+  /** Chunked upload of a disk file above the single-request limit: one chunk in memory at a time. */
+  private async uploadLargeFile(client: LivePageClient, threadId: string, path: string): Promise<Attachment> {
+    const handle = await open(path, 'r');
+    try {
+      const size = (await handle.stat()).size;
+      return await client.uploadChunked(threadId, basename(path), size, async (offset, length) => {
+        const bytes = new Uint8Array(length);
+        let read = 0;
+        while (read < length) {
+          const { bytesRead } = await handle.read(bytes, read, length - read, offset + read);
+          if (!bytesRead) throw new Error('The file changed while it was uploading.');
+          read += bytesRead;
+        }
+        return bytes;
+      });
+    } finally { await handle.close(); }
   }
 
   async deleteUnattachedAttachment(attachmentId: string, threadId = this.selectedThreadId): Promise<void> {
