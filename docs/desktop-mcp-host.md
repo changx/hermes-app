@@ -1,6 +1,6 @@
 # 桌面版本机 MCP server 转发
 
-状态：方案已确认（2026-10-17），已在分支 `feat/desktop-mcp-host`（App 与插件仓库）实现，本地验证通过。尚未合并、发布或做 macOS 真机验收。本文区分**已确认需求**、**设计**和**待验证项**。
+状态：已发布（2026-10-17）：桌面版 v0.1.95、插件 v0.2.41（插件待 Gateway 重启后生效）。macOS 真机验收待完成。本文区分**已确认需求**、**设计**和**待验证项**。
 
 ## 1. 目标
 
@@ -162,3 +162,9 @@ Agent（Gateway）
   - `mcp-settings.test.mjs`（Chromium）：列表与状态、审批切换、无效 JSON 保留草稿、轮询不覆盖草稿、保存、导入、在 Finder 中显示。
 - 真实 server：在本机用新的 stdio 客户端启动 `npx -y local-api-mcp-typescript`（AdsPower Local API MCP），3.2 秒内完成初始化并列出 47 个工具；`describe open-browser` 返回参数；`approval: "ask"` 时拒绝返回 `denied`。本机没有 AdsPower，所以没有执行真实调用。
 - 未覆盖：系统审批对话框和设置页 IPC 在真实 Electron 中的行为、macOS 登录 shell PATH。这些属于第 9 节的真机验收。
+
+## 13. 发布记录（2026-10-17）
+
+- 插件 v0.2.41：`main` 与 tag `v0.2.41` 在 `cdbcfbf`，已推送。`plugin-releases/hermes-app/current` 指向 `releases/0.2.41`，jamie 与 hermes-app-dev 共用。发布时 Gateway（PID 714210）启动于 2026-10-15 02:57 PDT，早于 v0.2.40 与 v0.2.41 的安装，所以两者都在重启 `hermes-gateway.service` 后生效。
+- 桌面版 v0.1.95：`main` 与 tag `v0.1.95` 在 `383be83`。Mac mini runner 运行 39036399213 成功：236 项测试，185 通过、0 失败、51 跳过（runner 不跑 Chromium/Electron 环境测试），npm audit 0。Release 资产 `Hermes-0.1.95-macOS-arm64.zip` 的 `sha256sum -c` 通过，Info.plist 版本 0.1.95；ASAR 中 `dist/main/index.cjs`、`dist/preload/index.cjs`、`dist/renderer/index.js`、`dist/renderer/styles.css` 与本地构建逐字节相同。
+- 未改手机端代码，不重启 Expo。证据：`~/.hermes/profiles/jamie/workspace/hermes-app/20261017-desktop-mcp-host/`。
