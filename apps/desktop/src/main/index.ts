@@ -419,7 +419,18 @@ const registerDesktopApi = (): void => {
   handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { const id = target(event), tab = tabs?.sender(event.sender); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { return await service.uploadAttachmentInputs(attachmentInputs(paths), id); } finally { if (tab) tab.busy = false; } });
   handle("desktop:delete-attachment", async (event, id: unknown) => { await service.deleteUnattachedAttachment(text(id, 200), target(event)); });
   handle("desktop:preview-image", async (event, id: unknown) => { return service.previewAttachmentImage(text(id, 200), target(event)); });
-  handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => { const threadId = target(event); if (action !== "save" && action !== "open") throw new Error("Invalid desktop request"); await service.downloadAttachment(text(id, 200), action, threadId); });
+  handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => {
+    const threadId = target(event), attachmentId = text(id, 200);
+    if (action !== "save" && action !== "open") throw new Error("Invalid desktop request");
+    // Progress goes only to the window that asked, at most about 5 times a second.
+    let last = 0;
+    await service.downloadAttachment(attachmentId, action, threadId, (received, total) => {
+      const now = Date.now();
+      if (received !== 0 && received !== total && now - last < 200) return;
+      last = now;
+      if (!event.sender.isDestroyed()) event.sender.send("desktop:download-progress", { attachmentId, received, total });
+    });
+  });
 };
 
 const createMainWindow = (): BrowserWindow => {

@@ -338,7 +338,7 @@ export class DesktopConnections {
   previewItems(id: string, ids: readonly string[]) { const r = this.route(id); return r.account.service.previewItems(r.raw, ids); }
   previewResources(id: string) { const r = this.route(id); return r.account.service.previewResources(r.raw); }
   async previewAttachmentImage(attachment: string, id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.previewAttachmentImage(attachment, r.raw); }
-  async downloadAttachment(attachment: string, action: 'save' | 'open', id?: string): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.downloadAttachment(attachment, action, r.raw); }
+  async downloadAttachment(attachment: string, action: 'save' | 'open', id?: string, onProgress?: (received: number, total: number | undefined) => void): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.downloadAttachment(attachment, action, r.raw, onProgress); }
   async retryConnection(): Promise<void> { await this.current().service.retryConnection(); }
   dismissError(id?: string): void { (id ? this.route(id).account : this.current()).service.dismissError(); }
   async resumeConnection(): Promise<void> { await Promise.all([...this.accounts.values()].map(a => a.service.resumeConnection())); }

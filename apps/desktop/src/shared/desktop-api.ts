@@ -302,6 +302,8 @@ export interface HermesDesktopApi {
   uploadDroppedFiles(files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]>;
   deleteUnattachedAttachment(attachmentId: string): Promise<void>;
   downloadAttachment(attachmentId: string, action: "save" | "open"): Promise<void>;
+  /** Save/Open progress of attachments requested by this window. */
+  onDownloadProgress?(listener: (progress: DownloadProgress) => void): () => void;
   previewAttachmentImage(attachmentId: string): Promise<string>;
 }
 
@@ -310,3 +312,5 @@ export type SessionCardRequest = Readonly<{
   title: string; project?: string; connection?: string; statuses: readonly string[]; labels: readonly string[]; lastMessage?: string;
   rowTop: number; rowBottom: number; sidebarRight: number; fontSize: number;
 }>;
+
+export interface DownloadProgress { attachmentId: string; received: number; total?: number }

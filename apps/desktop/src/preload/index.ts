@@ -113,6 +113,15 @@ const api: HermesDesktopApi = Object.freeze({
   deleteUnattachedAttachment: (attachmentId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-attachment", attachmentId),
   previewAttachmentImage: (attachmentId: string): Promise<string> => ipcRenderer.invoke("desktop:preview-image", attachmentId),
   downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),
+  onDownloadProgress(listener: (progress: { attachmentId: string; received: number; total?: number }) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      const item = value as { attachmentId?: unknown; received?: unknown; total?: unknown } | null;
+      if (item && typeof item.attachmentId === 'string' && typeof item.received === 'number')
+        listener({ attachmentId: item.attachmentId, received: item.received, ...(typeof item.total === 'number' ? { total: item.total } : {}) });
+    };
+    ipcRenderer.on("desktop:download-progress", receive);
+    return () => ipcRenderer.removeListener("desktop:download-progress", receive);
+  },
 });
 
 contextBridge.exposeInMainWorld("hermesDesktop", api);

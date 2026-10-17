@@ -71,14 +71,30 @@ export type LoadedAttachment = { uri: string; kind: PreviewKind };
  * token-bearing URLs. A viewer never uses these files directly: it copies them,
  * because `dispose()` can run while a viewer route is still visible.
  */
+export type DownloadProgress = { received: number; total?: number };
+
 export class AttachmentFiles {
   private ready = new Map<string, LoadedAttachment>();
+  private progress = new Map<string, DownloadProgress>();
+  private progressListeners = new Set<() => void>();
+  private progressNotified = 0;
   private pending = new Map<string, { controller: AbortController; task: Promise<LoadedAttachment | undefined> }>();
   private files: File[] = [];
   private generation = 0;
   constructor(readonly client: HermesClient, readonly threadId: string) {}
 
   peek(id: string): LoadedAttachment | undefined { return this.ready.get(id); }
+  /** Bytes received so far for a running download, or undefined. */
+  downloadProgress(id: string): DownloadProgress | undefined { return this.progress.get(id); }
+  /** Called at most about 4 times a second while downloads run. */
+  onProgress(listener: () => void): () => void { this.progressListeners.add(listener); return () => { this.progressListeners.delete(listener); }; }
+  private report(id: string, value: DownloadProgress | undefined, force = false) {
+    if (value) this.progress.set(id, value); else this.progress.delete(id);
+    const now = Date.now();
+    if (!force && now - this.progressNotified < 250) return;
+    this.progressNotified = now;
+    this.progressListeners.forEach(listener => listener());
+  }
 
   /** Rejects when the download fails. Resolves undefined only when `dispose()` ended it. */
   load(attachment: Attachment): Promise<LoadedAttachment | undefined> {
@@ -98,7 +114,9 @@ export class AttachmentFiles {
           // Native download straight into the cache file: the bytes never enter JS memory.
           file = ownedFile(previewSuffix(name));
           try {
-            const size = await this.client.downloadFile(this.threadId, attachment.id, file.uri, controller.signal);
+            this.report(attachment.id, { received: 0, total: attachment.size }, true);
+            const size = await this.client.downloadFile(this.threadId, attachment.id, file.uri, controller.signal,
+              received => { if (generation === this.generation) this.report(attachment.id, { received, total: attachment.size }); });
             if (!size || size > MAX_FILE_ATTACHMENT_BYTES || size !== file.size || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
             head = leadingBytes(file, 16);
           } catch (error) { forgetFile(file); throw error; }
@@ -121,6 +139,7 @@ export class AttachmentFiles {
       } finally {
         release?.();
         if (this.pending.get(attachment.id)?.controller === controller) this.pending.delete(attachment.id);
+        if (generation === this.generation && this.progress.has(attachment.id)) this.report(attachment.id, undefined, true);
       }
     })();
     this.pending.set(attachment.id, { controller, task });
@@ -131,7 +150,14 @@ export class AttachmentFiles {
   dispose() {
     this.generation++;
     this.pending.forEach(entry => entry.controller.abort()); this.pending.clear();
-    this.ready.clear();
+    this.ready.clear(); this.progress.clear();
     this.files.forEach(forgetFile); this.files = [];
   }
+}
+
+/** "45% · 67 of 150 MB" or "67 MB" when the size is unknown. */
+export function progressLabel({ received, total }: DownloadProgress): string {
+  const mb = (bytes: number) => bytes < 10 * 1024 * 1024 ? (bytes / 1048576).toFixed(1) : String(Math.round(bytes / 1048576));
+  if (!total) return `${mb(received)} MB`;
+  return `${Math.min(100, Math.floor(received / total * 100))}% · ${mb(received)} of ${mb(total)} MB`;
 }

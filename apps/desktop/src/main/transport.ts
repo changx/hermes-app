@@ -167,7 +167,7 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
     },
     // Save/Open: stream to disk, so any size works without holding the file in memory.
     // Agent files have no size cap. Removes the partial file on any failure.
-    async downloadFile(path, token, destination, signal) {
+    async downloadFile(path, token, destination, signal, onProgress) {
       const response = await fetch(base + path, { headers: { ...authorization(token), "Accept-Encoding": "identity" }, redirect: "error", signal });
       if (!response.ok) { await response.body?.cancel().catch(() => {}); return { status: response.status, size: 0 }; }
       const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
@@ -184,6 +184,7 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
               if (chunk.done) break;
               size += chunk.value.byteLength;
               await output.write(chunk.value);
+              onProgress?.(size, length === null ? undefined : Number(length));
             }
           } finally { reader.releaseLock(); }
         }

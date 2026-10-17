@@ -33,6 +33,10 @@ export const nativeFileTransfer = (() => {
     return typeof native?.FileSystemUploadTask === 'function' && typeof native.downloadFileAsync === 'function';
   } catch { return false; }
 })();
+export const nativeDownloadTask = (() => {
+  try { return typeof requireOptionalNativeModule<{ FileSystemDownloadTask?: unknown }>('FileSystem')?.FileSystemDownloadTask === 'function'; }
+  catch { return false; }
+})();
 const binaryBody = (bytes: Uint8Array): ArrayBuffer => {
   if (!bytes.byteLength || bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new Error('Attachments must be between 1 byte and 100 MiB.');
   // React Native's fetch bridge supports ArrayBuffer, not every Uint8Array view.
@@ -79,10 +83,18 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
     return { status: result.status, body: raw && json ? JSON.parse(raw) : raw || null, ...(delay === undefined ? {} : { retryAfterMs: delay }) };
   };
   // Native download into the destination file: the bytes never enter JS memory.
-  const downloadFile: NonNullable<HttpTransport['downloadFile']> = async (path, token, destination, signal) => {
+  const downloadFile: NonNullable<HttpTransport['downloadFile']> = async (path, token, destination, signal, onProgress) => {
     const target = new File(destination);
+    const headers = { ...authorization(token), 'Accept-Encoding': 'identity' };
     try {
-      const written = await File.downloadFileAsync(base + path, target, { headers: { ...authorization(token), 'Accept-Encoding': 'identity' }, idempotent: true, signal });
+      // A download task reports progress; older native modules only have downloadFileAsync.
+      if (onProgress && nativeDownloadTask) {
+        const written = await File.createDownloadTask(base + path, target, { headers, sessionType: 'foreground', signal,
+          onProgress: ({ bytesWritten, totalBytes }) => onProgress(bytesWritten, totalBytes > 0 ? totalBytes : undefined) }).downloadAsync();
+        if (!written) throw new Error('The download was paused.');
+        return { status: 200, size: written.size };
+      }
+      const written = await File.downloadFileAsync(base + path, target, { headers, idempotent: true, signal });
       return { status: 200, size: written.size };
     } catch (error) {
       try { if (target.exists) target.delete(); } catch { /* best effort */ }

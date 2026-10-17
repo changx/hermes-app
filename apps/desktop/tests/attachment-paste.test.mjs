@@ -171,15 +171,17 @@ test('Save streams the attachment to disk through downloadFile, never through in
   const item = { id: 'att-big', thread_id: 't', name: 'dataset.zip', mime: 'application/zip', size: big, state: 'available' };
   const client = { attachments: new Map([[item.id, item]]),
     download: async () => { throw Error('Save must not read the file into memory'); },
-    downloadFile: async (thread, id, destination) => { calls.push([thread, id, destination]); await writeFile(destination, 'x'); const { truncate } = await import('node:fs/promises'); await truncate(destination, big); return big; } };
+    downloadFile: async (thread, id, destination, _signal, onProgress) => { calls.push([thread, id, destination]); await writeFile(destination, 'x'); const { truncate } = await import('node:fs/promises'); await truncate(destination, big); onProgress?.(big / 2); onProgress?.(big); return big; } };
   service.client = client; service.connection = {}; service.phase = 'connected'; service.changed = () => {};
   const target = join(folder, 'dataset.zip');
   electron.dialog = { showSaveDialog: async () => ({ canceled: false, filePath: target }) };
   try {
-    await service.downloadAttachment('att-big', 'save', 't');
+    const progress = [];
+    await service.downloadAttachment('att-big', 'save', 't', (received, total) => progress.push([received, total]));
     const { stat, readdir } = await import('node:fs/promises');
     assert.equal((await stat(target)).size, big);
-    assert.equal(calls.length, 1); assert.match(calls[0][2], /dataset\.zip\.[0-9a-f]{8}\.partial$/);
+    assert.equal(calls.length, 1); assert.match(calls[0][2], /\/\.dataset\.zip\.[0-9a-f]{8}\.partial$/, 'the incomplete file is hidden in Finder');
+    assert.deepEqual(progress, [[0, big], [big / 2, big], [big, big]]);
     assert.deepEqual(await readdir(folder), ['dataset.zip']);
     item.size = big + 1;
     await assert.rejects(service.downloadAttachment('att-big', 'save', 't'), /incomplete/);

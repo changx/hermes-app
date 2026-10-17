@@ -1378,7 +1378,9 @@ export class DesktopConnectionService {
       && !!item.name && /\.(png|jpe?g|gif|webp|css|js|mjs|woff2?|ttf)$/i.test(item.name)).map(item => ({ id: item.id, name: item.name! }));
   }
 
-  async downloadAttachment(attachmentId: string, action: "save" | "open", targetThreadId = this.selectedThreadId): Promise<void> {
+  /** `onProgress` reports bytes written and the attachment size while the file streams to disk. */
+  async downloadAttachment(attachmentId: string, action: "save" | "open", targetThreadId = this.selectedThreadId,
+    onProgress?: (received: number, total: number | undefined) => void): Promise<void> {
     const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
@@ -1393,11 +1395,14 @@ export class DesktopConnectionService {
       await mkdir(folder, { recursive: true, mode: 0o700 });
       target = join(folder, `${randomUUID()}${extname(safeName).slice(0, 20)}`);
     }
-    const temporary = `${target}.${randomUUID().slice(0, 8)}.partial`;
+    // A dot name keeps the incomplete file hidden in Finder until the rename below.
+    const temporary = join(dirname(target), `.${basename(target)}.${randomUUID().slice(0, 8)}.partial`);
     await mkdir(dirname(target), { recursive: true });
     // Stream to disk: Agent files have no size limit, so never hold the whole file in memory.
     try {
-      const size = await client.downloadFile(threadId, attachmentId, temporary);
+      onProgress?.(0, attachment.size);
+      const size = await client.downloadFile(threadId, attachmentId, temporary, undefined,
+        received => onProgress?.(received, attachment.size));
       if (attachment.size !== undefined && size !== attachment.size) throw new Error("The attachment is incomplete. Try again.");
     } catch (error) { await rm(temporary, { force: true }); throw error; }
     await rename(temporary, target);

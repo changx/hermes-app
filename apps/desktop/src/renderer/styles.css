@@ -637,6 +637,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .attachment-info > .attachment-name { overflow-wrap: anywhere; font-weight: 650; }
 .attachment-info > .attachment-size { color: #50647b; font-size: calc(var(--app-font-size) - 2px); }
 .attachment-actions { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.attachment-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.attachment-progress-track { height: 4px; border-radius: 2px; background: #e3e8ef; overflow: hidden; }
+.attachment-progress-fill { height: 100%; background: #1a66c9; border-radius: 2px; transition: width 0.2s linear; }
+.attachment-progress-text { color: #50647b; font-size: calc(var(--app-font-size) - 2px); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .attachment-progress-fill { transition: none; } }
 .attachment-row button, .receipt button, .load-older { border: 1px solid var(--app-field-border); border-radius: 7px; padding: 4px 8px; color: var(--app-link); background: #fff; }
 .receipt { margin-top: 7px; color: #50647b; font-size: var(--app-font-size); text-transform: capitalize; }
 .receipt button { margin-left: 8px; }

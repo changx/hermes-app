@@ -37,7 +37,7 @@ const load = async (entry, native = withNative) => {
   new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(name => modules[name] ?? require(name), mod, mod.exports);
   return mod.exports;
 };
-const { uploadSource, AttachmentFiles } = await load('../src/attachmentFiles.ts');
+const { uploadSource, AttachmentFiles, progressLabel } = await load('../src/attachmentFiles.ts');
 const { nativeTransport } = await load('../src/transport.ts');
 const legacyTransport = (await load('../src/transport.ts', null)).nativeTransport;
 const sparse = (name, size) => { const path = join(root, name); fs.writeFileSync(path, ''); fs.truncateSync(path, size); return pathToFileURL(path).href; };
@@ -159,4 +159,26 @@ test('Agent files above the app download limit open their public link in the bro
   assert.ok(open.indexOf('tooLargeForApp(attachment, limit)') < open.indexOf('gallerySequence('), 'checked before the gallery opens');
   assert.match(open, /filter\(item => item\.id === attachment\.id \|\| !tooLargeForApp\(item, limit\)\)/, 'the gallery skips files it cannot load');
   assert.match(source, /Large file\. Tap to download in your browser/);
+});
+
+test('an in-app download reports progress to listeners and clears it when done', async () => {
+  const seen = []; let finish;
+  const client = { supportsFileTransfer: true, async download() { throw Error('no memory reads'); },
+    downloadFile(_thread, _id, destination, _signal, onProgress) {
+      return new Promise(resolve => { finish = () => { onProgress(150 * MiB, 150 * MiB); fs.writeFileSync(fileURLToPath(destination), Buffer.from('%PDF-1.7 big')); resolve(12); }; onProgress(67 * MiB, 150 * MiB); }); } };
+  const files = new AttachmentFiles(client, 'T');
+  const stop = files.onProgress(() => seen.push(files.downloadProgress('att_big')));
+  const loading = files.load({ id: 'att_big', thread_id: 'T', state: 'available', name: 'big.pdf', mime: 'application/pdf' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(seen[0], { received: 0, total: undefined }, 'the first notice arrives at once');
+  assert.deepEqual(files.downloadProgress('att_big'), { received: 67 * MiB, total: undefined });
+  finish(); await loading;
+  assert.equal(files.downloadProgress('att_big'), undefined, 'progress clears when the file is ready');
+  assert.equal(seen.at(-1), undefined, 'listeners hear the clear');
+  stop(); files.dispose();
+  assert.equal(progressLabel({ received: 67 * MiB, total: 150 * MiB }), '44% · 67 of 150 MB');
+  assert.equal(progressLabel({ received: 3.5 * MiB }), '3.5 MB');
+  const source = fs.readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
+  assert.match(source, /downloading \? `Downloading… \$\{progressLabel\(downloading\)\}`/);
+  assert.match(fs.readFileSync(new URL('../src/AttachmentGallery.tsx', import.meta.url), 'utf8'), /Downloading… \$\{progress\}/);
 });

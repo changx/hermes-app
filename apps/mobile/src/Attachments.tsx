@@ -13,7 +13,7 @@ import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
 import { AttachmentGallery, type GalleryItem } from './AttachmentGallery';
-import { attachmentSlot, forgetFile, ownedFile, uploadSource, type AttachmentFiles } from './attachmentFiles';
+import { attachmentSlot, forgetFile, ownedFile, progressLabel, uploadSource, type AttachmentFiles } from './attachmentFiles';
 import { gallerySequence } from './gallerySequence';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
@@ -290,6 +290,9 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
 type RowState = 'loading' | 'ready' | 'error';
 export function MessageAttachments({ files, attachments, gallery }: { files: AttachmentFiles; attachments: Attachment[]; gallery?: () => ReadonlyArray<readonly Attachment[] | undefined> }) {
   const [state, setState] = useState<Record<string, RowState>>({});
+  // Redraw while a download of this message's files reports progress.
+  const [, setProgressTick] = useState(0);
+  useEffect(() => files.onProgress(() => setProgressTick(tick => tick + 1)), [files]);
   const { openViewer } = useViewer();
   // Native file transfer holds large files on disk, not in JS memory.
   const limit = appDownloadLimit(files.client.supportsFileTransfer);
@@ -322,12 +325,14 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
     const sequence = gallerySequence(gallery?.() ?? [attachments], attachment);
     const items = sequence.items.filter(item => item.id === attachment.id || !tooLargeForApp(item, limit));
     const index = Math.max(0, items.findIndex(item => item.id === attachment.id));
-    const pages: GalleryItem[] = items.map(item => ({ key: item.id, title: item.name || 'Attachment', open: () => files.load(item) }));
+    const pages: GalleryItem[] = items.map(item => ({ key: item.id, title: item.name || 'Attachment', open: () => files.load(item),
+      progress: () => { const value = files.downloadProgress(item.id); return value && progressLabel(value); }, onProgress: listener => files.onProgress(listener) }));
     try { openViewer(pages[index].title, <AttachmentGallery items={pages} initialIndex={index} />); }
     catch { setState(old => ({ ...old, [attachment.id]: 'error' })); }
   };
   return <View style={styles.root}>{attachments.map(attachment => {
     const ready = files.peek(attachment.id), status = ready ? 'ready' : state[attachment.id];
+    const downloading = ready ? undefined : files.downloadProgress(attachment.id);
     const image = isImage(attachment.mime, attachment.name);
     const label = attachment.name || 'Unnamed attachment';
     return <Pressable key={attachment.id} accessibilityRole="button" accessibilityLabel={`View attachment: ${label}`} style={styles.tile}
@@ -336,7 +341,7 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
         {ready && <Image source={{ uri: ready.uri }} style={styles.thumb} />}
       </View>}
       <View style={styles.fileText}><Text style={styles.title} numberOfLines={2}>{label}</Text>
-        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : tooLargeForApp(attachment, limit) ? (attachment.public_url ? (status === 'error' ? 'Could not open the link. Tap to retry' : 'Large file. Tap to download in your browser') : 'Too large to open in the app') : status === 'loading' ? 'Loading…' : status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
+        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : tooLargeForApp(attachment, limit) ? (attachment.public_url ? (status === 'error' ? 'Could not open the link. Tap to retry' : 'Large file. Tap to download in your browser') : 'Too large to open in the app') : downloading ? `Downloading… ${progressLabel(downloading)}` : status === 'loading' ? 'Loading…' : status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
       </View>
     </Pressable>;
   })}

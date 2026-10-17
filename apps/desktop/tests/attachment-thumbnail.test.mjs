@@ -66,3 +66,28 @@ test('message thumbnail reuses the large image source instead of downloading the
     await act(async()=>tree.root.findByProps({'aria-label':'Preview image: message.png'}).props.onClick());assert.equal(previews,1);
   }finally{if(tree)await act(async()=>tree.unmount());env.restore();}
 });
+
+test('Save shows download progress on the card, disables Save/Open while it runs and clears when done',async()=>{
+  let listener,finish,unsubscribed=0;const calls=[];
+  const env=environment({onDownloadProgress:l=>{listener=l;return()=>{unsubscribed++;};},downloadAttachment:(id,action)=>{calls.push([id,action]);return new Promise(resolve=>{finish=resolve;});}});let tree;
+  try{
+    const file={id:'att-big',name:'large-test-150MB.bin',mime:'application/octet-stream',size:150*1048576,state:'available'};
+    tree=await mount(React.createElement(AttachmentView,{attachment:file}));
+    const button=label=>tree.root.findAll(n=>n.type==='button'&&n.children.join('')===label)[0];
+    await act(async()=>button('Save').props.onClick());
+    assert.deepEqual(calls,[['att-big','save']]);
+    assert.equal(button('Save').props.disabled,true);assert.equal(button('Open externally').props.disabled,true);
+    assert.equal(tree.root.findAllByProps({role:'progressbar'}).length,0,'no bar while the Save dialog is open');
+    await act(async()=>button('Save').props.onClick());assert.equal(calls.length,1,'a second click starts nothing');
+    await act(async()=>listener({attachmentId:'other',received:5,total:10}));
+    assert.equal(tree.root.findAllByProps({role:'progressbar'}).length,0,'other attachments do not move this bar');
+    await act(async()=>listener({attachmentId:'att-big',received:67*1048576,total:150*1048576}));
+    const bar=tree.root.findByProps({role:'progressbar'});
+    assert.equal(bar.props['aria-valuenow'],44);
+    assert.equal(tree.root.findByProps({className:'attachment-progress-text'}).children.join(''),'Saving… 44% · 67 of 150 MB');
+    assert.equal(tree.root.findByProps({className:'attachment-progress-fill'}).props.style.width,'44%');
+    await act(async()=>finish());
+    assert.equal(tree.root.findAllByProps({role:'progressbar'}).length,0);assert.equal(unsubscribed,1);
+    assert.equal(button('Save').props.disabled,false);
+  }finally{if(tree)await act(async()=>tree.unmount());env.restore();}
+});

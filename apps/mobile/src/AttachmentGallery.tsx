@@ -10,11 +10,19 @@ import { galleryPage } from './gallerySequence';
 import { useViewerTitle } from './Viewers';
 
 /** `open` gives a local source file. The page copies it and deletes the copy when it leaves the window. */
-export type GalleryItem = { key: string; title: string; open: () => Promise<{ uri: string; kind: PreviewKind } | undefined> };
+export type GalleryItem = { key: string; title: string; open: () => Promise<{ uri: string; kind: PreviewKind } | undefined>;
+  /** Download progress text while `open()` runs, and a subscription for its changes. */
+  progress?: () => string | undefined; onProgress?: (listener: () => void) => () => void };
 
 function GalleryPage({ item, width, active, onZoom }: { item: GalleryItem; width: number; active: boolean; onZoom: (zoomed: boolean) => void }) {
   const [state, setState] = useState<{ uri: string; kind: PreviewKind } | 'loading' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
+  const [progress, setProgress] = useState(item.progress?.());
+  useEffect(() => {
+    if (state !== 'loading' || !item.onProgress) return;
+    setProgress(item.progress?.());
+    return item.onProgress(() => setProgress(item.progress?.()));
+  }, [item, state]);
   useEffect(() => {
     let alive = true, copy: File | undefined;
     setState('loading');
@@ -30,7 +38,7 @@ function GalleryPage({ item, width, active, onZoom }: { item: GalleryItem; width
     return () => { alive = false; if (copy) forgetFile(copy); };
   }, [item, attempt]);
   return <View style={[styles.page, { width }]}>
-    {state === 'loading' ? <View style={styles.center}><ActivityIndicator color="#fff" /></View>
+    {state === 'loading' ? <View style={styles.center}><ActivityIndicator color="#fff" />{progress ? <Text style={styles.progress}>{`Downloading… ${progress}`}</Text> : null}</View>
       : state === 'error' ? <Pressable accessibilityRole="button" accessibilityLabel={`Retry: ${item.title}`} style={styles.center} onPress={() => setAttempt(value => value + 1)}>
         <Text style={styles.notice}>Could not open this file. Tap to try again.</Text>
       </Pressable>
@@ -77,5 +85,6 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   notice: { color: '#e6edf5', fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  progress: { color: '#c8d3e0', fontSize: 14, marginTop: 12, fontVariant: ['tabular-nums'] },
   counter: { color: '#50647b', fontSize: 15, fontVariant: ['tabular-nums'], paddingHorizontal: 4 },
 });

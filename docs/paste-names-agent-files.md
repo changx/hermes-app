@@ -19,6 +19,13 @@ Status: released 2026-10-16 except the desktop package. Plugin 0.2.39 installed 
 - Desktop: Save and Open write the file straight to disk, so any size works. "View file" opens the public link in the browser.
 - Phone: a file up to 100 MiB opens in the app as before. A larger file shows "Large file. Tap to download in your browser" and opens its public link in the system browser. The gallery skips such files.
 
+### Download progress (candidate `feat/download-progress`)
+- Desktop: after you choose where to save, the attachment card shows a thin bar and `Saving… 44% · 67 of 150 MB`. Open externally shows `Downloading…`. Save and Open are disabled until it finishes; the bar goes away when the file is complete. Jamie asked for this on 2026-10-17 after a 150 MB Save showed nothing but a `.partial` file in Finder.
+- Desktop: the incomplete file is now a hidden dot file (`.<name>.<random>.partial`) next to the target, so Finder shows only the finished file.
+- Phone: a file downloading into the app shows `Downloading… 44% · 67 of 150 MB` on the message row, and the same text under the spinner in the full-screen viewer. It uses `File.createDownloadTask` progress when the running app has it; otherwise the old download runs without a percentage.
+- Shared client: `downloadFile(threadId, id, destination, signal, onProgress)`, forwarded by `LiveSessionClient` and `LivePageClient`. Desktop main sends at most about 5 updates a second, only to the window that asked.
+- Not included: a Cancel button for a running download, and upload progress in the composer.
+
 ## Implementation
 - Plugin `adapter.py`:
   - `send_document` copies the file in a worker thread (`_copy_outbound`), with no size cap. It refuses the copy when less than 1 GiB of disk would stay free (`OUTBOUND_FREE_RESERVE`).

@@ -177,8 +177,12 @@ test("attachment Save/Open streams files above 100 MiB to disk and removes incom
   t.after(async () => { server.close(); await rm(folder, { recursive: true, force: true }); });
   const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
   const target = join(folder, "big.zip.partial");
-  const reply = await http.downloadFile("/v1/threads/t/attachments/big", "token", target);
+  const progress = [];
+  const reply = await http.downloadFile("/v1/threads/t/attachments/big", "token", target, undefined, (done, total) => progress.push([done, total]));
   assert.deepEqual(reply, { status: 200, size });
+  assert.ok(progress.length > 10, "progress arrives while the body streams");
+  assert.ok(progress.every(([done, total], i) => total === size && (i === 0 || done > progress[i - 1][0])), "progress grows and carries the total");
+  assert.deepEqual(progress.at(-1), [size, size]);
   const info = await stat(target);
   assert.equal(info.size, size);
   assert.equal(info.mode & 0o777, 0o600);

@@ -1,4 +1,4 @@
-import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice, type LocalFile, type ChunkReader } from './index';
+import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice, type LocalFile, type ChunkReader, type TransferProgress } from './index';
 import { parseCatalogue, parseCatalogueThreads, parseLiveFrame, parseResultRead, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
@@ -472,7 +472,7 @@ export class LiveSessionClient extends HermesClient {
   override async getAttachment(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getAttachment(id,key,s.signal)}finally{s.done()}}
   override async download(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.download(id,key,s.signal)}finally{s.done()}}
   override async upload(id:string,name:string,bytes:Uint8Array,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.upload(id,name,bytes,s.signal)}finally{s.done();this.prune()}}
-  override async downloadFile(id:string,key:string,destination:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.downloadFile(id,key,destination,s.signal)}finally{s.done()}}
+  override async downloadFile(id:string,key:string,destination:string,signal?:AbortSignal,onProgress?:TransferProgress){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.downloadFile(id,key,destination,s.signal,onProgress)}finally{s.done()}}
   override async uploadChunked(id:string,name:string,size:number,read:ChunkReader,signal?:AbortSignal,onProgress?:(sent:number,size:number)=>void){const s=this.scoped(signal,id);try{return await super.uploadChunked(id,name,size,read,s.signal,onProgress)}finally{s.done();this.prune()}}
   override async uploadFile(id:string,name:string,file:LocalFile,signal?:AbortSignal){const s=this.scoped(signal,id);try{return await super.uploadFile(id,name,file,s.signal)}finally{s.done();this.prune()}}
 
