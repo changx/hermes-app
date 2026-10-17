@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { DesktopAppIconId, DesktopAppIconState, DesktopSnapshot } from '../shared/desktop-api';
 import { ConnectionPage, ConnectionSettings } from './connection-settings';
+import { McpSettings } from './mcp-settings';
 import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize } from './font-preference';
 
 /**
@@ -10,7 +11,7 @@ import { DEFAULT_FONT_SIZE, FONT_SIZES, fontLoadFailed, getFontSize, setFontSize
  *   (every device) from settings kept on this device.
  * - This device: preferences stored only in this app on this computer, for every connection.
  */
-export type SettingsPage = 'connection' | `connection:${string}` | 'font' | 'icon' | 'shortcuts';
+export type SettingsPage = 'connection' | `connection:${string}` | 'font' | 'icon' | 'shortcuts' | 'mcp';
 type Page = SettingsPage;
 type NavItem = { id: Page; label: string; detail?: string; issue?: boolean };
 
@@ -94,7 +95,7 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const groups: { title: string; items: NavItem[] }[] = [
     { title: 'Connections', items: [{ id: 'connection', label: 'All connections' },
       ...rows.map(row => ({ id: `connection:${row.id}` as Page, label: row.name, detail: row.server, issue: row.state === 'blocked' }))] },
-    { title: 'This device', items: [{ id: 'font', label: 'Font size' }, { id: 'icon', label: 'App icon' }, { id: 'shortcuts', label: 'Shortcuts' }] },
+    { title: 'This device', items: [{ id: 'font', label: 'Font size' }, { id: 'icon', label: 'App icon' }, { id: 'shortcuts', label: 'Shortcuts' }, { id: 'mcp', label: 'MCP servers' }] },
   ];
   const items = groups.flatMap(group => group.items);
   const known = (value?: string): value is Page => !!value && items.some(item => item.id === value);
@@ -139,6 +140,7 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
         {shown === 'font' && <FontSettings />}
         {shown === 'icon' && <AppIconSettings />}
         {shown === 'shortcuts' && <Shortcuts />}
+        {shown === 'mcp' && <McpSettings />}
       </section>
     </div>
   </main>;

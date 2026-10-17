@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { trackSocket } from './socket-registry';
-import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, MAC_ACTION, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
+import { BROWSER_ACTIONS, BROWSER_PROTOCOL, BrowserControlError, MAC_ACTION, MCP_ACTION, parseServerFrame, type BrowserCommand } from '../shared/browser-control';
 import type { DesktopTabKind } from '../shared/desktop-api';
 
 /** One paired server the desktop may receive browser commands from. */
@@ -22,6 +22,8 @@ export type BrowserControlDeps = Readonly<{
   execute(tabId: string, command: BrowserCommand, signal: AbortSignal): Promise<Record<string, unknown>>;
   /** Native Mac app control; offered to the server only while the driver is installed. */
   mac?: Readonly<{ available(): boolean; run(args: BrowserCommand['args'], signal: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> }>;
+  /** MCP servers configured on this computer; the enabled names are reported with the bindings. */
+  mcp?: Readonly<{ servers(): readonly string[]; run(args: BrowserCommand['args'], signal: AbortSignal, timeoutMs: number): Promise<Record<string, unknown>> }>;
   deviceName: string;
   connect?: (url: string, token: string) => WebSocket;
 }>;
@@ -77,7 +79,8 @@ export class DesktopBrowserControl {
       const channel = channels.get(tab.threadId), rawChannel = channel ? link.account.unqualify(channel) : undefined;
       return [{ thread_id: raw, channel_id: rawChannel ?? null, active: isActive, focused_at: this.focusedAt.get(tab.threadId) ?? 0 }];
     }).slice(0, 64);
-    const body = JSON.stringify({ type: 'bindings', focused_at: this.lastFocus, threads });
+    // Older servers ignore mcp_servers.
+    const body = JSON.stringify({ type: 'bindings', focused_at: this.lastFocus, threads, ...(this.deps.mcp ? { mcp_servers: this.deps.mcp.servers().slice(0, 64) } : {}) });
     if (body === link.bindings) return;
     link.bindings = body; link.ws.send(body);
   }
@@ -95,7 +98,7 @@ export class DesktopBrowserControl {
       if (!frame) return;
       if (frame.type === 'hello') {
         if (frame.protocol !== BROWSER_PROTOCOL) { link.blocked = true; ws.close(1000); return; }
-        ws.send(JSON.stringify({ type: 'hello', protocol: BROWSER_PROTOCOL, device_name: this.deps.deviceName.slice(0, 64), actions: this.deps.mac?.available() ? [...BROWSER_ACTIONS, MAC_ACTION] : BROWSER_ACTIONS }));
+        ws.send(JSON.stringify({ type: 'hello', protocol: BROWSER_PROTOCOL, device_name: this.deps.deviceName.slice(0, 64), actions: [...BROWSER_ACTIONS, ...(this.deps.mac?.available() ? [MAC_ACTION] : []), ...(this.deps.mcp ? [MCP_ACTION] : [])] }));
         link.ready = true; link.attempt = 0;
         this.sendBindings(link, this.deps.windowFocused(), this.deps.activeTabId(), this.deps.channels());
       } else if (frame.type === 'cancel') this.running.get(frame.id)?.abort.abort();
@@ -135,7 +138,11 @@ export class DesktopBrowserControl {
     this.running.set(command.id, { abort, link });
     let frame: Record<string, unknown>;
     try {
-      if (command.action === MAC_ACTION) {
+      if (command.action === MCP_ACTION) {
+        // MCP servers need no conversation tab.
+        if (!this.deps.mcp) throw new BrowserControlError('no_server', 'No MCP servers on this computer.');
+        frame = { type: 'result', id: command.id, ok: true, result: await this.deps.mcp.run(command.args, abort.signal, command.timeoutMs) };
+      } else if (command.action === MAC_ACTION) {
         // Mac app control needs no conversation tab.
         if (!this.deps.mac) throw new BrowserControlError('no_driver', 'Cua Driver is not installed on this Mac.');
         frame = { type: 'result', id: command.id, ok: true, result: await this.deps.mac.run(command.args, abort.signal, command.timeoutMs) };

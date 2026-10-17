@@ -3,6 +3,7 @@ import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserControlError } from '../shared/browser-control';
+import { StdioSession as Session } from './mcp-session';
 
 /**
  * Native macOS app control for the Agent ("desktop_mac" tool), executed through the user's own
@@ -28,8 +29,6 @@ export type MacDriverOptions = Readonly<{
 const TOOL = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_OUTPUT = 120_000;
 const MAX_ARGUMENTS = 100_000;
-const MAX_LINE = 64 * 1024 * 1024;
-const PROTOCOL = '2025-06-18';
 
 export function defaultCandidates(home = homedir()): string[] {
   return [
@@ -57,74 +56,13 @@ export function cleanOutput(text: string): string {
   return cleaned.length > MAX_OUTPUT ? cleaned.slice(0, MAX_OUTPUT) + '\n[output truncated]' : cleaned;
 }
 
-type Content = { type?: string; text?: string; data?: string; mimeType?: string };
-type ToolResult = { content?: Content[]; structuredContent?: unknown; isError?: boolean };
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void };
+export type Content = { type?: string; text?: string; data?: string; mimeType?: string };
+export type ToolResult = { content?: Content[]; structuredContent?: unknown; isError?: boolean };
 
 /** Text the model reads: the full structured result when present (it carries snapshot IDs and element tokens), else the text blocks. */
 export function resultText(result: ToolResult): string {
   if (result.structuredContent !== undefined && result.structuredContent !== null) return cleanOutput(JSON.stringify(result.structuredContent, null, 1));
   return cleanOutput((result.content ?? []).filter(c => c.type === 'text' && typeof c.text === 'string').map(c => c.text).join('\n'));
-}
-
-/** One `cua-driver mcp` stdio session (newline-delimited JSON-RPC). */
-class Session {
-  private nextId = 0;
-  private buffer = '';
-  private readonly pending = new Map<number, Pending>();
-  readonly ready: Promise<void>;
-  closed = false;
-  constructor(private readonly child: ChildProcess) {
-    child.stdout?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => this.read(chunk));
-    child.stderr?.on('data', () => { /* diagnostics only */ });
-    child.on('error', () => this.close());
-    child.on('close', () => this.close());
-    child.stdin?.on('error', () => this.close());
-    this.ready = this.request('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'hermes-app-desktop', version: '1' } }, 30_000)
-      .then(() => { this.notify('notifications/initialized'); });
-  }
-  private read(chunk: string): void {
-    this.buffer += chunk;
-    if (this.buffer.length > MAX_LINE) { this.close(); return; }
-    let end: number;
-    while ((end = this.buffer.indexOf('\n')) >= 0) {
-      const line = this.buffer.slice(0, end).trim(); this.buffer = this.buffer.slice(end + 1);
-      if (!line) continue;
-      let message: { id?: unknown; result?: unknown; error?: { message?: string } };
-      try { message = JSON.parse(line); } catch { continue; }
-      if (typeof message.id !== 'number') continue; // Notifications and server requests are not used.
-      const waiter = this.pending.get(message.id);
-      if (!waiter) continue;
-      if (message.error) waiter.reject(new BrowserControlError('driver_error', String(message.error.message ?? 'Cua Driver error.').slice(0, 2000)));
-      else waiter.resolve(message.result);
-    }
-  }
-  private send(body: Record<string, unknown>): void {
-    if (this.closed || !this.child.stdin?.writable) throw new BrowserControlError('unknown', 'Cua Driver stopped.');
-    this.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...body }) + '\n');
-  }
-  notify(method: string, params?: Record<string, unknown>): void { try { this.send({ method, ...(params ? { params } : {}) }); } catch { /* closed */ } }
-  request(method: string, params: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) { reject(new BrowserControlError('cancelled', 'Stopped.')); return; }
-      const id = ++this.nextId;
-      const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); this.pending.delete(id); };
-      const onAbort = () => { finish(); this.notify('notifications/cancelled', { requestId: id }); reject(new BrowserControlError('cancelled', 'Stopped.')); };
-      // No answer in time: the result is unknown and the session may be stuck, so it is replaced.
-      const timer = setTimeout(() => { finish(); this.close(); reject(new BrowserControlError('unknown', 'Cua Driver did not answer in time.')); }, timeoutMs);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      this.pending.set(id, { resolve: value => { finish(); resolve(value); }, reject: error => { finish(); reject(error); } });
-      try { this.send({ id, method, params }); } catch (error) { finish(); reject(error as Error); }
-    });
-  }
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    for (const waiter of [...this.pending.values()]) waiter.reject(new BrowserControlError('unknown', 'Cua Driver stopped during the action.'));
-    this.pending.clear();
-    if (this.child.exitCode === null && !this.child.killed) this.child.kill();
-  }
 }
 
 export class MacDriver {

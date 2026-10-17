@@ -54,6 +54,12 @@
 .settings-connection-state::before { content: ''; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #9ca3af; }
 .settings-connection-state.state-online::before { background: #16a34a; }
 .settings-connection-state.state-blocked::before { background: #dc2626; }
+/* Settings > MCP servers. */
+.settings-mcp-editor { width: 100%; min-height: 220px; resize: vertical; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 10px 12px; color: var(--app-text); background: #fff; font: 400 0.85em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+.settings-mcp-approval { display: grid; gap: 6px; flex: 0 0 auto; font-size: 0.85em; color: var(--app-muted); }
+.settings-mcp-approval select { border: 1px solid var(--app-field-border); border-radius: 8px; padding: 6px 8px; color: var(--app-text); background: #fff; font-size: 1.1em; }
+.settings-mcp-message { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.settings-mcp-path { overflow-wrap: anywhere; }
 .settings-connection-state:is(.state-pairing,.state-retrying,.state-connecting,.state-syncing)::before { background: #d97706; }
 .settings-connections > form { display: grid; gap: 16px; }
 .settings-connections > form h4 { margin: 0; }

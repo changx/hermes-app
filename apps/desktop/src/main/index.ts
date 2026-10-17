@@ -1,8 +1,11 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, powerMonitor, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
 import { DesktopBrowserControl } from './browser-control';
 import { MacDriver } from './mac-control';
-import { BrowserControlError, MAC_ACTION } from '../shared/browser-control';
+import { claudeConfigPath, McpHost, type McpConfirmation, type McpConfirmRequest } from './mcp-host';
+import { McpConfigError } from '../shared/mcp-config';
+import type { DesktopMcpResult } from '../shared/desktop-api';
+import { BrowserControlError, MAC_ACTION, MCP_ACTION } from '../shared/browser-control';
 import { hostname } from 'node:os';
 import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
@@ -33,14 +36,44 @@ let tabs: DesktopTabManager | undefined;
 let browser: DesktopBrowserSidebar | undefined;
 let browserControl: DesktopBrowserControl | undefined;
 // One Cua Driver session for the app run: window snapshots must survive between Agent actions.
-const macDriver = new MacDriver({
-  encodeImage: png => {
-    const image = nativeImage.createFromBuffer(png);
-    if (image.isEmpty()) return undefined;
-    const { width, height } = image.getSize();
-    return { jpegBase64: image.toJPEG(80).toString('base64'), width, height };
-  },
+const macDriver = new MacDriver({ encodeImage: png => encodeJpeg(png) });
+const encodeJpeg = (bytes: Buffer) => {
+  const image = nativeImage.createFromBuffer(bytes);
+  if (image.isEmpty()) return undefined;
+  const { width, height } = image.getSize();
+  return { jpegBase64: image.toJPEG(80).toString('base64'), width, height };
+};
+// Approval for MCP servers set to "ask". The plugin allows 5 minutes for the answer.
+const MCP_CONFIRM_MS = 290_000;
+const confirmMcp = async ({ server, tool, summary, signal }: McpConfirmRequest): Promise<McpConfirmation> => {
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), MCP_CONFIRM_MS);
+  const bounce = app.dock?.bounce('critical');
+  try {
+    const options: Electron.MessageBoxOptions = {
+      type: 'question', buttons: ['Allow', 'Deny'], defaultId: 1, cancelId: 1, noLink: true, title: 'Hermes',
+      message: `Allow Hermes to use ${tool} from ${server}?`,
+      detail: `Hermes wants to run this tool on this computer with:\n${summary}`,
+      checkboxLabel: `Allow all ${server} tools until Hermes quits`,
+      signal: AbortSignal.any([signal, timeout.signal]),
+    };
+    const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() ? mainWindow : undefined;
+    const answer = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    if (timeout.signal.aborted) return 'timeout';
+    if (signal.aborted || answer.response !== 0) return 'deny';
+    return answer.checkboxChecked ? 'allow-all' : 'allow';
+  } finally { clearTimeout(timer); if (bounce !== undefined) app.dock?.cancelBounce(bounce); }
+};
+// MCP servers configured on this computer, run for the Agent (docs/desktop-mcp-host.md).
+const mcpHost = new McpHost({
+  file: join(app.getPath('userData'), 'mcp.json'), claudeFile: claudeConfigPath(),
+  confirm: confirmMcp, encodeImage: encodeJpeg, onServersChanged: () => browserControl?.sync(),
 });
+const mcpResult = (change: () => DesktopMcpResult): DesktopMcpResult => {
+  try { return change(); } catch (error) {
+    return { ok: false, error: error instanceof McpConfigError ? error.message : 'The configuration could not be saved. Try again.' };
+  }
+};
 protocol.registerSchemesAsPrivileged([{ scheme: 'hermes-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 const secureSettings = (contents: Electron.WebContents): void => {
@@ -99,7 +132,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 const registerDesktopApi = (): void => {
@@ -125,6 +158,15 @@ const registerDesktopApi = (): void => {
   });
   handle('desktop:get-app-icon', event => { settingsSender(event); return appIcon.state(); });
   handle('desktop:set-app-icon', (event, icon: unknown) => { settingsSender(event); return appIcon.set(icon); });
+  handle('desktop:get-mcp', event => { settingsSender(event); return mcpHost.state(); });
+  handle('desktop:save-mcp', (event, value: unknown) => { settingsSender(event); const body = text(value, 512 * 1024); return mcpResult(() => ({ ok: true, state: mcpHost.save(body) })); });
+  handle('desktop:set-mcp-approval', (event, name: unknown, approval: unknown) => {
+    settingsSender(event); const server = text(name, 64);
+    if (approval !== 'ask' && approval !== 'auto') throw new Error('Invalid desktop request');
+    return mcpResult(() => ({ ok: true, state: mcpHost.setApproval(server, approval) }));
+  });
+  handle('desktop:import-claude-mcp', event => { settingsSender(event); return mcpResult(() => ({ ok: true, ...mcpHost.importClaude() })); });
+  handle('desktop:show-mcp-file', event => { settingsSender(event); shell.showItemInFolder(mcpHost.ensureFile()); });
   handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
   handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
     trustedSender(event);
@@ -472,6 +514,7 @@ app.whenReady().then(async () => {
   if (app.isPackaged) app.setAsDefaultProtocolClient("hermesapp");
   registerDesktopApi();
   void appIcon.load();
+  mcpHost.start();
   powerMonitor.on("resume", () => { void service.resumeConnection(); });
   createMainWindow();
   browserControl = new DesktopBrowserControl({
@@ -488,10 +531,11 @@ app.whenReady().then(async () => {
     },
     execute: (tabId, command, signal) => {
       if (!browser) throw new BrowserControlError('not_ready', 'Hermes is starting on the computer. Try again in a moment.');
-      if (command.action === MAC_ACTION) throw new BrowserControlError('failed', 'Not a browser action.');
+      if (command.action === MAC_ACTION || command.action === MCP_ACTION) throw new BrowserControlError('failed', 'Not a browser action.');
       return browser.command(tabId, command.action, command.args, signal, command.timeoutMs);
     },
     mac: macDriver,
+    mcp: mcpHost,
     deviceName: hostname(),
   });
   await service.initialize();
@@ -509,7 +553,7 @@ let lastShutdown: ShutdownRecord[] = [];
 const gracefulShutdown = async (): Promise<void> => {
   lastShutdown = await runShutdown([
     // 1. No new work: Agent browser and Mac control stop taking commands; no new sends start.
-    { name: "stop-intake", timeoutMs: 1_000, run: () => { browserControl?.close(); macDriver.close(); } },
+    { name: "stop-intake", timeoutMs: 1_000, run: () => { browserControl?.close(); macDriver.close(); mcpHost.close(); } },
     // 2. Sends already in progress may finish; queued draft, outbox and credential writes complete.
     { name: "settle-and-save", timeoutMs: 4_000, run: () => service.prepareShutdown(3_000) },
     // 3. Windows close the normal way: helper windows first, then the main window (its tabs and pages).
@@ -535,5 +579,5 @@ app.on("before-quit", event => {
   });
 });
 // Safety net only: the sequence above has already closed these.
-app.on("will-quit", () => { browserControl?.close(); macDriver.close(); service.close(); });
+app.on("will-quit", () => { browserControl?.close(); macDriver.close(); mcpHost.close(); service.close(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin" && shutdownPhase === "running") app.quit(); });

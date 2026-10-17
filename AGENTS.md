@@ -112,6 +112,7 @@
 - [docs/desktop-tabs.md](docs/desktop-tabs.md)
 - [docs/desktop-browser-control.md](docs/desktop-browser-control.md)
 - [docs/desktop-mac-control.md](docs/desktop-mac-control.md)
+- [docs/desktop-mcp-host.md](docs/desktop-mcp-host.md)（桌面版转发本机 MCP server：`desktop_mcp`）
 - [docs/desktop-sidebar-release-0.1.37.md](docs/desktop-sidebar-release-0.1.37.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)

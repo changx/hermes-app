@@ -164,7 +164,7 @@ Agent（Gateway 进程，hermes-app-dev profile）
 
 界面文字沿用应用现有的英文界面。
 
-同一通道还承载 Mac 原生 App 控制（`mac` 动作，`desktop_mac` 工具），见 [desktop-mac-control.md](desktop-mac-control.md)。
+同一通道还承载 Mac 原生 App 控制（`mac` 动作，`desktop_mac` 工具），见 [desktop-mac-control.md](desktop-mac-control.md)；以及本机 MCP server 转发（`mcp` 动作，`desktop_mcp` 工具），见 [desktop-mcp-host.md](desktop-mcp-host.md)。
 
 ## 14. 本地验证（2026-10-07）
 

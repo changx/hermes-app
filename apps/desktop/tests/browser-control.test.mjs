@@ -79,6 +79,7 @@ async function harness(options = {}) {
     ensureTab: async threadId => { const tab = tabs.find(t => t.threadId === threadId); if (tab) return tab; const created = { id: 'tab-2', threadId, connectionKey: 'key', kind: 'session' }; tabs.push(created); return created; },
     execute: options.execute ?? (async (tabId, command) => { executed.push([tabId, command.action, command.args]); return { url: 'https://example.com/' }; }),
     ...(options.mac ? { mac: options.mac } : {}),
+    ...(options.mcp ? { mcp: options.mcp } : {}),
     deviceName: 'Test Mac',
   });
   const until = async (check, label) => { const end = Date.now() + 3000; while (Date.now() < end) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } throw new Error('Timed out: ' + label); };
@@ -150,6 +151,33 @@ test('control connection: Mac app control is offered only with the driver and ru
     h.sockets[0].terminate();
     await h.until(() => h.received.filter(f => f.type === 'hello').length === 2, 'second hello');
     assert.equal(h.received.filter(f => f.type === 'hello')[1].actions.includes('mac'), false);
+  } finally { h.close(); }
+});
+
+test('control connection: MCP servers are reported with the bindings, re-reported on change, and run without a tab', async () => {
+  const calls = [];
+  let servers = ['ads'];
+  const mcp = { servers: () => servers, run: async (args, _signal, timeoutMs) => { calls.push([args, timeoutMs]); if (args.tool === 'nope') throw new shared.BrowserControlError('denied', 'The user declined.'); return { output: 'started' }; } };
+  const h = await harness({ mcp });
+  try {
+    h.control.sync();
+    await h.until(() => h.received.some(f => f.type === 'bindings'), 'bindings');
+    assert.equal(h.received[0].actions.at(-1), 'mcp');
+    assert.deepEqual(h.received.find(f => f.type === 'bindings').mcp_servers, ['ads']);
+    assert.ok(shared.parseServerFrame(JSON.stringify({ type: 'command', id: 'x', thread_id: 't', action: 'mcp', args: {} })));
+    h.sockets[0].send(JSON.stringify({ type: 'command', id: 'p1', thread_id: 'th_closed', action: 'mcp', args: { server: 'ads', tool: 'open_browser', arguments: { id: 'k1' } }, timeout_ms: 180000, open_tab: false }));
+    h.sockets[0].send(JSON.stringify({ type: 'command', id: 'p2', thread_id: 'th_a', action: 'mcp', args: { server: 'ads', tool: 'nope' }, timeout_ms: 180000, open_tab: false }));
+    await h.until(() => h.received.filter(f => f.type === 'result').length === 2, 'mcp results');
+    assert.deepEqual(h.received.find(f => f.id === 'p1'), { type: 'result', id: 'p1', ok: true, result: { output: 'started' } });
+    // The error class here comes from a separate test bundle, so only the failure itself is checked.
+    assert.equal(h.received.find(f => f.id === 'p2').ok, false);
+    assert.deepEqual(calls[0], [{ server: 'ads', tool: 'open_browser', arguments: { id: 'k1' } }, 180000]);
+    assert.equal(h.tabs.length, 1, 'no conversation tab is opened for MCP');
+    assert.deepEqual(h.executed, []);
+    servers = ['ads', 'notes'];
+    h.control.sync();
+    await h.until(() => h.received.filter(f => f.type === 'bindings').length === 2, 'new server list');
+    assert.deepEqual(h.received.filter(f => f.type === 'bindings')[1].mcp_servers, ['ads', 'notes']);
   } finally { h.close(); }
 });
 

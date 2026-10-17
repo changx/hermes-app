@@ -175,6 +175,11 @@ export const DESKTOP_APP_ICONS = ['mochi', 'bubble', 'orb'] as const;
 export type DesktopAppIconId = typeof DESKTOP_APP_ICONS[number];
 /** `dock`: this computer shows the choice in the Dock (macOS). */
 export type DesktopAppIconState = Readonly<{ icon: DesktopAppIconId; dock: boolean }>;
+/** MCP servers this computer runs for the Agent (Settings > MCP servers). See docs/desktop-mcp-host.md. */
+export type DesktopMcpServerState = Readonly<{ name: string; kind: 'stdio' | 'http'; approval: 'ask' | 'auto'; disabled: boolean; status: 'stopped' | 'starting' | 'running' | 'failed'; message?: string }>;
+export type DesktopMcpState = Readonly<{ path: string; text: string; error?: string; claudeAvailable: boolean; servers: readonly DesktopMcpServerState[] }>;
+/** A change either succeeds with the new state or fails with a message for the user; the file is unchanged on failure. */
+export type DesktopMcpResult = Readonly<{ ok: true; state: DesktopMcpState; added?: readonly string[]; skipped?: readonly string[] } | { ok: false; error: string }>;
 
 export interface HermesDesktopApi {
   addConnection(request: PairingRequest): Promise<void>;
@@ -183,6 +188,13 @@ export interface HermesDesktopApi {
   renameConnection(connectionId: string, name: string): Promise<void>;
   getAppIcon(): Promise<DesktopAppIconState>;
   setAppIcon(icon: DesktopAppIconId): Promise<DesktopAppIconState>;
+  getMcp(): Promise<DesktopMcpState>;
+  /** Validates and saves the whole configuration. */
+  saveMcp(text: string): Promise<DesktopMcpResult>;
+  setMcpApproval(name: string, approval: 'ask' | 'auto'): Promise<DesktopMcpResult>;
+  /** Adds Claude Desktop's servers whose names are new. */
+  importClaudeMcp(): Promise<DesktopMcpResult>;
+  showMcpFile(): Promise<void>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;

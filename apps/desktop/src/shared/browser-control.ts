@@ -6,7 +6,9 @@ export const BROWSER_ACTIONS = ['navigate', 'snapshot', 'click', 'type', 'press'
 export type BrowserAction = typeof BROWSER_ACTIONS[number];
 /** Native macOS app control through the user's installed Cua Driver. Declared only when the driver is present. */
 export const MAC_ACTION = 'mac';
-export type ControlAction = BrowserAction | typeof MAC_ACTION;
+/** MCP servers configured on this computer (docs/desktop-mcp-host.md). */
+export const MCP_ACTION = 'mcp';
+export type ControlAction = BrowserAction | typeof MAC_ACTION | typeof MCP_ACTION;
 export type BrowserControlState = 'agent' | 'user' | 'waiting';
 export type BrowserCommand = Readonly<{ id: string; threadId: string; channelId?: string; action: ControlAction; args: Readonly<Record<string, unknown>>; timeoutMs: number; openTab: boolean }>;
 export type ServerFrame = Readonly<{ type: 'hello'; protocol: number }> | Readonly<{ type: 'command'; command: BrowserCommand }> | Readonly<{ type: 'cancel'; id: string }>;
@@ -29,7 +31,7 @@ export function parseServerFrame(raw: string): ServerFrame | undefined {
   if (frame.type === 'hello' && typeof frame.protocol === 'number') return { type: 'hello', protocol: frame.protocol };
   if (frame.type === 'cancel' && typeof frame.id === 'string' && frame.id.length <= 64) return { type: 'cancel', id: frame.id };
   if (frame.type !== 'command') return undefined;
-  if (!(BROWSER_ACTIONS as readonly string[]).includes(frame.action as string) && frame.action !== MAC_ACTION) throw new Error('Invalid browser command');
+  if (!(BROWSER_ACTIONS as readonly string[]).includes(frame.action as string) && frame.action !== MAC_ACTION && frame.action !== MCP_ACTION) throw new Error('Invalid browser command');
   const args = frame.args && typeof frame.args === 'object' && !Array.isArray(frame.args) ? frame.args as Record<string, unknown> : {};
   const timeoutMs = Number(frame.timeout_ms);
   return { type: 'command', command: {
