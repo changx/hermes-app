@@ -28,6 +28,7 @@ for (const target of [undefined, 101]) test(`production mobile opening publishes
   });
   const located = [], context = { client, focusedRef: { current: true }, appActive: { current: true }, openingRef: { current: 0 }, ownedWatch: { current: null },
     setHistoryBusy(value) { context.historyBusy = value; }, setLocated(value) { context.located = value; if (value) located.push(client.messages.get('t')?.length ?? 0); },
+    setOpenFailed(value) { context.openFailed = value; },
     setError(value) { assert.fail(value); }
   };
   runInNewContext(ts.transpileModule(`globalThis.openThread = ${opener};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
@@ -37,7 +38,7 @@ for (const target of [undefined, 101]) test(`production mobile opening publishes
     while (!paths.some(path => path.includes('/messages'))) { assert.ok(Date.now() < end); await new Promise(resolve => setImmediate(resolve)); }
     assert.equal(context.historyBusy, true); assert.equal(context.located, false); assert.deepEqual(located, []);
     finish(); await pending;
-    assert.equal(context.located, true); assert.equal(context.historyBusy, false);
+    assert.equal(context.located, true); assert.equal(context.historyBusy, false); assert.equal(context.openFailed, false);
     assert.deepEqual(located, [250]); assert.equal(client.messages.get('t').length, 250);
     assert.deepEqual(paths.filter(path => path.includes('/messages')), ['/v1/threads/t/messages?full=true']);
   } finally { finish(); client.close(); }

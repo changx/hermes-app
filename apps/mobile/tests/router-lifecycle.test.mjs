@@ -234,6 +234,22 @@ test('account retry schedule stays on its connection across list, chat and cover
   } finally { await h.close(); }
 });
 
+test('only a failed open says the conversation could not load', async () => {
+  const h = await harness();
+  try {
+    // A page that has not started opening (here: covered) is not a failure.
+    await h.render(['t_two', 't_one']);
+    assert.equal(h.timelines.get('t_two').locatingMessage, undefined, 'no failure text before an open runs');
+    assert.equal(h.timelines.get('t_two').locatingBusy, true, 'it shows loading instead');
+    const client = h.api.client, open = client.openConversation;
+    client.openConversation = async () => { throw new Error('synthetic open failure'); };
+    await h.render(['t_one', 't_two']);
+    assert.equal(h.timelines.get('t_two').locatingMessage, 'Could not load this conversation. Try opening it again.');
+    assert.equal(h.timelines.get('t_two').locatingBusy, false);
+    client.openConversation = open;
+  } finally { await h.close(); }
+});
+
 test('a new session keeps one timeline when the server confirms it', async () => {
   const h = await harness();
   try {

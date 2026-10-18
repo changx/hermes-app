@@ -123,6 +123,11 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   const renderAttachments = useCallback((row: TimelineRow) => row.attachments?.length
     ? <MessageAttachments files={attachmentFiles} attachments={row.attachments} gallery={gallery} /> : null, [attachmentFiles, gallery]);
   const [located, setLocated] = useState(false);
+  // Only a finished open that showed no content is a failure. Not located and
+  // not busy also covers an open that has not started yet (the first render,
+  // a new session just confirmed) or was interrupted; that is still loading.
+  const [openFailed, setOpenFailed] = useState(false);
+  const awaitingOpen = !located && !historyBusy && !openFailed;
   const [anchor, setAnchor] = useState(targetRef);
   const timelineRef = useRef<ChatTimelineHandle>(null);
   // Entry loads the complete transcript once; the timeline renders every row.
@@ -171,7 +176,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   const openThread = async (id: string, requestedRef: number | undefined) => {
     if (!client || !focusedRef.current || !appActive.current) return;
     const opening = ++openingRef.current;
-    setHistoryBusy(true); setLocated(false);
+    setHistoryBusy(true); setLocated(false); setOpenFailed(false);
     let contentShown = false;
     const releaseContent = () => {
       if (contentShown || !focusedRef.current || !appActive.current || opening !== openingRef.current || client.currentThreadId !== id) return;
@@ -183,7 +188,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       await openingTask;
       releaseContent();
     } catch { if (focusedRef.current && opening === openingRef.current) setError(contentShown ? 'Could not refresh conversation status. It will resume when the connection returns.' : requestedRef === undefined ? 'Could not open this conversation. It will resume when the connection returns.' : 'Could not open the source message. It may no longer be available.'); }
-    finally { if (!contentShown && focusedRef.current && opening === openingRef.current) setHistoryBusy(false); }
+    finally { if (!contentShown && focusedRef.current && opening === openingRef.current) { setHistoryBusy(false); setOpenFailed(true); } }
   };
   const showLatest = () => run(async () => { setAnchor(undefined); await openThread(threadId, undefined); if (focusedRef.current) timelineRef.current?.followLatest(); });
   const send = () => run(async () => {
@@ -365,7 +370,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   if (anchor !== undefined && !located) return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...headerTitle(selected.title || 'Conversation', selected.project_id) }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    {historyBusy ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
+    {historyBusy || awaitingOpen ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
   </View>;
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...headerTitle(selected.title || 'Conversation', selected.project_id),
@@ -375,8 +380,8 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     {accountClient?.supportsSessionLabels && withoutTodo(selected.markers).length > 0 && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={withoutTodo(selected.markers)} /></View>}
     <ChatTimeline key="timeline" ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
-      locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
-      onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}
+      locatingMessage={!located && !historyBusy && openFailed ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
+      onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy || awaitingOpen}
       position={entryPosition}
       onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send}
