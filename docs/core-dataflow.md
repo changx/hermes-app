@@ -74,6 +74,8 @@ watch 确认先于初次正文读取。读取期间的提示触发再次核对�
 - 第一条消息的持久 ACK 可能早于 watch 确认。只要页面正在打开或已打开这个 Thread，SDK 就按 ACK 的 `ref_seq` 插入这条输入；outbox 随后删除本地原文，消息不会消失。历史读取按 `ref_seq` 合并，服务端行覆盖这条回显。
 - 页面只在打开请求结束且没有显示内容时，才显示“Could not load this conversation”。打开尚未开始（首次渲染、刚确认的新 session）或被失焦、切后台中断时，显示加载状态。
 
+发布记录（2026-10-17）：App `d564068`，标签 `v0.1.97`（修复提交 `b2210ca`、`acaa95c`）。候选检查：client-check 91/91、移动端 219 通过 0 失败（1 跳过）、桌面 `desktop:check` 237/237（Linux，xvfb）、iOS/Android 导出通过。Mac mini 构建 237 项测试 0 失败（51 跳过）、audit 0；下载的 `Hermes-0.1.97-macOS-arm64.zip` 校验和通过，Info.plist 版本 0.1.97，ASAR `dist/` 35 个文件与本地构建逐字节一致。Expo 测试入口已重启（PID 1526854）；公网 iOS/Android manifest 200、SDK 57，launchAsset 200，`"timeline")` 0→2、`watchReady` 18→17，并含两条新注释。Gateway PID 755805 与插件哈希不变，未改插件或核心。回滚分支 `rollback/new-thread-continuity-before-release`（`f6fd042`）。真机（iPhone、Mac）验收未做。
+
 刚由本客户端创建的 Thread 第一次打开时，`openConversation` 立即报告正文就绪，不等待 watch 确认和历史读取；这两步仍在后台执行并核对。桌面主进程把 HTTP 空闲连接保持 60 秒（undici 默认 4 秒）。没有这个设置时，用户停下来输入后，下一个请求需要重新进行 TLS 握手（北京到 `hermes-jamie.tuly.space` 约 0.5–1.2 秒，复用连接约 0.2 秒）。
 
 ## 历史与消息身份
