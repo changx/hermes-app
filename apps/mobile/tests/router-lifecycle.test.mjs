@@ -234,6 +234,23 @@ test('account retry schedule stays on its connection across list, chat and cover
   } finally { await h.close(); }
 });
 
+test('a new session keeps one timeline when the server confirms it', async () => {
+  const h = await harness();
+  try {
+    const create = { channelId: 'p_one', title: 'New topic' };
+    await h.outbox([{ connectionId: 'connection-a', threadId: 't_new', clientMessageId: 'mob_first', text: 'first', status: 'sending', create }]);
+    await h.render('t_new');
+    const scene = h.scenes.get('t_new');
+    assert.ok(scene, 'the starting page shows the saved message');
+    assert.equal(h.timelines.get('t_new').rows.at(-1).text, 'first');
+    h.api.client.threads.set('t_new', { id: 't_new', project_id: 'p_one', title: 'New topic', archived: false });
+    await h.revision();
+    assert.equal(h.scenes.get('t_new'), scene, 'the confirmed session reuses the same timeline');
+    assert.equal(scene.disposed, undefined, 'the timeline is not unmounted (it would hide and reposition)');
+    assert.equal(h.timelines.get('t_new').rows.at(-1).text, 'first');
+  } finally { await h.close(); }
+});
+
 test('removing diagnostics preserves content release before execution status is ready', async () => {
   const h = await harness({ holdStatus:true });
   try {

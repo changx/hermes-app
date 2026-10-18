@@ -256,6 +256,8 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
 
   // A new session whose first message is saved but whose create is not confirmed yet:
   // show it at once from the outbox record; the normal open runs once the server has it.
+  // Both views give ChatTimeline the same key, so the confirmation keeps the same
+  // timeline. A remount would hide it until it is positioned again (a visible flash).
   const starting = accountClient?.threads.has(threadId) ? undefined : records.find(r => r.threadId === threadId && r.create)?.create;
   const ready = located || !!starting;
   const messages = client.messages.get(threadId) ?? EMPTY_MESSAGES;
@@ -348,7 +350,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   if (starting && client.channels.has(starting.channelId)) return <View style={styles.flex}>
     <Stack.Screen options={{ title: starting.title, ...headerTitle(starting.title, starting.channelId), headerRight: undefined }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
-    <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows} position={entryPosition} onVisibleRefs={onVisibleRefs}
+    <ChatTimeline key="timeline" ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows} position={entryPosition} onVisibleRefs={onVisibleRefs}
       text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={false} name={agentName.name} />}
       receipts={receipts} interactions={interactions} answers={answers}
@@ -371,7 +373,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
         todo={accountClient?.supportsSessionLabels ? { on: todo, busy: todoBusy || status !== 'online', onPress: toggleTodo } : undefined} /> }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && withoutTodo(selected.markers).length > 0 && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={withoutTodo(selected.markers)} /></View>}
-    <ChatTimeline ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
+    <ChatTimeline key="timeline" ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
       targetRef={located ? anchor : undefined} onLatest={anchor === undefined ? undefined : showLatest}
       locatingMessage={!located && !historyBusy ? client.supportsLatest ? 'Could not load this conversation. Try opening it again.' : 'Could not open this yet. It will resume when the connection returns.' : undefined}
       onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy}

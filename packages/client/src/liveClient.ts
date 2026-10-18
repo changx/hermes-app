@@ -271,10 +271,13 @@ export class LiveSessionClient extends HermesClient {
 
 
   /** A matching durable ACK is sufficient to retire the local sending queue.
-   * Keep an accepted echo only while this exact conversation is open. */
+   * Keep an accepted echo only while this exact conversation is open or opening:
+   * a new Thread's first send can be acknowledged before its watch, and the
+   * outbox copy is gone then. History merges by ref_seq, so the server row
+   * replaces this echo when it arrives. */
   rememberAcceptedInput(threadId:string,clientId:string,text:string,attachments:import('./index').Attachment[],createdAt:number|undefined,receipt:Receipt):void{
     if(receipt.thread_id!==threadId||receipt.client_message_id!==clientId||receipt.durable!==true||!Number.isSafeInteger(receipt.ref_seq)||receipt.ref_seq!<=0)throw new ProtocolError('accepted input identity mismatch');
-    if(this.wanted!==threadId||!this.watchReady)return;
+    if(this.wanted!==threadId)return;
     const rows=this.messages.get(threadId)||[];
     if(!rows.some(row=>row.client_message_id===clientId)){
       this.messages.set(threadId,[...rows,{id:'receipt:'+receipt.id,ref_seq:receipt.ref_seq!,role:'user',text,client_message_id:clientId,receipt_id:receipt.id,attachments,...(createdAt===undefined?{}:{created_at:createdAt})}].sort((a,b)=>a.ref_seq-b.ref_seq));

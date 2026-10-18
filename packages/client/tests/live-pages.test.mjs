@@ -123,6 +123,20 @@ test('accepted echo enters the exact live page only; removed page has no transcr
   }finally{f.sdk.close();}
 });
 
+test('accepted echo enters an opening page before its watch is acknowledged',async()=>{
+  const f=fixture();try{
+    await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
+    f.holdWatch(true);
+    const a=f.sdk.acquirePage('A');void a.openConversation('A').catch(()=>{});
+    await until(()=>f.watch('A'));
+    // A new Thread's first send can be acknowledged before the watch: the
+    // outbox retires its copy then, so the open page must keep the input.
+    const receipt={id:'r',thread_id:'A',client_message_id:'input',durable:true,ref_seq:9,state:'queued'};
+    f.sdk.rememberAcceptedInput('A','input','original',[],1,receipt);
+    assert.equal(a.messages.get('A')?.at(-1)?.client_message_id,'input');
+  }finally{f.sdk.close();}
+});
+
 test('a Thread this client just created shows at once; the watch and history read still follow',async()=>{
   const f=fixture();try{
     await f.sdk.createThread('p','New topic','th_fresh');
