@@ -3,7 +3,8 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HeaderIcon, Notice, useConnections } from '../../App';
+import { Notice, useConnections } from '../../App';
+import { NewFab } from '../../NewFab';
 import { useSessionMenu } from '../../useSessionMenu';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
@@ -52,9 +53,7 @@ export default function Recents() {
   const clientOf = (row: RecentRow) => connections.find(c => c.slot === row.slot)?.client ?? null;
   if (!ready) return <Notice text="" />;
   return <SafeAreaView style={s.fill} edges={['top', 'left', 'right']}>
-    <TabHeader title="Recents">
-      <HeaderIcon label="New conversation" ios="square.and.pencil" android="edit_square" onPress={() => router.push('/new-thread')} />
-    </TabHeader>
+    <TabHeader title="Recents" />
     {!!listError && <Text accessibilityRole="alert" style={s.error}>{listError}</Text>}
     {!!menu.error && <Text accessibilityRole="alert" style={s.error}>{menu.error}</Text>}
     <View style={s.searchArea}>
@@ -95,6 +94,7 @@ export default function Recents() {
         </Pressable>;
       }}
       ListEmptyComponent={loading ? null : <Text style={s.empty}>{searching ? 'No matching conversations' : 'Conversations you take part in during the last 72 hours appear here.'}</Text>} />
+    <NewFab label="New conversation" onPress={() => router.push('/new-thread')} />
   </SafeAreaView>;
 }
 

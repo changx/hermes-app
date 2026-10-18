@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import React from 'react';
 import { create, act } from 'react-test-renderer';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { quickLabels, recentRows, searchRecentRows } from '../src/recentRows.ts';
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -51,6 +52,7 @@ const mocks = {
   '../../App': `export const HeaderIcon='HeaderIcon',Notice='Notice'; export const useConnections=()=>({ready:true,connections:globalThis.__recentsTest.connections,revision:1,listError:''});`,
   './App': `export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}});`,
   '../../FontSize': `export const Text='Text',TextInput='TextInput';`,
+  './FontSize': `export const Text='Text';`,
   '../../MessageTime': `export const MessageTime='MessageTime';`,
   '../../TabHeader': `export const TabHeader=p=>require('react').createElement('TabHeader',null,p.children);`,
   '../../TodoFlag': `export const TodoFlag='TodoFlag';`,
@@ -63,7 +65,7 @@ const bundle = await build({ entryPoints: [new URL('../src/app/(tabs)/index.tsx'
 const mod = { exports: {} }; new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(mod, mod.exports, require);
 const Recents = mod.exports.default;
 
-const cards = root => root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityLabel && n.props.onPress && n.props.accessibilityRole === 'button' && !/label|Clear/.test(n.props.accessibilityLabel)).map(n => n.props.accessibilityLabel.split(',')[0]);
+const cards = root => root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityLabel && n.props.onPress && n.props.accessibilityRole === 'button' && !/label|Clear|^New conversation$/.test(n.props.accessibilityLabel)).map(n => n.props.accessibilityLabel.split(',')[0]);
 const quick = root => root.root.findAll(n => n.type === 'Pressable' && /label .* from search$|^Search label /.test(n.props.accessibilityLabel ?? ''));
 const press = async node => act(async () => { node.props.onPress(); });
 
@@ -168,4 +170,23 @@ test('Recents tab: long press opens the Session menu; each action runs on the ro
     await act(async () => { button(state.alerts.at(-1), 'Archive').onPress(); });
     assert.equal(root.root.findAll(n => n.type === 'Text' && n.props.accessibilityRole === 'alert').map(n => n.props.children).join(), 'Could not complete that action. Try again later.');
   } finally { await act(async () => root.unmount()); }
+});
+
+test('Recents tab: New conversation is the same floating button as New channel', async () => {
+  state.connections = sources(); state.pushed = [];
+  let root; await act(async () => { root = create(React.createElement(Recents)); });
+  try {
+    assert.equal(root.root.findAll(n => n.type === 'HeaderIcon').length, 0, 'no header icon');
+    const fab = root.root.find(n => n.type === 'Pressable' && n.props.accessibilityLabel === 'New conversation');
+    const [base, place] = fab.props.style;
+    assert.deepEqual({ position: base.position, right: base.right, width: base.width, height: base.height, bottom: place.bottom }, { position: 'absolute', right: 20, width: 58, height: 58, bottom: 18 + 34 });
+    await press(fab);
+    assert.deepEqual(state.pushed.at(-1), '/new-thread');
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('Channels and Recents share the NewFab component', () => {
+  const read = path => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
+  assert.match(read('ProjectList.tsx'), /<NewFab label="New channel" onPress=\{onNewChannel\} \/>/);
+  assert.match(read('app/(tabs)/index.tsx'), /<NewFab label="New conversation" onPress=\{\(\) => router\.push\('\/new-thread'\)\} \/>/);
 });

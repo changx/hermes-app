@@ -6,6 +6,7 @@ import { unreadCountDescription, unreadCountLabel } from '../../../packages/clie
 import type { ConnectionRuntime } from './connections';
 import { projectRows } from './projectRows';
 import { tabListBottomPadding } from './tabInsets';
+import { NewFab } from './NewFab';
 
 export function ProjectList({ connections, revision, onProject, onNewChannel, onConnections }: {
   connections: readonly ConnectionRuntime[]; revision: number;
@@ -33,7 +34,7 @@ export function ProjectList({ connections, revision, onProject, onNewChannel, on
           <Text numberOfLines={1} style={s.pendingName}>{row.connectionName}</Text><Text numberOfLines={1} style={s.pendingText}>{row.text}</Text>
         </Pressable>)}</View> : null}
       ListEmptyComponent={pending.length ? null : <Text style={s.empty}>Create a channel to keep related topics together.</Text>} />
-    <Pressable accessibilityRole="button" accessibilityLabel="New channel" onPress={onNewChannel} style={[s.fab, { bottom: 18 + insets.bottom }]}><Text style={s.fabText}>＋</Text></Pressable>
+    <NewFab label="New channel" onPress={onNewChannel} />
   </View>;
 }
 
@@ -49,6 +50,4 @@ const s = StyleSheet.create({
   pending: { marginTop: 8, gap: 4 }, pendingRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6 },
   pendingName: { fontSize: 14, fontWeight: '600', color: '#42566f', flexShrink: 1 }, pendingText: { fontSize: 13, color: '#607187', flexShrink: 1 },
   empty: { color: '#65758b', textAlign: 'center', padding: 24 },
-  fab: { position: 'absolute', right: 20, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2960ad', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
-  fabText: { color: '#fff', fontSize: 32, lineHeight: 36 },
 });
