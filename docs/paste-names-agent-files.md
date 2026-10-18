@@ -26,6 +26,13 @@ Status: released 2026-10-16 except the desktop package. Plugin 0.2.39 installed 
 - Shared client: `downloadFile(threadId, id, destination, signal, onProgress)`, forwarded by `LiveSessionClient` and `LivePageClient`. Desktop main sends at most about 5 updates a second, only to the window that asked.
 - Not included: a Cancel button for a running download, and upload progress in the composer.
 
+#### 发布结果（2026-10-17）
+- Desktop v0.1.96：commit `da91140`，tag run `39083579524` success（CI 237 tests, 186 pass, 0 fail, 51 skipped Electron env tests; audit 0）。Zip `sha256sum -c` OK，Info.plist 0.1.96，ASAR 中 `dist/main/index.cjs`、`dist/preload/index.cjs`、`dist/renderer/index.js`、`styles.css` 与本地已验证构建逐字节相同。
+- Expo：runtime checkout `2ef92ef` → `da91140`，Expo PID 2883696 → 1374009。iOS/Android manifest 200，SDK 57.0.0，launchAsset 200，标记 `progressLabel`=5、`createDownloadTask`=3（两平台；发布前 runtime 源码为 0）。Gateway PID 755805 不变，插件未改。
+- 候选检查：client 90/90，mobile 218/218，desktop 237/237（含 Chrome/Electron env），iOS/Android export 通过；公网真实路径 150 MB 下载 3.4 s，sha256 一致，进度 0→100%。
+- 待 Jamie 设备验收：Mac 上 Save/Open 进度条和 Finder 不显示 `.partial`；iPhone 上下载百分比。
+- 证据：`~/.hermes/profiles/jamie/workspace/hermes-app/20261017-download-progress/`。回滚：桌面重装 v0.1.95；手机 `git revert 2e42696` 后重启 `hermes-app-expo.service`。
+
 ## Implementation
 - Plugin `adapter.py`:
   - `send_document` copies the file in a worker thread (`_copy_outbound`), with no size cap. It refuses the copy when less than 1 GiB of disk would stay free (`OUTBOUND_FREE_RESERVE`).
