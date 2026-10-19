@@ -1,5 +1,7 @@
 # Dismiss keyboard when leaving foreground
 
+> Withdrawn (2026-10-18). Jamie cancelled this design. The App no longer calls `Keyboard.dismiss()` when it leaves foreground; the keyboard and input focus stay as iOS/Android keep them. The composer dock still resets after a missed hide ([mobile-composer-tap-collapse.md](mobile-composer-tap-collapse.md)). The text below is the historical record.
+
 Jamie chose the simple workaround: end input when the App leaves foreground instead of retaining third-party keyboards or expanding keyboard-position recovery. Authorized scope is the existing mobile Expo test entry; independent signed packages and the original device defect acceptance remain separate.
 
 ## Minimal change
