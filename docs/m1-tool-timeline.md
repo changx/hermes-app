@@ -35,7 +35,7 @@ Jamie 随后明确授权合并部署。`05faf5d` 已快进到 `main`，插件归
 Jamie 真机反馈：自制复制 Modal 会打断输入焦点、收起键盘，按点击时屏幕坐标定位的工具条在布局改变后错位，且与正文系统菜单样式不一致。本轮改为与正文相同的原生 Text selectable 长按复制，删除工具行 Pressable、自制 Modal、屏幕坐标与工具条样式；不新增原生依赖或模拟系统菜单。
 
 - 工具标签/网页地址与终端命令均为原生可复制文字，保留一行/两行省略和紧凑样式；仅绑定服务端安全 label/detail。系统复制行为以平台为准，不再提供自制的整条工具拼接复制。
-- 时间线使用 keyboardShouldPersistTaps="always"，防止非按钮文字点击被 ScrollView 默认策略用来收起输入键盘；原有 iOS interactive/Android on-drag 滑动收键盘行为保留。不主动 blur/focus、不重挂输入框、不添加延迟恢复焦点。
+- 时间线使用 keyboardShouldPersistTaps="always"，防止非按钮文字点击被 ScrollView 默认策略用来收起输入键盘；原有 iOS interactive/Android on-drag 滑动收键盘行为保留。不主动 blur/focus、不重挂输入框、不添加延迟恢复焦点。（已被取代：Jamie 要求点击 session 页面收起输入框，时间线改为 `handled`，见 [mobile-composer-tap-collapse.md](mobile-composer-tap-collapse.md)。）
 - 工具触摸只清理正文双击候选，不抢 responder；普通正文双击阅读、代码复制和全屏内长按复制保留。系统菜单由原生文字视图定位，不保存 pageX/pageY。
 - 验收：生产组件检查 selectable、安全全文、无工具弹层/焦点动作和误双击；时间线点击策略与原有键盘/滚动回归；手机全套、TypeScript、双平台导出及开发入口资源读回。模拟环境不能证明 iPhone 系统菜单的实际焦点和滚动跟随，真机反馈单列。
 

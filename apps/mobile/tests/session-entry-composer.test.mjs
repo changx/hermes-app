@@ -12,7 +12,7 @@ globalThis.requestAnimationFrame = fn => { const id = ++state.next; state.frames
 globalThis.cancelAnimationFrame = id => state.frames.delete(id);
 const flush = () => { const jobs = [...state.frames.values()]; state.frames.clear(); jobs.forEach(fn => fn()); };
 const mocks = {
-  'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:()=>({remove(){}})}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
+  'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:(e,f)=>{s.appState=f;return {remove(){if(s.appState===f)s.appState=undefined;}}}}; export const Keyboard={addListener:(e,f)=>{(s.keyboardEvents||(s.keyboardEvents={}))[e]=f;return {remove(){if(s.keyboardEvents[e]===f)delete s.keyboardEvents[e];}}}}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
   'react-native-keyboard-controller': `import React from 'react'; export const KeyboardChatScrollView=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o),scrollTo:o=>globalThis.__entryTest.commands.push({to:o.y,animated:o.animated})}));return React.createElement('ChatScroll',p,p.children);}); export const KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
   'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade,easing:()=>fade}; export const FadeIn=fade,LinearTransition=fade,Easing={out:x=>x,cubic:'cubic'},withTiming=x=>x,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
@@ -159,9 +159,9 @@ test('viewport and controller inset changes follow; keyboard motion defers the c
   const root=await mount({rows});await measure(root);
   await act(async()=>list(root).props.onLayout({nativeEvent:{layout:{height:400}}}));flush();
   assert.deepEqual(state.commands,[{animated:false}]);state.commands=[];
-  state.keyboard.onStart();list(root).props.onContentInsetChange({bottom:300});flush();
+  state.keyboard.onStart({height:300});list(root).props.onContentInsetChange({bottom:300});flush();
   assert.deepEqual(state.commands,[]);
-  state.keyboard.onEnd();flush();assert.deepEqual(state.commands,[{animated:false}]);
+  state.keyboard.onEnd({height:300});flush();assert.deepEqual(state.commands,[{animated:false}]);
   await act(async()=>root.unmount());
 });
 test('send while reading resumes follow after optimistic row commit, even with unchanged extent',async()=>{
@@ -294,5 +294,63 @@ test('Stop is an icon + label pill right after the running indicator, not pinned
     assert.equal(pill.borderRadius, pill.height / 2); assert.equal(pill.backgroundColor, undefined);
     await act(async () => stop.props.onPress());
     assert.equal(stops, 1);
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('a tap on the session page ends input; buttons and links keep it', async () => {
+  const root = await mount({rows});
+  try { assert.equal(list(root).props.keyboardShouldPersistTaps, 'handled'); }
+  finally { await act(async () => root.unmount()); }
+});
+
+test('dock returns to the bottom after the keyboard hides, even when hide events are lost', async () => {
+  const root = await mount({rows});
+  const dock = () => root.root.findByProps({testID:'composer-dock'}).props.enabled;
+  const input = () => root.root.findByProps({accessibilityLabel:'Message text'});
+  const card = () => root.root.findByProps({testID:'composer-tools'}).props.style;
+  const expanded = () => ![card()].flat(Infinity).some(x => x && x.position === 'absolute');
+  try {
+    assert.equal(dock(), false, 'no input: dock sits at the bottom');
+    await act(async () => input().props.onFocus());
+    assert.equal(dock(), true); assert.equal(expanded(), true);
+    // Keyboard hidden while the input still has focus (hardware keyboard, Android back): keep following.
+    await act(async () => state.keyboard.onEnd({height:0}));
+    assert.equal(dock(), true);
+    // Blur starts the hide animation: the dock keeps following until the hide settles.
+    await act(async () => input().props.onBlur());
+    assert.equal(dock(), true); assert.equal(expanded(), false);
+    await act(async () => state.keyboard.onEnd({height:0}));
+    assert.equal(dock(), false, 'controller hide settles the dock');
+    // Lost controller events: RN keyboardDidHide alone releases the dock.
+    await act(async () => input().props.onFocus()); await act(async () => input().props.onBlur());
+    assert.equal(dock(), true);
+    await act(async () => state.keyboardEvents.keyboardDidHide());
+    assert.equal(dock(), false, 'RN hide releases the dock');
+    // Both hide paths lost while the App was away: returning to foreground releases it.
+    await act(async () => input().props.onFocus()); await act(async () => state.appState('inactive')); await act(async () => input().props.onBlur());
+    assert.equal(dock(), true);
+    await act(async () => state.appState('active'));
+    assert.equal(dock(), false, 'foreground return releases the dock');
+    // A keyboard that starts opening always takes the dock with it.
+    await act(async () => state.keyboard.onStart({height:300}));
+    assert.equal(dock(), true);
+    await act(async () => state.keyboard.onEnd({height:0}));
+    assert.equal(dock(), false);
+  } finally { await act(async () => root.unmount()); }
+  assert.equal(state.keyboardEvents.keyboardDidHide, undefined, 'listener removed on unmount');
+});
+
+test('a focused answer field holds the dock; a removed request releases it', async () => {
+  const clarify = {id:'c1',thread_id:'t',receipt_id:'r',state:'pending',kind:'clarify',prompt:'Which?',choices:[]};
+  const root = await mount({rows, interactions:[clarify]});
+  const dock = () => root.root.findByProps({testID:'composer-dock'}).props.enabled;
+  try {
+    await act(async () => root.root.findByProps({accessibilityLabel:'Your answer'}).props.onFocus());
+    await act(async () => state.keyboardEvents.keyboardDidHide());
+    assert.equal(dock(), true, 'focused answer keeps the dock');
+    // The request settles and its field unmounts without a blur.
+    await act(async () => root.update(React.createElement(ChatTimeline, {...defaults, rows, interactions:[]})));
+    await act(async () => state.keyboard.onEnd({height:0}));
+    assert.equal(dock(), false);
   } finally { await act(async () => root.unmount()); }
 });

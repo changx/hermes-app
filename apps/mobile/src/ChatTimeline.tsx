@@ -1,5 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text, TextInput, useFontSize } from './FontSize';
 import type { LayoutChangeEvent } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
@@ -155,6 +155,24 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const composerID = `composer-${props.threadId}`;
   const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
   const [inputFocused, setInputFocused] = useState(false);
+  // The dock follows the keyboard only while one of its inputs owns it. If
+  // keyboard-controller misses a hide (for example Keyboard.dismiss while the
+  // App leaves foreground), its height keeps the open value and the dock would
+  // stay where the keyboard was. Once no dock input has focus, any settled-hide
+  // signal puts the dock back at the bottom.
+  const focusedDockInputs = useRef(new Set<string>());
+  const [dockFollowsKeyboard, setDockFollowsKeyboard] = useState(true);
+  const dockInputFocus = useCallback((id: string, focused: boolean) => {
+    if (focused) { focusedDockInputs.current.add(id); setDockFollowsKeyboard(true); }
+    else focusedDockInputs.current.delete(id);
+  }, []);
+  const releaseDock = useCallback(() => { if (!focusedDockInputs.current.size) setDockFollowsKeyboard(false); }, []);
+  const holdDock = useCallback(() => setDockFollowsKeyboard(true), []);
+  // A settled or expired request can remove its focused answer field without a blur.
+  useEffect(() => {
+    const live = new Set(props.interactions.map(i => `answer:${i.id}`));
+    for (const id of focusedDockInputs.current) if (id.startsWith('answer:') && !live.has(id)) focusedDockInputs.current.delete(id);
+  }, [props.interactions]);
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
 
@@ -242,10 +260,12 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     if (following.current) scheduleFollow();
   }, [scheduleFollow]);
   useKeyboardHandler({
-    onStart: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
+    onStart: e => { 'worklet'; if (e.height > 0) runOnJS(holdDock)(); if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
     onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
-    onEnd: () => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); }
-  }, [setKeyboardMoving]);
+    onEnd: e => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); if (e.height <= 0) runOnJS(releaseDock)(); }
+  }, [setKeyboardMoving, holdDock, releaseDock]);
+  // RN's own hide event is a second, independent signal for the same release.
+  useEffect(() => { const sub = Keyboard.addListener('keyboardDidHide', releaseDock); return () => sub.remove(); }, [releaseDock]);
   useEffect(() => {
     let mounted = true;
     active.current = props.active;
@@ -253,7 +273,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
-      if (state !== 'active') {
+      // Leaving foreground dismisses the keyboard; its hide events can be lost.
+      if (state === 'active') releaseDock();
+      else {
         if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }
         dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
         keyboardMoving.current = false; nativeMoving.value = false;
@@ -263,7 +285,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     return () => { mounted = false; active.current = false; sub.remove(); app.remove(); if (frame.current !== null) cancelAnimationFrame(frame.current); };
   }, []);
   useEffect(() => {
-    if (props.active) return;
+    // A page returning to view may have missed a hide while it was covered.
+    if (props.active) { releaseDock(); return; }
     dragging.current = false; gestureMomentum.current = false; momentumEligible.current = false;
     if (frame.current !== null) {
       cancelAnimationFrame(frame.current);
@@ -315,7 +338,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     // Fabric iOS: reset empty measurement without fixing font height.
     // Android setLines also fixes the widget's height, so leave it unset there.
     numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
-    onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
+    onFocus={() => { dockInputFocus('composer', true); setInputFocused(true); }} onBlur={() => { dockInputFocus('composer', false); setInputFocused(false); }}
     style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />;
   const composerParts: ComposerParts = { input: composerInputNode, expanded: inputFocused, onPressField: () => composerInput.current?.focus(),
     send: <ComposerSendButton onPress={props.onSend} disabled={props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount)} busy={props.busy} /> };
@@ -326,7 +349,9 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         // RN 0.81+ otherwise loses drag touches in the contentInset/blank area.
         applyWorkaroundForContentInsetHitTestBug
         offset={bottom} keyboardLiftBehavior="whenAtEnd" onContentInsetChange={onContentInsetChange}
-        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="always" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
+        // "handled": a tap on blank space or plain text ends input and collapses
+        // the composer; pressable controls (buttons, links, copy) keep the keyboard.
+        contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} alwaysBounceVertical={Platform.OS === 'ios'}
         onLayout={e => {
           if (!active.current) return;
           viewport.current = e.nativeEvent.layout.height;
@@ -378,7 +403,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </KeyboardChatScrollView>
 
     </BlurTargetView>
-    <KeyboardStickyView pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
+    <KeyboardStickyView testID="composer-dock" enabled={dockFollowsKeyboard} pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
       if (!active.current) return;
       const height = e.nativeEvent.layout.height;
       if (dockHeight.current !== height) {
@@ -397,7 +422,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       <Text style={styles.controlText}>{i.kind === 'approval' ? 'Please confirm' : 'Please answer'} · {i.prompt}</Text>
       <View style={styles.controlRow}>{i.choices.map(choice => <React.Fragment key={choice}>{action(choice, () => props.onAnswer(i, choice), props.busy, true)}</React.Fragment>)}</View>
       {i.kind === 'clarify' && i.choices.length === 0 && <View style={styles.controlRow}>
-        <TextInput accessibilityLabel="Your answer" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)} />
+        <TextInput accessibilityLabel="Your answer" style={[styles.input, styles.flex]} value={props.answers[i.id] || ''} onChangeText={value => props.onAnswerText(i.id, value)}
+          onFocus={() => dockInputFocus(`answer:${i.id}`, true)} onBlur={() => dockInputFocus(`answer:${i.id}`, false)} />
         {action('Submit answer', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
       </View>}
     </View>)}</ScrollView>}
