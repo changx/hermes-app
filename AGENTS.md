@@ -98,7 +98,7 @@
 - [docs/mobile-battery.md](docs/mobile-battery.md)
 - [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)
 - [docs/mobile-tabs-recents.md](docs/mobile-tabs-recents.md)
-- [docs/mobile-composer-tap-collapse.md](docs/mobile-composer-tap-collapse.md)（点击 session 页面收起输入框；键盘收起后输入区复位）
+- [docs/mobile-composer-tap-collapse.md](docs/mobile-composer-tap-collapse.md)（点击 session 页面收起输入框；键盘收起后输入区复位；切后台不再收起键盘）
 
 ### 桌面应用
 

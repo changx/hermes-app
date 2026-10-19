@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Keyboard, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
@@ -239,8 +239,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener('change', state => {
       const next = state === 'active';
       appActive.current = next;
-      // End native input before background keyboard extensions can resize it.
-      if (foreground && !next) Keyboard.dismiss();
       if (next && !foreground) activity.current?.note();
       for (const runtime of runtimes.current.values()) {
         if (!next) {

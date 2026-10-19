@@ -13,7 +13,7 @@ The composer expands when its input has focus and collapses when the input loses
 
 - the user drags the message list down (iOS interactive dismiss, Android on-drag; unchanged);
 - the user taps a blank area or plain message text on the session page (new);
-- the App leaves foreground ([dismiss keyboard on inactive](m1-dismiss-keyboard-on-inactive.md); unchanged);
+- the App leaves foreground: no longer (the [dismiss keyboard on inactive](m1-dismiss-keyboard-on-inactive.md) design is withdrawn; the system decides);
 - the page closes (native Stack `keyboardHandlingEnabled`; unchanged).
 
 A tap on a pressable control keeps the keyboard open and the composer expanded. These controls include buttons, links, the copy button, code blocks (tap to copy), images and the work toggle. Tool lines and table text are selectable text, not pressable controls; a tap on them can collapse the composer like plain text.
@@ -24,7 +24,7 @@ RN dismisses on tap only when it saw a software keyboard open (`_keyboardIsDismi
 
 ## Dock reset
 
-The dock is the `KeyboardStickyView` that holds the jump-to-latest button, requests, the running row and the composer. keyboard-controller 1.21.9 moves it by the keyboard height shared value. If the library misses a hide event, the height keeps the open value and the dock stays above the bottom. One known case: `Keyboard.dismiss()` runs while the App leaves foreground, and the hide happens while the App is not active. Similar upstream reports: [#1411](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1411), [#1526](https://github.com/kirillzyusko/react-native-keyboard-controller/pull/1526) (Android fix; not in 1.21.9). The exact iPhone event order for Jamie's report is not captured. This fix does not depend on one trigger.
+The dock is the `KeyboardStickyView` that holds the jump-to-latest button, requests, the running row and the composer. keyboard-controller 1.21.9 moves it by the keyboard height shared value. If the library misses a hide event, the height keeps the open value and the dock stays above the bottom. One known case was `Keyboard.dismiss()` running while the App left foreground (now withdrawn); a system keyboard hide while the App is not active has the same effect. Similar upstream reports: [#1411](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1411), [#1526](https://github.com/kirillzyusko/react-native-keyboard-controller/pull/1526) (Android fix; not in 1.21.9). The exact iPhone event order for Jamie's report is not captured. This fix does not depend on one trigger.
 
 The dock now uses the library `enabled` prop:
 
@@ -46,3 +46,9 @@ After a normal hide, the released position equals the followed position (both 0)
 ## Development release
 
 Released `8743139` (merge `8b7b67a`) to `exps://agent.tuly.space`. The lockfile did not change. Only `hermes-app-expo.service` was restarted (PID 3117825 → 3306042, 18:57:29 PDT). The `hermes-gateway.service` PID 1953184 and the hermes-app-dev plugin hash did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each exact launchAsset returns HTTP 200 and contains the new markers (`composer-dock`, `focusedDockInputs`, and the new hide-signal source comment). Evidence: private `workspace/hermes-app/2026-10-18-composer-tap-collapse/`. Rollback baseline: `62e192c` (branch `rollback/composer-tap-collapse-before-release`); roll back with `git revert -m 1 8b7b67a` and an Expo restart only. iPhone acceptance is pending.
+
+## Keyboard kept when leaving foreground
+
+Jamie cancelled the [dismiss keyboard on inactive](m1-dismiss-keyboard-on-inactive.md) design. `connections.tsx` no longer calls `Keyboard.dismiss()` when the App leaves foreground, so the input keeps its focus and the composer stays expanded when the user returns, unless the system closes the keyboard. Connection pause and resume are unchanged. `tests/router-lifecycle.test.mjs` asserts that leaving foreground makes no dismiss call. The dock reset in this document stays: a hide that the system does while the App is away still releases the dock on return.
+
+Risk: that design was a workaround for a third-party keyboard that sent wrong size events in background and made form pages grow. Form pages now use RN `KeyboardAvoidingView` padding only while focused and visible ([router keyboard](m1-router-keyboard.md)), but that third-party keyboard case is not tested again here. Report it if it comes back.

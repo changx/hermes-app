@@ -156,8 +156,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
   const [inputFocused, setInputFocused] = useState(false);
   // The dock follows the keyboard only while one of its inputs owns it. If
-  // keyboard-controller misses a hide (for example Keyboard.dismiss while the
-  // App leaves foreground), its height keeps the open value and the dock would
+  // keyboard-controller misses a hide (for example one that happens while the
+  // App is not in foreground), its height keeps the open value and the dock would
   // stay where the keyboard was. Once no dock input has focus, any settled-hide
   // signal puts the dock back at the bottom.
   const focusedDockInputs = useRef(new Set<string>());
@@ -273,7 +273,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
-      // Leaving foreground dismisses the keyboard; its hide events can be lost.
+      // A keyboard hide while the App is away can be lost.
       if (state === 'active') releaseDock();
       else {
         if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null; }

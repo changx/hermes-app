@@ -134,7 +134,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     react: React,
     '../../../packages/client/src/localDraftMap': localDraftMap,
     './localDraftStorage': { bindLocalDraftStorage: () => () => {} },
-    'react-native': { Keyboard: { dismiss() {} }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: appState, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
+    'react-native': { Keyboard: { dismiss() { globalThis.__keyboardDismissals = (globalThis.__keyboardDismissals ?? 0) + 1; } }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: appState, Platform: { OS: 'ios' }, Pressable: 'Pressable', View: 'View', StyleSheet: { create: x => x } },
     'expo-router': { Stack: { Screen: () => null }, useRouter: () => router, useIsFocused: () => React.useContext(Focus),
       useFocusEffect: cb => { const focused = React.useContext(Focus); React.useEffect(() => focused ? cb() : undefined, [focused, cb]); } },
     './FontSize': { Text: 'Text' },
@@ -483,7 +483,9 @@ test('background and foreground retain timeline instance, older reading boundary
     await act(async()=>h.timelines.get('t_one').onText('keep selected draft'));
     const scene=h.scenes.get('t_one');scene.offset=234;scene.following=false;scene.selection={start:3,end:6};const media=scene.media;
     const messages=h.api.client.messages.get('t_one'),owner=h.api.client.currentConversationKey;
+    globalThis.__keyboardDismissals=0;
     await h.appState('inactive');await h.appState('background');
+    assert.equal(globalThis.__keyboardDismissals,0,'leaving foreground keeps the keyboard and input focus');
     assert.equal(h.scenes.get('t_one'),scene);assert.notEqual(scene.disposed,true);assert.equal(h.api.client.messages.get('t_one'),messages);assert.equal(h.api.client.currentConversationKey,owner);assert.equal(h.counts.closed,0);
     await h.appState('active');assert.equal(h.scenes.get('t_one'),scene);assert.equal(scene.offset,234);assert.equal(scene.following,false);assert.equal(scene.media,media);assert.deepEqual(scene.selection,{start:3,end:6});assert.equal(h.timelines.get('t_one').rows.length,20);assert.equal(h.timelines.get('t_one').text,'keep selected draft');
     await h.render('t_one',true);assert.notEqual(scene.disposed,true);await h.render(null);assert.equal(scene.disposed,true);assert.equal(h.api.client.messages.size,0);
