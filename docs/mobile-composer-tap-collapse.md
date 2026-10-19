@@ -42,3 +42,7 @@ After a normal hide, the released position equals the followed position (both 0)
 - Mobile `npm test` with `HERMES_TEST_CHROME` and the matching `ESBUILD_BINARY_PATH`: 225 tests, 225 pass, 0 fail, 0 skipped.
 - Mobile TypeScript passes. iOS and Android `expo export` (`--no-bytecode`) pass; both bundles contain the `composer-dock` marker and the timeline `keyboardShouldPersistTaps:"handled"`.
 - These are JS tests with native substitutes. iPhone acceptance is required: tap on blank space and on message text collapses the composer; tap on copy/link/code keeps the keyboard; switch apps with the keyboard open and return; drag the keyboard down; the dock must sit at the bottom in each case.
+
+## Development release
+
+Released `8743139` (merge `8b7b67a`) to `exps://agent.tuly.space`. The lockfile did not change. Only `hermes-app-expo.service` was restarted (PID 3117825 → 3306042, 18:57:29 PDT). The `hermes-gateway.service` PID 1953184 and the hermes-app-dev plugin hash did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each exact launchAsset returns HTTP 200 and contains the new markers (`composer-dock`, `focusedDockInputs`, and the new hide-signal source comment). Evidence: private `workspace/hermes-app/2026-10-18-composer-tap-collapse/`. Rollback baseline: `62e192c` (branch `rollback/composer-tap-collapse-before-release`); roll back with `git revert -m 1 8b7b67a` and an Expo restart only. iPhone acceptance is pending.
