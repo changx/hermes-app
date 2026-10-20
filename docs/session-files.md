@@ -2,8 +2,8 @@
 
 Status (2026-10-20):
 
-- Done on branches, not merged or installed: plugin Phase 1 API (`plugins/hermes_app/session_files.py`, `tests/p1/test_session_files.py`); desktop Project modal layout and Files removal.
-- Not started: shared client contracts, desktop Session files panel and search, mobile changes, Phase 2.
+- Done on branches, not merged or installed: plugin Phase 1 API with the label filter (`plugins/hermes_app/session_files.py`, `tests/p1/test_session_files.py`); shared client contracts (`packages/client/src/sessionFiles.ts`); desktop Project modal layout and Files removal; desktop Session files panel; desktop unified search (Cmd+K) and removal of the sidebar search box.
+- Not started: mobile changes, Phase 2.
 - Branches: App `feat/session-files`, plugin `feat/session-files`.
 
 ## Confirmed requirements (Jamie, 2026-10-20)
@@ -84,8 +84,9 @@ Search covers delivered files and uploaded attachments in all Sessions of one co
   - Reason: the corpus is small (2026-10-20: 156 attachments on `jamie`, 108 on `hermes-app-dev`). On a copy of the `hermes-app-dev` data, a query took 5–12 ms.
   - `LIKE` also matches one- and two-character Chinese terms. An FTS5 `trigram` index needs at least three characters.
   - If the corpus grows so that the scan is slow, add an FTS5 `trigram` table then.
+- Label filter: `labels=<label>` may repeat (up to the Session label limits). The file's Session must have every label, with exact text. This is the same AND rule as the App's Session search. A query can have labels and no text.
 - Archived Sessions, archived Projects and unsent uploads are excluded.
-- API: `GET /v1/files/search?q=<text>&after=<cursor>&limit=<1..50>`. Newest first. Each result has the file row, `thread_id`, `thread_title`, `channel_id`, `channel_name` and `ref_seq`.
+- API: `GET /v1/files/search?q=<text>&labels=<label>...&after=<cursor>&limit=<1..50>`. Newest first. Each result has the file row, `thread_id`, `thread_title`, `channel_id`, `channel_name` and `ref_seq`.
 - Capability: `file_search: true`.
 
 ### Phase 2: semantic search with EmbeddingGemma 2
@@ -117,9 +118,16 @@ Design:
 
 Phase 2 needs separate authorization before work starts: a new user systemd service, new Python dependencies in a separate environment, and a model download (about 1.5 GB in bf16). Expected memory use is about 2–3 GB.
 
+### Search entry points (confirmed 2026-10-20)
+
+- Desktop: one search dialog for Sessions and files. Cmd+K opens it; Shift+Cmd+F opens it with files only. The sidebar has a `Search ⌘K` action under `New chat`. The old sidebar search box, its frequent-label row and its sidebar result list are removed.
+  - The query is a keyword plus label chips; every part must match. Clicking a label on a Session page opens the dialog with that label.
+  - Results: matching labels (choosing one adds a chip), Sessions, then files from every connection that supports `file_search`.
+  - Enter opens a Session, or opens a file with the system app. Cmd+Enter opens the file's Session. Option+Enter saves the file. Jumping to the source message is not implemented yet.
+- Mobile: a search entry in Recents. It opens a search page with the same query rules.
+
 ## Open items
 
-- Global file search entry: desktop proposal is a search dialog (⇧⌘F); mobile proposal is a search page from the home header. Not confirmed.
 - Office documents (docx, xlsx, pptx) content extraction for Phase 2. Not confirmed.
 
 ## Delivery order

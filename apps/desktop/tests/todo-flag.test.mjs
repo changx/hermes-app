@@ -69,8 +69,7 @@ test('Chromium: sidebar Todo section, flags instead of label pills, running firs
       const plainRow=[...scroll.querySelectorAll('#sidebar-recents-list .tree-thread')].find(r=>r.textContent.includes('Plain chat'));
       ensure('flagged and plain rows keep one row height',Math.abs(plainRow.getBoundingClientRect().height-row.getBoundingClientRect().height)<=1);
       checks.rowHeight=row.getBoundingClientRect().height;
-      const frequent=[...scroll.querySelectorAll('.frequent-label')].map(b=>b.textContent);
-      ensure('frequent labels leave out todo',frequent.length>0&&!frequent.some(l=>/todo/i.test(l))&&frequent.includes('bug'));
+      ensure('no frequent label row in the sidebar',!scroll.querySelector('.frequent-label'));
       plainRow.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100})); await wait(30);
       ensure('menu offers Mark as Todo after Rename',menus[0].filter(i=>i.id).map(i=>i.label).join('|')==='Rename…|Mark as Todo|Edit Labels…|Copy Link|Archive…');
       ensure('mark saves labels with the flag added on the right connection',JSON.stringify(saves)==='[["plain",["bug","docs","todo"],"one"]]'&&!document.querySelector('[role="menu"]'));

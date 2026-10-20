@@ -47,7 +47,7 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
         ensure('compact rows',Math.round(row.getBoundingClientRect().height)<=40);
         ensure('connection shown under Project',[...aside.querySelectorAll('.channel-connection-name')].map(e=>e.textContent).join('|')==='work.example · Reconnecting|personal.example');
         ensure('chevrons use icon font',[...aside.querySelectorAll('.channel-chevron')].every(e=>cs(e).fontFamily.includes('HermesWorkIcons')));
-        ensure('search box replaces the Projects label filter',!aside.querySelector('[aria-label="Filter sessions"]')&&!!aside.querySelector('.sidebar-search input[aria-label="Search sessions"]'));
+        ensure('no label filter and no search box in the sidebar',!aside.querySelector('[aria-label="Filter sessions"]')&&!aside.querySelector('input'));
         document.documentElement.style.setProperty('--app-font-size','20px'); await new Promise(r=>setTimeout(r,20));
         ensure('sidebar follows text size',cs(row).fontSize==='20px'&&cs(title).fontSize==='20px');
         document.documentElement.style.setProperty('--app-font-size','16px');

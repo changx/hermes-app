@@ -12,7 +12,9 @@ import { MessageToolbar, UserMessageCopy } from "./message-toolbar";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
-import { SessionPicker } from './session-picker';
+import { SessionPicker, type SearchScope } from './session-picker';
+import { SessionFilesPanel } from './session-files-panel';
+import { emptySessionQuery, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
 import { AutomationListPage, AutomationPage } from './automations';
@@ -57,7 +59,8 @@ const PairingPanel = ({ busy }: { busy: boolean }) => {
   </form></div>;
 };
 
-type Editor = "palette" | null;
+/** The search dialog (with its starting query and scope) or the Session files panel. */
+type Editor = { kind: "palette"; query?: SessionQuery; scope?: SearchScope } | { kind: "files" } | null;
 type ProjectEditor = { channelId?: string } | null;
 /** Renames any Session: the open one (toolbar) or a sidebar row (context menu). Starts with the current title selected. */
 const RenameDialog = ({ thread, close }: { thread: DesktopSnapshot['threads'][number]; close: () => void }) => {
@@ -364,6 +367,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   const attachmentVersion = useSyncExternalStore(draftAttachments.subscribe, draftAttachments.getSnapshot, draftAttachments.getSnapshot);
   const draftThreads = useMemo(() => new Set([...drafts.keys(), ...draftAttachments.keys()].filter(id => drafts.hasDraft(id) || draftAttachments.hasDraft(id))), [textVersion, attachmentVersion]);
   const [editor, setEditor] = useState<Editor>(null);
+  const openSearch = useCallback(() => setEditor({ kind: "palette" }), []);
   const [renameTarget, setRenameTarget] = useState<DesktopSnapshot['threads'][number] | null>(null);
   const [todoBusy, setTodoBusy] = useState(false), [todoError, setTodoError] = useState('');
   useEffect(() => setTodoError(''), [snapshot.selectedThreadId]);
@@ -377,11 +381,14 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       if (event.key === "Escape") { setEditor(null); setProjectEditor(null); setRenameTarget(null); return; }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
 
-      if (event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setEditor("palette"); }
+      if (event.key.toLocaleLowerCase() === "k" && !event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette" }); }
+      if (event.key.toLocaleLowerCase() === "f" && event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette", scope: "files" }); }
       if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); safely(window.hermesDesktop.newTab(snapshot.selectedChannelId)); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
+  // A Session page's label click opens the search in the main window with that label.
+  useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onSearchLabel?.(label => setEditor({ kind: "palette", query: { ...emptySessionQuery(), labels: [label] } })) : undefined, [viewRole]);
   // Shift+Cmd+L arrives from the main process for the active Session page only. It acts like a click on the flag button.
   const todoShortcut = useRef<() => void>(undefined);
   useEffect(() => window.hermesDesktop.onToggleTodo?.(() => { if (!document.querySelector('dialog[open]')) todoShortcut.current?.(); }), []);
@@ -410,10 +417,11 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     if (action === 'copy-link') safely(window.hermesDesktop.copySessionLink());
     else if (action === 'export') exportConversation();
     else if (action === 'archive') archive();
+    else if (action === 'files') setEditor({ kind: "files" });
     else if (currentThread) { if (action === 'rename') setRenameTarget(currentThread); else openLabels(currentThread); }
   };
-  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor === 'palette' && <SessionPicker snapshot={snapshot} close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
-  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>
+  const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor?.kind === 'palette' && <SessionPicker snapshot={snapshot} initialQuery={editor.query} initialScope={editor.scope} close={() => setEditor(null)} />}{editor?.kind === 'files' && <SessionFilesPanel close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
+  if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onSearch={openSearch} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>
     {overlays}
   </NativeWorkspace>;
   if (snapshot.tabKind === 'new') return <NewSessionPage key={snapshot.tabId} snapshot={snapshot} />;

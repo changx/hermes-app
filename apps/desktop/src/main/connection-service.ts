@@ -9,6 +9,7 @@ import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
+import type { FileSearchPage, SessionFile, SessionFileList } from "../../../../packages/client/src/sessionFiles";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
@@ -236,6 +237,27 @@ export class DesktopConnectionService {
     this.listedThreads.set(thread.id, thread); this.changed();
     return thread.id;
   }
+  supportsSessionFiles(): boolean { return this.client?.supportsSessionFiles === true; }
+  supportsFileSearch(): boolean { return this.client?.supportsFileSearch === true; }
+  /** One page of a Session's files. Route-owned; nothing enters the chat caches. */
+  async sessionFiles(threadId: string, list: SessionFileList, after?: string): Promise<{ items: SessionFile[]; nextAfter: string | null } | null> {
+    const client = this.requireClient();
+    if (!client.supportsSessionFiles) return null;
+    try { const page = await client.files.list(threadId, list, after ?? null); return { items: page.items, nextAfter: page.nextAfter }; }
+    catch (error) { this.stopIfUnauthorized(error); throw new Error('The files could not be loaded.'); }
+  }
+  async searchFiles(query: string, labels: readonly string[], after?: string): Promise<FileSearchPage> {
+    const client = this.requireClient();
+    if (!client.supportsFileSearch) throw new Error('File search is unavailable.');
+    try { return await client.files.search(query, labels, after ?? null); }
+    catch (error) { this.stopIfUnauthorized(error); throw new Error('The file search failed.'); }
+  }
+  /** Reads one attachment's metadata into the client so the existing preview and download paths can use it. */
+  async prepareAttachment(threadId: string, attachmentId: string): Promise<void> {
+    const client = this.requireClient();
+    const attachment = await client.getAttachment(threadId, attachmentId);
+    if (attachment.state !== 'available') throw new Error('The file is no longer available.');
+  }
   /** This connection's scheduled jobs. Read-only; nothing enters the chat caches. */
   async automations(): Promise<Automation[]> {
     const client = this.requireClient();
@@ -350,6 +372,8 @@ export class DesktopConnectionService {
       supportsThreadBranch: this.client?.supportsThreadBranch === true,
       supportsMessageSources: this.client?.supportsMessageSources === true,
       supportsThreadExport: this.client?.supportsThreadExport === true,
+      supportsSessionFiles: this.client?.supportsSessionFiles === true,
+      supportsFileSearch: this.client?.supportsFileSearch === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,

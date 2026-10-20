@@ -114,6 +114,10 @@ export type DesktopSnapshot = Readonly<{
   supportsThreadBranch?: boolean;
   supportsMessageSources?: boolean;
   supportsThreadExport?: boolean;
+  /** Server lists each Session's delivered and uploaded files. */
+  supportsSessionFiles?: boolean;
+  /** Main window: some connected server searches files. */
+  supportsFileSearch?: boolean;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
   loadingHistory?: boolean;
@@ -142,6 +146,14 @@ export type DesktopProjectWorkspace = Readonly<{
   supported: boolean;
   agents: Readonly<{ content: string; etag: string }> | null;
 }>;
+/** A file of one Session: delivered by the Agent (MEDIA:) or uploaded by the user. See docs/session-files.md. */
+export type DesktopSessionFile = Readonly<{ id: string; threadId: string; name: string; mime: string; size: number; state: 'available' | 'missing';
+  list: 'delivered' | 'uploaded'; createdAt: number; caption?: string }>;
+export type DesktopSessionFilePage = Readonly<{ supported: boolean; items: readonly DesktopSessionFile[]; nextAfter: string | null }>;
+/** A file search result. `threadId` and `channelId` are qualified like every other desktop ID. */
+export type DesktopFileHit = DesktopSessionFile & Readonly<{ threadTitle: string; channelId: string; channelName?: string; connectionName?: string }>;
+/** File search over every connected server that offers it. `cursors` (by connection) continues each list. */
+export type DesktopFileSearch = Readonly<{ supported: boolean; items: readonly DesktopFileHit[]; failed: readonly string[]; cursors: Readonly<Record<string, string>> }>;
 /** `invalid`: the server cannot use the folder; `taken`: another project already uses it. */
 export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: 'invalid' | 'taken' | 'failed' }>;
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
@@ -249,7 +261,7 @@ export interface HermesDesktopApi {
   openSessionLink(url: string): Promise<void>;
   /** A Session page copies its own link; the main window names the Session. */
   copySessionLink(threadId?: string): Promise<void>;
-  /** A Session page asks the main window's sidebar to search for sessions with this label. */
+  /** A Session page asks the main window to open the search with this label. */
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */
   onSearchLabel(listener: (label: string) => void): () => void;
@@ -275,7 +287,6 @@ export interface HermesDesktopApi {
   saveProjectAgents(channelId: string, content: string, previousEtag: string | null): Promise<ProjectAgentsResult>;
   /** A path binds the primary folder; null removes the binding. */
   setProjectFolder(channelId: string, path: string | null): Promise<ProjectFolderResult>;
-  /** Adds new root files. Never replaces an existing file. Stops at the first failure. */
   /** Returns the session ID, or a confirmation request (nothing created) for a model with a cost/data warning. */
   createThread(input: ThreadInput): Promise<ThreadCreation>;
   /** New session with a text-only first message, shown at once; returns the session ID. */
@@ -306,6 +317,14 @@ export interface HermesDesktopApi {
   /** Save/Open progress of attachments requested by this window. */
   onDownloadProgress?(listener: (progress: DownloadProgress) => void): () => void;
   previewAttachmentImage(attachmentId: string): Promise<string>;
+  /** Session page: one page of its delivered or uploaded files. */
+  listSessionFiles(list: 'delivered' | 'uploaded', after?: string): Promise<DesktopSessionFilePage>;
+  /** Session page: loads one of its files so preview and download can use it. */
+  prepareSessionFile(attachmentId: string): Promise<void>;
+  /** Files by keyword and exact Session labels (AND), newest first, from every connection. */
+  searchFiles(query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>): Promise<DesktopFileSearch>;
+  /** Opens a search result with the system app, or saves it. */
+  openSessionFile(threadId: string, attachmentId: string, action: 'open' | 'save'): Promise<void>;
 }
 
 /** Sidebar Session card content and where its row is. Coordinates are main-window content (CSS) pixels. */

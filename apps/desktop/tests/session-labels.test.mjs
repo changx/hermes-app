@@ -34,18 +34,7 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
       const inputValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
       (async()=>{try{
         render();await tick();ensure('running survives recent cutoff',document.querySelectorAll('.channel-tree .tree-thread').length===2);
-        const search=document.querySelector('.sidebar-search input[aria-label="Search sessions"]');
-        inputValue(search,'fo');await tick();
-        ensure('keyword offers the matching label',[...document.querySelectorAll('.sidebar-search-labels button')].map(b=>b.textContent).join('|')==='Foo');
-        ensure('search replaces the tree',!document.querySelector('.channel-tree')&&!document.querySelector('#sidebar-recents-list'));
-        ensure('keyword matches label text, 24 per batch',document.querySelectorAll('.search-result-list .tree-thread').length===24);
-        document.querySelector('.sidebar-search-labels [aria-label="Search label Foo"]').click();await tick();
-        ensure('label becomes a chip and clears the keyword',search.value===''&&[...document.querySelectorAll('.session-query-chip > span')].map(s=>s.textContent).join('|')==='Foo');
-        ensure('label search: running first, 24 per batch',document.querySelectorAll('.search-result-list .tree-thread').length===24&&document.querySelector('.search-result-list .thread-title').textContent==='Old 0');
-        ensure('current session unchanged',selected===0&&snapshot.selectedThreadId==='current');
-        button(document,'Show more').click();await tick();ensure('48 after Show more',document.querySelectorAll('.search-result-list .tree-thread').length===48);
-        ensure('running dot intact',document.querySelectorAll('.search-result-list .thread-status').length===1&&document.querySelectorAll('.search-result-list .thread-result-unread').length===1);
-        button(document,'Clear search').click();await tick();ensure('clear restores the tree',document.querySelectorAll('.channel-tree .tree-thread').length===2&&!document.querySelector('.session-query-chip'));
+        ensure('no search box in the sidebar',!document.querySelector('.sidebar-scroll input'));
         ensure('sidebar rows show no label pills',!document.querySelector('.sidebar-scroll .label-pills'));
         document.querySelector('.channel-tree .tree-thread').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:100,clientY:100}));await tick();await tick();
         ensure('native context menu offers labels',menus.length===1&&menus[0].some(i=>i.id==='labels'&&i.label==='Edit Labels…')&&!document.querySelector('[role="menu"]'));
@@ -63,8 +52,6 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         mode='stale';button(dialog,'Save').click();await tick();ensure('stale save draft retained',closes===0&&dialog.textContent.includes('changed on another device'));
         mode='success';button(dialog,'Save').click();await tick();ensure('confirmed save closes',closes===1);
         snapshot={...snapshot,connectionKey:'two'};render();await tick();ensure('connection change keeps the tree',document.querySelectorAll('.channel-tree .tree-thread').length===2);
-        snapshot={...snapshot,supportsSessionLabels:false};render();await tick();inputValue(document.querySelector('.sidebar-search input'),'fo');await tick();ensure('capability gated: no label suggestions',!document.querySelector('.sidebar-search-labels'));
-        button(document,'Clear search').click();await tick();
         window.hermesDesktop.getRuntimeInfo=()=>({platform:'linux',versions:{}});
         const messages=Array.from({length:40},(_,i)=>({id:'synthetic'+i,role:'assistant',text:'Synthetic shell row '+i,toolCalls:[],attachments:[]}));
         const shell={...snapshot,phase:'connected',connectionKey:'shell-one',supportsSessionLabels:true,selectedThreadId:'row0',selectedThreadTitle:'Old 0',messages,interactions:[],sessionPages:[{id:'row0',messages,interactions:[],canLoadOlder:true}]};

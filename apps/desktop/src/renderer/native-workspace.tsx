@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { NavigationPanel, type ProjectReveal } from './navigation-panel';
-import { addQueryLabel, emptySessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
 import { ErrorBanner } from './error-banner';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
 import { automaticBrowserWidth, browserMaximum, clampBrowserWidth, loadBrowserWidth, MIN_BROWSER_WIDTH, saveBrowserWidth } from './browser-width';
 
-export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename, onCreateProject, onProjectOptions, onSettings, overlayOpen, children }: {
+export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename, onCreateProject, onSearch, onProjectOptions, onSettings, overlayOpen, children }: {
   snapshot: DesktopSnapshot; draftThreads: ReadonlySet<string>; onEditLabels: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void;
-  onCreateProject: () => void; onProjectOptions: (id: string) => void; onSettings: () => void; overlayOpen: boolean; children?: ReactNode;
+  onCreateProject: () => void; onSearch?: () => void; onProjectOptions: (id: string) => void; onSettings: () => void; overlayOpen: boolean; children?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [error, setError] = useState('');
-  // The sidebar search lives here: it survives collapsing the sidebar, and a Session page's label click adds to it.
-  const [search, setSearch] = useState(emptySessionQuery);
-  useEffect(() => window.hermesDesktop.onSearchLabel?.(label => { setCollapsed(false); setSearch(old => addQueryLabel(old, label)); }), []);
-  // A Session page's Project name: show the Project tree (a search replaces it) and that Project.
+  // A Session page's Project name: show that Project in the tree.
   const [reveal, setReveal] = useState<ProjectReveal>();
-  useEffect(() => window.hermesDesktop.onRevealProject?.(channelId => { setCollapsed(false); setSearch(emptySessionQuery); setReveal({ channelId }); }), []);
+  useEffect(() => window.hermesDesktop.onRevealProject?.(channelId => { setCollapsed(false); setReveal({ channelId }); }), []);
   const [preferredWidth, setPreferredWidth] = useState(loadSidebarWidth);
   const [availableWidth, setAvailableWidth] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
   const [preferredBrowserWidth, setPreferredBrowserWidth] = useState(loadBrowserWidth);
@@ -133,7 +129,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   return <div ref={shell} style={{ '--sidebar-width': `${sidebarWidth}px`, '--browser-width': `${browserWidth}px` } as CSSProperties} className={`desktop-shell native-workspace ${sidebarHidden ? 'sidebar-collapsed' : ''} ${browserOpen ? 'browser-open' : ''} ${dragging === 'sidebar' ? 'sidebar-resizing' : ''} ${dragging === 'browser' ? 'browser-resizing' : ''}`}>
     <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} onClick={() => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); }}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
-      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} search={search} onSearch={setSearch} reveal={reveal} />
+      <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} onSearch={onSearch} reveal={reveal} />
     </aside>}
     {!sidebarHidden && <div ref={handle} className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
       onPointerDown={event => {

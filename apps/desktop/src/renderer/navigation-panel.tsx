@@ -2,12 +2,11 @@ import { memo, useEffect, useRef, useState } from "react";
 import { SessionHoverCard, type SessionCardInfo } from "./session-hover-card";
 import type { DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
 import { recentWindow, threadWindow, todoWindow } from "./thread-navigation";
-import { addQueryLabel, emptySessionQuery, frequentSessionLabels, removeQueryLabel, sessionLabelSuggestions, sessionQueryActive, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { hasTodo, withoutTodo } from '../../../../packages/client/src/todo';
 import { setSessionTodo } from './todo-toggle';
-import { SearchIcon, searchSessions, SessionQueryInput } from './session-search';
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
 import { Icon } from './icons';
+import { SearchIcon } from './session-search';
 import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 
@@ -35,24 +34,17 @@ const loadCollapsed = (key: string) => () => { try { return window.localStorage.
 const saveCollapsed = (key: string, value: boolean) => { try { window.localStorage.setItem(key, value ? '1' : '0'); } catch { /* Device preference only. */ } };
 
 /**
- * Sidebar content, top to bottom: New chat, the session search box,
- * Automations (scheduled jobs; hidden when no connection offers them), Todo
- * (every flagged Session; hidden when none), Recents (Sessions active in the
- * last 72 hours across every Project; running first), then one flat
- * Project tree across every connection. A Project shows its Hermes name only
- * when several exist. While a search is active, one flat result list replaces
- * Automations, Todo, Recents and the Project tree. The search matches like Cmd+K: a keyword
- * (title or label text) plus exact labels, all required.
+ * Sidebar content, top to bottom: New chat, Automations (scheduled jobs; hidden
+ * when no connection offers them), Todo (every flagged Session; hidden when
+ * none), Recents (Sessions active in the last 72 hours across every Project;
+ * running first), then one flat Project tree across every connection. A Project
+ * shows its Hermes name only when several exist. Search is the Cmd+K dialog
+ * (Sessions, files and labels); the sidebar has no search box (docs/session-files.md).
  */
 /** One request to show a Project in the sidebar; a new object is a new request. */
 export type ProjectReveal = Readonly<{ channelId: string }>;
 
-export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onRename, onChannelOptions, onCreateProject, search: controlledSearch, onSearch, reveal }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void; reveal?: ProjectReveal }) => {
-  // The workspace owns the query so a Session page's label click and a collapsed sidebar keep it; standalone use keeps it here.
-  const [localSearch, setLocalSearch] = useState(emptySessionQuery);
-  const search = controlledSearch ?? localSearch, setSearch = onSearch ?? setLocalSearch;
-  const [searchBatches, setSearchBatches] = useState(0);
-  useEffect(() => setSearchBatches(0), [search]);
+export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onRename, onChannelOptions, onCreateProject, onSearch, reveal }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; onSearch?: () => void; reveal?: ProjectReveal }) => {
   const [expanded, setExpanded] = useState(() => new Set(snapshot.channels.map(channel => channel.id)));
   const knownProjects = useRef(new Set(snapshot.channels.map(channel => channel.id)));
   useEffect(() => {
@@ -76,7 +68,6 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const [recentBatches, setRecentBatches] = useState(0);
   const [todoCollapsed, setTodoCollapsed] = useState(loadCollapsed(TODO_KEY));
   const [todoBatches, setTodoBatches] = useState(0);
-  const searching = sessionQueryActive(search);
   const available = snapshot.threads.filter(thread => snapshot.channels.some(channel => channel.id === thread.channelId));
   // Counts use every listed session, independent of the label filter and the
   // recent-activity window. Directory metadata only; no conversation bodies.
@@ -98,9 +89,6 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const recents = recentWindow(available, now, recentBatches);
   const todos = todoWindow(available, todoBatches);
   const labelsFor = (thread: DesktopThread) => thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true;
-  // Top labels across every listed session that supports labels; a click toggles the label in the search.
-  // The todo flag is not a frequent label: the Todo section lists flagged sessions.
-  const frequent = frequentSessionLabels(available.filter(labelsFor).map(thread => ({ ...thread, markers: withoutTodo(thread.markers) })));
   const connectionOf = (thread: DesktopThread) => snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey;
   const menuOnline = (thread: DesktopThread) => (snapshot.connections ? snapshot.connections.find(row => row.connectionKey === connectionOf(thread))?.state : snapshot.connectionState) === 'online' && available.some(item => item.id === thread.id);
   // A native menu: the Session page is a separate view over the window, so an HTML menu would be cut off at the sidebar edge.
@@ -138,32 +126,8 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     <SessionHoverCard root={scroll} describe={describe} />
     <nav className="sidebar-actions" aria-label="Create">
       <button type="button" className="sidebar-action" onClick={() => onNewSession(snapshot.selectedChannelId ?? projects[0]?.id ?? '')}><Icon name="compose" /><span>New chat</span></button>
+      {onSearch && <button type="button" className="sidebar-action sidebar-search-action" aria-keyshortcuts="Meta+K" onClick={onSearch}><SearchIcon /><span>Search</span><kbd>⌘K</kbd></button>}
     </nav>
-    <div className="sidebar-search" role="search">
-      <SearchIcon />
-      <SessionQueryInput query={search} onChange={setSearch} inputProps={{ 'aria-label': 'Search sessions', placeholder: 'Search',
-        onKeyDown: event => { if (event.key === 'Escape' && searching) { event.preventDefault(); event.stopPropagation(); setSearch(emptySessionQuery()); } } }} />
-      {searching && <button type="button" className="sidebar-search-clear sidebar-icon-button" aria-label="Clear search" title="Clear search" onClick={() => setSearch(emptySessionQuery())}>×</button>}
-    </div>
-    {frequent.length > 0 && <div className="sidebar-frequent-labels" role="group" aria-label="Frequent labels">
-      {frequent.map(label => { const on = search.labels.includes(label);
-        return <button key={label} type="button" className="label-pill frequent-label" title={label} aria-pressed={on} aria-label={on ? `Remove label ${label} from search` : `Search label ${label}`}
-          onClick={() => setSearch(on ? removeQueryLabel(search, label) : addQueryLabel(search, label))}>{label}</button>; })}
-    </div>}
-    {searching ? (() => {
-      const suggestions = snapshot.supportsSessionLabels === true ? sessionLabelSuggestions(available, search) : [];
-      const results = searchSessions(snapshot, available, search), shown = results.slice(0, (searchBatches + 1) * 24);
-      return <section className="sidebar-search-results" aria-label="Search results">
-        {suggestions.length > 0 && <div className="sidebar-search-labels" role="group" aria-label="Matching labels">
-          {suggestions.map(label => <button key={label} type="button" className="label-pill search-label-suggestion" title={label} aria-label={`Search label ${label}`} onClick={() => setSearch({ ...addQueryLabel(search, label), text: '' })}>{label}</button>)}
-        </div>}
-        <div className="item-list search-result-list">
-          {shown.map(thread => row(thread))}
-          {!results.length && <p className="tree-empty">No matching sessions</p>}
-          {results.length > shown.length && <button className="tree-more" type="button" onClick={() => setSearchBatches(value => value + 1)}>Show more</button>}
-        </div>
-      </section>;
-    })() : <>
     <AutomationsSection connectionStates={connectionStates(snapshot)} threads={snapshot.threads} activeAutomationId={activeAutomation(snapshot)} multiple={multiple} automationsVersion={snapshot.automationsVersion} />
     {todos.rows.length > 0 && <section className="sidebar-todo" aria-labelledby="sidebar-todo-title">
       <div className="sidebar-section-header">
@@ -214,6 +178,5 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     })}
     {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No projects yet.</p> : null}
     </div>
-    </>}
   </div>;
-}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal);
+}, (before,after) => before.draftThreads === after.draftThreads && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.onSearch === after.onSearch && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal);

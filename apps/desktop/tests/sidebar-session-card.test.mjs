@@ -126,7 +126,7 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
 
     // Keyboard focus shows the card at once; Escape closes it.
     await move({ x: 700, y: 650 }); await new Promise(r => setTimeout(r, 600));
-    await evaluate(`document.querySelector('.sidebar-search input').focus()`);
+    await evaluate(`document.querySelector('.sidebar-action').focus()`);
     let focused = null;
     for (let i = 0; i < 40 && focused !== 'long'; i++) { await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }); await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }); focused = await evaluate('document.activeElement?.dataset?.threadId ?? null'); }
     assert.equal(focused, 'long');

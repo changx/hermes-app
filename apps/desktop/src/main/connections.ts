@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
+import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopFileHit, DesktopFileSearch, DesktopSessionFile, DesktopSessionFilePage, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
 import type { Automation } from '../../../../packages/client/src/automations';
+import type { SessionFile } from '../../../../packages/client/src/sessionFiles';
 import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
 import { DesktopConnectionService, deviceName, normalizeCode } from './connection-service';
@@ -104,6 +105,8 @@ export class DesktopConnections {
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,
       supportsSessionLabels: connectionKey || thread ? selected.supportsSessionLabels : all.some(s => s.supportsSessionLabels),
+      // File search covers every connection, also from a Session tab.
+      supportsFileSearch: all.some(s => s.supportsFileSearch),
       channels: all.flatMap(s => s.channels), threads: all.flatMap(s => s.threads),
       // A loading/failed account must not invalidate another account's existing tabs.
       loadingConversations: all.some(s => s.loadingConversations),
@@ -231,6 +234,38 @@ export class DesktopConnections {
     rows.sort((a, b) => Number(b.running) - Number(a.running) || (b.lastRunAt ?? '').localeCompare(a.lastRunAt ?? '') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     return { supported: connected.length > 0, automations: rows, failed, cursors: next,
       canCreate: connected.some(a => a.service.supportsAutomationEditors()) };
+  }
+  private sessionFile(account: Account, file: SessionFile): DesktopSessionFile {
+    return { id: file.id, threadId: this.encode(account, file.thread_id)!, name: file.name ?? 'File', mime: file.mime ?? 'application/octet-stream',
+      size: file.size ?? 0, state: file.state === 'available' ? 'available' : 'missing', list: file.list, createdAt: file.created_at,
+      ...(file.caption ? { caption: file.caption } : {}) };
+  }
+  /** One page of a qualified Session's files. `supported: false` on a server without Session files. */
+  async sessionFiles(id: string, list: 'delivered' | 'uploaded', after?: string): Promise<DesktopSessionFilePage> {
+    const r = this.route(id), page = await r.account.service.sessionFiles(r.raw, list, after);
+    if (!page) return { supported: false, items: [], nextAfter: null };
+    return { supported: true, items: page.items.map(file => this.sessionFile(r.account, file)), nextAfter: page.nextAfter };
+  }
+  async prepareSessionFile(id: string, attachmentId: string): Promise<void> { const r = this.route(id); await r.account.service.prepareAttachment(r.raw, attachmentId); }
+  /**
+   * Files of every connected server that offers file search, newest first. `cursors` (keyed by
+   * connection) asks only those connections for their next page.
+   */
+  async searchFiles(query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>): Promise<DesktopFileSearch> {
+    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsFileSearch());
+    const accounts = cursors ? connected.filter(a => cursors[a.id] !== undefined) : connected;
+    const failed: string[] = [], next: Record<string, string> = {};
+    const rows = (await Promise.all(accounts.map(async account => {
+      try {
+        const page = await account.service.searchFiles(query, labels, cursors?.[account.id]);
+        if (page.nextAfter) next[account.id] = page.nextAfter;
+        const name = connected.length > 1 ? this.nameOf(account) : undefined;
+        return page.items.map((hit): DesktopFileHit => ({ ...this.sessionFile(account, hit), threadTitle: hit.thread_title,
+          channelId: this.encode(account, hit.channel_id)!, ...(hit.channel_name ? { channelName: hit.channel_name } : {}), ...(name ? { connectionName: name } : {}) }));
+      } catch { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
+    }))).flat();
+    rows.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    return { supported: connected.length > 0, items: rows, failed, cursors: next };
   }
   /** Pause, Resume, Run now or a new schedule for one qualified job. */
   async controlAutomation(id: string, control: 'pause' | 'resume' | 'run' | 'schedule', schedule?: string): Promise<DesktopAutomation> {

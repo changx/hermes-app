@@ -41,7 +41,7 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
       import {NativeWorkspace} from './apps/desktop/src/renderer/native-workspace';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
-      let projects=0, selected=[];
+      let projects=0, searches=0, selected=[];
       window.hermesDesktop={setContentBounds:async()=>{},newTab:async()=>{},selectThread:async id=>{selected.push(id)},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{}};
       const now=Date.now()/1000;
       const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,selectedChannelId:'p',
@@ -52,13 +52,13 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
           {id:'w:t-now',channelId:'w:q',title:'Just now',markers:[],running:false,lastMessageAt:now-30}],
         tabs:[],messages:[],interactions:[],canLoadOlder:false};
       const root=createRoot(document.getElementById('root'));
-      flushSync(()=>root.render(<NativeWorkspace snapshot={snapshot} draftThreads={new Set()} onEditLabels={()=>{}} onCreateProject={()=>{projects++}} onProjectOptions={()=>{}} onSettings={()=>{}} overlayOpen={false} />));
+      flushSync(()=>root.render(<NativeWorkspace snapshot={snapshot} draftThreads={new Set()} onEditLabels={()=>{}} onCreateProject={()=>{projects++}} onSearch={()=>{searches++}} onProjectOptions={()=>{}} onSettings={()=>{}} overlayOpen={false} />));
       (async()=>{try{
         await document.fonts.ready; await new Promise(r=>setTimeout(r,50));
         const aside=document.querySelector('aside.native-sidebar'), scroll=aside.querySelector('.sidebar-scroll');
         const first=scroll.querySelector('.sidebar-action');
         ensure('first item is New chat',first.textContent==='\\ue011New chat'||first.querySelector('span:not(.app-icon)').textContent==='New chat');
-        ensure('only New chat in top actions',scroll.querySelectorAll('.sidebar-actions button').length===1);
+        ensure('top actions: New chat, then Search',[...scroll.querySelectorAll('.sidebar-actions button')].map(b=>b.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim()).join('|')==='New chat|Search⌘K');
         const gap=first.getBoundingClientRect().top-aside.getBoundingClientRect().top;
         ensure('no blank band above New chat',gap<=12);
         const toggle=document.querySelector('.sidebar-edge-toggle').getBoundingClientRect(), action=first.getBoundingClientRect();
@@ -83,10 +83,11 @@ test('Chromium: sidebar starts with New chat, then the search box, Recents, then
         checks.indent={recents:recentTitle-recentsLabel,project:projectStep};
         ensure('recents rows indented exactly one level, the Project step',Math.abs((recentTitle-recentsLabel)-projectStep)<=1&&list.borderLeftWidth==='1px');
         const header=[...scroll.querySelectorAll('.sidebar-section-header')].find(e=>e.textContent.includes('Projects'));
-        const plus=header.querySelector('[aria-label="New project"]'), search=scroll.querySelector('.sidebar-search');
+        const plus=header.querySelector('[aria-label="New project"]'), search=scroll.querySelector('.sidebar-search-action');
         ensure('no label filter icon in Projects header',!header.querySelector('[aria-label="Filter sessions"]'));
         ensure('plus at the right of the Projects header',plus&&header.getBoundingClientRect().right-plus.getBoundingClientRect().right<=8);
-        ensure('search box below New chat and above Recents',search&&search.getBoundingClientRect().top>=first.getBoundingClientRect().bottom&&search.getBoundingClientRect().bottom<=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().top&&search.querySelector('input[aria-label="Search sessions"]'));
+        ensure('Search button below New chat and above Recents; no search box',search&&search.getBoundingClientRect().top>=first.getBoundingClientRect().bottom&&search.getBoundingClientRect().bottom<=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect().top&&!scroll.querySelector('input'));
+        search.click(); ensure('Search button opens the search',searches===1);
         ensure('plus uses icon font',plus.querySelector('.app-icon').textContent==='\\ue012');
         plus.click(); ensure('plus opens New project',projects===1);
         scroll.querySelector('#sidebar-recents-list .tree-thread').click(); await new Promise(r=>setTimeout(r,10));

@@ -47,8 +47,8 @@ test('frequent labels: most sessions first, then most recent use, then name; at 
   assert.equal(frequentSessionLabels(rows, 2).length, 2);
 });
 
-// Production NativeWorkspace + DesktopShellView (Cmd+K) in real Chromium.
-test('Chromium: a Session label request searches the sidebar (AND, chips, keyword); Cmd+K searches the same way', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+// Production NativeWorkspace + DesktopShellView (one search dialog) in real Chromium.
+test('Chromium: one search dialog for Sessions, files and labels; label requests, Cmd+K, Shift+Cmd+F and the sidebar Search button open it', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'session-search-'));
   try {
     const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
@@ -56,81 +56,73 @@ test('Chromium: a Session label request searches the sidebar (AND, chips, keywor
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
       const tick=(ms=30)=>new Promise(r=>setTimeout(r,ms));
-      let labelListener, selected=[];
+      let labelListener, selected=[], searches=[], opened=[];
+      const hit=(id,name,threadId,title,extra={})=>({id,threadId,name,mime:'image/png',size:2048,state:'available',list:'delivered',createdAt:1792000000,threadTitle:title,channelId:'p',channelName:'Research',...extra});
+      const files={'':[hit('att_1','crash-chart.png','a','Login crash'),hit('att_2','notes.md','b','Slow sync',{list:'uploaded',mime:'text/markdown'})]};
       window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),setContentBounds:async()=>{},newTab:async()=>{},selectThread:async id=>{selected.push(id)},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
-        loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},onSearchLabel:listener=>{labelListener=listener;return()=>{labelListener=undefined}}};
+        loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},onSearchLabel:listener=>{labelListener=listener;return()=>{labelListener=undefined}},
+        searchFiles:async(query,labels)=>{searches.push([query,[...labels]]);const all=files[''];return {supported:true,failed:[],cursors:{},items:all.filter(f=>(!query||(f.name+f.threadTitle).toLowerCase().includes(query.toLowerCase()))&&(!labels.length||labels.includes('bug')&&f.threadId==='a'))};},
+        openSessionFile:async(threadId,id,action)=>{opened.push([threadId,id,action])}};
       const now=Date.now()/1000, t=(id,title,markers,ago=8*86400,channelId='p')=>({id,channelId,title,markers,running:false,lastMessageAt:now-ago});
-      const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,selectedChannelId:'p',
+      const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,supportsFileSearch:true,selectedChannelId:'p',
         channels:[{id:'p',name:'Research'},{id:'q',name:'Mobile'}],
         threads:[t('a','Login crash',['bug','iOS'],60),t('b','Slow sync',['bug']),t('c','Release notes',['docs','iOS'],120,'q'),t('d','Urgent fix plan',[]),t('e','Payment flow',['urgent','bug'])],
         tabs:[],messages:[],interactions:[],canLoadOlder:false};
       const root=createRoot(document.getElementById('root'));
       flushSync(()=>root.render(<DesktopShellView snapshot={snapshot} viewRole="workspace" />));
       const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
-      const titles=sel=>qa(sel+' .thread-title').map(e=>e.textContent);
       const setValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
       const key=(el,k,extra={})=>el.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true,...extra}));
+      const opts=()=>qa('.palette-results [role="option"]');
+      const optionText=o=>o.firstChild.textContent;
+      const box=()=>q('.palette input[aria-label="Search"]');
+      const wait=async test=>{for(let i=0;i<40&&!test();i++)await tick(30);return test();};
       (async()=>{try{
         await tick(60);
+        ensure('no search box or frequent labels in the sidebar',!q('.sidebar-scroll input')&&!q('.frequent-label'));
         ensure('workspace subscribed to label requests',typeof labelListener==='function');
-        // Frequent labels under the search box: top labels by session count, then most recent use.
-        const frequent=()=>qa('.sidebar-frequent-labels button');
-        ensure('frequent labels in order',frequent().map(b=>b.textContent).join('|')==='bug|iOS|docs|urgent');
-        { const row=q('.sidebar-frequent-labels').getBoundingClientRect(), search=q('.sidebar-search').getBoundingClientRect(), side=q('aside.native-sidebar').getBoundingClientRect(), recents=q('.sidebar-recents').getBoundingClientRect();
-          checks.frequentBox={row:[row.top,row.bottom,row.left,row.right],search:[search.bottom,search.left],recents:recents.top};
-          ensure('frequent labels sit between the search box and Recents',row.top>=search.bottom&&row.bottom<=recents.top&&row.left>=side.left&&row.right<=side.right+0.5&&row.height>0); }
-        frequent()[1].click(); await tick();
-        ensure('a frequent label click searches that label',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='iOS'&&titles('.search-result-list').join('|')==='Login crash|Release notes');
-        ensure('selected frequent label is pressed and stays visible',frequent()[1].getAttribute('aria-pressed')==='true'&&frequent().length===4);
-        frequent()[1].click(); await tick();
-        ensure('second click removes it and restores the tree',!q('.session-query-chip')&&!!q('.channel-tree'));
-        q('.sidebar-edge-toggle').click(); await tick(); ensure('sidebar collapsed',!q('aside.native-sidebar'));
+        // A Session page's label click opens the dialog with that label.
         labelListener('bug'); await tick();
-        ensure('label request opens the sidebar',!!q('aside.native-sidebar'));
-        ensure('label chip in the search box',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug');
-        ensure('results replace Recents and Projects',!q('.channel-tree')&&!q('#sidebar-recents-list'));
-        ensure('only sessions with the label, sidebar order',titles('.search-result-list').join('|')==='Login crash|Payment flow|Slow sync');
-        ensure('result row has no native title; its hover card names the project',!q('.search-result-list .tree-thread').hasAttribute('title')&&!!q('.search-result-list .tree-thread').dataset.threadId);
-        labelListener('iOS'); labelListener('bug'); await tick();
-        ensure('second label narrows (AND), no duplicate chip',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug|iOS'&&titles('.search-result-list').join('|')==='Login crash');
-        const input=q('.sidebar-search input[aria-label="Search sessions"]');
-        input.focus(); await tick();
-        { const accent=getComputedStyle(document.documentElement).getPropertyValue('--app-accent').trim(), rgb=c=>{const d=document.createElement('i');d.style.color=c;document.body.append(d);const v=getComputedStyle(d).color;d.remove();return v;};
-          const box=getComputedStyle(q('.sidebar-search')), field=getComputedStyle(input), blue=rgb(accent);
-          ensure('focused sidebar search: no outline on the input',field.outlineStyle==='none'||field.outlineWidth==='0px');
-          ensure('focused sidebar search: no accent border',box.borderTopColor!==blue&&!box.boxShadow.includes(blue)&&box.boxShadow!=='none'); checks.sidebarFocus={border:box.borderTopColor,shadow:box.boxShadow}; }
-        key(input,'Backspace'); await tick();
-        ensure('Backspace in an empty box removes the last label',qa('.session-query-chip > span').map(e=>e.textContent).join('|')==='bug');
-        setValue(input,'sync'); await tick();
-        ensure('keyword plus label',titles('.search-result-list').join('|')==='Slow sync');
-        q('[aria-label="Remove label bug from search"]').click(); await tick(); setValue(input,'urg'); await tick();
-        ensure('keyword matches title and label text',titles('.search-result-list').sort().join('|')==='Payment flow|Urgent fix plan');
-        ensure('matching label offered',qa('.sidebar-search-labels button').map(b=>b.textContent).join('|')==='urgent');
-        q('.sidebar-search-labels [aria-label="Search label urgent"]').click(); await tick();
-        ensure('suggestion becomes a chip',input.value===''&&titles('.search-result-list').join('|')==='Payment flow');
-        q('.search-result-list .tree-thread').click(); await tick(); ensure('result opens its session',selected.at(-1)==='e');
-        setValue(input,'zzz'); await tick(); ensure('no match message',q('.search-result-list').textContent.includes('No matching sessions'));
-        key(input,'Escape'); await tick();
-        ensure('Escape clears the search and restores the tree',input.value===''&&!q('.session-query-chip')&&!!q('.channel-tree')&&!!q('#sidebar-recents-list'));
-        // Cmd+K: same search.
+        ensure('label request opens the search with a chip',!!box()&&qa('.palette .session-query-chip > span').map(e=>e.textContent).join('|')==='bug');
+        ensure('label search lists the sessions with the label',opts().filter(o=>!o.classList.contains('palette-file-option')).map(optionText).join('|')==='Login crash|Payment flow|Slow sync');
+        ensure('label search also searches files with that label',await wait(()=>qa('.palette-file-option').length===1)&&searches.at(-1)[1].join()==='bug'&&searches.at(-1)[0]==='');
+        ensure('section headings',qa('.palette-section').map(e=>e.textContent).join('|')==='Sessions|Files');
+        key(box(),'Escape'); await tick(); ensure('Escape closes the dialog',!q('.palette'));
+        // The sidebar Search button opens an empty dialog.
+        q('.sidebar-search-action').click(); await tick();
+        ensure('Search button opens the search',!!box()&&document.activeElement===box()&&!q('.palette .session-query-chip'));
+        { const f=getComputedStyle(box()), wrap=getComputedStyle(q('.palette .palette-query'));
+          ensure('search input: no outline or border',(f.outlineStyle==='none'||f.outlineWidth==='0px')&&f.borderTopWidth==='0px'&&f.borderLeftWidth==='0px');
+          ensure('search query: only a bottom divider',wrap.borderTopWidth==='0px'&&wrap.borderLeftWidth==='0px'&&wrap.borderBottomWidth==='1px'); }
+        setValue(box(),'ur'); await tick();
+        ensure('label option first, then sessions by title or label',opts()[0].classList.contains('palette-label-option')&&opts()[0].textContent==='Labelurgent'&&opts().slice(1).filter(o=>!o.classList.contains('palette-file-option')).map(optionText).sort().join('|')==='Payment flow|Urgent fix plan');
+        key(box(),'Enter'); await tick();
+        ensure('Enter on a label adds a chip',box().value===''&&qa('.palette .session-query-chip > span').map(e=>e.textContent).join('|')==='urgent');
+        key(box(),'Backspace'); await tick(); ensure('Backspace removes the label',!q('.palette .session-query-chip'));
+        // Files: Enter opens the file, Cmd+Enter its session, Option+Enter saves it.
+        setValue(box(),'crash'); await tick();
+        ensure('a keyword finds the session and the file',await wait(()=>qa('.palette-file-option').length===1)&&opts().map(optionText).join('|')==='Login crash|crash-chart.png');
+        ensure('file row names its session, project and source',q('.palette-file-option small').textContent.startsWith('Login crash · Research · From Hermes · 2.0 KB'));
+        ensure('hint for file keys',q('.palette-hint').textContent.includes('⌘Enter opens its session'));
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter',{altKey:true}); await tick();
+        ensure('Option+Enter saves the file and keeps the dialog',opened.at(-1).join()==='a,att_1,save'&&!!q('.palette'));
+        key(box(),'Enter',{metaKey:true}); await tick();
+        ensure('Cmd+Enter opens the file session',selected.at(-1)==='a');
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
-        const box=q('.palette input[aria-label="Find a session"]'); ensure('Cmd+K opens the picker',!!box&&document.activeElement===box);
-        { const f=getComputedStyle(box), wrap=getComputedStyle(q('.palette .palette-query'));
-          ensure('Cmd+K input: no outline or border',(f.outlineStyle==='none'||f.outlineWidth==='0px')&&f.borderTopWidth==='0px'&&f.borderLeftWidth==='0px');
-          ensure('Cmd+K query: only a bottom divider',wrap.borderTopWidth==='0px'&&wrap.borderLeftWidth==='0px'&&wrap.borderBottomWidth==='1px'); }
-        setValue(box,'ur'); await tick();
-        const opts=()=>qa('.palette-results [role="option"]');
-        ensure('label option first, then sessions by title or label',opts()[0].classList.contains('palette-label-option')&&opts()[0].textContent==='Labelurgent'&&opts().slice(1).map(o=>o.firstChild.textContent).sort().join('|')==='Payment flow|Urgent fix plan');
-        key(box,'Enter'); await tick();
-        ensure('Enter on a label adds a chip',box.value===''&&qa('.palette .session-query-chip > span').map(e=>e.textContent).join('|')==='urgent'&&opts().map(o=>o.firstChild.textContent).join('|')==='Payment flow');
-        setValue(box,'iOS'); await tick();
-        ensure('label option for the keyword',opts()[0].textContent==='LabeliOS');
-        key(box,'Enter'); await tick();
-        ensure('two labels in Cmd+K narrow to none',!opts().length&&q('.palette').textContent.includes('No sessions found'));
-        key(box,'Backspace'); await tick(); key(box,'Backspace'); await tick();
-        ensure('Backspace removes both labels',!q('.palette .session-query-chip'));
-        setValue(box,'crash'); await tick(); key(box,'Enter'); await tick();
-        ensure('Enter opens the session',selected.at(-1)==='a');
+        setValue(box(),'crash'); await wait(()=>qa('.palette-file-option').length===1);
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        ensure('Enter opens the file and closes the dialog',opened.at(-1).join()==='a,att_1,open'&&!q('.palette'));
+        // Shift+Cmd+F: files only.
+        window.dispatchEvent(new KeyboardEvent('keydown',{key:'F',shiftKey:true,metaKey:true,bubbles:true,cancelable:true})); await tick();
+        ensure('Shift+Cmd+F opens the search for files',q('.palette-scope [aria-checked="true"]')?.textContent==='Files'&&box().placeholder.startsWith('Search files'));
+        setValue(box(),'s'); await wait(()=>qa('.palette-file-option').length===2);
+        ensure('files scope hides sessions',opts().every(o=>o.classList.contains('palette-file-option')||o.classList.contains('palette-label-option')));
+        setValue(box(),'zzz'); await wait(()=>q('.palette').textContent.includes('No files found'));
+        ensure('no match message',q('.palette').textContent.includes('No files found.'));
+        q('.palette-scope [role="radio"]').click(); await tick();
+        ensure('scope back to Sessions and files',q('.palette-scope [aria-checked="true"]').textContent==='Sessions and files');
+        setValue(box(),'crash'); await tick(); key(box(),'Enter'); await tick();
+        ensure('Enter opens the session',selected.at(-1)==='a'&&!q('.palette'));
         checks.ok=true;
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.ttf': 'empty', '.woff2': 'empty', '.woff': 'empty' } });

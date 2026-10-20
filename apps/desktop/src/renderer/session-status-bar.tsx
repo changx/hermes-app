@@ -14,9 +14,10 @@ const TOOL_ICONS = {
   label: 'M3.5 4.5v4.6l7.4 7.4 5.6-5.6-7.4-7.4H4.5zM7 7h.01',
   rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
   archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
+  files: 'M5 3.5h6.5l3.5 3.5v9.5H5zM11.5 3.5V7H15M7.5 10.5h5M7.5 13h5',
 } as const;
 const ToolIcon = ({ name }: { name: keyof typeof TOOL_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={TOOL_ICONS[name]} /></svg>;
-export type StatusAction = 'copy-link' | 'export' | 'labels' | 'rename' | 'archive';
+export type StatusAction = 'copy-link' | 'export' | 'files' | 'labels' | 'rename' | 'archive';
 
 /** The +N label menu opens at the pointer for a click and under the button for the keyboard. View coordinates. */
 const menuPoint = (event: MouseEvent<HTMLElement>) => {
@@ -94,6 +95,7 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
       {labels && <button type="button" className={`todo-toggle${todo ? ' todo-on' : ''}`} aria-pressed={todo} aria-label={todo ? 'Remove todo' : 'Mark as todo'} data-tooltip={todoTooltip}
         disabled={todoBusy || !thread || !online} onClick={onToggleTodo}><TodoIcon on={todo} /></button>}
       <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => onAction('copy-link')}><ToolIcon name="link" /></button>
+      {snapshot.supportsSessionFiles && <button type="button" aria-label="Session files" data-tooltip="Session files" disabled={!thread} onClick={() => onAction('files')}><ToolIcon name="files" /></button>}
       {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation" onClick={() => onAction('export')}><MessageIcon name="export" /></button>}
       {labels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" disabled={!thread} onClick={() => onAction('labels')}><ToolIcon name="label" /></button>}
       <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!thread} onClick={() => onAction('rename')}><ToolIcon name="rename" /></button>

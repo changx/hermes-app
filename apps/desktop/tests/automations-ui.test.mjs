@@ -57,8 +57,8 @@ test('Chromium: sidebar Automations sits above Recents, lists jobs and opens one
       const scroll=document.querySelector('.sidebar-scroll');
       const titles=[...scroll.querySelectorAll('.sidebar-section-title')].map(e=>e.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim());
       ensure('sections in order',titles.join('|')==='Automations|Recents|Projects');
-      const search=scroll.querySelector('.sidebar-search').getBoundingClientRect(), automations=scroll.querySelector('#sidebar-automations-title').getBoundingClientRect(), recents=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect();
-      ensure('Automations between the search box and Recents',search.bottom<=automations.top&&automations.bottom<=recents.top);
+      const search=scroll.querySelector('.sidebar-actions').getBoundingClientRect(), automations=scroll.querySelector('#sidebar-automations-title').getBoundingClientRect(), recents=scroll.querySelector('#sidebar-recents-title').getBoundingClientRect();
+      ensure('Automations between New chat and Recents',search.bottom<=automations.top&&automations.bottom<=recents.top);
       const rows=[...scroll.querySelectorAll('#sidebar-automations-list .automation-row')];
       ensure('every job listed in server order',rows.map(r=>r.querySelector('.thread-title').textContent).join('|')==='Morning digest|Nightly backup|Weekly report');
       ensure('statuses that need attention',rows.map(r=>r.querySelector('.automation-row-status')?.textContent??'').join('|')==='Running|Paused|Last run failed');

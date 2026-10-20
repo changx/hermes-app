@@ -335,10 +335,12 @@ const registerDesktopApi = (): void => {
     if (id === undefined) { clipboard.writeText(service.sessionLink(target(event))); return; }
     shellSender(event); clipboard.writeText(service.sessionLink(text(id, 200)));
   });
-  // A Session page's toolbar label: the main window's sidebar searches for it. Only the label text crosses windows.
+  // A Session page's status bar label: the main window opens its search with that label. Only the label text crosses windows.
+  // The search dialog hides the Session view, so the main window's own page takes the keyboard focus.
   handle("desktop:search-label", (event, label: unknown) => {
     trustedSender(event); const value = text(label, 1024);
     if (!value.trim() || !mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.focus();
     mainWindow.webContents.send("desktop:search-label", value);
   });
   // A Session page's Project name: the main window's sidebar shows that Project. Only the Project id crosses windows.
@@ -433,6 +435,27 @@ const registerDesktopApi = (): void => {
   handle("desktop:pick-attachments", async (event, threadId: unknown) => { const id = target(event); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); return service.pickAndUploadAttachments(id); });
   handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { const id = target(event), tab = tabs?.sender(event.sender); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { return await service.uploadAttachmentInputs(attachmentInputs(paths), id); } finally { if (tab) tab.busy = false; } });
   handle("desktop:delete-attachment", async (event, id: unknown) => { await service.deleteUnattachedAttachment(text(id, 200), target(event)); });
+  handle("desktop:list-session-files", (event, list: unknown, after: unknown) => {
+    const threadId = target(event);
+    if (list !== 'delivered' && list !== 'uploaded') throw new Error('Invalid desktop request');
+    return service.sessionFiles(threadId, list, after === undefined ? undefined : text(after, 200));
+  });
+  handle("desktop:prepare-session-file", (event, id: unknown) => service.prepareSessionFile(target(event), text(id, 200)));
+  handle("desktop:search-files", (event, query: unknown, labels: unknown, cursors: unknown) => {
+    trustedSender(event); // The search dialog opens in the main window and in Session tabs.
+    if (!Array.isArray(labels) || labels.length > 10) throw new Error('Invalid desktop request');
+    const input = cursors === undefined ? undefined : object(cursors), next: Record<string, string> = {};
+    if (input && Object.keys(input).length > 20) throw new Error('Invalid desktop request');
+    for (const [key, cursor] of Object.entries(input ?? {})) next[text(key, 200)] = text(cursor, 200);
+    return service.searchFiles(text(query, 200), labels.map(label => text(label, 1024)), input ? next : undefined);
+  });
+  handle("desktop:open-session-file", async (event, threadId: unknown, id: unknown, action: unknown) => {
+    trustedSender(event);
+    if (action !== 'open' && action !== 'save') throw new Error('Invalid desktop request');
+    const thread = text(threadId, 200), attachmentId = text(id, 200);
+    await service.prepareSessionFile(thread, attachmentId);
+    await service.downloadAttachment(attachmentId, action, thread);
+  });
   handle("desktop:preview-image", async (event, id: unknown) => { return service.previewAttachmentImage(text(id, 200), target(event)); });
   handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => {
     const threadId = target(event), attachmentId = text(id, 200);
