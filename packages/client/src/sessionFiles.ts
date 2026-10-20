@@ -4,8 +4,10 @@ import type { Attachment } from './index';
 export type SessionFileList = 'delivered' | 'uploaded';
 export type SessionFile = Attachment & { list: SessionFileList; created_at: number; ref_seq: number | null; caption?: string };
 export type SessionFilePage = { threadId: string; list: SessionFileList; items: SessionFile[]; nextAfter: string | null };
-export type FileSearchHit = SessionFile & { thread_title: string; channel_id: string; channel_name: string | null };
-export type FileSearchPage = { query: string; labels: string[]; items: FileSearchHit[]; nextAfter: string | null };
+/** `rank` (1 = best) is set when the server ranked the page by meaning and keywords. */
+export type FileSearchHit = SessionFile & { thread_title: string; channel_id: string; channel_name: string | null; rank?: number };
+/** `ranked`: one page in relevance order (semantic search), no cursor. Otherwise newest first with a cursor. */
+export type FileSearchPage = { query: string; labels: string[]; items: FileSearchHit[]; nextAfter: string | null; ranked: boolean };
 
 type Call = (method: string, path: string, body?: unknown, signal?: AbortSignal) => Promise<Record<string, unknown>>;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -61,11 +63,16 @@ export function createSessionFilesApi(call: Call, error: (message: string) => Er
       if (body.query !== q || !Array.isArray(body.labels) || body.labels.length !== labels.length || body.labels.some((label, i) => label !== labels[i])) return fail('File search identity mismatch');
       const items = unique(rows(body.items, 50).map(raw => {
         const item = object(raw);
-        return { ...file(item), thread_title: text(item.thread_title), channel_id: id(item.channel_id), channel_name: item.channel_name === null ? null : text(item.channel_name) };
+        return { ...file(item), thread_title: text(item.thread_title), channel_id: id(item.channel_id), channel_name: item.channel_name === null ? null : text(item.channel_name),
+          ...(body.ranked === true ? { rank: count(item.rank) } : {}) };
       }));
+      if (body.ranked === true) {
+        if (body.next_after !== null || items.some((item, i) => item.rank !== i + 1)) return fail('Invalid ranked file search');
+        return { query: q, labels: [...labels], items, nextAfter: null, ranked: true };
+      }
       const nextAfter = cursor(body.next_after);
       if (nextAfter !== null && (!items.length || nextAfter !== `${items.at(-1)!.created_at}:${items.at(-1)!.id}`)) return fail('File cursor did not advance');
-      return { query: q, labels: [...labels], items, nextAfter };
+      return { query: q, labels: [...labels], items, nextAfter, ranked: false };
     },
   };
 }

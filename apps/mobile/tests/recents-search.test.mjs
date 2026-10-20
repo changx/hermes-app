@@ -235,3 +235,12 @@ test('Recents search adds a Files section from servers that search files; a file
     assert.deepEqual(root.root.findByType('FlatList').props.data.map(item => item.key).filter(k => k.startsWith('file:')), [], 'Clear removes file results');
   } finally { await act(async () => root.unmount()); }
 });
+
+test('ranked file hits keep their rank across servers; unranked hits follow, newest first', () => {
+  const rows = mergeFileHits([
+    { slot: 'primary', name: 'home', items: [hit('att_1', 'a.png', 10, { rank: 1 }), hit('att_2', 'b.pdf', 90, { rank: 2 })] },
+    { slot: 'w', name: 'work', items: [hit('att_3', 'c.csv', 50, { rank: 1 }), hit('att_4', 'd.md', 20)] },
+    { slot: 'x', name: 'old server', items: [hit('att_5', 'e.md', 99)] },
+  ]);
+  assert.deepEqual(rows.map(r => r.key), ['w:att_3', 'primary:att_1', 'primary:att_2', 'x:att_5', 'w:att_4']);
+});

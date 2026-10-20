@@ -76,16 +76,17 @@ export function searchRecentRows(connections: readonly RecentSource[], query: Se
 
 /** One file search result, from one connection. Fields follow the plugin's file search row. */
 export type FileHit = Readonly<{ id: string; thread_id: string; name?: string; size?: number; state: string; created_at: number;
-  ref_seq: number | null; list: 'delivered' | 'uploaded'; caption?: string; thread_title: string; channel_name: string | null }>;
+  ref_seq: number | null; list: 'delivered' | 'uploaded'; caption?: string; thread_title: string; channel_name: string | null; rank?: number }>;
 export type FileHitRow = Readonly<{ key: string; slot: string; connectionName: string; file: FileHit }>;
 
 /**
- * File results of the Recents search: the newest first, from every connection that searched.
+ * File results of the Recents search, from every connection that searched: ranked results
+ * (semantic search) first by rank, interleaving connections, then the newest.
  * A row key names its connection, so the same attachment ID on two servers stays two rows.
  */
 export function mergeFileHits(results: readonly Readonly<{ slot: string; name: string; items: readonly FileHit[] }>[], limit = 30): FileHitRow[] {
   return results.flatMap(result => result.items.map(file => ({ key: `${result.slot}:${file.id}`, slot: result.slot, connectionName: result.name, file })))
-    .sort((a, b) => b.file.created_at - a.file.created_at || a.key.localeCompare(b.key))
+    .sort((a, b) => (a.file.rank ?? Infinity) - (b.file.rank ?? Infinity) || b.file.created_at - a.file.created_at || a.key.localeCompare(b.key))
     .slice(0, limit);
 }
 

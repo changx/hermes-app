@@ -46,3 +46,16 @@ test('File search sends keyword and labels and validates location fields', async
   const labelsOnly = await client(() => ({ query: '', labels: ['报告'], items: [], next_after: null })).files.search('', ['报告']);
   assert.deepEqual(labelsOnly.items, []);
 });
+
+test('A ranked file search keeps its order, needs ranks 1..n and has no cursor', async () => {
+  const hit = (id, rank) => ({ ...row(id, 'delivered'), thread_title: 'T', channel_id: 'p_one', channel_name: null, rank });
+  const page = await client(() => ({ query: 'chart', labels: [], items: [hit(B, 1), hit(A, 2)], next_after: null, ranked: true })).files.search('chart');
+  assert.equal(page.ranked, true); assert.deepEqual(page.items.map(i => [i.id, i.rank]), [[B, 1], [A, 2]]); assert.equal(page.nextAfter, null);
+  for (const body of [
+    { query: 'chart', labels: [], items: [hit(B, 2), hit(A, 1)], next_after: null, ranked: true },
+    { query: 'chart', labels: [], items: [hit(B, 1)], next_after: `100:${B}`, ranked: true },
+    { query: 'chart', labels: [], items: [{ ...hit(B, 1), rank: undefined }], next_after: null, ranked: true },
+  ]) await assert.rejects(client(() => body).files.search('chart'));
+  const plain = await client(() => ({ query: 'chart', labels: [], items: [hit(B, 9)], next_after: null })).files.search('chart');
+  assert.equal(plain.ranked, false); assert.equal(plain.items[0].rank, undefined, 'an unranked page ignores rank fields');
+});

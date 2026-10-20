@@ -1,6 +1,6 @@
 # Session files, file search and the wider Project modal
 
-Status (2026-10-20): Phase 1 released (plugin v0.2.43, desktop v0.1.99, mobile through Expo). Phase 2 (semantic search) not started. See the release record at the end.
+Status (2026-10-20): Phase 1 released (plugin v0.2.43, desktop v0.1.99, mobile through Expo). Phase 2 (semantic search): the embedding service is installed and running; the plugin and client changes are on branches `feat/semantic-search` (App and plugin), not released. See the release record at the end.
 
 ## Confirmed requirements (Jamie, 2026-10-20)
 
@@ -97,22 +97,33 @@ Model facts (checked 2026-10-20 on [the model card](https://ai.google.dev/gemma/
 
 Host: 8 CPU cores, 31 GB RAM, no GPU. CPU inference is enough for the expected file count.
 
-Design:
+Design (built 2026-10-20; Jamie: own process and own service, no effect on the Gateway):
 
-1. **Embedding service**: a separate local process with its own `uv` environment (`sentence-transformers`, CPU PyTorch, media decoders). It listens on localhost only. It is not loaded into the Gateway process, so the large dependencies do not enter the Hermes core environment.
-2. **Jobs**: after a file is indexed, the plugin queues an embedding job. The service runs jobs in the background. A failed job is retried later and never blocks delivery or chat.
-3. **Content by type**:
-   - Text, Markdown, CSV, JSON and code: the first 8K tokens, as `title: <name> | text: <content>`.
-   - PDF: extracted text; scanned pages as page images.
-   - Images: the image.
-   - Video: sampled frames within the token budget.
-   - Audio: the first 327 s.
-   - Other types: name and delivering message text only.
-4. **Storage**: 512-dimension float32 vectors in the plugin SQLite database. Search compares all vectors in memory. A vector database is not needed at this scale.
-5. **Ranking**: keyword and vector results are merged with reciprocal-rank fusion (RRF). Keyword search keeps working when the service is down.
-6. Capability: `file_search_semantic: true`, only while the service is healthy.
+1. **Embedding service** `hermes-app-embed.service` (plugin repo `services/embed/`, see its README). Own systemd user unit, own `uv` venv with pinned CPU PyTorch, own model cache and own index database under `~/.hermes/hermes-app-embed/`. The model never loads in the Gateway process.
+   - Limits: `MemoryMax=8G`, no swap, `CPUQuota=400%`, `CPUWeight=20`, `Nice=10`, idle I/O. Home is read-only to it except its own folder. Offline (`HF_HUB_OFFLINE=1`).
+   - API: an owner-only Unix socket (`embed.sock`, mode 0600); no network port (`RestrictAddressFamilies=AF_UNIX`).
+2. **Indexing**: every 30 s the service reads each Hermes App profile's `metadata.sqlite` read-only and embeds new files (same rule as Session files). It never writes plugin data. Per file: a `meta` vector (name, delivering message, Session title; redone when that text changes) and a `content` vector:
+   - images; video 8 frames; audio first 120 s; text and code first 64 KB (2,048 tokens); PDF text of the first 5 pages, or the first page as an image when it has no text; other types `meta` only.
+   - An item is counted before it starts and skipped after two failed or crashed attempts. Removed files lose their vectors.
+3. **Search** (plugin `session_files.py`): only the first page of a query with text asks the service, with a 2 s timeout. Hits pass the same filters as keyword search (archived Sessions and Projects, labels, unsent uploads). A hit counts when its score is at least 0.64 and within 0.06 of the best visible hit. The keyword matches (newest first) and these hits merge by reciprocal-rank fusion (k = 60). The page is `ranked: true`, items carry `rank` 1…n, and there is no cursor.
+4. **Fallback**: when the socket is missing, slow or failing, search is keyword-only and unranked, as in Phase 1. No capability flag is needed: the clients follow `ranked`.
+5. **Clients**: the SDK validates `ranked` pages (ranks 1…n, no cursor). Desktop (Cmd+K) and mobile (Recents) put ranked hits first by rank, interleaving connections, then unranked hits newest first.
 
-Phase 2 needs separate authorization before work starts: a new user systemd service, new Python dependencies in a separate environment, and a model download (about 1.5 GB in bf16).
+Calibration on the real `hermes-app-dev` files (108 files, 2026-10-20). Each query avoids the words of its target, and the right file ranked first in all 7:
+
+| Query | First hit (score) |
+|---|---|
+| credit card statement | screenshot in 「查询信用卡月度扣款商户」 (0.700) |
+| cholesterol health claim | screenshot in 「图中胆固醇说法的科学依据」 (0.702) |
+| cute mascot icon with wings | `1-mochi-wings.png` (0.735) |
+| app store rejection notes | `higoon-review-log.md` (0.752) |
+| AI girlfriend chat app competitors | `01-crushie-ai.pdf` (0.729) |
+| 账单发票 | the two invoice PDFs (0.766, 0.763) |
+| 状态栏截图 | `status-bar-many-labels.png` (0.778) |
+
+- Queries with no matching file (「番茄炒蛋怎么做」, "weather forecast for tomorrow") reach only 0.59–0.61. Wrong hits under a right answer score 0.60–0.66. These set the 0.64 floor and the 0.06 margin.
+- Through the plugin code on a copy of the data, with the live service, a search takes 150–190 ms. "credit card statement" returns the one screenshot; keyword search alone finds nothing for it. "weather forecast" returns nothing.
+- Indexing on this host: about 4.5 s per image and less than 0.2 s per name, at 3.9 GB memory. The service's search answers in 110–330 ms while it indexes.
 
 #### Benchmark on this host (2026-10-20)
 

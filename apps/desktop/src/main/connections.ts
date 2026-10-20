@@ -261,10 +261,12 @@ export class DesktopConnections {
         if (page.nextAfter) next[account.id] = page.nextAfter;
         const name = connected.length > 1 ? this.nameOf(account) : undefined;
         return page.items.map((hit): DesktopFileHit => ({ ...this.sessionFile(account, hit), threadTitle: hit.thread_title,
-          channelId: this.encode(account, hit.channel_id)!, ...(hit.channel_name ? { channelName: hit.channel_name } : {}), ...(name ? { connectionName: name } : {}) }));
+          channelId: this.encode(account, hit.channel_id)!, ...(hit.channel_name ? { channelName: hit.channel_name } : {}), ...(name ? { connectionName: name } : {}),
+          ...(hit.rank !== undefined ? { rank: hit.rank } : {}) }));
       } catch { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
     }))).flat();
-    rows.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    // Ranked results (semantic search) first by rank, interleaving connections; then the newest.
+    rows.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
     return { supported: connected.length > 0, items: rows, failed, cursors: next };
   }
   /** Pause, Resume, Run now or a new schedule for one qualified job. */

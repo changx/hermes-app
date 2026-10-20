@@ -151,7 +151,8 @@ export type DesktopSessionFile = Readonly<{ id: string; threadId: string; name: 
   list: 'delivered' | 'uploaded'; createdAt: number; caption?: string }>;
 export type DesktopSessionFilePage = Readonly<{ supported: boolean; items: readonly DesktopSessionFile[]; nextAfter: string | null }>;
 /** A file search result. `threadId` and `channelId` are qualified like every other desktop ID. */
-export type DesktopFileHit = DesktopSessionFile & Readonly<{ threadTitle: string; channelId: string; channelName?: string; connectionName?: string }>;
+/** `rank` (1 = best) when the server ranked its results by meaning and keywords. */
+export type DesktopFileHit = DesktopSessionFile & Readonly<{ threadTitle: string; channelId: string; channelName?: string; connectionName?: string; rank?: number }>;
 /** File search over every connected server that offers it. `cursors` (by connection) continues each list. */
 export type DesktopFileSearch = Readonly<{ supported: boolean; items: readonly DesktopFileHit[]; failed: readonly string[]; cursors: Readonly<Record<string, string>> }>;
 /** `invalid`: the server cannot use the folder; `taken`: another project already uses it. */
