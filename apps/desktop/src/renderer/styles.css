@@ -726,6 +726,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .palette-scope button[aria-checked="true"] { border-color: transparent; background: #e8eef5; color: #23384f; }
 .palette-section { padding: 8px 10px 2px; color: var(--app-muted); font-size: .8em; font-weight: 600; }
 .palette-results .palette-file-option .palette-file-name { overflow-wrap: anywhere; }
+.palette-results .palette-snippet { display: -webkit-box; margin-top: 3px; overflow: hidden; color: var(--app-label); font-size: .9em; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .palette-results button:disabled { opacity: .55; cursor: default; }
 .palette-results .palette-more { color: var(--app-accent); }
 .palette-note, .palette-hint { margin: 6px 4px 0; color: var(--app-muted); font-size: .85em; }

@@ -237,3 +237,32 @@ test('Automations paging, controls and settings conversations route to the job s
   f.a.client.deleteAutomation=async()=>{throw Error('must not be called');};
   await assert.rejects(f.workspace.deleteAutomation('old-a'),/unavailable/);
 });
+test('message search: every connection that offers it, qualified IDs, merged by rank; refine only where offered', async()=>{
+  const f=fixture(), asked=[];
+  const hit=(id,rank,seq=rank*10)=>({thread_id:id,title:'T '+id,channel_id:'p',channel_name:'Shared Project',markers:[],seq,snippet:'s',rank});
+  const api=(letter,{fast,ai,ready=true,available=true})=>({
+    async search(q,labels){asked.push([letter,'search',q,[...labels]]);return {query:q,labels:[...labels],available,ready,items:fast};},
+    async refine(q,labels){asked.push([letter,'refine',q]);if(ai instanceof Error)throw ai;return {query:q,labels:[...labels],available,items:ai.items,none:ai.none};}});
+  Object.assign(f.a.client,{supportsSessionSearch:true,supportsSessionSearchRefine:true,sessionText:api('a',{fast:[hit('th_a1',1),hit('th_a2',2,null)],ai:{items:[hit('th_a2',1,null)],none:false},ready:false})});
+  Object.assign(f.b.client,{supportsSessionSearch:true,supportsSessionSearchRefine:false,sessionText:api('b',{fast:[hit('th_b1',1)],ai:{items:[],none:true}})});
+  const fast=await f.workspace.searchMessages('合规',['todo']);
+  const B='b'.repeat(24)+':';
+  assert.deepEqual(fast.items.map(i=>[i.threadId,i.rank,i.refSeq]),[['th_a1',1,10],[B+'th_b1',1,10],['th_a2',2,undefined]]);
+  assert.equal(fast.items[1].channelId,B+'p'); assert.ok(fast.items[0].connectionName&&fast.items[1].connectionName);
+  assert.equal(fast.indexing,true); assert.equal(fast.refined,false); assert.equal(fast.none,false); assert.deepEqual(fast.failed,[]);
+  assert.deepEqual(asked.map(a=>a.slice(0,2).join()),['a,search','b,search']); assert.deepEqual(asked[0][3],['todo']);
+  asked.length=0;
+  const ai=await f.workspace.searchMessages('合规',[],true);
+  assert.deepEqual(asked.map(a=>a.slice(0,2).join()).sort(),['a,refine','b,search']);
+  assert.deepEqual(ai.items.map(i=>i.threadId),['th_a2',B+'th_b1']); assert.equal(ai.refined,true); assert.equal(ai.none,false);
+  // none only when every server answered by AI found nothing.
+  f.b.client.supportsSessionSearchRefine=true; f.a.client.sessionText=api('a',{fast:[],ai:{items:[],none:true}});
+  const none=await f.workspace.searchMessages('knee',[],true);
+  assert.equal(none.none,true); assert.deepEqual(none.items,[]);
+  // A failed or down server is named; the others still answer.
+  f.a.client.sessionText=api('a',{fast:[],ai:new Error('model down')}); f.b.client.sessionText=api('b',{fast:[],ai:{items:[],none:true},available:false});
+  const down=await f.workspace.searchMessages('x',[],true);
+  assert.equal(down.failed.length,2); assert.equal(down.none,false);
+  f.a.client.supportsSessionSearch=false; f.b.client.supportsSessionSearch=false;
+  assert.equal((await f.workspace.searchMessages('x',[])).supported,false);
+});

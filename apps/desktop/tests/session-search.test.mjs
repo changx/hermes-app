@@ -48,10 +48,29 @@ test('frequent labels: most sessions first, then most recent use, then name; at 
 });
 
 // Production NativeWorkspace + DesktopShellView (one search dialog) in real Chromium.
-test('Chromium: one search dialog for Sessions, files and labels; label requests, Cmd+K, Shift+Cmd+F and the sidebar Search button open it', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+/** Runs one page script (TSX) in headless Chrome and returns its `checks` JSON. */
+async function runSearchPage(contents, evidence) {
   const folder = await mkdtemp(join(tmpdir(), 'session-search-'));
   try {
-    const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
+    const browser = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.ttf': 'empty', '.woff2': 'empty', '.woff': 'empty' } });
+    const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
+    await copyFile(new URL('../../../assets/work-icons.ttf', import.meta.url), join(folder, 'work-icons.ttf'));
+    await writeFile(join(folder, 'bundle.js'), browser.outputFiles[0].text);
+    const file = join(folder, 'check.html');
+    await writeFile(file, `<!doctype html><html style="--app-font-size:16px"><style>${css} html,body,#root{height:100%;margin:0}</style><div id="root"></div><pre id="results"></pre><script src="bundle.js"></script></html>`);
+    const args = ['--headless', '--no-sandbox', '--disable-gpu', '--window-size=1280,800', '--virtual-time-budget=8000', '--allow-file-access-from-files', `--user-data-dir=${join(folder, 'profile')}`];
+    const dom = execFileSync(process.env.HERMES_TEST_CHROME, [...args, '--dump-dom', pathToFileURL(file).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 3_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
+    const result = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
+    assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result)); assert.equal(result.ok, true);
+    if (process.env.HERMES_SEARCH_EVIDENCE) {
+      execFileSync(process.env.HERMES_TEST_CHROME, [...args, `--screenshot=${join(process.env.HERMES_SEARCH_EVIDENCE, evidence)}`, pathToFileURL(file).href], { timeout: 30000, stdio: 'pipe' });
+    }
+    return result;
+  } finally { await rm(folder, { recursive: true, force: true }); }
+}
+
+test('Chromium: one search dialog for Sessions, files and labels; label requests, Cmd+K, Shift+Cmd+F and the sidebar Search button open it', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  await runSearchPage(`
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
@@ -130,18 +149,72 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
         ensure('Enter opens the session',selected.at(-1)==='a'&&!q('.palette'));
         checks.ok=true;
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
-    ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.ttf': 'empty', '.woff2': 'empty', '.woff': 'empty' } });
-    const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
-    await copyFile(new URL('../../../assets/work-icons.ttf', import.meta.url), join(folder, 'work-icons.ttf'));
-    await writeFile(join(folder, 'bundle.js'), browser.outputFiles[0].text);
-    const file = join(folder, 'check.html');
-    await writeFile(file, `<!doctype html><html style="--app-font-size:16px"><style>${css} html,body,#root{height:100%;margin:0}</style><div id="root"></div><pre id="results"></pre><script src="bundle.js"></script></html>`);
-    const args = ['--headless', '--no-sandbox', '--disable-gpu', '--window-size=1280,800', '--virtual-time-budget=8000', '--allow-file-access-from-files', `--user-data-dir=${join(folder, 'profile')}`];
-    const dom = execFileSync(process.env.HERMES_TEST_CHROME, [...args, '--dump-dom', pathToFileURL(file).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 3_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
-    const result = JSON.parse(/<pre id="results">(.*?)<\/pre>/.exec(dom)?.[1] ?? 'null');
-    assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result)); assert.equal(result.ok, true);
-    if (process.env.HERMES_SEARCH_EVIDENCE) {
-      execFileSync(process.env.HERMES_TEST_CHROME, [...args, `--screenshot=${join(process.env.HERMES_SEARCH_EVIDENCE, 'session-search.png')}`, pathToFileURL(file).href], { timeout: 30000, stdio: 'pipe' });
-    }
-  } finally { await rm(folder, { recursive: true, force: true }); }
+  `, 'session-search.png');
+});
+
+test('Chromium: message search lists Sessions by message text, then reorders them by AI; Enter opens the matching message', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  await runSearchPage(`
+      import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
+      import {DesktopShellView} from './apps/desktop/src/renderer/shell';
+      const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
+      const tick=(ms=30)=>new Promise(r=>setTimeout(r,ms));
+      let selected=[], shown=[], calls=[], release=()=>{};
+      const m=(threadId,title,rank,extra={})=>({threadId,title,channelId:'p',channelName:'Research',markers:[],refSeq:rank*10,snippet:'… '+title+' snippet …',rank,...extra});
+      const fast={'oceanpay 合规':[m('x','Velox OceanPay docs',1),m('a','Oceanpay compliance',2),m('y','Rockpay plan',3,{refSeq:undefined,snippet:''})],
+        knee:[m('y','Rockpay plan',1)], index:[m('x','Velox OceanPay docs',1)]};
+      const slow={'oceanpay 合规':{items:[m('y','Rockpay plan',1,{refSeq:undefined}),m('x','Velox OceanPay docs',2)],none:false},knee:{items:[],none:true}};
+      window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),setContentBounds:async()=>{},newTab:async()=>{},selectThread:async id=>{selected.push(id)},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
+        loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},onSearchLabel:()=>()=>{},
+        searchFiles:async()=>({supported:true,failed:[],cursors:{},items:[]}),openSessionFile:async()=>{},openMessage:async(threadId,ref)=>{shown.push([threadId,ref])},
+        searchMessages:(query,labels,refine)=>{calls.push([query,[...labels],refine]);
+          if(!refine)return Promise.resolve({supported:true,failed:[],indexing:query==='index',refined:false,none:false,items:fast[query]??[]});
+          return new Promise(r=>{release=()=>r({supported:true,failed:[],indexing:false,refined:true,none:slow[query]?.none??false,items:slow[query]?.items??[]})});}};
+      const now=Date.now()/1000, t=(id,title,markers)=>({id,channelId:'p',title,markers,running:false,lastMessageAt:now-60});
+      const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,supportsFileSearch:true,supportsSessionSearch:true,selectedChannelId:'p',
+        channels:[{id:'p',name:'Research'}],threads:[t('a','Oceanpay 合规 compliance',['pay']),t('x','Velox OceanPay docs',[]),t('y','Rockpay plan',[])],tabs:[],messages:[],interactions:[],canLoadOlder:false};
+      const root=createRoot(document.getElementById('root'));
+      flushSync(()=>root.render(<DesktopShellView snapshot={snapshot} viewRole="workspace" />));
+      const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
+      const setValue=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
+      const key=(el,k,extra={})=>el.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true,...extra}));
+      const box=()=>q('.palette input[aria-label="Search"]');
+      const rows=()=>qa('.palette-message-option').map(o=>o.firstChild.textContent);
+      const sections=()=>qa('.palette-section').map(e=>e.textContent).join('|');
+      const wait=async test=>{for(let i=0;i<60&&!test();i++)await tick(30);return test();};
+      const open=async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true}));await tick();};
+      (async()=>{try{
+        await tick(60); await open();
+        ensure('placeholder names messages',box().placeholder==='Search sessions, messages, files or labels…');
+        setValue(box(),'oceanpay 合规');
+        ensure('fast message rows appear',await wait(()=>rows().length===2));
+        ensure('a Session listed by title is not listed again',rows().join('|')==='Velox OceanPay docs|Rockpay plan'&&qa('.palette-results [role="option"]')[0].firstChild.textContent==='Oceanpay 合规 compliance');
+        ensure('snippet shown under the title',q('.palette-message-option .palette-snippet').textContent==='… Velox OceanPay docs snippet …'&&q('.palette-message-option small').textContent==='Research');
+        ensure('first request is the fast search',calls[0][0]==='oceanpay 合规'&&!calls[0][1].length&&!calls[0][2]);
+        ensure('AI ranking is announced',await wait(()=>sections().includes('Messages · AI is ranking…')&&calls.length===2&&calls[1][2]===true));
+        // Highlight the second message row; it keeps the highlight after the AI order arrives.
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick();
+        ensure('Rockpay highlighted',q('[aria-selected="true"]').firstChild.textContent==='Rockpay plan');
+        release();
+        ensure('AI order replaces the rows',await wait(()=>rows().join('|')==='Rockpay plan|Velox OceanPay docs')&&sections().includes('Messages · ranked by AI'));
+        ensure('highlight follows its row',q('[aria-selected="true"]').firstChild.textContent==='Rockpay plan');
+        key(box(),'Enter'); await tick();
+        ensure('a row without a message opens the Session',selected.at(-1)==='y'&&!q('.palette'));
+        await open(); setValue(box(),'oceanpay 合规'); await wait(()=>rows().length===2);
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        ensure('Enter opens the Session at the matching message',shown.at(-1).join()==='x,10'&&!q('.palette'));
+        // The AI can say that nothing fits.
+        await open(); setValue(box(),'knee'); await wait(()=>rows().length===1); await wait(()=>calls.at(-1)[2]===true); release();
+        ensure('AI none hides the rows and says so',await wait(()=>!rows().length&&q('.palette').textContent.includes('AI found no message that answers this.'))&&!q('.palette').textContent.includes('No sessions, messages or files found'));
+        // Typing again cancels the pending AI order.
+        const before=calls.length; setValue(box(),'index'); await wait(()=>rows().length===1);
+        ensure('indexing note',q('.palette').textContent.includes('Older messages are still being indexed.'));
+        setValue(box(),'zzz'); await tick(800);
+        ensure('no AI request for a query without rows',calls.slice(before).every(c=>c[0]!=='zzz'||!c[2])&&q('.palette').textContent.includes('No sessions, messages or files found.'));
+        // Labels alone and the Files scope do not search messages.
+        const count=calls.length; setValue(box(),''); await tick(400);
+        q('.palette-scope [role="radio"]:nth-child(2)').click(); setValue(box(),'oceanpay 合规'); await tick(400);
+        ensure('no message search for an empty keyword or in Files',calls.length===count&&!rows().length);
+        checks.ok=true;
+      }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
+  `, 'message-search.png');
 });
