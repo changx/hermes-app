@@ -9,7 +9,8 @@ import { useSessionMenu } from '../../useSessionMenu';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
 import { TabHeader } from '../../TabHeader';
-import { mergeFileHits, quickLabels, recentRows, searchRecentRows, todoRows, type FileHitRow, type RecentRow } from '../../recentRows';
+import { mergeFileHits, mergeMessageHits, quickLabels, recentRows, searchRecentRows, todoRows, type FileHitRow, type MessageHitRow, type RecentRow } from '../../recentRows';
+import type { SessionTextHit } from '../../../../../packages/client/src/sessionText';
 import { TodoFlag } from '../../TodoFlag';
 import { hasTodo } from '../../../../../packages/client/src/todo';
 import { addQueryLabel, emptySessionQuery, removeQueryLabel, sessionQueryActive, type SessionQuery } from '../../../../../packages/client/src/sessionSearch';
@@ -19,8 +20,15 @@ import { tabListBottomPadding } from '../../tabInsets';
 const MINUTE = 60_000;
 // File search asks the servers; wait for a pause in typing first.
 const FILE_SEARCH_DELAY_MS = 300;
+// The AI order costs a model call: ask for it only after the typing has paused.
+const REFINE_DELAY_MS = 500;
 
-type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key: string; row: RecentRow } | { kind: 'file'; key: string; hit: FileHitRow };
+type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key: string; row: RecentRow } | { kind: 'file'; key: string; hit: FileHitRow }
+  | { kind: 'message'; key: string; hit: MessageHitRow };
+type Found = { slot: string; name: string; items: readonly SessionTextHit[] };
+/** `ranking`: the AI order is on its way. `refined`: rows are in the AI order; `none`: the AI found no fit. */
+type Messages = { state: 'idle' | 'loading' | 'ready'; found: readonly Found[]; ranking: boolean; refined: boolean; none: boolean; indexing: boolean; failed: number };
+const NO_MESSAGES: Messages = { state: 'idle', found: [], ranking: false, refined: false, none: false, indexing: false, failed: 0 };
 type Files = { state: 'idle' | 'loading' | 'ready'; rows: readonly FileHitRow[]; failed: number };
 const NO_FILES: Files = { state: 'idle', rows: [], failed: 0 };
 const fileDate = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -29,7 +37,9 @@ const fileDate = (seconds: number) => new Date(seconds * 1000).toLocaleDateStrin
  * Recents tab: a Todo section (every flagged Thread, any age), then the
  * user's own Threads with activity in the last 72 hours. Both lists put
  * running Threads first, then newest activity. A search shows the matching
- * Threads, then the matching files (delivered or sent) from every server that
+ * Threads by title, then Threads whose messages match (keywords and meaning at
+ * once, then the AI order a few seconds later; a tap opens the best message),
+ * then the matching files (delivered or sent) from every server that
  * searches files; a file opens its Thread at the message that carried it.
  */
 export default function Recents() {
@@ -63,18 +73,56 @@ export default function Recents() {
     }, FILE_SEARCH_DELAY_MS);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [query, searching, fileSourceKey]);
+  const [messages, setMessages] = useState<Messages>(NO_MESSAGES);
+  const messageRequest = useRef(0);
+  const messageSources = connections.filter(c => c.client?.supportsSessionSearch === true && c.client.connectionState === 'online');
+  const messageSourceKey = messageSources.map(c => c.slot + (c.client!.supportsSessionSearchRefine ? '+ai' : '')).join('\n');
+  const messageSourcesRef = useRef(messageSources); messageSourcesRef.current = messageSources;
+  useEffect(() => {
+    const id = ++messageRequest.current, sources = messageSourcesRef.current, text = query.text.trim();
+    if (!text || !sources.length) { setMessages(NO_MESSAGES); return; }
+    setMessages(old => ({ ...old, state: 'loading', ranking: false }));
+    const controller = new AbortController();
+    let refineTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      void Promise.allSettled(sources.map(c => c.client!.sessionText.search(text, query.labels, controller.signal)
+        .then(page => ({ slot: c.slot, name: c.name, page })))).then(results => {
+        if (id !== messageRequest.current) return;
+        const pages = results.flatMap(r => r.status === 'fulfilled' && r.value.page.available ? [r.value] : []);
+        const found = pages.map(p => ({ slot: p.slot, name: p.name, items: p.page.items }));
+        const ai = sources.filter(c => c.client!.supportsSessionSearchRefine && found.some(f => f.slot === c.slot && f.items.length));
+        setMessages({ state: 'ready', found, ranking: ai.length > 0, refined: false, none: false, indexing: pages.some(p => !p.page.ready), failed: results.length - pages.length });
+        if (!ai.length) return;
+        refineTimer = setTimeout(() => {
+          void Promise.allSettled(ai.map(c => c.client!.sessionText.refine(text, query.labels, controller.signal).then(page => ({ slot: c.slot, page })))).then(refined => {
+            if (id !== messageRequest.current) return;
+            const done = refined.flatMap(r => r.status === 'fulfilled' && r.value.page.available ? [r.value] : []);
+            // A server whose AI order failed keeps its first order.
+            setMessages(old => !done.length ? { ...old, ranking: false } : { ...old, ranking: false, refined: true,
+              // None: every AI answer found nothing, and no other server has rows.
+              none: done.every(d => d.page.none) && old.found.every(f => !f.items.length || done.some(d => d.slot === f.slot)),
+              found: old.found.map(f => { const d = done.find(x => x.slot === f.slot); return d ? { ...f, items: d.page.items } : f; }) });
+          });
+        }, REFINE_DELAY_MS);
+      });
+    }, FILE_SEARCH_DELAY_MS);
+    return () => { clearTimeout(timer); clearTimeout(refineTimer); controller.abort(); };
+  }, [query, messageSourceKey]);
   const items = useMemo((): Item[] => {
     const rowItem = (section: string) => (row: RecentRow): Item => ({ kind: 'row', key: `${section}:${row.key}`, row });
     if (searching) {
-      const rows = searchRecentRows(connections, query).map(rowItem('search'));
-      if (!files.rows.length) return rows;
-      return [...rows, { kind: 'section', key: 'section:files', title: 'Files' }, ...files.rows.map(hit => ({ kind: 'file' as const, key: 'file:' + hit.key, hit }))];
+      const titled = searchRecentRows(connections, query), rows = titled.map(rowItem('search'));
+      const found = mergeMessageHits(messages.found, new Set(titled.map(row => row.key)));
+      const messageTitle = messages.ranking ? 'Messages · AI is ranking…' : messages.refined ? 'Messages · ranked by AI' : 'Messages';
+      const middle: Item[] = found.length || messages.ranking ? [{ kind: 'section', key: 'section:messages', title: messageTitle }, ...found.map(hit => ({ kind: 'message' as const, key: 'message:' + hit.key, hit }))] : [];
+      if (!files.rows.length) return [...rows, ...middle];
+      return [...rows, ...middle, { kind: 'section', key: 'section:files', title: 'Files' }, ...files.rows.map(hit => ({ kind: 'file' as const, key: 'file:' + hit.key, hit }))];
     }
     const todos = todoRows(connections), recents = recentRows(connections, now / 1000);
     if (!todos.length) return recents.map(rowItem('recent'));
     return [{ kind: 'section', key: 'section:todo', title: 'Todo' }, ...todos.map(rowItem('todo')),
       ...(recents.length ? [{ kind: 'section' as const, key: 'section:recent', title: 'Recent' }, ...recents.map(rowItem('recent'))] : [])];
-  }, [connections, revision, now, query, searching, files.rows]);
+  }, [connections, revision, now, query, searching, files.rows, messages]);
   // Selected labels stay visible (first) even when they are not among the five most used.
   const labels = useMemo(() => { const top = quickLabels(connections); return [...query.labels.filter(label => !top.includes(label)), ...top]; }, [connections, revision, query.labels]);
   const toggle = (label: string) => setQuery(old => old.labels.includes(label) ? removeQueryLabel(old, label) : addQueryLabel(old, label));
@@ -109,6 +157,18 @@ export default function Recents() {
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       renderItem={({ item: entry }) => {
         if (entry.kind === 'section') return <Text accessibilityRole="header" style={s.section}>{entry.title}</Text>;
+        if (entry.kind === 'message') {
+          const { hit, slot, connectionName } = entry.hit;
+          const where = multiple ? `${hit.channel_name} · ${connectionName}` : hit.channel_name;
+          return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(slot, hit.thread_id, hit.seq ?? undefined)}
+            {...menu.rowProps({ slot, client: connections.find(c => c.slot === slot)?.client ?? null, id: hit.thread_id, title: hit.title })}
+            accessibilityLabel={[hit.title, where, hit.snippet || undefined].filter(Boolean).join(', ')}
+            style={({ pressed }) => [s.card, pressed && s.pressed]}>
+            <Text numberOfLines={2} style={s.heading}>{hit.title}</Text>
+            {!!hit.snippet && <Text numberOfLines={2} style={s.caption}>{hit.snippet}</Text>}
+            <View style={s.meta}><Text numberOfLines={1} style={s.source}>{where}</Text></View>
+          </Pressable>;
+        }
         if (entry.kind === 'file') {
           const { file, slot, connectionName } = entry.hit;
           const where = [file.thread_title, file.channel_name, multiple ? connectionName : undefined].filter(Boolean).join(' · ');
@@ -143,10 +203,19 @@ export default function Recents() {
           </View>
         </Pressable>;
       }}
-      ListEmptyComponent={loading || files.state === 'loading' ? null : <Text style={s.empty}>{searching ? (fileSources.length ? 'No matching conversations or files' : 'No matching conversations') : 'Conversations you take part in during the last 72 hours appear here.'}</Text>}
-      ListFooterComponent={searching && files.failed > 0 ? <Text accessibilityRole="alert" style={s.empty}>Files could not be searched on {files.failed === 1 ? 'one server' : `${files.failed} servers`}.</Text> : null} />
+      ListEmptyComponent={loading || files.state === 'loading' || messages.state === 'loading' || messages.none ? null : <Text style={s.empty}>{searching ? (fileSources.length ? 'No matching conversations or files' : 'No matching conversations') : 'Conversations you take part in during the last 72 hours appear here.'}</Text>}
+      ListFooterComponent={searching ? <SearchNotes files={files.failed} messages={messages} /> : null} />
     <NewFab label="New conversation" onPress={() => router.push('/new-thread')} />
   </SafeAreaView>;
+}
+
+/** Notes under the search results; one line each. */
+function SearchNotes({ files, messages }: { files: number; messages: Messages }) {
+  const servers = (n: number) => n === 1 ? 'one server' : `${n} servers`;
+  const notes = [messages.none ? 'AI found no message that answers this.' : '', messages.indexing ? 'Older messages are still being indexed. Some may be missing.' : '',
+    messages.failed > 0 ? `Messages could not be searched on ${servers(messages.failed)}.` : '', files > 0 ? `Files could not be searched on ${servers(files)}.` : ''].filter(Boolean);
+  if (!notes.length) return null;
+  return <View>{notes.map(note => <Text key={note} accessibilityRole={/could not/.test(note) ? 'alert' : undefined} style={s.empty}>{note}</Text>)}</View>;
 }
 
 const s = StyleSheet.create({

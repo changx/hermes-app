@@ -5,7 +5,7 @@ import React from 'react';
 import { create, act } from 'react-test-renderer';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { mergeFileHits, quickLabels, recentRows, searchRecentRows } from '../src/recentRows.ts';
+import { mergeFileHits, mergeMessageHits, quickLabels, recentRows, searchRecentRows } from '../src/recentRows.ts';
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -68,6 +68,9 @@ const Recents = mod.exports.default;
 const cards = root => root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityLabel && n.props.onPress && n.props.accessibilityRole === 'button' && !/label|Clear|^New conversation$/.test(n.props.accessibilityLabel)).map(n => n.props.accessibilityLabel.split(',')[0]);
 const quick = root => root.root.findAll(n => n.type === 'Pressable' && /label .* from search$|^Search label /.test(n.props.accessibilityLabel ?? ''));
 const press = async node => act(async () => { node.props.onPress(); });
+// The list footer (search notes) as text; the FlatList stand-in does not render it.
+const notes = root => { const footer = root.root.findByType('FlatList').props.ListFooterComponent; if (!footer) return [];
+  let out; act(() => { out = create(footer); }); const text = out.root.findAll(n => n.type === 'Text').map(n => n.props.children); out.unmount(); return text; };
 
 test('Recents tab: search box and quick label filter search every Thread; a second tap and Clear restore Recents', async () => {
   state.connections = sources();
@@ -227,8 +230,7 @@ test('Recents search adds a Files section from servers that search files; a file
     assert.match(missing.props.accessibilityLabel, /No longer available/);
     await press(missing);
     assert.deepEqual(state.opened.at(-1), 'primary:a', 'a file without a source message opens its Session');
-    const footer = root.root.findByType('FlatList').props.ListFooterComponent;
-    assert.equal(footer.props.children.join(''), 'Files could not be searched on one server.');
+    assert.deepEqual(notes(root), ['Files could not be searched on one server.']);
     await act(async () => { root.root.findByType('TextInput').props.onChangeText('zzz'); });
     await press(root.root.find(n => n.props.accessibilityLabel === 'Clear search'));
     await wait();
@@ -243,4 +245,64 @@ test('ranked file hits keep their rank across servers; unranked hits follow, new
     { slot: 'x', name: 'old server', items: [hit('att_5', 'e.md', 99)] },
   ]);
   assert.deepEqual(rows.map(r => r.key), ['w:att_3', 'primary:att_1', 'primary:att_2', 'x:att_5', 'w:att_4']);
+});
+
+const mhit = (id, title, rank, extra = {}) => ({ thread_id: id, title, channel_id: 'p', channel_name: 'Research', markers: [], seq: rank * 10, snippet: '… ' + title + ' …', rank, ...extra });
+
+test('message hits: Sessions listed by title are left out; servers merge by rank', () => {
+  const rows = mergeMessageHits([{ slot: 'primary', name: 'home', items: [mhit('a', 'A', 1), mhit('b', 'B', 2), mhit('c', 'C', 3)] }, { slot: 'w', name: 'work', items: [mhit('a', 'A2', 1)] }],
+    new Set(['primary:b']));
+  assert.deepEqual(rows.map(r => r.key), ['primary:a', 'w:a', 'primary:c']);
+  assert.equal(rows[1].connectionName, 'work');
+});
+
+test('Recents search adds Messages: fast rows first, then the AI order; a tap opens the matching message', async () => {
+  const base = sources(), asked = [];
+  let release = () => {};
+  const text = { search: async (q, labels) => { asked.push(['search', q, [...labels]]);
+      return { available: true, ready: q !== 'index', items: q === 'knee' ? [mhit('b', 'Slow sync', 1)] : q === 'zzz' ? [] : [mhit('c', 'Release notes', 1), mhit('a', 'Login crash', 2), mhit('b', 'Slow sync', 3, { seq: null, snippet: '' })] }; },
+    refine: (q, labels) => { asked.push(['refine', q]); return new Promise(resolve => { release = () => resolve(q === 'knee' ? { available: true, items: [], none: true }
+      : { available: true, items: [mhit('b', 'Slow sync', 1, { seq: null, snippet: '' }), mhit('c', 'Release notes', 2)], none: false }); }); } };
+  Object.assign(base[0].client, { supportsSessionSearch: true, supportsSessionSearchRefine: true, connectionState: 'online', sessionText: text });
+  state.connections = base; state.opened = []; state.alerts = [];
+  let root; await act(async () => { root = create(React.createElement(Recents)); });
+  const wait = (ms = 400) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
+  const keys = () => root.root.findByType('FlatList').props.data.map(item => item.key);
+  const headers = () => root.root.findAll(n => n.type === 'Text' && n.props.accessibilityRole === 'header').map(n => n.props.children);
+  try {
+    await wait();
+    assert.deepEqual(asked, [], 'no message search without a keyword');
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('crash'); });
+    await wait();
+    assert.deepEqual(asked, [['search', 'crash', []]]);
+    assert.deepEqual(keys(), ['search:primary:a', 'section:messages', 'message:primary:c', 'message:primary:b'], 'the title match is not listed again');
+    assert.deepEqual(headers(), ['Messages · AI is ranking…']);
+    const row = root.root.find(n => n.type === 'Pressable' && (n.props.accessibilityLabel ?? '').startsWith('Release notes,'));
+    assert.equal(row.props.accessibilityLabel, 'Release notes, Research · home, … Release notes …');
+    assert.ok(row.props.onLongPress, 'message rows have the Session menu');
+    await wait(600);
+    assert.deepEqual(asked.at(-1), ['refine', 'crash']);
+    await act(async () => { release(); });
+    assert.deepEqual(keys(), ['search:primary:a', 'section:messages', 'message:primary:b', 'message:primary:c']);
+    assert.deepEqual(headers(), ['Messages · ranked by AI']);
+    await press(root.root.find(n => n.type === 'Pressable' && (n.props.accessibilityLabel ?? '').startsWith('Release notes,')));
+    assert.deepEqual(state.opened.at(-1), 'primary:c@20', 'opens the Session at the matching message');
+    await press(root.root.find(n => n.type === 'Pressable' && (n.props.accessibilityLabel ?? '') === 'Slow sync, Research · home'));
+    assert.deepEqual(state.opened.at(-1), 'primary:b', 'no message: opens the Session');
+    // The AI can say that nothing fits.
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('knee'); });
+    await wait(1000); await act(async () => { release(); });
+    assert.deepEqual(keys(), []);
+    assert.deepEqual(notes(root), ['AI found no message that answers this.']);
+    assert.equal(root.root.findAll(n => n.type === 'Text' && n.props.children === 'No matching conversations').length, 0);
+    // Still indexing; no rows means no AI request.
+    const before = asked.length;
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('index'); });
+    await wait(1000);
+    assert.ok(notes(root).includes('Older messages are still being indexed. Some may be missing.'));
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('zzz'); });
+    await wait(1000);
+    assert.equal(asked.slice(before).filter(a => a[0] === 'refine' && a[1] === 'zzz').length, 0);
+    assert.equal(root.root.findAll(n => n.type === 'Text' && n.props.children === 'No matching conversations').length, 1);
+  } finally { await act(async () => root.unmount()); }
 });

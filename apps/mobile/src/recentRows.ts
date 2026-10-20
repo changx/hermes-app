@@ -1,6 +1,7 @@
 import { inRecents } from '../../../packages/client/src/recents.ts';
 import { hasTodo, withoutTodo } from '../../../packages/client/src/todo.ts';
 import { frequentSessionLabels, sessionQueryScore, type SessionQuery } from '../../../packages/client/src/sessionSearch.ts';
+import { messageMatches, type SessionTextHit } from '../../../packages/client/src/sessionText.ts';
 
 /** Directory data the Recents tab reads from one connection. */
 type Directory = {
@@ -88,6 +89,18 @@ export function mergeFileHits(results: readonly Readonly<{ slot: string; name: s
   return results.flatMap(result => result.items.map(file => ({ key: `${result.slot}:${file.id}`, slot: result.slot, connectionName: result.name, file })))
     .sort((a, b) => (a.file.rank ?? Infinity) - (b.file.rank ?? Infinity) || b.file.created_at - a.file.created_at || a.key.localeCompare(b.key))
     .slice(0, limit);
+}
+
+/** One Session whose messages match, from one connection. The key names the connection, like a Recents row key. */
+export type MessageHitRow = Readonly<{ key: string; slot: string; connectionName: string; hit: SessionTextHit }>;
+
+/**
+ * Message results of the Recents search: Sessions already listed by title (`shown`, Recents row keys)
+ * are left out, and several servers merge by rank (each server's best first).
+ */
+export function mergeMessageHits(results: readonly Readonly<{ slot: string; name: string; items: readonly SessionTextHit[] }>[], shown: ReadonlySet<string>, limit = 20): MessageHitRow[] {
+  const pages = results.map(result => result.items.map((hit): MessageHitRow => ({ key: `${result.slot}:${hit.thread_id}`, slot: result.slot, connectionName: result.name, hit })));
+  return messageMatches(pages, shown, row => row.key, limit);
 }
 
 /** Quick label filter: the five labels on the most listed Threads (same rule as the desktop sidebar). */
