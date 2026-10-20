@@ -8,8 +8,8 @@ Requested by Jamie (2026-10-19): the desktop app needs a place that shows the cu
 - One status bar is the last row of the Session page, under the composer. It is one line high (30px) and spans the full page width. It has a thin top border, no background block, and small muted text (0.8 × the app text size, so it follows the text size setting).
 - Left to right:
   1. **Location** (`nav`, "Session location"): a state dot and the connection name, `›`, then the Project name.
-  2. **Actions**: the todo flag and **More** (`⋯`).
-  3. **Labels**: they take the rest of the row (Jamie: labels after the actions, so they get more room).
+  2. **Tools**: every Session tool as its own icon button (Jamie: fully expanded, no `⋯` menu).
+  3. **Labels**: they take the rest of the row (Jamie: labels after the tools, so they get more room).
 
 ## Location
 
@@ -18,12 +18,11 @@ Requested by Jamie (2026-10-19): the desktop app needs a place that shows the cu
 - The Project name: a click shows the Project in the main window's sidebar (tooltip "Show in sidebar"). The sidebar opens if it is collapsed, a search is cleared (the search list replaces the Project tree), the Project branch opens, scrolls into view and is marked for 1.6 s.
 - The location takes at most 45% of the row. The Project name shrinks first, then the connection name. The dot stays.
 
-## Actions
+## Tools
 
-- Todo flag: same button, states, tooltip, shortcut (⇧⌘L) and rules as before (see [todo-flag.md](todo-flag.md)). Hidden without server label support.
-- More opens a native menu with the sidebar row menu items ([desktop-session-menu.md](desktop-session-menu.md)) plus `Export Conversation…` after `Copy Link` when the server supports export: `Rename…`, `Mark as Todo`/`Remove Todo`, `Edit Labels…`, `Copy Link`, `Export Conversation…`, `Archive…`. While the connection is offline, every item except `Copy Link` is disabled. Export is now disabled offline too, like the other server actions.
-- A click opens the menu at the pointer; the keyboard opens it under the button. One menu at a time.
-- Copy link, Export, Edit labels, Rename and Archive no longer have their own buttons.
+- One icon button per tool (`role="toolbar"`, "Session tools"), in the former top toolbar order: Mark as todo / Remove todo, Copy link, Export conversation (when the server supports it), Edit labels (with label support), Rename, Archive.
+- Names, tooltips, states and actions are unchanged from the top toolbar. The todo flag keeps ⇧⌘L and its rules (see [todo-flag.md](todo-flag.md)) and is disabled while offline.
+- Buttons are 24px with 16px icons; the tools never shrink. On a narrow window the labels give up room first, then the location.
 
 ## Labels
 
@@ -33,16 +32,15 @@ Requested by Jamie (2026-10-19): the desktop app needs a place that shows the cu
 ## Implementation
 
 - `src/renderer/session-status-bar.tsx`: `SessionStatusBar` and `StatusLabels`.
-- `src/renderer/shell.tsx`: the top toolbar is removed; the status bar is mounted after the composer. The More menu actions call the same functions as the old buttons.
-- `src/renderer/session-menu.ts`: `exportable` adds `export`.
-- `desktop:context-menu` also accepts a Session tab (not a New chat or Automation tab). Its view coordinates are moved by the tab view's position in the window (`DesktopTabManager.contentOrigin()`). Item validation is unchanged.
+- `src/renderer/shell.tsx`: the top toolbar is removed; the status bar is mounted after the composer. The tools call the same functions as before.
+- `desktop:context-menu` (used by the `+N` label menu) also accepts a Session tab (not a New chat or Automation tab). Its view coordinates are moved by the tab view's position in the window (`DesktopTabManager.contentOrigin()`). Item validation is unchanged.
 - `desktop:open-settings` takes an optional connection id. An unknown id opens Settings without a page request. The Settings window snapshot carries `settingsRequest` (`page`, `nonce`); `SettingsPage` applies each nonce once, after that page exists.
 - `desktop:reveal-project` takes a Project id that exists in the snapshot and sends it to the main window (`onRevealProject`). Only the id crosses windows. `NativeWorkspace` opens the sidebar, clears the search and passes the request to `NavigationPanel` (`reveal`).
 - Removed: `ToolbarLabels`, the `.session-toolbar` and `.conversation-actions` styles.
 
 ## Verification
 
-- `tests/session-status-bar.test.mjs` (replaces `session-toolbar.test.mjs`; production `DesktopShellView` in Chromium): no top toolbar; timeline at the top; bar under the composer, full width, at most 32px high; order location, actions, labels; labels fill the rest; connection name, state, aria names and tooltips; connection and Project clicks; tooltips above the controls and inside the window; More items and position (pointer, keyboard), one menu at a time, each action; labels search; `+N` at 1100px and 640px with ten labels (shown labels first and in order, hidden ones inert, all on one line inside the bar, dot, todo and More visible, location within its share, `+N` menu searches a hidden label); offline state, disabled items, Settings without a known connection row; attachment card layout.
+- `tests/session-status-bar.test.mjs` (replaces `session-toolbar.test.mjs`; production `DesktopShellView` in Chromium): no top toolbar; timeline at the top; bar under the composer, full width, at most 32px high; order location, actions, labels; labels fill the rest; connection name, state, aria names and tooltips; connection and Project clicks; tooltips above the controls and inside the window; every tool as its own button in order, on one line inside the bar, each action; labels search; `+N` at 1100px and 640px with ten labels (shown labels first and in order, hidden ones inert, all on one line inside the bar, dot and every tool visible, location within its share, `+N` menu searches a hidden label); offline state, tools without Export support, Settings without a known connection row; attachment card layout.
 - `tests/native-electron.test.mjs` (Electron/Xvfb): a status bar label in Session B searches the main window sidebar; the Project name of Session B clears a sidebar search and reveals Project Beta; the connection name moves the open Settings window to the connection page; a Session page menu rejects invalid items before a popup.
-- Updated: `session-menu`, `todo-flag`, `session-labels`, `message-toolbar`, `window-focus-composer`, `color-palette`, `default-font-size` tests.
-- Linux only. Mac acceptance is open: look, native menu position at the bottom of the window, Settings page jump, Project reveal, label overflow with real labels.
+- Updated: `session-menu` (IPC route), `todo-flag`, `session-labels`, `message-toolbar`, `window-focus-composer`, `color-palette`, `default-font-size` tests (selectors).
+- Linux only. Mac acceptance is open: look, the `+N` menu position at the bottom of the window, Settings page jump, Project reveal, label overflow with real labels.

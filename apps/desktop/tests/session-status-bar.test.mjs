@@ -47,7 +47,7 @@ const page = (body, { labels, state = 'online', exportable = true, connections =
 
 const MANY = ['urgent', 'review needed', 'design system', 'backend', 'follow up next week', 'iOS keyboard', 'long label text here 1234', 'release 0.1.98', 'networking and retries', 'one more label'];
 
-test('Chromium: no top toolbar; the status bar under the composer shows connection › Project, todo, More, then labels', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: no top toolbar; the status bar under the composer shows connection › Project, every tool, then labels', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const result = await runPage('session-status-bar', page(`
     const pageBox=rect(q('.session-tab-page')), bar=q('.session-status-bar'), list=q('.message-list'), composer=q('.composer');
     ensure('no header and no top toolbar',!q('.session-tab-page header')&&!q('.session-toolbar')&&!q('.conversation-actions'));
@@ -65,29 +65,25 @@ test('Chromium: no top toolbar; the status bar under the composer shows connecti
     conn.click(); proj.click(); await wait(20);
     ensure('connection opens its Settings page; Project shows in the sidebar',calls.join('|')==='settings:c1|reveal:p'); calls.length=0;
     const names=[...acts.querySelectorAll('button')].map(x=>x.getAttribute('aria-label'));
-    ensure('actions: todo and More only',names.join('|')==='Mark as todo|More session actions');
+    ensure('every tool is its own button, in the former toolbar order; no More menu',names.join('|')==='Mark as todo|Copy link|Export conversation|Edit labels|Rename|Archive'&&!q('.status-more'));
+    ensure('tools are a named toolbar',acts.getAttribute('role')==='toolbar'&&acts.getAttribute('aria-label')==='Session tools');
+    ensure('tool buttons are icons with in-app tooltips',[...acts.querySelectorAll('button')].every(x=>x.dataset.tooltip&&!x.title&&x.querySelector('svg')&&!x.textContent.trim()));
+    ensure('tools on one line, fully inside the bar',[...acts.querySelectorAll('button')].every(x=>{const r=rect(x);return r.width>=24&&r.top>=b.top&&r.bottom<=b.bottom&&Math.abs(r.top-rect(acts).top)<=1;}));
     ensure('todo tooltip names the shortcut',q('.todo-toggle').dataset.tooltip==='Mark as todo (⇧⌘L)');
     // Tooltips sit above controls at the bottom edge and inside the window.
     const hover=async el=>{el.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(600);return q('.app-tooltip');};
     const away=async()=>{list.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(30);};
-    for(const el of [conn,q('.status-more')]){const tip=await hover(el),t=rect(tip),e=rect(el);ensure('tooltip above and inside: '+el.className,tip.textContent===el.dataset.tooltip&&t.bottom<=e.top+1&&t.left>=0&&t.right<=document.documentElement.clientWidth);await away();ensure('tooltip hides: '+el.className,!q('.app-tooltip'));}
-    // More: the sidebar row menu plus Export, at the pointer.
-    const more=q('.status-more');
-    more.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1,clientX:150,clientY:690}));await wait(20);
-    ensure('More menu at the pointer',menus[0].x===150&&menus[0].y===690);
-    ensure('More menu items',menus[0].items.map(i=>i.id??'-').join('|')==='rename|todo|labels|-|copy-link|export|-|archive'&&menus[0].items.every(i=>!i.id||i.enabled!==false));
-    more.click();await wait(20); ensure('one menu at a time',menus.length===1);
-    answer('copy-link');await wait(30); ensure('Copy Link',calls.pop()==='copy');
-    const choose=async id=>{more.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));await wait(20);answer(id);await wait(40);};
-    await choose('export'); ensure('Export',calls.pop()==='export');
-    await choose('todo'); ensure('Mark as Todo saves the flag',calls.pop()==='labels:urgent,review needed,todo');
-    await choose('archive'); ensure('Archive after confirm',calls.pop()==='archive:t');
-    await choose('rename'); ensure('Rename dialog with the title',q('[role="dialog"][aria-label="Rename session"] input')?.value==='Session Title Beta');
+    for(const el of [conn,q('[aria-label="Archive"]')]){const tip=await hover(el),t=rect(tip),e=rect(el);ensure('tooltip above and inside: '+el.className,tip.textContent===el.dataset.tooltip&&t.bottom<=e.top+1&&t.left>=0&&t.right<=document.documentElement.clientWidth);await away();ensure('tooltip hides: '+el.className,!q('.app-tooltip'));}
+    // Each tool acts like the former toolbar button.
+    const tool=async name=>{q('.status-actions [aria-label="'+name+'"]').click();await wait(40);};
+    await tool('Copy link'); ensure('Copy link',calls.pop()==='copy');
+    await tool('Export conversation'); ensure('Export',calls.pop()==='export');
+    await tool('Mark as todo'); ensure('Mark as todo saves the flag',calls.pop()==='labels:urgent,review needed,todo');
+    await tool('Archive'); ensure('Archive after confirm',calls.pop()==='archive:t');
+    await tool('Rename'); ensure('Rename dialog with the title',q('[role="dialog"][aria-label="Rename session"] input')?.value==='Session Title Beta');
     q('[role="dialog"][aria-label="Rename session"] button[type="button"]')?.click(); await wait(30);
-    await choose('labels'); ensure('Edit Labels opens the editor',!!q('dialog.labels-editor'));
-    await choose(null); ensure('dismiss does nothing',calls.length===0);
-    more.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:0}));await wait(20);
-    const mb=rect(more); ensure('keyboard opens the menu under the button',Math.round(menus.at(-1).x)===Math.round(mb.left)&&Math.round(menus.at(-1).y)===Math.round(mb.bottom)); answer(null); await wait(30);
+    await tool('Edit labels'); ensure('Edit labels opens the editor',!!q('dialog.labels-editor'));
+    ensure('no menu was opened',menus.length===0&&calls.length===0);
     // Labels: two labels fit; both are buttons that search.
     const pills=qa('.status-label');
     ensure('labels shown, no +N',pills.map(p=>p.textContent).join('|')==='urgent|review needed'&&q('.status-label-more').classList.contains('status-label-hidden'));
@@ -106,7 +102,7 @@ test('Chromium: no top toolbar; the status bar under the composer shows connecti
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
 });
 
-test('Chromium: labels that do not fit move into +N; its menu searches a hidden label; a narrow window keeps the dot, todo and More', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: labels that do not fit move into +N; its menu searches a hidden label; a narrow window keeps the dot and every tool', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   for (const [size, name] of [['1100,700', 'status-bar-many-labels'], ['640,700', 'status-bar-narrow']]) {
     const result = await runPage(name, page(`
       const bar=q('.session-status-bar'), b=rect(bar), labels=q('.status-labels'), more=q('.status-label-more');
@@ -117,7 +113,7 @@ test('Chromium: labels that do not fit move into +N; its menu searches a hidden 
       ensure('hidden labels are inert and hidden',hidden.every(p=>p.inert&&p.getAttribute('aria-hidden')==='true'&&getComputedStyle(p).visibility==='hidden'));
       ensure('+N counts the hidden labels',!more.classList.contains('status-label-hidden')&&more.textContent==='+'+hidden.length&&more.getAttribute('aria-label')===hidden.length+' more labels');
       ensure('everything stays inside the bar on one line',[...visible,more].every(p=>rect(p).right<=rect(labels).right+0.5&&rect(p).left>=rect(labels).left-0.5&&Math.abs(rect(p).top-rect(visible[0]).top)<=1));
-      ensure('dot, todo and More stay visible',rect(q('.status-dot')).width>0&&rect(q('.todo-toggle')).right<=b.right&&rect(q('.status-more')).right<=b.right);
+      ensure('dot and every tool stay visible',rect(q('.status-dot')).width>0&&qa('.status-actions button').length===6&&qa('.status-actions button').every(x=>rect(x).width>=24&&rect(x).right<=rect(labels).left+1));
       ensure('location stays within its share',rect(q('.status-location')).width<=b.width*0.46);
       more.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1,clientX:600,clientY:690}));await wait(20);
       ensure('+N menu lists the hidden labels',menus[0].items.map(i=>i.label).join('|')===hidden.map(p=>p.textContent).join('|'));
@@ -133,9 +129,7 @@ test('Chromium: offline shows the state, disables server actions, and a missing 
     const conn=q('.status-connection');
     ensure('offline hint and dot',conn.textContent==='Jamie MacOffline'&&conn.getAttribute('aria-label')==='Connection Jamie Mac, Offline'&&q('.status-dot').classList.contains('status-dot-suspended'));
     ensure('todo disabled offline',q('.todo-toggle').disabled);
-    q('.status-more').dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));await wait(20);
-    ensure('offline: Copy Link only',menus[0].items.filter(i=>i.id).map(i=>i.id+'='+(i.enabled!==false)).join('|')==='rename=false|todo=false|labels=false|copy-link=true|archive=false');
-    answer(null);await wait(30);
+    ensure('offline: tools stay, Copy link works, no Export without server support',qa('.status-actions button').map(x=>x.getAttribute('aria-label')).join('|')==='Mark as todo|Copy link|Edit labels|Rename|Archive'&&!q('[aria-label="Copy link"]').disabled);
     conn.click();await wait(20); ensure('Settings without a page when the row is unknown',calls.pop()==='settings:undefined');
   `, { labels: [], state: 'suspended', exportable: false, connections: false }));
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));

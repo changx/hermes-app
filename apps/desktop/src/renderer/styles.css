@@ -770,7 +770,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .status-actions button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: 6px; color: var(--app-label); }
 .status-actions button:not(:disabled):hover { background: var(--app-hover); color: var(--app-text); }
 .status-actions svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.status-more .status-more-dot { fill: currentColor; stroke: none; }
 .status-actions .todo-toggle.todo-on { color: #d9480f; }
 .status-actions .todo-toggle.todo-on:hover { color: #b8400d; }
 .status-actions .todo-pennant-on { fill: currentColor; }

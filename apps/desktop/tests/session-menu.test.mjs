@@ -33,16 +33,8 @@ test('session menu: offline disables server actions only; no label support hides
   assert.deepEqual(offline.map(i => [i.id, i.enabled !== false]), [['rename', false], ['todo', false], ['labels', false], ['copy-link', true], ['archive', false]]);
   assert.deepEqual(sessionMenuItems({ todo: true, labels: false, online: true }).filter(i => i.id).map(i => i.id), ['rename', 'copy-link', 'archive']);
   assert.equal(isSessionMenuAction('archive'), true);
-  assert.equal(isSessionMenuAction('export'), true);
   assert.equal(isSessionMenuAction(null), false);
   assert.equal(isSessionMenuAction('close'), false);
-});
-
-test('session menu: the Session page adds Export after Copy Link; it needs the connection', () => {
-  assert.deepEqual(sessionMenuItems({ todo: false, labels: true, online: true, exportable: true }).map(i => i.id ?? '-'), ['rename', 'todo', 'labels', '-', 'copy-link', 'export', '-', 'archive']);
-  assert.equal(sessionMenuItems({ todo: false, labels: false, online: true, exportable: true }).find(i => i.id === 'export').label, 'Export Conversation…');
-  assert.equal(sessionMenuItems({ todo: false, labels: false, online: false, exportable: true }).find(i => i.id === 'export').enabled, false);
-  assert.equal(sessionMenuItems({ todo: false, labels: false, online: true }).some(i => i.id === 'export'), false);
 });
 
 test('main process accepts only plain items and separators', () => {
@@ -144,8 +136,7 @@ test('Chromium: rename dialog starts with the title selected, saves a new title,
     const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
     const wait=ms=>new Promise(r=>setTimeout(r,ms)); const renames=[]; let fail=false;
     window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},markResultRead:async()=>{},
-      renameThread:async(id,title)=>{renames.push(id+':'+title);if(fail)throw Error('HTTP 503')},
-      showContextMenu:async()=>'rename'};
+      renameThread:async(id,title)=>{renames.push(id+':'+title);if(fail)throw Error('HTTP 503')}};
     const snapshot={phase:'connected',connectionState:'online',connectionKey:'one',tabActive:true,tabKind:'session',selectedThreadId:'t',selectedChannelId:'p',
       channels:[{id:'p',name:'P'}],threads:[{id:'t',channelId:'p',title:'Old title',markers:[],running:false}],messages:[],interactions:[],canLoadOlder:false};
     const root=createRoot(document.getElementById('root'));
@@ -154,12 +145,12 @@ test('Chromium: rename dialog starts with the title selected, saves a new title,
     const dialog=()=>document.querySelector('[role="dialog"][aria-label="Rename session"]');
     (async()=>{try{
       await wait(50);
-      document.querySelector('.status-more').click();await wait(30);
+      document.querySelector('[aria-label="Rename"]').click();await wait(30);
       const input=dialog().querySelector('input');
       ensure('starts with the title, selected',input.value==='Old title'&&document.activeElement===input&&input.selectionStart===0&&input.selectionEnd===9);
       dialog().querySelector('button[type="submit"]').click();await wait(30);
       ensure('unchanged title closes without a request',!dialog()&&renames.length===0);
-      document.querySelector('.status-more').click();await wait(30);
+      document.querySelector('[aria-label="Rename"]').click();await wait(30);
       setValue(dialog().querySelector('input'),'   ');await wait(10);
       ensure('blank title cannot be saved',dialog().querySelector('button[type="submit"]').disabled);
       fail=true;setValue(dialog().querySelector('input'),' New title ');await wait(10);dialog().querySelector('button[type="submit"]').click();await wait(30);

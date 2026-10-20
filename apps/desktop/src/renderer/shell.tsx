@@ -18,8 +18,7 @@ import { NewSessionPage } from './new-session-page';
 import { AutomationListPage, AutomationPage } from './automations';
 import { LabelsEditor } from './session-labels';
 import { hasTodo } from '../../../../packages/client/src/todo';
-import { SessionStatusBar } from './session-status-bar';
-import type { SessionMenuAction } from './session-menu';
+import { SessionStatusBar, type StatusAction } from './session-status-bar';
 import { setSessionTodo } from './todo-toggle';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 import { ATTACHMENT_SIZE_RULE } from "../shared/attachment-input";
@@ -406,15 +405,12 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   const todoTooltip = `${todo ? 'Remove todo' : 'Mark as todo'} (${globalThis.window?.hermesDesktop?.getRuntimeInfo?.().platform === 'darwin' ? '⇧⌘L' : 'Ctrl+Shift+L'})`;
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
   const exportConversation = () => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."));
-  // The status bar's More menu: the same items as the sidebar row menu, plus Export.
-  const sessionAction = (action: SessionMenuAction) => {
-    if (!currentThread) return;
-    if (action === 'rename') setRenameTarget(currentThread);
-    else if (action === 'todo') toggleTodo();
-    else if (action === 'labels') openLabels(currentThread);
-    else if (action === 'copy-link') safely(window.hermesDesktop.copySessionLink());
+  // The status bar tools. Rename and labels need the Session row.
+  const sessionAction = (action: StatusAction) => {
+    if (action === 'copy-link') safely(window.hermesDesktop.copySessionLink());
     else if (action === 'export') exportConversation();
-    else archive();
+    else if (action === 'archive') archive();
+    else if (currentThread) { if (action === 'rename') setRenameTarget(currentThread); else openLabels(currentThread); }
   };
   const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor === 'palette' && <SessionPicker snapshot={snapshot} close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>

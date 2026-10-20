@@ -38,7 +38,8 @@ test('Chromium: the app window becoming active puts the cursor back in the Sessi
         ensure('reading position unchanged',list.scrollTop===top);
         document.activeElement.blur(); ensure('nothing focused',document.activeElement===document.body);
         signal(); await wait(20); ensure('from no focus too',document.activeElement===composer());
-        window.hermesDesktop.showContextMenu=async()=>'labels'; document.querySelector('.status-more').click(); await wait(40);
+        const edit=[...document.querySelectorAll('.status-actions button')].find(b=>b.getAttribute('aria-label')==='Edit labels');
+        edit.click(); await wait(40);
         const dialog=document.querySelector('dialog[open]'); ensure('labels dialog open',dialog&&dialog.contains(document.activeElement));
         const inDialog=document.activeElement; signal(); await wait(20);
         ensure('an open dialog on the page keeps its focus',document.activeElement===inDialog);

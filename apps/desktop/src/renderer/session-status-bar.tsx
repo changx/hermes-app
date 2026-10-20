@@ -2,15 +2,23 @@ import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { withoutTodo } from '../../../../packages/client/src/todo';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { connectionHint } from './navigation-panel';
-import { isSessionMenuAction, sessionMenuItems, type SessionMenuAction } from './session-menu';
+import { MessageIcon } from './message-toolbar';
 
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
 const stateName: Record<DesktopSnapshot['connectionState'], string> = { online: 'Online', connecting: 'Connecting', syncing: 'Connecting', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
 // Todo flag: the pennant fills when the Session is flagged.
 const TodoIcon = ({ on }: { on: boolean }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 17V3.5" /><path className={on ? 'todo-pennant-on' : undefined} d="M5.5 4h9.5l-2.4 3.5 2.4 3.5H5.5z" /></svg>;
-const MoreIcon = () => <svg viewBox="0 0 20 20" aria-hidden="true"><circle className="status-more-dot" cx="4.5" cy="10" r="1.6" /><circle className="status-more-dot" cx="10" cy="10" r="1.6" /><circle className="status-more-dot" cx="15.5" cy="10" r="1.6" /></svg>;
+// Stroke icons for the status bar tools. Decorative: each button carries its accessible name.
+const TOOL_ICONS = {
+  link: 'M8.5 11.5l3-3M7 9.5l-1.6 1.6a2.6 2.6 0 003.7 3.7L10.7 13M13 10.5l1.6-1.6a2.6 2.6 0 00-3.7-3.7L9.3 6.8',
+  label: 'M3.5 4.5v4.6l7.4 7.4 5.6-5.6-7.4-7.4H4.5zM7 7h.01',
+  rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
+  archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
+} as const;
+const ToolIcon = ({ name }: { name: keyof typeof TOOL_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={TOOL_ICONS[name]} /></svg>;
+export type StatusAction = 'copy-link' | 'export' | 'labels' | 'rename' | 'archive';
 
-/** A native menu opens at the pointer for a click and under the button for the keyboard. View coordinates. */
+/** The +N label menu opens at the pointer for a click and under the button for the keyboard. View coordinates. */
 const menuPoint = (event: MouseEvent<HTMLElement>) => {
   if (event.detail > 0) return { x: event.clientX, y: event.clientY };
   const box = event.currentTarget.getBoundingClientRect(); return { x: box.left, y: box.bottom };
@@ -60,26 +68,18 @@ function StatusLabels({ markers, onSearch }: { markers: readonly string[]; onSea
 
 /**
  * The Session page's bottom status bar, left to right: where the Session is
- * (connection state and name, then Project), the todo flag, the More menu, and
- * the labels, which take the rest of the row.
+ * (connection state and name, then Project), every Session tool as its own
+ * button, and the labels, which take the rest of the row.
  */
 export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip, onToggleTodo, onAction }: {
   snapshot: DesktopSnapshot; thread?: DesktopThread; todo: boolean; todoBusy: boolean; todoTooltip: string;
-  onToggleTodo: () => void; onAction: (action: SessionMenuAction) => void;
+  onToggleTodo: () => void; onAction: (action: StatusAction) => void;
 }) {
-  const menuOpen = useRef(false);
   const channel = snapshot.channels.find(c => c.id === (thread?.channelId ?? snapshot.selectedChannelId));
   const connection = snapshot.connections?.find(row => row.connectionKey && row.connectionKey === snapshot.connectionKey);
   const connectionName = channel?.connectionName ?? connection?.name ?? snapshot.connectionName ?? 'Connection';
   const state = snapshot.connectionState, online = state === 'online', hint = connectionHint[state];
   const labels = snapshot.supportsSessionLabels === true;
-  const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
-    if (menuOpen.current || !thread) return;
-    menuOpen.current = true; const point = menuPoint(event);
-    void window.hermesDesktop.showContextMenu(sessionMenuItems({ todo, labels, online, exportable: snapshot.supportsThreadExport === true }), point.x, point.y)
-      .then(choice => { if (isSessionMenuAction(choice)) onAction(choice); }, () => {})
-      .finally(() => { menuOpen.current = false; });
-  };
   return <div className="session-status-bar" role="group" aria-label="Session status">
     <nav className="status-location" aria-label="Session location">
       <button type="button" className="status-connection" aria-label={`Connection ${connectionName}, ${stateName[state]}`} data-tooltip="Connection settings"
@@ -89,10 +89,15 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
       {channel && <><span className="status-separator" aria-hidden="true">›</span>
         <button type="button" className="status-project" aria-label={`Project ${channel.name}`} data-tooltip="Show in sidebar" onClick={() => safely(window.hermesDesktop.revealProject(channel.id))}>{channel.name}</button></>}
     </nav>
-    <div className="status-actions">
+    {/* Same tools, order, names and states as the former top toolbar. */}
+    <div className="status-actions" role="toolbar" aria-label="Session tools">
       {labels && <button type="button" className={`todo-toggle${todo ? ' todo-on' : ''}`} aria-pressed={todo} aria-label={todo ? 'Remove todo' : 'Mark as todo'} data-tooltip={todoTooltip}
         disabled={todoBusy || !thread || !online} onClick={onToggleTodo}><TodoIcon on={todo} /></button>}
-      <button type="button" className="status-more" aria-haspopup="menu" aria-label="More session actions" data-tooltip="More" disabled={!thread} onClick={openMenu}><MoreIcon /></button>
+      <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => onAction('copy-link')}><ToolIcon name="link" /></button>
+      {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation" onClick={() => onAction('export')}><MessageIcon name="export" /></button>}
+      {labels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" disabled={!thread} onClick={() => onAction('labels')}><ToolIcon name="label" /></button>}
+      <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!thread} onClick={() => onAction('rename')}><ToolIcon name="rename" /></button>
+      <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={() => onAction('archive')}><ToolIcon name="archive" /></button>
     </div>
     {labels && <StatusLabels markers={withoutTodo(thread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}
   </div>;
