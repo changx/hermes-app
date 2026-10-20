@@ -8,7 +8,7 @@ const safely = (task: Promise<unknown>) => void task.catch(() => {});
 const stateName: Record<DesktopSnapshot['connectionState'], string> = { online: 'Online', connecting: 'Connecting', syncing: 'Connecting', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
 // Todo flag: the pennant fills when the Session is flagged.
 const TodoIcon = ({ on }: { on: boolean }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 17V3.5" /><path className={on ? 'todo-pennant-on' : undefined} d="M5.5 4h9.5l-2.4 3.5 2.4 3.5H5.5z" /></svg>;
-const MoreIcon = () => <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h.01M10 10h.01M15 10h.01" /></svg>;
+const MoreIcon = () => <svg viewBox="0 0 20 20" aria-hidden="true"><circle className="status-more-dot" cx="4.5" cy="10" r="1.6" /><circle className="status-more-dot" cx="10" cy="10" r="1.6" /><circle className="status-more-dot" cx="15.5" cy="10" r="1.6" /></svg>;
 
 /** A native menu opens at the pointer for a click and under the button for the keyboard. View coordinates. */
 const menuPoint = (event: MouseEvent<HTMLElement>) => {
