@@ -449,6 +449,11 @@ const registerDesktopApi = (): void => {
     for (const [key, cursor] of Object.entries(input ?? {})) next[text(key, 200)] = text(cursor, 200);
     return service.searchFiles(text(query, 200), labels.map(label => text(label, 1024)), input ? next : undefined);
   });
+  handle("desktop:search-messages", (event, query: unknown, labels: unknown, refine: unknown) => {
+    trustedSender(event); // Same dialog as file search.
+    if (!Array.isArray(labels) || labels.length > 10 || typeof refine !== 'boolean') throw new Error('Invalid desktop request');
+    return service.searchMessages(text(query, 200), labels.map(label => text(label, 1024)), refine);
+  });
   handle("desktop:open-session-file", async (event, threadId: unknown, id: unknown, action: unknown) => {
     trustedSender(event);
     if (action !== 'open' && action !== 'save') throw new Error('Invalid desktop request');

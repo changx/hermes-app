@@ -10,6 +10,7 @@ import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../p
 import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import type { FileSearchPage, SessionFile, SessionFileList } from "../../../../packages/client/src/sessionFiles";
+import type { SessionTextPage, SessionTextRefinement } from "../../../../packages/client/src/sessionText";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
@@ -240,6 +241,8 @@ export class DesktopConnectionService {
   }
   supportsSessionFiles(): boolean { return this.client?.supportsSessionFiles === true; }
   supportsFileSearch(): boolean { return this.client?.supportsFileSearch === true; }
+  supportsSessionSearch(): boolean { return this.client?.supportsSessionSearch === true; }
+  supportsSessionSearchRefine(): boolean { return this.client?.supportsSessionSearchRefine === true; }
   /** One page of a Session's files. Route-owned; nothing enters the chat caches. */
   async sessionFiles(threadId: string, list: SessionFileList, after?: string): Promise<{ items: SessionFile[]; nextAfter: string | null } | null> {
     const client = this.requireClient();
@@ -252,6 +255,18 @@ export class DesktopConnectionService {
     if (!client.supportsFileSearch) throw new Error('File search is unavailable.');
     try { return await client.files.search(query, labels, after ?? null); }
     catch (error) { this.stopIfUnauthorized(error); throw new Error('The file search failed.'); }
+  }
+  async searchMessages(query: string, labels: readonly string[]): Promise<SessionTextPage> {
+    const client = this.requireClient();
+    if (!client.supportsSessionSearch) throw new Error('Message search is unavailable.');
+    try { return await client.sessionText.search(query, labels); }
+    catch (error) { this.stopIfUnauthorized(error); throw new Error('The message search failed.'); }
+  }
+  async refineMessages(query: string, labels: readonly string[]): Promise<SessionTextRefinement> {
+    const client = this.requireClient();
+    if (!client.supportsSessionSearchRefine) throw new Error('AI ranking is unavailable.');
+    try { return await client.sessionText.refine(query, labels); }
+    catch (error) { this.stopIfUnauthorized(error); throw new Error('The AI ranking failed.'); }
   }
   /** Reads one attachment's metadata into the client so the existing preview and download paths can use it. */
   async prepareAttachment(threadId: string, attachmentId: string): Promise<void> {
@@ -375,6 +390,7 @@ export class DesktopConnectionService {
       supportsThreadExport: this.client?.supportsThreadExport === true,
       supportsSessionFiles: this.client?.supportsSessionFiles === true,
       supportsFileSearch: this.client?.supportsFileSearch === true,
+      supportsSessionSearch: this.client?.supportsSessionSearch === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,

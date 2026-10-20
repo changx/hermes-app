@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopFileHit, DesktopFileSearch, DesktopSessionFile, DesktopSessionFilePage, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
+import type { ChannelInput, DesktopAutomation, DesktopAutomationList, DesktopAutomationPage, DesktopConnection, DesktopFileHit, DesktopFileSearch, DesktopMessageHit, DesktopMessageSearch, DesktopSessionFile, DesktopSessionFilePage, DesktopLocalDraft, DesktopSnapshot, PairingRequest, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from '../shared/desktop-api';
 import type { Automation } from '../../../../packages/client/src/automations';
 import type { SessionFile } from '../../../../packages/client/src/sessionFiles';
 import type { AttachmentInput } from '../shared/attachment-input';
@@ -107,6 +107,7 @@ export class DesktopConnections {
       supportsSessionLabels: connectionKey || thread ? selected.supportsSessionLabels : all.some(s => s.supportsSessionLabels),
       // File search covers every connection, also from a Session tab.
       supportsFileSearch: all.some(s => s.supportsFileSearch),
+      supportsSessionSearch: all.some(s => s.supportsSessionSearch),
       channels: all.flatMap(s => s.channels), threads: all.flatMap(s => s.threads),
       // A loading/failed account must not invalidate another account's existing tabs.
       loadingConversations: all.some(s => s.loadingConversations),
@@ -272,6 +273,32 @@ export class DesktopConnections {
     // Ranked results (semantic search) first by rank, interleaving connections; then the newest.
     rows.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
     return { supported: connected.length > 0, items: rows, failed, cursors: next };
+  }
+  /**
+   * Sessions whose messages match, from every connected server that searches message text, merged
+   * by rank. With `refine`, servers that offer it return their model-picked order; the others keep
+   * their keyword-and-meaning order. `none` only when every refined server found no fit.
+   */
+  async searchMessages(query: string, labels: readonly string[], refine = false): Promise<DesktopMessageSearch> {
+    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsSessionSearch());
+    const failed: string[] = [];
+    let indexing = false, refined = false, none = connected.length > 0;
+    const pages = await Promise.all(connected.map(async account => {
+      try {
+        const ai = refine && account.service.supportsSessionSearchRefine();
+        const page = ai ? await account.service.refineMessages(query, labels) : await account.service.searchMessages(query, labels);
+        if ('ready' in page && page.available && !page.ready) indexing = true;
+        if (ai && page.available) refined = true;
+        if (!(ai && 'none' in page && page.none)) none = false;
+        if (!page.available) { failed.push(this.nameOf(account) ?? 'Saved connection'); return []; }
+        const name = connected.length > 1 ? this.nameOf(account) : undefined;
+        return page.items.map((hit): DesktopMessageHit => ({ threadId: this.encode(account, hit.thread_id)!, title: hit.title,
+          channelId: this.encode(account, hit.channel_id)!, channelName: hit.channel_name, ...(name ? { connectionName: name } : {}),
+          markers: hit.markers, ...(hit.seq !== null ? { refSeq: hit.seq } : {}), snippet: hit.snippet, rank: hit.rank }));
+      } catch { failed.push(this.nameOf(account) ?? 'Saved connection'); none = false; return []; }
+    }));
+    const items = pages.flat().sort((a, b) => a.rank - b.rank);
+    return { supported: connected.length > 0, items, failed, indexing, refined, none: refined && none && !items.length };
   }
   /** Pause, Resume, Run now or a new schedule for one qualified job. */
   async controlAutomation(id: string, control: 'pause' | 'resume' | 'run' | 'schedule', schedule?: string): Promise<DesktopAutomation> {

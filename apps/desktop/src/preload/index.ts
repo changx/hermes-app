@@ -120,6 +120,7 @@ const api: HermesDesktopApi = Object.freeze({
   listSessionFiles: (list: 'delivered' | 'uploaded', after?: string) => ipcRenderer.invoke("desktop:list-session-files", list, after),
   prepareSessionFile: (id: string) => ipcRenderer.invoke("desktop:prepare-session-file", id),
   searchFiles: (query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>) => ipcRenderer.invoke("desktop:search-files", query, [...labels], cursors),
+  searchMessages: (query: string, labels: readonly string[], refine?: boolean) => ipcRenderer.invoke("desktop:search-messages", query, [...labels], refine === true),
   openSessionFile: (threadId: string, id: string, action: 'open' | 'save') => ipcRenderer.invoke("desktop:open-session-file", threadId, id, action),
   openMessage: (threadId: string, refSeq: number) => ipcRenderer.invoke("desktop:open-message", threadId, refSeq),
   downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),

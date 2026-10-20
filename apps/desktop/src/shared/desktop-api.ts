@@ -118,6 +118,8 @@ export type DesktopSnapshot = Readonly<{
   supportsSessionFiles?: boolean;
   /** Main window: some connected server searches files. */
   supportsFileSearch?: boolean;
+  /** Main window: some connected server searches message text (Session full-text search). */
+  supportsSessionSearch?: boolean;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
   loadingHistory?: boolean;
@@ -160,6 +162,14 @@ export type DesktopSessionFilePage = Readonly<{ supported: boolean; items: reado
 export type DesktopFileHit = DesktopSessionFile & Readonly<{ threadTitle: string; channelId: string; channelName?: string; connectionName?: string; rank?: number }>;
 /** File search over every connected server that offers it. `cursors` (by connection) continues each list. */
 export type DesktopFileSearch = Readonly<{ supported: boolean; items: readonly DesktopFileHit[]; failed: readonly string[]; cursors: Readonly<Record<string, string>> }>;
+/** A Session whose messages match (qualified IDs). `refSeq`: the best matching message; absent when only the title or labels matched. */
+export type DesktopMessageHit = Readonly<{ threadId: string; title: string; channelId: string; channelName: string; connectionName?: string;
+  markers: readonly string[]; refSeq?: number; snippet: string; rank: number }>;
+/**
+ * Session full-text search over every connected server that offers it. `indexing`: a server is
+ * still indexing older messages. `refined`: a model picked and ordered the rows; `none`: it found no fit.
+ */
+export type DesktopMessageSearch = Readonly<{ supported: boolean; items: readonly DesktopMessageHit[]; failed: readonly string[]; indexing: boolean; refined: boolean; none: boolean }>;
 /** `invalid`: the server cannot use the folder; `taken`: another project already uses it. */
 export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: 'invalid' | 'taken' | 'failed' }>;
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
@@ -329,6 +339,8 @@ export interface HermesDesktopApi {
   prepareSessionFile(attachmentId: string): Promise<void>;
   /** Files by keyword and exact Session labels (AND), newest first, from every connection. */
   searchFiles(query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>): Promise<DesktopFileSearch>;
+  /** Message text search (fast); with `refine`, the same search ordered by a model (seconds). */
+  searchMessages(query: string, labels: readonly string[], refine?: boolean): Promise<DesktopMessageSearch>;
   /** Opens a search result with the system app, or saves it. */
   openSessionFile(threadId: string, attachmentId: string, action: 'open' | 'save'): Promise<void>;
   /** Opens a Session and shows one of its messages (a file search result), loading earlier messages when needed. */
