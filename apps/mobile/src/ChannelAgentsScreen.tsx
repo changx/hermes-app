@@ -134,7 +134,7 @@ export function ChannelAgentsScreen({ client, channelId }: { client: LiveSession
 
   return <View style={s.page}>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-    {!supported && <Text style={s.hint}>Channel files are not available on this connection yet.</Text>}
+    {!supported && <Text style={s.hint}>AGENTS.md is not available on this connection yet.</Text>}
     {loading ? <ActivityIndicator /> : editing ? <>
       <Text style={s.hint}>Working guidelines for this channel.</Text>
       <TextInput accessibilityLabel="AGENTS.md guidelines" placeholder="How should work in this channel be done?" value={draft} onChangeText={setDraft}
