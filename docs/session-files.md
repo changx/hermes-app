@@ -1,6 +1,6 @@
 # Session files, file search and the wider Project modal
 
-Status (2026-10-20): Phase 1 released (plugin v0.2.43, desktop v0.1.99, mobile through Expo). Phase 2 (semantic search): the embedding service is installed and running; the plugin and client changes are on branches `feat/semantic-search` (App and plugin), not released. See the release record at the end.
+Status (2026-10-20): Phase 1 released (plugin v0.2.43, desktop v0.1.99, mobile through Expo). Phase 2 (semantic search) released: embedding service running, plugin v0.2.44, desktop v0.1.100, mobile through Expo. Both plugin releases take effect at the next Gateway restart. See the release record at the end.
 
 ## Confirmed requirements (Jamie, 2026-10-20)
 
@@ -178,3 +178,12 @@ Consequences for the design:
 - Candidate checks before the tag: `client:check` passed; `desktop:check` with Chromium 233 pass, 0 fail, 8 skipped; mobile `tsc` and `npm test` (229 pass, 0 fail); iOS and Android `expo export` built.
 - Mobile: runtime checkout fast-forwarded to `87d82f8` (lockfile unchanged); `hermes-app-expo.service` restarted (PID 1720561). Public bundles on iOS and Android (SDK 57): `No matching conversations or files`, `You have not sent files in this session.` and `hermes-session-file-` rose from 0 to 1; `Could not load channel files. Try again.` fell from 1 to 0. Gateway PID unchanged (1953184).
 - Not checked: Jamie's Mac and iPhone; the features after the Gateway restart.
+
+## Release record, Phase 2 (2026-10-20)
+
+- Embedding service `hermes-app-embed.service`: installed from plugin commit `0a7c3df` (`~/.hermes/hermes-app-embed/app/VERSION`), running in its own cgroup with `MemoryMax=8G`. 0 restarts, 0 failed files. It needs no Gateway restart.
+- Plugin v0.2.44 (`62e35f3`): pushed with its tag and installed through the shared `current` link (`releases/0.2.44`; profiles `emma`, `hermes-app-dev`, `jamie`, `nan`). The plugin pack contains only `plugins/hermes_app`; the service code is not in the Gateway's plugin folder. It contains v0.2.43. Both take effect at the next Gateway restart (the Gateway still runs since 2026-10-18 00:37 PDT).
+- Desktop v0.1.100 (`0a2c2db`): Mac mini run 39424860576 succeeded (241 tests, 188 pass, 0 fail, 53 skipped; audit 0). The zip passes `sha256sum -c`, Info.plist shows 0.1.100, and all 35 ASAR `dist/` files equal the local build.
+- Candidate checks: plugin `test_session_files.py` 8 pass and `tests/embed` 6 pass; `client:check` 95 pass; `desktop:check` with Chromium 233 pass, 0 fail; mobile `tsc` and `npm test` 230 pass, 0 fail; iOS and Android `expo export` built.
+- Mobile: runtime checkout fast-forwarded to `0a2c2db` (lockfile unchanged); `hermes-app-expo.service` restarted (PID 1851610). Public bundles on iOS and Android: the new source comment `(semantic search) first by rank, interleaving connections, then the newest` 0 -> 1 and `file.rank ?? Infinity` 0 -> 2. Gateway PID unchanged (1953184).
+- Not checked: Jamie's Mac and iPhone; semantic search through the live plugin after the Gateway restart.
