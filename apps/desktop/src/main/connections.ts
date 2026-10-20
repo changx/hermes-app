@@ -201,7 +201,6 @@ export class DesktopConnections {
   async getProjectWorkspace(id: string) { const r = this.route(id); return r.account.service.getProjectWorkspace(r.raw); }
   async saveProjectAgents(id: string, content: string, previous: string | null) { const r = this.route(id); return r.account.service.saveProjectAgents(r.raw, content, previous); }
   async setProjectFolder(id: string, path: string | null) { const r = this.route(id); return r.account.service.setProjectFolder(r.raw, path); }
-  async addProjectFiles(id: string, inputs: readonly AttachmentInput[]) { const r = this.route(id); return r.account.service.addProjectFiles(r.raw, inputs); }
   async getChannelInfo(id: string) { const r = this.route(id), c = await r.account.service.getChannelInfo(r.raw); return { ...c, id, connectionName: this.nameOf(r.account) }; }
   /** The connection that owns a qualified Automation ID. */
   connectionForAutomation(id: string): string | undefined { return this.route(id).account.service.status().connectionKey; }

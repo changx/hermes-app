@@ -137,18 +137,14 @@ export type DesktopSnapshot = Readonly<{
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
 export type ProjectCreationInput = ChannelInput & Readonly<{ connectionKey: string }>;
-/** Project Files and AGENTS.md from the plugin workspace API. `supported: false` hides both sections. */
-export type DesktopProjectFile = Readonly<{ name: string; kind: 'file' | 'directory' | 'unavailable'; size: number | null }>;
+/** Project AGENTS.md from the plugin workspace API. `supported: false` hides the editor. */
 export type DesktopProjectWorkspace = Readonly<{
   supported: boolean;
   agents: Readonly<{ content: string; etag: string }> | null;
-  files: readonly DesktopProjectFile[];
-  moreFiles: boolean;
 }>;
 /** `invalid`: the server cannot use the folder; `taken`: another project already uses it. */
 export type ProjectFolderResult = Readonly<{ ok: true } | { ok: false; reason: 'invalid' | 'taken' | 'failed' }>;
 export type ProjectAgentsResult = Readonly<{ ok: true; etag: string } | { ok: false; reason: 'conflict' | 'failed' }>;
-export type ProjectFilesResult = Readonly<{ uploaded: readonly string[]; failed?: Readonly<{ name: string; reason: 'exists' | 'invalid' | 'failed' }> }>;
 /** `model` applies to the new session only; omit it for the connection's primary model. */
 export type ThreadInput = Readonly<{ title: string; clientThreadId: string; channelId?: string; model?: ThreadModelChoice; confirmModel?: boolean;
   /** Set by the main process for a New automation tab, never by the renderer. */ automationEditor?: boolean }>;
@@ -280,7 +276,6 @@ export interface HermesDesktopApi {
   /** A path binds the primary folder; null removes the binding. */
   setProjectFolder(channelId: string, path: string | null): Promise<ProjectFolderResult>;
   /** Adds new root files. Never replaces an existing file. Stops at the first failure. */
-  addProjectFiles(channelId: string, files: readonly File[]): Promise<ProjectFilesResult>;
   /** Returns the session ID, or a confirmation request (nothing created) for a model with a cost/data warning. */
   createThread(input: ThreadInput): Promise<ThreadCreation>;
   /** New session with a text-only first message, shown at once; returns the session ID. */

@@ -16,7 +16,6 @@ const key = 'a'.repeat(24);
 const connection = { id: 'primary', connectionKey: key, name: 'First', server: 'https://first.example.test', state: 'online', supportsProjectFiles: true };
 const snapshot = { connections: [connection], connectionKey: key, connectionState: 'online', channels: [{ id: 'p1', name: 'Research', connectionKey: key }] };
 const etag = '"' + 'e'.repeat(64) + '"';
-const file = (name, size = 5) => ({ name, size });
 
 async function fixture({ value = snapshot, channelId, api = {} } = {}) {
   const calls = []; let closed = 0, tree;
@@ -26,9 +25,8 @@ async function fixture({ value = snapshot, channelId, api = {} } = {}) {
     updateChannel: record('update'),
     deleteChannel: record('delete'),
     getChannelInfo: record('info', { id: 'p1', name: 'Research', description: 'Old context' }),
-    getProjectWorkspace: record('workspace', { supported: true, agents: { content: '# Rules', etag }, files: [{ name: 'notes.md', kind: 'file', size: 2048 }, { name: 'data', kind: 'directory', size: null }], moreFiles: false }),
+    getProjectWorkspace: record('workspace', { supported: true, agents: { content: '# Rules', etag } }),
     saveProjectAgents: record('agents', { ok: true, etag }),
-    addProjectFiles: record('files', (_id, files) => ({ uploaded: files.map(f => f.name) })),
     ...Object.fromEntries(Object.entries(api).map(([name, result]) => [name, record(name, result)])),
   } };
   const close = () => closed++;
@@ -37,32 +35,39 @@ async function fixture({ value = snapshot, channelId, api = {} } = {}) {
   const field = label => tree.root.findByProps({ 'aria-label': label });
   const has = label => tree.root.findAllByProps({ 'aria-label': label }).length > 0;
   const type = async (label, text) => { await act(async () => field(label).props.onChange({ target: { value: text } })); };
-  const stage = async (...files) => { await act(async () => tree.root.findByProps({ type: 'file' }).props.onChange({ target: { files, value: '' } })); };
   const submit = async () => { await act(async () => tree.root.findByType('form').props.onSubmit({ preventDefault() {} })); };
   const alert = () => tree.root.findAllByProps({ role: 'alert' }).map(node => node.children.join('')).join(' ');
   const saveButton = () => tree.root.findByProps({ type: 'submit' });
-  return { tree, calls, field, has, type, stage, submit, alert, saveButton, closed: () => closed, dispose: async () => { await act(async () => tree.unmount()); } };
+  return { tree, calls, field, has, type, submit, alert, saveButton, closed: () => closed, dispose: async () => { await act(async () => tree.unmount()); } };
 }
 
-test('New project shows Title, Context, Files and AGENTS.md and writes them in order after creation', async () => {
+const classOf = (f, name) => f.tree.root.findAll(node => typeof node.props.className === 'string' && node.props.className.split(' ').includes(name));
+
+test('New project shows the fields on the left and AGENTS.md on the right, and writes them in order', async () => {
   const f = await fixture();
   try {
-    for (const label of ['Project title', 'Project context', 'Project files', 'Project AGENTS.md']) assert.ok(f.has(label), label);
+    for (const label of ['Project title', 'Project context', 'Project AGENTS.md']) assert.ok(f.has(label), label);
+    assert.equal(f.has('Project files'), false, 'Project files are not managed in this modal');
+    assert.equal(f.tree.root.findAllByProps({ type: 'file' }).length, 0);
+    assert.equal(classOf(f, 'wide').length, 1, 'the modal is wide');
+    const [fields] = classOf(f, 'project-dialog-fields'), [right] = classOf(f, 'project-dialog-agents');
+    assert.ok(fields.findByProps({ 'aria-label': 'Project title' }) && fields.findByProps({ 'aria-label': 'Project context' }));
+    assert.ok(right.findByProps({ 'aria-label': 'Project AGENTS.md' }));
+    assert.equal(fields.findAllByProps({ 'aria-label': 'Project AGENTS.md' }).length, 0);
     await f.type('Project title', 'Launch'); await f.type('Project context', 'Q4 launch'); await f.type('Project AGENTS.md', 'Be brief.');
-    await f.stage(file('brief.pdf'), file('plan.md'));
     await f.submit();
-    assert.deepEqual(f.calls.map(c => c[0]), ['create', 'agents', 'files']);
+    assert.deepEqual(f.calls.map(c => c[0]), ['create', 'agents']);
     assert.deepEqual(f.calls[0][1], { connectionKey: key, name: 'Launch', description: 'Q4 launch' });
     assert.deepEqual(f.calls[1].slice(1), ['p-new', 'Be brief.', null]);
-    assert.deepEqual(f.calls[2][2].map(x => x.name), ['brief.pdf', 'plan.md']);
     assert.equal(f.closed(), 1);
   } finally { await f.dispose(); }
 });
 
-test('New project without server support hides Files and AGENTS.md and never calls workspace APIs', async () => {
+test('New project without server support hides AGENTS.md, keeps the narrow modal and never calls workspace APIs', async () => {
   const f = await fixture({ value: { ...snapshot, connections: [{ ...connection, supportsProjectFiles: false }] } });
   try {
-    assert.equal(f.has('Project files'), false); assert.equal(f.has('Project AGENTS.md'), false);
+    assert.equal(f.has('Project AGENTS.md'), false);
+    assert.equal(classOf(f, 'wide').length, 0); assert.equal(classOf(f, 'project-dialog-agents').length, 0);
     await f.type('Project title', 'Plain'); await f.submit();
     assert.deepEqual(f.calls.map(c => c[0]), ['create']); assert.equal(f.closed(), 1);
   } finally { await f.dispose(); }
@@ -72,46 +77,32 @@ test('A failure after creation keeps the form, never creates twice and Save fini
   let attempts = 0;
   const f = await fixture({ api: { saveProjectAgents: () => (++attempts === 1 ? { ok: false, reason: 'failed' } : { ok: true, etag }) } });
   try {
-    await f.type('Project title', 'Launch'); await f.type('Project AGENTS.md', 'Rules'); await f.stage(file('a.txt'));
+    await f.type('Project title', 'Launch'); await f.type('Project AGENTS.md', 'Rules');
     await f.submit();
     assert.equal(f.closed(), 0);
     assert.match(f.alert(), /project was created/i);
     assert.equal(f.field('Project AGENTS.md').props.value, 'Rules');
     assert.equal(f.saveButton().children.join(''), 'Save');
     await f.submit();
-    assert.deepEqual(f.calls.map(c => c[0]), ['create', 'saveProjectAgents', 'saveProjectAgents', 'files']);
+    assert.deepEqual(f.calls.map(c => c[0]), ['create', 'saveProjectAgents', 'saveProjectAgents']);
     assert.equal(f.calls[2][1], 'p-new');
     assert.equal(f.closed(), 1);
   } finally { await f.dispose(); }
 });
 
-test('Project settings loads details and files, and saves only changed parts with the loaded version', async () => {
+test('Project settings loads details and AGENTS.md, and saves only changed parts with the loaded version', async () => {
   const f = await fixture({ channelId: 'p1' });
   try {
     assert.equal(f.has('Project connection'), false);
     assert.equal(f.field('Project title').props.value, 'Research');
     assert.equal(f.field('Project context').props.value, 'Old context');
     assert.equal(f.field('Project AGENTS.md').props.value, '# Rules');
-    const names = f.tree.root.findAllByProps({ className: 'project-file-name' }).map(node => node.children.join(''));
-    assert.deepEqual(names, ['notes.md', 'data/']);
+    assert.equal(classOf(f, 'project-file-name').length, 0, 'no file list');
     assert.equal(f.saveButton().props.disabled, true, 'nothing changed');
     await f.type('Project AGENTS.md', '# Rules\nNew rule');
     await f.submit();
     assert.deepEqual(f.calls.filter(c => !['info', 'getChannelInfo', 'workspace'].includes(c[0])), [['agents', 'p1', '# Rules\nNew rule', etag]]);
     assert.equal(f.closed(), 1);
-  } finally { await f.dispose(); }
-});
-
-test('An existing file name is refused before upload and a server conflict keeps the staged file', async () => {
-  const f = await fixture({ channelId: 'p1', api: { addProjectFiles: () => ({ uploaded: [], failed: { name: 'new.md', reason: 'exists' } }) } });
-  try {
-    await f.stage(file('notes.md'));
-    assert.match(f.alert(), /already in this project/);
-    await f.stage(file('new.md'));
-    await f.submit();
-    assert.match(f.alert(), /already exists/);
-    assert.equal(f.closed(), 0);
-    assert.ok(f.tree.root.findAllByProps({ className: 'project-file-name' }).some(node => node.children.join('') === 'new.md'));
   } finally { await f.dispose(); }
 });
 

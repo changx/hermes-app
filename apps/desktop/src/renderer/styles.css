@@ -701,25 +701,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-files button { border: 0; padding: 4px; background: transparent; }
 .session-hint { color: #50647b; font-size: var(--app-font-size); line-height: 1.5; }
 .editor-dialog textarea { min-height: 100px; resize: vertical; }
-/* Project modal: same for New project and Project settings. Body scrolls; actions stay visible. */
+/* Project modal: same for New project and Project settings. Body scrolls; actions stay visible.
+   With AGENTS.md (`.wide`), the fields are on the left and the editor fills the right column. */
 .project-dialog { width: min(620px, 100%); max-height: calc(100dvh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.project-dialog.wide { width: min(1040px, 100%); }
 .project-dialog h2 { margin: 0; }
 .project-dialog-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.project-dialog-fields, .project-dialog-agents { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.project-dialog.wide .project-dialog-body { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 22px; height: min(640px, calc(100dvh - 180px)); overflow: hidden; }
+.project-dialog.wide .project-dialog-fields { min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.project-dialog.wide .project-dialog-agents { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.project-dialog.wide .project-dialog-agents label { grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
+.project-dialog.wide .project-agents { height: 100%; min-height: 0; resize: none; }
 .project-dialog .field-hint { color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); font-weight: 400; line-height: 1.4; }
 .project-dialog .project-agents { min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--app-font-size) * .875); }
-.project-files { display: grid; gap: 6px; border: 1px dashed var(--app-field-border); border-radius: 10px; padding: 10px 12px; }
-.project-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.project-section-title { color: var(--app-label); font-size: var(--app-font-size); font-weight: 650; }
-.project-section-header button { border: 1px solid var(--app-field-border); border-radius: 8px; padding: 5px 10px; color: var(--app-label); background: #fff; font: inherit; font-size: calc(var(--app-font-size) * .875); cursor: pointer; }
-.project-section-header button:disabled { opacity: .5; cursor: default; }
-.project-file-list { display: grid; gap: 2px; max-height: 180px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
-.project-file-list li { display: flex; align-items: center; gap: 8px; min-height: 30px; border-radius: 6px; padding: 2px 8px; font-size: calc(var(--app-font-size) * .875); }
-.project-file-list li:hover { background: var(--app-hover); }
-.project-file-list .project-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-file-list .project-file-size { color: var(--app-muted); white-space: nowrap; }
-.project-file-list li.staged .project-file-size { color: var(--app-accent); }
-.project-file-list button { border: 0; padding: 2px 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
-.project-files-empty { margin: 0; color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); }
+/* Narrow window: one column, the editor under the fields, the whole body scrolls. */
+@media (max-width: 760px) {
+  .project-dialog.wide .project-dialog-body { grid-template-columns: minmax(0, 1fr); height: auto; overflow-y: auto; }
+  .project-dialog.wide .project-dialog-fields { overflow: visible; }
+  .project-dialog.wide .project-agents { height: auto; min-height: 280px; resize: vertical; }
+}
 .dialog-actions .danger { margin-right: auto; color: #9d1b32; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: var(--app-accent); }

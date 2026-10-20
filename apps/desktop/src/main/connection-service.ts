@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, MAX_WORKSPACE_FILE_BYTES, type AttachmentInput } from '../shared/attachment-input';
+import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, type AttachmentInput } from '../shared/attachment-input';
 import { open, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
@@ -7,8 +7,7 @@ import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, 
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
-import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFilesResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
-import { workspacePath } from "../../../../packages/client/src/workspace";
+import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import { CredentialStore, type StoredConnection, type StoredPairing } from "./credential-store";
 import { OutboxStore, type OutboxRecord } from "./outbox-store";
@@ -785,22 +784,19 @@ export class DesktopConnectionService {
 
   async getProjectWorkspace(channelId: string): Promise<DesktopProjectWorkspace> {
     const client = this.workspaceClient(channelId);
-    if (!client) return { supported: false, agents: null, files: [], moreFiles: false };
+    if (!client) return { supported: false, agents: null };
     try {
       const state = await client.workspace.getState(channelId);
       const agents = (state.agentsAvailable ?? state.initialized) ? await this.readAgents(client, channelId) : null;
-      const page = state.initialized ? await client.workspace.list(channelId, '') : null;
       if (this.client !== client) throw new Error('Connection changed');
-      // AGENTS.md has its own editor; do not show it twice.
-      const files = (page?.items ?? []).filter(item => item.path !== 'AGENTS.md').map(item => ({ name: item.name, kind: item.kind, size: item.size }));
-      return { supported: true, agents, files, moreFiles: page?.nextAfter != null };
-    } catch (error) { this.stopIfUnauthorized(error); throw new Error("Project files could not be loaded."); }
+      return { supported: true, agents };
+    } catch (error) { this.stopIfUnauthorized(error); throw new Error("AGENTS.md could not be loaded."); }
   }
 
   /** Initialize once, only when a write needs it. Initialization is idempotent on the server. */
-  private async ensureWorkspace(client: LivePageClient, channelId: string, need: 'agents' | 'files'): Promise<void> {
+  private async ensureWorkspace(client: LivePageClient, channelId: string): Promise<void> {
     const state = await client.workspace.getState(channelId);
-    const ready = need === 'files' ? state.initialized : (state.agentsAvailable ?? state.initialized);
+    const ready = state.agentsAvailable ?? state.initialized;
     if (!ready) await client.workspace.initialize(channelId);
   }
 
@@ -808,7 +804,7 @@ export class DesktopConnectionService {
     const client = this.workspaceClient(channelId);
     if (!client) return { ok: false, reason: 'failed' };
     try {
-      await this.ensureWorkspace(client, channelId, 'agents');
+      await this.ensureWorkspace(client, channelId);
       const saved = await client.workspace.saveAgents(channelId, content, previous);
       return { ok: true, etag: saved.etag };
     } catch (error) {
@@ -831,39 +827,6 @@ export class DesktopConnectionService {
       const status = error instanceof HttpError ? error.status : 0;
       return { ok: false, reason: status === 400 ? 'invalid' : status === 409 ? 'taken' : 'failed' };
     }
-  }
-
-  async addProjectFiles(channelId: string, inputs: readonly AttachmentInput[]): Promise<ProjectFilesResult> {
-    const client = this.workspaceClient(channelId);
-    const uploaded: string[] = [];
-    const named = attachmentInputs(inputs).map(input => typeof input === 'string' ? { name: basename(input), input } : { name: input.name, input });
-    if (!client) return { uploaded, failed: { name: named[0]?.name ?? '', reason: 'failed' } };
-    for (const { name } of named) {
-      try { workspacePath(name); } catch { return { uploaded, failed: { name, reason: 'invalid' } }; }
-      if (name === 'AGENTS.md') return { uploaded, failed: { name, reason: 'invalid' } };
-    }
-    try { if (named.length) await this.ensureWorkspace(client, channelId, 'files'); }
-    catch (error) { this.stopIfUnauthorized(error); return { uploaded, failed: { name: named[0].name, reason: 'failed' } }; }
-    for (const { name, input } of named) {
-      try {
-        let bytes: Uint8Array;
-        if (typeof input === 'string') {
-          if (!isAbsolute(input)) throw new Error('Invalid path');
-          const info = await stat(input);
-          if (!info.isFile() || info.size < 1 || info.size > MAX_WORKSPACE_FILE_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
-          bytes = new Uint8Array(await readFile(input));
-        } else bytes = input.bytes;
-        if (bytes.byteLength < 1 || bytes.byteLength > MAX_WORKSPACE_FILE_BYTES) return { uploaded, failed: { name, reason: 'invalid' } };
-        if (this.client !== client) throw new Error('Connection changed');
-        // Create-only: an existing server file is never replaced.
-        await client.workspace.writeFile(channelId, name, bytes, null);
-        uploaded.push(name);
-      } catch (error) {
-        this.stopIfUnauthorized(error);
-        return { uploaded, failed: { name, reason: error instanceof HttpError && error.status === 412 ? 'exists' : 'failed' } };
-      }
-    }
-    return { uploaded };
   }
 
   private modelClient(connectionKey: string): LivePageClient {

@@ -141,6 +141,7 @@
 - [docs/app-icon.md](docs/app-icon.md)（应用图标：mochi-wings 默认图标、各平台资源与重新生成）
 - [docs/thread-branch.md](docs/thread-branch.md)
 - [docs/file-preview.md](docs/file-preview.md)
+- [docs/session-files.md](docs/session-files.md)（设计，未实现：Session 交付文件与附件、文件搜索、EmbeddingGemma 2 语义搜索、Project modal 加宽；移除 Channel files）
 - [docs/attachment-size.md](docs/attachment-size.md)（附件大小：单件 100 MiB，Cloudflare 请求体上限；预览仍 10 MiB）
 - [docs/paste-names-agent-files.md](docs/paste-names-agent-files.md)（桌面粘贴文件自动命名；Agent 文件不限大小、公网链接直接下载）
 - [docs/large-uploads.md](docs/large-uploads.md)（大文件分片上传：桌面与手机单件最大 2 GB，经原有连接，不用 R2）
