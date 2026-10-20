@@ -2,14 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { labelCandidates, validateLabels } from '../../../../packages/client/src/sessionLabels';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 
-/** Session toolbar labels: every label is shown, wrapping onto more rows; each one searches the sidebar for that label. */
-export function ToolbarLabels({ markers = [], onSearch }: { markers?: readonly string[]; onSearch: (label: string) => void }) {
-  if (!markers.length) return null;
-  return <div className="toolbar-labels" role="group" aria-label={`Labels: ${markers.join(', ')}`}>
-    {markers.map(label => <button key={label} type="button" className="label-pill toolbar-label" aria-label={`Find sessions labeled ${label}`} data-tooltip="Find sessions with this label" onClick={() => onSearch(label)}>{label}</button>)}
-  </div>;
-}
-
 export function LabelsEditor({ thread, snapshot, close }: { thread: DesktopThread; snapshot: DesktopSnapshot; close: () => void }) {
   const [draft, setDraft] = useState(() => [...(thread.markers ?? [])]);
   const [entry, setEntry] = useState(''), [editing, setEditing] = useState<number | null>(null);

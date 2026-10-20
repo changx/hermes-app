@@ -30,7 +30,7 @@ test('Chromium: the app window becoming active puts the cursor back in the Sessi
         await wait(80);
         const composer=()=>document.querySelector('[aria-label="Message"]');
         ensure('page subscribes once',typeof signal==='function');
-        const other=document.querySelector('.conversation-actions button'); other.focus();
+        const other=document.querySelector('.status-actions button'); other.focus();
         ensure('focus starts elsewhere',document.activeElement===other);
         const list=document.querySelector('.message-list'); list.scrollTop=200; const top=list.scrollTop;
         signal(); await wait(20);
@@ -38,8 +38,7 @@ test('Chromium: the app window becoming active puts the cursor back in the Sessi
         ensure('reading position unchanged',list.scrollTop===top);
         document.activeElement.blur(); ensure('nothing focused',document.activeElement===document.body);
         signal(); await wait(20); ensure('from no focus too',document.activeElement===composer());
-        const edit=[...document.querySelectorAll('.conversation-actions button')].find(b=>b.getAttribute('aria-label')==='Edit labels');
-        edit.click(); await wait(40);
+        window.hermesDesktop.showContextMenu=async()=>'labels'; document.querySelector('.status-more').click(); await wait(40);
         const dialog=document.querySelector('dialog[open]'); ensure('labels dialog open',dialog&&dialog.contains(document.activeElement));
         const inDialog=document.activeElement; signal(); await wait(20);
         ensure('an open dialog on the page keeps its focus',document.activeElement===inDialog);

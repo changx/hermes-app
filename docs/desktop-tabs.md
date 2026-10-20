@@ -101,6 +101,8 @@ HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 npm run desktop
 
 ## Floating Session toolbar candidate
 
+> Superseded (2026-10-19): the top toolbar is removed. See [desktop-session-status-bar.md](desktop-session-status-bar.md).
+
 Branch: `feat/desktop-floating-toolbar`; base `origin/main` `0010c74`.
 
 - The Session page has no title bar. The tab already shows the Session title; the Project name is not shown on the page.

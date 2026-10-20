@@ -201,6 +201,8 @@ export class DesktopTabManager {
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close({ waitForBeforeUnload: false });
   }
   dispose(): void { this.closed = true; for (const tab of [...this.tabs.values()]) this.destroy(tab); this.browser?.dispose(); this.baseline = undefined; }
+  /** Window content position of the Session pages; a page's menu coordinates are relative to it. */
+  contentOrigin(): { x: number; y: number } { return { x: this.bounds.x, y: this.bounds.y }; }
   sender(contents: WebContents): Tab | undefined { return [...this.tabs.values()].find(tab => tab.view.webContents === contents); }
   authorize(contents: WebContents, frameUrl: string | undefined): Tab | undefined {
     if (frameUrl !== contents.getURL()) throw new Error('Untrusted desktop request');

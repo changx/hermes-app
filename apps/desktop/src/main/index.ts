@@ -143,7 +143,13 @@ const registerDesktopApi = (): void => {
       return listener(event, ...args);
     });
   };
-  handle('desktop:open-settings', event => { trustedSender(event); settingsWindow.open(); });
+  // A Session page's status bar names its connection; Settings opens on that connection's page.
+  handle('desktop:open-settings', (event, connectionId: unknown) => {
+    trustedSender(event);
+    if (connectionId === undefined) { settingsWindow.open(); return; }
+    const id = text(connectionId, 40);
+    settingsWindow.open(service.snapshot().connections?.some(row => row.id === id) ? `connection:${id}` : undefined);
+  });
   handle('desktop:add-connection', async (event, value: unknown) => {
     settingsSender(event); const request = object(value);
     await service.addConnection({ baseUrl: text(request.baseUrl, 300), code: text(request.code, 32), deviceName: text(request.deviceName, 64) });
@@ -258,10 +264,14 @@ const registerDesktopApi = (): void => {
     shellSender(event); const card = sessionCardRequest(value);
     if (card) await sessionCard.show(card); else sessionCard.hide();
   });
-  // Main-window menus (sidebar Session rows). The renderer builds the items; only the chosen id comes back.
+  // Menus of the main window (sidebar Session rows) and of a Session page (its status bar).
+  // The renderer builds the items; only the chosen id comes back. A Session page gives view coordinates.
   handle('desktop:context-menu', (event, items: unknown, x: unknown, y: unknown) => {
-    shellSender(event); const entries = contextMenuItems(items), owner = mainWindow;
+    trustedSender(event); const page = tabs?.sender(event.sender);
+    if (event.sender !== mainWindow?.webContents && page?.kind !== 'session') throw new Error('Shell action required');
+    const entries = contextMenuItems(items), owner = mainWindow;
     if (!owner || owner.isDestroyed()) return null;
+    if (page && Number.isFinite(x) && Number.isFinite(y)) { const origin = tabs!.contentOrigin(); x = (x as number) + origin.x; y = (y as number) + origin.y; }
     return new Promise<string | null>(resolve => {
       let settled = false; const finish = (id: string | null) => { if (!settled) { settled = true; resolve(id); } };
       Menu.buildFromTemplate(entries.map(item => 'separator' in item ? { type: 'separator' as const } : { label: item.label, enabled: item.enabled !== false, click: () => finish(item.id) }))
@@ -330,6 +340,12 @@ const registerDesktopApi = (): void => {
     trustedSender(event); const value = text(label, 1024);
     if (!value.trim() || !mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send("desktop:search-label", value);
+  });
+  // A Session page's Project name: the main window's sidebar shows that Project. Only the Project id crosses windows.
+  handle("desktop:reveal-project", (event, channelId: unknown) => {
+    trustedSender(event); const id = text(channelId, 200);
+    if (!mainWindow || mainWindow.isDestroyed() || !service.snapshot().channels.some(channel => channel.id === id)) return;
+    mainWindow.webContents.send("desktop:reveal-project", id);
   });
   handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
   handle("desktop:pair", async (event, value: unknown) => {

@@ -12,7 +12,7 @@ import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 
 // Only states that need the user's attention are shown in the tree.
-const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
+export const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
 // Snapshot deltas rebuild the connection array; compare only what the tree shows.
 const connectionStates = (snapshot: DesktopSnapshot) => (snapshot.connections ?? []).map(row => `${row.connectionKey ?? ''}=${row.state}`).join('|');
 // The job whose tab is in front; its sidebar row is selected.
@@ -44,7 +44,10 @@ const saveCollapsed = (key: string, value: boolean) => { try { window.localStora
  * Automations, Todo, Recents and the Project tree. The search matches like Cmd+K: a keyword
  * (title or label text) plus exact labels, all required.
  */
-export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onRename, onChannelOptions, onCreateProject, search: controlledSearch, onSearch }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void }) => {
+/** One request to show a Project in the sidebar; a new object is a new request. */
+export type ProjectReveal = Readonly<{ channelId: string }>;
+
+export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onEditLabels, onRename, onChannelOptions, onCreateProject, search: controlledSearch, onSearch, reveal }: { snapshot: DesktopSnapshot; onNewSession: (channelId: string) => void; draftThreads?: ReadonlySet<string>; onEditLabels?: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void; onChannelOptions?: (id: string) => void; onCreateProject?: () => void; search?: SessionQuery; onSearch?: (query: SessionQuery) => void; reveal?: ProjectReveal }) => {
   // The workspace owns the query so a Session page's label click and a collapsed sidebar keep it; standalone use keeps it here.
   const [localSearch, setLocalSearch] = useState(emptySessionQuery);
   const search = controlledSearch ?? localSearch, setSearch = onSearch ?? setLocalSearch;
@@ -57,6 +60,15 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     knownProjects.current = new Set(snapshot.channels.map(channel => channel.id));
     if (incoming.length) setExpanded(old => new Set([...old, ...incoming]));
   }, [snapshot.channels]);
+  // A Session page's status bar asks to show its Project: open the branch, scroll to it and mark it briefly.
+  const [revealed, setRevealed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!reveal) return;
+    setExpanded(old => old.has(reveal.channelId) ? old : new Set([...old, reveal.channelId])); setRevealed(reveal.channelId);
+    const frame = requestAnimationFrame(() => document.querySelector(`.channel-branch[data-channel-id="${CSS.escape(reveal.channelId)}"]`)?.scrollIntoView({ block: 'nearest' }));
+    const timer = setTimeout(() => setRevealed(null), 1600);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [reveal]);
   const [batches, setBatches] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
   const [menuThread, setMenuThread] = useState<string | null>(null);
@@ -186,7 +198,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
       const page = threadWindow(available, channel.id, now, batches[channel.id] ?? 0);
       const count = unread.get(channel.id) ?? 0, hint = connectionHint[stateFor(channel.connectionKey) ?? ''];
       const source = [multiple ? channel.connectionName : undefined, hint].filter(Boolean).join(' · ');
-      return <section className="channel-branch" key={channel.id}>
+      return <section className={`channel-branch${revealed === channel.id ? ' channel-revealed' : ''}`} key={channel.id} data-channel-id={channel.id}>
         <div className="channel-toolbar"><button type="button" className={`channel-toggle${channel.id === snapshot.selectedChannelId ? " current-channel" : ""}`} aria-expanded={open} aria-controls={`branch-${channel.id}`}
           aria-label={[channel.name, multiple ? channel.connectionName : undefined, hint, unreadCountDescription(count)].filter(Boolean).join(', ')}
           onClick={() => setExpanded((old) => { const next = new Set(old); if (open) next.delete(channel.id); else next.add(channel.id); return next; })}>
@@ -204,4 +216,4 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     </div>
     </>}
   </div>;
-}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion);
+}, (before,after) => before.draftThreads === after.draftThreads && before.search === after.search && before.onSearch === after.onSearch && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal);

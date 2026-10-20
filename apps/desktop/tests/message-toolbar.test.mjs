@@ -22,7 +22,11 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
         exportConversation:async()=>{calls.push(['export-conversation']);return {ok:true,saved:false}},
         retryLatest:async()=>{calls.push(['retry'])},
         openSessionLink:async url=>{calls.push(['link',url])},
-        copySessionLink:async()=>{}};
+        copySessionLink:async()=>{},
+        // The status bar's More menu is native; the stand-in records its items and gives the next answer.
+        showContextMenu:async items=>{menuItems=items.map(i=>i.id??'-');const choice=menuAnswer;menuAnswer=null;return choice}};
+      let menuItems=[], menuAnswer=null;
+      const sessionMenu=async answer=>{menuAnswer=answer??null;document.querySelector('.status-more').click();await tick();await tick();return menuItems;};
       const root=createRoot(document.getElementById('root'));
       const msg=(id,role,text,extra={})=>({id,role,text,toolCalls:[],attachments:[],createdAt:1700000000,...extra});
       const messages=[msg('u1','user','Q1',{refSeq:1}),msg('f1','assistant','First **answer**',{displayKind:'final',refSeq:2,model:'claude-opus-5-5'}),
@@ -40,7 +44,7 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
         const modelBox=el=>{const m=el.querySelector('.message-model');if(!m)return null;const box=m.getBoundingClientRect(),bar=el.getBoundingClientRect(),btn=el.querySelector('button').getBoundingClientRect();
           return {text:m.textContent,title:m.getAttribute('title'),rightGap:bar.right-box.right,center:Math.abs((box.top+box.bottom)/2-(btn.top+btn.bottom)/2),last:el.lastElementChild===m,color:getComputedStyle(m).color,label:getComputedStyle(el.querySelector('button')).color,height:box.height};};
         out.models=bars.map(modelBox);
-        out.session=labels(document.querySelector('.conversation-actions'));
+        out.session=await sessionMenu();
         const press=(bar,label)=>bar.querySelector('[aria-label="'+label+'"]').click();
         press(bars[0],'Branch');await tick();
         press(bars[1],'Branch');await tick();await tick();
@@ -52,7 +56,7 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
         press(bars[0],'Export');await tick();await tick();
         out.savedNote=bars[0].querySelector('.message-toolbar-note')?.textContent??'';
         press(bars[1],'Retry');await tick();
-        document.querySelector('[aria-label="Export conversation"]').click();await tick();
+        await sessionMenu('export');
         const link=[...document.querySelectorAll('.message-system a')].find(a=>a.textContent==='Side');
         out.noticeHref=link?.getAttribute('href');link?.click();await tick();
         out.calls=calls;
@@ -63,7 +67,7 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
         out.runningRetry=bars.map(bar=>!!bar.querySelector('[aria-label="Retry"]'));
         render({});
         out.old=[...document.querySelectorAll('.message-final .message-toolbar')].map(labels);
-        out.oldSession=labels(document.querySelector('.conversation-actions'));
+        out.oldSession=await sessionMenu();
         const svg=document.querySelector('.message-toolbar svg');
         out.icon={w:svg.getBoundingClientRect().width,stroke:getComputedStyle(svg).stroke!=='none',emoji:/\\p{Extended_Pictographic}/u.test(document.querySelector('.message-toolbar').textContent)};
         document.getElementById('results').textContent=JSON.stringify(out);
@@ -85,7 +89,7 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
     assert.ok(model.last && Math.abs(model.rightGap) <= 1, JSON.stringify(model));
     assert.ok(model.center <= 1.5 && model.height > 0, JSON.stringify(model));
     assert.equal(model.color, model.label);
-    assert.ok(r.session.includes('Export conversation'));
+    assert.ok(r.session.includes('export'));
     assert.equal(r.busyNote, 'Wait until the current reply finishes, then try again.');
     assert.deepEqual(r.sources, [['example.com/doc', 'https://www.example.com/doc', '_blank'], ['example.org', 'https://example.org/', '_blank']]);
     assert.deepEqual(r.cited, ['cited']);
@@ -96,7 +100,7 @@ test('Chromium: final replies carry Branch, Copy, References, Export and Retry; 
     assert.deepEqual(r.running, [['Branch'], ['Branch']]);
     assert.deepEqual(r.runningRetry, [false, false], 'a pending input moves Retry away');
     assert.deepEqual(r.old, [['Copy', 'Export'], ['Copy', 'Export', 'Retry']]);
-    assert.ok(!r.oldSession.includes('Export conversation'));
+    assert.ok(!r.oldSession.includes('export'));
     assert.equal(r.icon.w, 16); assert.ok(r.icon.stroke); assert.equal(r.icon.emoji, false);
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

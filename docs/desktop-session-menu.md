@@ -27,6 +27,8 @@ Requested by Jamie: redo the context menu of the Session rows in the sidebar (To
 - `Archive…` asks `Archive "<title>"?` first. An archived Session's tab closes (existing tab sync).
 - `Copy Link` copies the `hermesapp://` link of that row's Session.
 
+The Session page's status bar More menu uses the same items, plus `Export Conversation…` (2026-10-19; see [desktop-session-status-bar.md](desktop-session-status-bar.md)). Session pages may now call `desktop:context-menu`.
+
 ## Implementation
 
 - `src/renderer/session-menu.ts`: the item list (pure function).

@@ -122,12 +122,17 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  const create=calls.find(x=>x[0]==='create'),upload=calls.filter(x=>x[0]==='upload').at(-1),send=calls.filter(x=>x[0]==='send').at(-1);
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
- // A toolbar label in Session B's own page searches the main window's sidebar through the real IPC route.
- await until(()=>evaluate(bc,'!!document.querySelector(".toolbar-labels button[aria-label=\'Find sessions labeled bug\']")'),'session B toolbar label');
- await evaluate(bc,'document.querySelector(".toolbar-labels button").click()');
+ // A status bar label in Session B's own page searches the main window's sidebar through the real IPC route.
+ await until(()=>evaluate(bc,'!!document.querySelector(".status-labels button[aria-label=\'Find sessions labeled bug\']")'),'session B status bar label');
+ await evaluate(bc,'document.querySelector(".status-labels button").click()');
  await until(()=>evaluate(shell,'document.querySelectorAll(".search-result-list .tree-thread").length===1&&[...document.querySelectorAll(".session-query-chip > span")].map(e=>e.textContent).join()==="bug"'),'label search in the sidebar');
  assert.equal(await evaluate(shell,'document.querySelector(".search-result-list .tree-thread").textContent.includes("Session B")'),true);
  await evaluate(shell,'document.querySelector(".sidebar-search-clear").click()');await until(()=>evaluate(shell,'!!document.querySelector(".channel-tree")'),'search cleared');
+ // Session B's Project name shows that Project in the main window's sidebar; a search is cleared first.
+ await evaluate(shell,'(()=>{const e=document.querySelector(".sidebar-search input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"Session");e.dispatchEvent(new Event("input",{bubbles:true}));})()');await until(()=>evaluate(shell,'!document.querySelector(".channel-tree")'),'search replaces the tree');
+ assert.equal(await evaluate(bc,'document.querySelector(".status-project").textContent'),'Project Beta');
+ await evaluate(bc,'document.querySelector(".status-project").click()');
+ await until(()=>evaluate(shell,'document.querySelector(".channel-revealed strong")?.textContent==="Project Beta"&&!!document.querySelector(".channel-tree")&&document.querySelector(".sidebar-search input").value===""'),'Project revealed in the sidebar');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
  // Real input reaches the production host renderer while retained native views resize.
@@ -189,12 +194,15 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','app-icon.json'),'utf8')),{icon:'orb'},'choice saved in userData');
  assert.equal(await evaluate(dc,'window.hermesDesktop.setAppIcon("bubble").then(()=>"accepted",()=>"rejected")'),'rejected','Session views cannot change the app icon');
  assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname,'user-data','app-icon.json'),'utf8')).icon,'orb');
+ // The status bar's connection name moves the open Settings window to that connection's page.
+ await evaluate(dc,'document.querySelector(".status-connection").click()');
+ await until(()=>evaluate(fc,'document.querySelector("[role=tab][aria-selected=true]")?.id?.startsWith("settings-tab-connection-")'),'Settings shows the Session connection page');
  BrowserWindow.fromWebContents(fc).close();await until(()=>!settingsForTest().isOpen,'Settings window closed');
  if(process.env.HERMES_NATIVE_EVIDENCE){fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'desktop-native-tabs.png'),(await window.capturePage()).toPNG());}
  await evaluate(shell,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)');
  assert.deepEqual(manager.menu(first.id).map(i=>i.enabled),[true,true,true],'first tab menu enables every close action');
  await assert.rejects(evaluate(ac,'window.hermesDesktop.showTabMenu('+JSON.stringify(first.id)+',10,10)'),/./,'session views cannot open the tab menu');
- await assert.rejects(evaluate(ac,'window.hermesDesktop.showContextMenu([{id:"rename",label:"Rename…"}],10,10)'),/./,'session views cannot open a main-window menu');
+ await assert.rejects(evaluate(ac,'window.hermesDesktop.showContextMenu([{id:"x",label:"x"},{id:"x",label:"y"}],10,10)'),/./,'a Session page menu rejects invalid items before any popup');
  await assert.rejects(evaluate(shell,'window.hermesDesktop.showContextMenu([{id:"x",label:"x",submenu:[]},{id:"x",label:"y"}],10,10)'),/./,'the shell menu rejects invalid items before any popup');
  await assert.rejects(evaluate(ac,'window.hermesDesktop.copySessionLink("other-session")'),/./,'a session view cannot copy another session link');
  await evaluate(shell,'window.hermesDesktop.closeTab('+JSON.stringify(second.id)+')');await until(()=>bc.isDestroyed(),'closed view released');assert.equal(ac.isDestroyed(),false);assert.equal(dc.isDestroyed(),false);

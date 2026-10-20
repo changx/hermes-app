@@ -104,15 +104,15 @@ test('Chromium: Session toolbar flag marks and clears todo; the label row leaves
     render(snap(['bug']));
     (async()=>{try{
       await wait(80);
-      const flag=()=>document.querySelector('.conversation-actions .todo-toggle');
-      const first=document.querySelector('.conversation-actions button');
-      ensure('flag is the first toolbar button',first===flag()&&flag().getAttribute('aria-label')==='Mark as todo'&&flag().getAttribute('aria-pressed')==='false'&&flag().dataset.tooltip==='Mark as todo (Ctrl+Shift+L)');
+      const flag=()=>document.querySelector('.status-actions .todo-toggle');
+      const first=document.querySelector('.status-actions button');
+      ensure('flag is the first status bar button',first===flag()&&flag().getAttribute('aria-label')==='Mark as todo'&&flag().getAttribute('aria-pressed')==='false'&&flag().dataset.tooltip==='Mark as todo (Ctrl+Shift+L)');
       ensure('outline when off',getComputedStyle(flag().querySelectorAll('path')[1]).fill==='none');
       flag().click(); await wait(30);
       ensure('mark saves the flag through the label API',JSON.stringify(saves)==='[["s1",["bug","todo"],"one"]]');
       render(snap(['bug','todo'])); await wait(20);
       ensure('pressed and filled when on',flag().getAttribute('aria-pressed')==='true'&&flag().getAttribute('aria-label')==='Remove todo'&&getComputedStyle(flag().querySelectorAll('path')[1]).fill!=='none');
-      ensure('label row shows the other labels only',[...document.querySelectorAll('.toolbar-labels .toolbar-label')].map(b=>b.textContent).join('|')==='bug');
+      ensure('label row shows the other labels only',[...document.querySelectorAll('.status-labels .status-label')].map(b=>b.textContent).join('|')==='bug');
       mode='fail'; flag().click(); await wait(30);
       ensure('failure shows a plain message',document.querySelector('.error-banner')?.textContent==='Could not update the todo flag. Check the connection and try again.'&&!/HTTP/.test(document.body.textContent));
       mode='stale'; flag().click(); await wait(30);

@@ -82,6 +82,8 @@ export type DesktopMessage = Readonly<{
 export type DesktopSnapshot = Readonly<{
   connections?: readonly DesktopConnection[];
   connectionsError?: string;
+  /** Settings window only: the page a Session page asked for. A new nonce is a new request. */
+  settingsRequest?: Readonly<{ page: string; nonce: number }>;
   browser?: DesktopBrowserState;
   /** Built-in sidebar or one separate window per Session. */
   browserMode?: DesktopBrowserMode;
@@ -236,8 +238,8 @@ export interface HermesDesktopApi {
   getAutomation(before?: number): Promise<DesktopAutomationPage>;
   setContentBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
   getRuntimeInfo(): DesktopRuntimeInfo;
-  /** Opens or focuses the single native Settings window. */
-  openSettings(): Promise<void>;
+  /** Opens or focuses the single native Settings window; `connectionId` opens that connection's page. */
+  openSettings(connectionId?: string): Promise<void>;
   getSnapshot(): Promise<DesktopSnapshot>;
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void;
   pair(request: PairingRequest): Promise<void>;
@@ -255,6 +257,10 @@ export interface HermesDesktopApi {
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */
   onSearchLabel(listener: (label: string) => void): () => void;
+  /** A Session page asks the main window's sidebar to show this Project. */
+  revealProject(channelId: string): Promise<void>;
+  /** The main window receives Project reveal requests from Session pages. */
+  onRevealProject?(listener: (channelId: string) => void): () => void;
   /** A Session page receives this when the app window becomes active. */
   onFocusComposer?(listener: () => void): () => void;
   /** The active Session page receives this for the todo shortcut (Shift+Cmd+L). */

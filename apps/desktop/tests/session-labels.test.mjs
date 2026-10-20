@@ -73,13 +73,15 @@ test('Chromium: actual measured pills, label search/tree interactions, connectio
         const page=document.querySelector('.session-tab-page'),list=page.querySelector('.message-list'),composer=page.querySelector('[aria-label="Message"]');
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(composer,'Keep this draft');composer.dispatchEvent(new Event('input',{bubbles:true}));await tick();
         list.scrollTop=120;list.dispatchEvent(new Event('scroll'));await tick();const offset=list.scrollTop;
-        button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();
-        ensure('header editor entry',document.querySelector('dialog').open);
+        // Edit Labels… is in the status bar's More menu (a native menu; the stand-in answers it).
+        const editLabels=async()=>{window.hermesDesktop.showContextMenu=async()=>'labels';document.querySelector('.status-more').click();await tick();await tick();};
+        await editLabels();
+        ensure('status bar editor entry',document.querySelector('dialog').open);
         button(document.querySelector('dialog'),'Cancel').click();await tick();
         const updated={...shell,threads:shell.threads.map(t=>t.id==='row0'?{...t,markers:['Updated header']}:t)};shellRender(updated);await tick();
-        ensure('authoritative header labels',document.querySelector('.session-toolbar .toolbar-labels').getAttribute('aria-label')==='Labels: Updated header');
+        ensure('authoritative status bar labels',document.querySelector('.session-status-bar .status-labels').getAttribute('aria-label')==='Labels: Updated header');
         ensure('composer and page retained',page===document.querySelector('.session-tab-page')&&composer===page.querySelector('[aria-label="Message"]')&&composer.value==='Keep this draft'&&list.scrollTop===offset);
-        button(document.querySelector('.conversation-actions'),'Edit labels').click();await tick();shellRender({...updated,connectionKey:'shell-two'});
+        await editLabels();shellRender({...updated,connectionKey:'shell-two'});
         ensure('no old dialog on new connection',!document.querySelector('dialog'));
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' } });

@@ -46,7 +46,7 @@ const api: HermesDesktopApi = Object.freeze({
   getAutomation: (before?: number) => ipcRenderer.invoke('desktop:get-automation', before),
   setContentBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void> => ipcRenderer.invoke('desktop:content-bounds', bounds),
   getRuntimeInfo: (): DesktopRuntimeInfo => runtimeInfo,
-  openSettings: (): Promise<void> => ipcRenderer.invoke('desktop:open-settings'),
+  openSettings: (connectionId?: string): Promise<void> => connectionId === undefined ? ipcRenderer.invoke('desktop:open-settings') : ipcRenderer.invoke('desktop:open-settings', connectionId),
   getSnapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("desktop:get-snapshot"),
   subscribe(listener: (snapshot: DesktopUpdate) => void): () => void {
     const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopUpdate) => listener(snapshot);
@@ -68,6 +68,12 @@ const api: HermesDesktopApi = Object.freeze({
     const receive = (_event: Electron.IpcRendererEvent, label: unknown) => { if (typeof label === 'string') listener(label); };
     ipcRenderer.on("desktop:search-label", receive);
     return () => ipcRenderer.removeListener("desktop:search-label", receive);
+  },
+  revealProject: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:reveal-project", channelId),
+  onRevealProject(listener: (channelId: string) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, channelId: unknown) => { if (typeof channelId === 'string') listener(channelId); };
+    ipcRenderer.on("desktop:reveal-project", receive);
+    return () => ipcRenderer.removeListener("desktop:reveal-project", receive);
   },
   onFocusComposer(listener: () => void): () => void {
     const receive = () => listener();

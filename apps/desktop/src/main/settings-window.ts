@@ -22,7 +22,12 @@ export class DesktopSettingsWindow {
   get isOpen(): boolean { return !!this.contents; }
   owns(contents: WebContents): boolean { return !!contents && contents === this.contents; }
 
-  open(): void {
+  private request?: { page: string; nonce: number };
+  private nonce = 0;
+
+  /** `page` (for example `connection:<id>`) asks the Settings page to show that page, also when Settings is already open. */
+  open(page?: string): void {
+    if (page) { this.request = { page, nonce: ++this.nonce }; this.publish(); }
     if (this.window && !this.window.isDestroyed()) {
       if (this.window.isMinimized()) this.window.restore();
       this.window.show(); this.window.focus(); return;
@@ -66,6 +71,7 @@ export class DesktopSettingsWindow {
   private next(): DesktopSnapshot {
     // Settings needs connection state only. Never send conversation content to this window.
     const base = this.source();
-    return { ...base, revision: ++this.revision, channels: [], threads: [], messages: [], interactions: [], sessionPages: undefined, tabs: undefined, browser: undefined };
+    return { ...base, revision: ++this.revision, channels: [], threads: [], messages: [], interactions: [], sessionPages: undefined, tabs: undefined, browser: undefined,
+      ...(this.request ? { settingsRequest: this.request } : {}) };
   }
 }

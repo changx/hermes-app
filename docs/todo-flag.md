@@ -12,9 +12,9 @@ Requested by Jamie: a quick todo flag on the Session page. The flag marks the se
 
 ## Desktop
 
-- Session toolbar: a flag button is the first tool button. Outline when off, filled orange when on (`aria-pressed`). Tooltip and name: "Mark as todo" or "Remove todo". It is disabled while the connection is offline. It is hidden when the server has no label support.
+- Session page: the flag button is in the status bar under the composer, before More (since 2026-10-19; see [desktop-session-status-bar.md](desktop-session-status-bar.md)). Before that, it was the first button of the top toolbar. Outline when off, filled orange when on (`aria-pressed`). Tooltip and name: "Mark as todo" or "Remove todo". It is disabled while the connection is offline. It is hidden when the server has no label support.
 - Shortcut: ⇧⌘L on macOS, Ctrl+Shift+L elsewhere (the Mail shortcut for Flag). It toggles the flag of the active Session tab, also while the sidebar or a browser pane has focus. The main process catches the key in `before-input-event` and sends `desktop:toggle-todo` to the active Session tab only. The page runs the same action as the button. The shortcut does nothing when the button is unavailable (offline, no label support, a save in progress), when the tab is not active, or when a dialog is open. The button tooltip names the shortcut ("Mark as todo (⇧⌘L)"); Settings › Shortcuts lists it as "Mark or remove todo".
-- The toolbar label row shows the other labels only.
+- The status bar label row shows the other labels only.
 - Sidebar order from top: New chat, search box, frequent labels, Automations, **Todo**, Recents, Projects.
 - The Todo section lists every todo session of any age from every connection: running first, then newest activity. It is hidden when no session is flagged. The header collapses it; the choice is saved on this device (`hermes.sidebar.todo-collapsed`).
 - Recents and each Project's session list put running sessions first, then newest activity. Projects keep their recent window, so an old todo session shows only in Todo.

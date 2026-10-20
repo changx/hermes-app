@@ -109,6 +109,14 @@ export function SettingsPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const userChose = useRef(false);
   const setPage = (value: Page) => { userChose.current = true; updatePage(value); try { window.localStorage.setItem(PAGE_KEY, value); } catch { /* Navigation still works for this window. */ } };
   const shown = page;
+  // A Session page's status bar asks for its connection's page. The page can arrive before the
+  // connection list, so the request waits until that page exists; each nonce is applied once.
+  const request = snapshot.settingsRequest, applied = useRef(0), requestKnown = known(request?.page);
+  useEffect(() => {
+    if (!request || request.nonce === applied.current || !requestKnown) return;
+    applied.current = request.nonce; setPage(request.page as Page);
+    root.current?.querySelector<HTMLElement>(`#${settingsTabId(request.page)}`)?.focus();
+  }, [request?.nonce, requestKnown]);
   // The first snapshot can be empty, so the default page can change once the real one
   // arrives. Until the user chooses, keep focus on the page actually shown; otherwise the
   // old tab keeps a focus ring beside the new selection.

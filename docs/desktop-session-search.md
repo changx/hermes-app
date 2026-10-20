@@ -1,5 +1,7 @@
 # Desktop session search
 
+> Since 2026-10-19 the Session page labels are in the bottom status bar, on one line with `+N` for labels that do not fit. A click still searches. See [desktop-session-status-bar.md](desktop-session-status-bar.md).
+
 Requested by Jamie: a toolbar label in a Session page is a search, not an edit. A click lists the sessions with that label in the left sidebar, and several labels can be combined. The sidebar has a search box below New chat. The search box and Cmd+K search in the same way: by keyword and by label.
 
 ## Behavior

@@ -128,6 +128,7 @@
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop-session-search.md](docs/desktop-session-search.md)
 - [docs/desktop-session-menu.md](docs/desktop-session-menu.md)
+- [docs/desktop-session-status-bar.md](docs/desktop-session-status-bar.md)（Session 页底部状态栏：连接、Project、todo、More 菜单和 labels；取代顶部浮动工具条）
 - [docs/desktop-automations.md](docs/desktop-automations.md)
 - [docs/automation-workflow.md](docs/automation-workflow.md)（草案，未实现）
 - [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑：静态 `workdir`、编辑 Thread、控件、分页、删除；已发布）

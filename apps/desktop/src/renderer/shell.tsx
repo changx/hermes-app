@@ -8,7 +8,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
-import { MessageIcon, MessageToolbar, UserMessageCopy } from "./message-toolbar";
+import { MessageToolbar, UserMessageCopy } from "./message-toolbar";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
@@ -16,23 +16,14 @@ import { SessionPicker } from './session-picker';
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
 import { AutomationListPage, AutomationPage } from './automations';
-import { LabelsEditor, ToolbarLabels } from './session-labels';
-import { hasTodo, withoutTodo } from '../../../../packages/client/src/todo';
+import { LabelsEditor } from './session-labels';
+import { hasTodo } from '../../../../packages/client/src/todo';
+import { SessionStatusBar } from './session-status-bar';
+import type { SessionMenuAction } from './session-menu';
 import { setSessionTodo } from './todo-toggle';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 import { ATTACHMENT_SIZE_RULE } from "../shared/attachment-input";
 import { fileSizeLimit, namePastedFiles } from './pasted-files';
-
-// Stroke icons for the floating Session toolbar. Decorative: each button carries its accessible name.
-const TOOL_ICONS = {
-  link: 'M8.5 11.5l3-3M7 9.5l-1.6 1.6a2.6 2.6 0 003.7 3.7L10.7 13M13 10.5l1.6-1.6a2.6 2.6 0 00-3.7-3.7L9.3 6.8',
-  label: 'M3.5 4.5v4.6l7.4 7.4 5.6-5.6-7.4-7.4H4.5zM7 7h.01',
-  rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
-  archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
-} as const;
-// Todo flag: the pennant fills when the Session is flagged.
-const TodoIcon = ({ on }: { on: boolean }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 17V3.5" /><path className={on ? 'todo-pennant-on' : undefined} d="M5.5 4h9.5l-2.4 3.5 2.4 3.5H5.5z" /></svg>;
-const ToolIcon = ({ name }: { name: keyof typeof TOOL_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={TOOL_ICONS[name]} /></svg>;
 
 const drafts = new LocalDraftMap<string>(value => !!value.trim());
 const draftAttachments = new LocalDraftMap<readonly DesktopAttachment[]>(value => value.length > 0);
@@ -414,6 +405,17 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   todoShortcut.current = todoEnabled ? toggleTodo : undefined;
   const todoTooltip = `${todo ? 'Remove todo' : 'Mark as todo'} (${globalThis.window?.hermesDesktop?.getRuntimeInfo?.().platform === 'darwin' ? '⇧⌘L' : 'Ctrl+Shift+L'})`;
   const archive = () => { if (snapshot.selectedThreadId && window.confirm("Archive this topic?")) safely(window.hermesDesktop.archiveThread(snapshot.selectedThreadId)); };
+  const exportConversation = () => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."));
+  // The status bar's More menu: the same items as the sidebar row menu, plus Export.
+  const sessionAction = (action: SessionMenuAction) => {
+    if (!currentThread) return;
+    if (action === 'rename') setRenameTarget(currentThread);
+    else if (action === 'todo') toggleTodo();
+    else if (action === 'labels') openLabels(currentThread);
+    else if (action === 'copy-link') safely(window.hermesDesktop.copySessionLink());
+    else if (action === 'export') exportConversation();
+    else archive();
+  };
   const overlays = <>{labelTarget && (snapshot.connections ? snapshot.connections.some(row => row.connectionKey === labelTarget.connectionKey) : labelTarget.connectionKey === snapshot.connectionKey) && <LabelsEditor key={`${labelTarget.connectionKey}:${labelTarget.thread.id}`} thread={labelTarget.thread} snapshot={{ ...snapshot, connectionKey: labelTarget.connectionKey, connectionState: snapshot.connections?.find(row => row.connectionKey === labelTarget.connectionKey)?.state === 'online' ? 'online' : snapshot.connections ? 'blocked' : snapshot.connectionState }} close={() => setLabelTarget(null)} />}{projectEditor && <ProjectDialog key={projectEditor.channelId ?? 'new-project'} snapshot={snapshot} channelId={projectEditor.channelId} close={() => setProjectEditor(null)} />}{editor === 'palette' && <SessionPicker snapshot={snapshot} close={() => setEditor(null)} />}{renameTarget && <RenameDialog key={renameTarget.id} thread={renameTarget} close={() => setRenameTarget(null)} />}</>;
   if (viewRole === 'workspace') return <NativeWorkspace snapshot={snapshot} draftThreads={new Set(snapshot.draftThreadIds ?? [])} onEditLabels={openLabels} onRename={setRenameTarget} onCreateProject={() => setProjectEditor({})} onProjectOptions={id => setProjectEditor({ channelId: id })} onSettings={() => safely(window.hermesDesktop.openSettings())} overlayOpen={!!editor || !!projectEditor || !!labelTarget || !!renameTarget}>
     {overlays}
@@ -422,24 +424,13 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   return <main className="session-tab-page" aria-label="Hermes session">
     <ErrorBanner snapshot={snapshot} />{draftError && <div className="error-banner" role="alert">{draftError}</div>}{todoError && <div className="error-banner" role="alert">{todoError}</div>}
     <div className="session-main">
-      {/* No title bar: the tab already names the Session. Tools float at the top right over the timeline; all labels wrap below the buttons, so the toolbar height varies. */}
-      <div className="session-toolbar" role="toolbar" aria-label="Session tools">
-        <div className="conversation-actions">
-          {snapshot.supportsSessionLabels && <button type="button" className={`todo-toggle${todo ? ' todo-on' : ''}`} aria-pressed={todo} aria-label={todo ? 'Remove todo' : 'Mark as todo'} data-tooltip={todoTooltip}
-            disabled={todoBusy || !currentThread || snapshot.connectionState !== 'online'} onClick={toggleTodo}><TodoIcon on={todo} /></button>}
-          <button type="button" aria-label="Copy link" data-tooltip="Copy link" onClick={() => safely(window.hermesDesktop.copySessionLink())}><ToolIcon name="link" /></button>
-          {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation"
-            onClick={() => void window.hermesDesktop.exportConversation().then(r => { if (!r.ok) window.alert("Could not export this conversation. Check the connection and try again."); }, () => window.alert("Could not export this conversation. Check the connection and try again."))}><MessageIcon name="export" /></button>}
-          {snapshot.supportsSessionLabels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" onClick={() => { const thread = snapshot.threads.find(t => t.id === snapshot.selectedThreadId); if (thread) openLabels(thread); }}><ToolIcon name="label" /></button>}
-          <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!currentThread} onClick={() => { if (currentThread) setRenameTarget(currentThread); }}><ToolIcon name="rename" /></button>
-          <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={archive}><ToolIcon name="archive" /></button>
-        </div>
-        {snapshot.supportsSessionLabels && <ToolbarLabels markers={withoutTodo(currentThread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}
-      </div>
+      {/* No title bar or top toolbar: the tab names the Session; the status bar under the composer holds its place, tools and labels. */}
       <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
     </div>
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
-    <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />{overlays}<TooltipLayer />
+    <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />
+    <SessionStatusBar snapshot={snapshot} thread={currentThread} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} />
+    {overlays}<TooltipLayer />
   </main>;
 };
 
