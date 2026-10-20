@@ -44,3 +44,9 @@ Requested by Jamie (2026-10-19): the desktop app needs a place that shows the cu
 - `tests/native-electron.test.mjs` (Electron/Xvfb): a status bar label in Session B searches the main window sidebar; the Project name of Session B clears a sidebar search and reveals Project Beta; the connection name moves the open Settings window to the connection page; a Session page menu rejects invalid items before a popup.
 - Updated: `session-menu` (IPC route), `todo-flag`, `session-labels`, `message-toolbar`, `window-focus-composer`, `color-palette`, `default-font-size` tests (selectors).
 - Linux only. Mac acceptance is open: look, the `+N` menu position at the bottom of the window, Settings page jump, Project reveal, label overflow with real labels.
+
+## Release
+
+- 2026-10-19: desktop v0.1.98 (authorized by Jamie: "合并发布"). Feature commits `78ca256`, `44cf27c`, `821d9fc`; release commit `7e2adee`, tag `v0.1.98`, pushed atomically with `main`. Linux `desktop:check` on the candidate with Chromium and Electron/Xvfb: 239 tests, 238 pass; the one failure is `browser-window-native`, which fails the same way on unchanged `main` `fac6284`. Mac mini workflow run `39370721739`: 239 tests, 186 pass, 0 fail, 53 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.98. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build. Releases kept: v0.1.98 and v0.1.97.
+- Desktop only: no mobile, shared client or plugin change; Expo and Gateway not restarted.
+- Pending: Mac acceptance. Rollback: reinstall v0.1.97.
