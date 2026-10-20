@@ -34,6 +34,8 @@ App 自带界面与所有提示统一用自然英文，包括状态、错误、�
 
 桌面侧栏搜索框下方显示前 5 个常用 label（使用该 label 的 session 最多者优先，相同时最近使用优先），点击加入搜索、再点移除。手机 Recents 页提供同样的搜索框和 quick label filter，搜索范围为全部 Thread。见 [桌面 Session 搜索](desktop-session-search.md) 与 [手机 Recents](mobile-tabs-recents.md)。
 
+桌面 Cmd+K 和手机 Recents 搜索还按消息内容找 Session（全文索引：关键词加语义），几秒后由 AI 重新挑选和排序，AI 也可以回答“没有相关结果”。结果打开 Session 并定位到匹配的消息。见 [Session 消息搜索](session-message-search.md)。
+
 ### R02 Channel / Thread 内容组织
 
 2026-10-10 已确认：桌面和手机的 Stop 按钮从运行状态行最右侧移到 `Agent is running` 文字之后（间距 10px），使用图标＋`Stop` 的低调描边胶囊，悬停/按下才显示浅底，颜色沿用 `#425874`。没有运行文字时 Stop 与文字起点对齐。只改呈现，停止行为不变。详见 [桌面 Session 输入](desktop-session-composer.md)。

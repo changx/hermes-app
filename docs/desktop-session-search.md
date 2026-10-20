@@ -22,7 +22,7 @@ Neither search field shows a blue focus ring. The sidebar box keeps a light gray
 
 ## Limits
 
-- Search uses directory metadata only (titles, labels, project names). It does not search message text.
+- The sidebar search uses directory metadata only (titles, labels, project names). Cmd+K also searches message text on servers that offer it; see [Session message search](session-message-search.md).
 - Label suggestions and chips appear only on connections that support labels.
 - If the sidebar is hidden only because the window is narrow and the browser panel is open, a toolbar label click does not close the browser panel. The query is applied and shows when the sidebar is visible.
 
