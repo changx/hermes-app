@@ -1,5 +1,7 @@
 # Mobile Channel Files and AGENTS.md entry
 
+> Superseded for Files (2026-10-20): the Channel Files route, its Workspace and Attachments tabs and `WorkspaceFilePreview` are removed. Session files replace them; see [session-files.md](session-files.md). The AGENTS.md entry below is still current.
+
 Current candidate update: [Repository AGENTS binding](channel-repository-agents.md) removes the historical 12,000-byte/native-character ceiling below. An explicitly bound repository root document is editable independently of Files initialization; workspace and repository stay separate. Original-version conflict protection remains. No deployment or physical-device acceptance is implied.
 
 ## Scope and candidate

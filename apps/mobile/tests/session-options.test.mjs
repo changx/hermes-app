@@ -15,7 +15,7 @@ const mocks = {
   'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r),dismissTo:r=>s.dismissed.push(r)}); export const useIsFocused=()=>s.focused;`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   './FontSize': `export const Text='Text';`,
-  './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app; export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}}); export const channelRoute=(connection,channelId)=>({pathname:'/channels/[channelId]',params:{channelId,connection}});`,
+  './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app; export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}}); export const sessionFilesRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/files',params:{threadId,connection}}); export const channelRoute=(connection,channelId)=>({pathname:'/channels/[channelId]',params:{channelId,connection}});`,
   './CopyToast': `const s=globalThis.__sessionOptionsTest; export const copyWithToast=async v=>{s.copied.push(v);return true};`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SessionOptions.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
@@ -50,6 +50,20 @@ test('without label support the page keeps link and Settings only', async () => 
   reset(); state.app = app([thread({ markers: [] })], false);
   let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
   assert.deepEqual(labels(root), ['Copy session link', 'Archive session', 'Settings']);
+  root.unmount();
+});
+
+test('Files appears after Labels when the server lists Session files, and opens the files page on the same connection', async () => {
+  reset(); state.app = app([thread()]); state.app.client.supportsSessionFiles = true;
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Session files', 'Copy session link', 'Archive session', 'Settings']);
+  await press(root, 'Session files');
+  assert.deepEqual(state.pushed, [{ pathname: '/threads/[threadId]/files', params: { threadId: 'th_1', connection: 'second' } }]);
+  root.unmount();
+  reset(); state.app = app([thread({ markers: [] })], false); state.app.client.supportsSessionFiles = true;
+  await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  const rows = root.root.findAll(n => n.props && n.props.label === 'Session files');
+  assert.equal(rows[0].props.first, true, 'without labels, Files is the first row of the section');
   root.unmount();
 });
 

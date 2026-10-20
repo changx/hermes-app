@@ -5,7 +5,7 @@ import React from 'react';
 import { create, act } from 'react-test-renderer';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { quickLabels, recentRows, searchRecentRows } from '../src/recentRows.ts';
+import { mergeFileHits, quickLabels, recentRows, searchRecentRows } from '../src/recentRows.ts';
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -56,7 +56,7 @@ const mocks = {
   '../../MessageTime': `export const MessageTime='MessageTime';`,
   '../../TabHeader': `export const TabHeader=p=>require('react').createElement('TabHeader',null,p.children);`,
   '../../TodoFlag': `export const TodoFlag='TodoFlag';`,
-  '../../sessionNavigation': `export const useSessionNavigation=()=>({threadOn:(slot,id)=>globalThis.__recentsTest.opened.push(slot+':'+id)});`,
+  '../../sessionNavigation': `export const useSessionNavigation=()=>({threadOn:(slot,id,ref)=>globalThis.__recentsTest.opened.push(slot+':'+id+(ref===undefined?'':'@'+ref))});`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/app/(tabs)/index.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
   b.onResolve({ filter: /.*/ }, args => mocks[args.path] ? { path: args.path, namespace: 'mock' } : undefined);
@@ -189,4 +189,49 @@ test('Channels and Recents share the NewFab component', () => {
   const read = path => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
   assert.match(read('ProjectList.tsx'), /<NewFab label="New channel" onPress=\{onNewChannel\} \/>/);
   assert.match(read('app/(tabs)/index.tsx'), /<NewFab label="New conversation" onPress=\{\(\) => router\.push\('\/new-thread'\)\} \/>/);
+});
+
+const hit = (id, name, at, extra = {}) => ({ id, thread_id: 'a', name, size: 10, state: 'available', created_at: at, ref_seq: 7, list: 'delivered', thread_title: 'Login crash', channel_name: 'Research', ...extra });
+
+test('file hits from several servers merge newest first; the key names the connection', () => {
+  const rows = mergeFileHits([{ slot: 'primary', name: 'home', items: [hit('att_1', 'a.png', 10), hit('att_2', 'b.pdf', 30)] }, { slot: 'w', name: 'work', items: [hit('att_1', 'c.csv', 20)] }]);
+  assert.deepEqual(rows.map(r => r.key), ['primary:att_2', 'w:att_1', 'primary:att_1']);
+  assert.equal(mergeFileHits([{ slot: 'p', name: 'p', items: [hit('att_1', 'a', 1), hit('att_2', 'b', 2)] }], 1).length, 1);
+});
+
+test('Recents search adds a Files section from servers that search files; a file opens its Session at the source message', async () => {
+  const base = sources(), asked = [];
+  Object.assign(base[0].client, { supportsFileSearch: true, connectionState: 'online', files: { search: async (text, labels) => {
+    asked.push([text, [...labels]]);
+    return { items: [hit('att_9', 'crash-log.txt', 50, { caption: 'Full crash log' }), hit('att_8', 'old.png', 40, { state: 'missing', ref_seq: null })] };
+  } } });
+  // The second server searches files too, but fails: the list says so and keeps the other results.
+  Object.assign(base[1].client, { supportsFileSearch: true, connectionState: 'online', files: { search: async () => { throw new Error('HTTP 503'); } } });
+  state.connections = base; state.opened = [];
+  let root; await act(async () => { root = create(React.createElement(Recents)); });
+  const wait = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+  try {
+    await wait();
+    assert.deepEqual(asked, [], 'no file search without a query');
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('crash'); });
+    await wait();
+    assert.deepEqual(asked, [['crash', []]], 'one request after the typing pause');
+    const keys = root.root.findByType('FlatList').props.data.map(item => item.key);
+    assert.deepEqual(keys, ['search:primary:a', 'section:files', 'file:primary:att_9', 'file:primary:att_8']);
+    assert.ok(cards(root).includes('crash-log.txt'));
+    const file = root.root.find(n => n.type === 'Pressable' && (n.props.accessibilityLabel ?? '').startsWith('crash-log.txt,'));
+    assert.equal(file.props.accessibilityLabel, 'crash-log.txt, Login crash · Research · home, Delivered');
+    await press(file);
+    assert.deepEqual(state.opened, ['primary:a@7']);
+    const missing = root.root.find(n => n.type === 'Pressable' && (n.props.accessibilityLabel ?? '').startsWith('old.png,'));
+    assert.match(missing.props.accessibilityLabel, /No longer available/);
+    await press(missing);
+    assert.deepEqual(state.opened.at(-1), 'primary:a', 'a file without a source message opens its Session');
+    const footer = root.root.findByType('FlatList').props.ListFooterComponent;
+    assert.equal(footer.props.children.join(''), 'Files could not be searched on one server.');
+    await act(async () => { root.root.findByType('TextInput').props.onChangeText('zzz'); });
+    await press(root.root.find(n => n.props.accessibilityLabel === 'Clear search'));
+    await wait();
+    assert.deepEqual(root.root.findByType('FlatList').props.data.map(item => item.key).filter(k => k.startsWith('file:')), [], 'Clear removes file results');
+  } finally { await act(async () => root.unmount()); }
 });

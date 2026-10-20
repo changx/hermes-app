@@ -8,8 +8,9 @@ Branch: `feat/mobile-session-options`.
 - The button opens `threads/[threadId]/options`, a native Stack page titled `Session options`. It uses the grouped Settings style.
 - The page holds every function that the Session header offered before:
   1. `This session` → `Labels` (only when the connection supports labels). The row shows the current labels or `None` and pushes the label editor page (see below).
-  2. `This session` → `Copy session link`. It copies the stable link and shows the shared copy toast.
-  3. `App` → `Settings`. It opens the same Settings home as the gear on the home and Channel pages.
+  2. `This session` → `Files` (only when the connection supports Session files). It pushes `threads/[threadId]/files`, the Session files page (see [session-files.md](session-files.md)).
+  3. `This session` → `Copy session link`. It copies the stable link and shows the shared copy toast.
+  4. `App` → `Settings`. It opens the same Settings home as the gear on the home and Channel pages.
 - The route carries the resolved connection slot, so a Session opened from a `server` link still gets the correct connection.
 - An archived or missing Session shows `This conversation is unavailable.` and no actions.
 

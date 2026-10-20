@@ -14,7 +14,7 @@ A tap on a PDF attachment in a session opened a page with the text "File downloa
 ## Not included
 
 - PDF rendering on Android (needs bundled PDF.js or an external-viewer dependency).
-- PDF preview in the channel workspace file page (`WorkspaceFilePreview.tsx`).
+- PDF preview in the Session files page (`SessionFilePreview.tsx`; it replaced the Channel workspace file page `WorkspaceFilePreview.tsx`).
 
 ## Verification and release
 

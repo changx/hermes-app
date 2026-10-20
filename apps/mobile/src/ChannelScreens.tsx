@@ -23,7 +23,6 @@ type Props = {
   draftThreads?: ReadonlySet<string>;
   onThread: (id: string) => void;
   onContext: (id: string) => void;
-  onFiles: (id: string) => void;
   onAgents: (id: string) => void;
   onLabels: (id: string) => void;
   /** Archives the Channel and leaves its page. The page unmounts when the Channel disappears. */
@@ -40,7 +39,7 @@ function IconAction({ label, ios, android, onPress, disabled = false }: { label:
   </Pressable>;
 }
 
-export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onFiles, onAgents, onLabels, onArchive, enqueueFirstMessage }: Props) {
+export function ChannelScreens({ client, channelId, draftThreads, onThread, onContext, onAgents, onLabels, onArchive, enqueueFirstMessage }: Props) {
   const [editing, setEditing] = useState(false);
   const [labelFilter, setLabelFilter] = useState(emptyLabelFilter);
   const [name, setName] = useState('');
@@ -118,18 +117,12 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
         <SymbolView name={{ ios: 'info.circle', android: 'info' }} size={18} tintColor="#2b4e81" fallback={<Text>ⓘ</Text>} />
         <Text style={s.contextText}>Context</Text>
       </Pressable>
-      {client.supportsChannelWorkspace === true && <>
-      <Pressable accessibilityRole="button" accessibilityLabel="Channel files" disabled={busy || editing || !!renaming}
-        onPress={() => { if (focusedRef.current) onFiles(channelId); }} style={({ pressed }) => [s.workspaceLink, pressed && s.iconActionPressed]}>
-        <SymbolView name={{ ios: 'folder', android: 'folder' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
-        <Text style={s.contextText}>Files</Text>
-      </Pressable>
+      {client.supportsChannelWorkspace === true &&
       <Pressable accessibilityRole="button" accessibilityLabel="Channel AGENTS.md" disabled={busy || editing || !!renaming}
         onPress={() => { if (focusedRef.current) onAgents(channelId); }} style={({ pressed }) => [s.workspaceLink, pressed && s.iconActionPressed]}>
         <SymbolView name={{ ios: 'doc.text', android: 'description' }} size={17} tintColor="#2b4e81" fallback={<Text>▤</Text>} />
         <Text style={s.contextText}>AGENTS.md</Text>
-      </Pressable>
-      </>}
+      </Pressable>}
       </ScrollView>
       <IconAction label="Channel options" ios="ellipsis" android="more_horiz" disabled={busy || editing || !!renaming} onPress={channelMenu} />
     </View>

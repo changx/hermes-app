@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
@@ -9,7 +9,7 @@ import { useSessionMenu } from '../../useSessionMenu';
 import { Text, TextInput } from '../../FontSize';
 import { MessageTime } from '../../MessageTime';
 import { TabHeader } from '../../TabHeader';
-import { quickLabels, recentRows, searchRecentRows, todoRows, type RecentRow } from '../../recentRows';
+import { mergeFileHits, quickLabels, recentRows, searchRecentRows, todoRows, type FileHitRow, type RecentRow } from '../../recentRows';
 import { TodoFlag } from '../../TodoFlag';
 import { hasTodo } from '../../../../../packages/client/src/todo';
 import { addQueryLabel, emptySessionQuery, removeQueryLabel, sessionQueryActive, type SessionQuery } from '../../../../../packages/client/src/sessionSearch';
@@ -17,13 +17,20 @@ import { useSessionNavigation } from '../../sessionNavigation';
 import { tabListBottomPadding } from '../../tabInsets';
 
 const MINUTE = 60_000;
+// File search asks the servers; wait for a pause in typing first.
+const FILE_SEARCH_DELAY_MS = 300;
 
-type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key: string; row: RecentRow };
+type Item = { kind: 'section'; key: string; title: string } | { kind: 'row'; key: string; row: RecentRow } | { kind: 'file'; key: string; hit: FileHitRow };
+type Files = { state: 'idle' | 'loading' | 'ready'; rows: readonly FileHitRow[]; failed: number };
+const NO_FILES: Files = { state: 'idle', rows: [], failed: 0 };
+const fileDate = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 /**
  * Recents tab: a Todo section (every flagged Thread, any age), then the
  * user's own Threads with activity in the last 72 hours. Both lists put
- * running Threads first, then newest activity. A search shows one result list.
+ * running Threads first, then newest activity. A search shows the matching
+ * Threads, then the matching files (delivered or sent) from every server that
+ * searches files; a file opens its Thread at the message that carried it.
  */
 export default function Recents() {
   const { ready, connections, revision, listError } = useConnections();
@@ -35,14 +42,39 @@ export default function Recents() {
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), MINUTE); return () => clearInterval(timer); }, []);
   const [query, setQuery] = useState<SessionQuery>(emptySessionQuery);
   const searching = sessionQueryActive(query);
+  const [files, setFiles] = useState<Files>(NO_FILES);
+  const fileRequest = useRef(0);
+  // Connections that can search files, as a stable key: a directory change does not search again.
+  const fileSources = connections.filter(c => c.client?.supportsFileSearch === true && c.client.connectionState === 'online');
+  const fileSourceKey = fileSources.map(c => c.slot).join('\n');
+  const fileSourcesRef = useRef(fileSources); fileSourcesRef.current = fileSources;
+  useEffect(() => {
+    const id = ++fileRequest.current, sources = fileSourcesRef.current;
+    if (!searching || !sources.length) { setFiles(NO_FILES); return; }
+    setFiles(old => ({ ...old, state: 'loading' }));
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void Promise.allSettled(sources.map(c => c.client!.files.search(query.text, query.labels, null, controller.signal)
+        .then(page => ({ slot: c.slot, name: c.name, items: page.items })))).then(results => {
+        if (id !== fileRequest.current) return;
+        const found = results.flatMap(r => r.status === 'fulfilled' ? [r.value] : []);
+        setFiles({ state: 'ready', rows: mergeFileHits(found), failed: results.length - found.length });
+      });
+    }, FILE_SEARCH_DELAY_MS);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query, searching, fileSourceKey]);
   const items = useMemo((): Item[] => {
     const rowItem = (section: string) => (row: RecentRow): Item => ({ kind: 'row', key: `${section}:${row.key}`, row });
-    if (searching) return searchRecentRows(connections, query).map(rowItem('search'));
+    if (searching) {
+      const rows = searchRecentRows(connections, query).map(rowItem('search'));
+      if (!files.rows.length) return rows;
+      return [...rows, { kind: 'section', key: 'section:files', title: 'Files' }, ...files.rows.map(hit => ({ kind: 'file' as const, key: 'file:' + hit.key, hit }))];
+    }
     const todos = todoRows(connections), recents = recentRows(connections, now / 1000);
     if (!todos.length) return recents.map(rowItem('recent'));
     return [{ kind: 'section', key: 'section:todo', title: 'Todo' }, ...todos.map(rowItem('todo')),
       ...(recents.length ? [{ kind: 'section' as const, key: 'section:recent', title: 'Recent' }, ...recents.map(rowItem('recent'))] : [])];
-  }, [connections, revision, now, query, searching]);
+  }, [connections, revision, now, query, searching, files.rows]);
   // Selected labels stay visible (first) even when they are not among the five most used.
   const labels = useMemo(() => { const top = quickLabels(connections); return [...query.labels.filter(label => !top.includes(label)), ...top]; }, [connections, revision, query.labels]);
   const toggle = (label: string) => setQuery(old => old.labels.includes(label) ? removeQueryLabel(old, label) : addQueryLabel(old, label));
@@ -77,6 +109,24 @@ export default function Recents() {
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       renderItem={({ item: entry }) => {
         if (entry.kind === 'section') return <Text accessibilityRole="header" style={s.section}>{entry.title}</Text>;
+        if (entry.kind === 'file') {
+          const { file, slot, connectionName } = entry.hit;
+          const where = [file.thread_title, file.channel_name, multiple ? connectionName : undefined].filter(Boolean).join(' · ');
+          const name = file.name || 'Unnamed file';
+          return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(slot, file.thread_id, file.ref_seq ?? undefined)}
+            accessibilityLabel={[name, where, file.list === 'uploaded' ? 'Sent by you' : 'Delivered', file.state === 'available' ? undefined : 'No longer available'].filter(Boolean).join(', ')}
+            style={({ pressed }) => [s.card, pressed && s.pressed]}>
+            <View style={s.fileTitle}>
+              <SymbolView name={{ ios: 'doc', android: 'description' }} size={15} tintColor="#607187" fallback={null} />
+              <Text numberOfLines={2} style={[s.heading, s.fill]}>{name}</Text>
+            </View>
+            {!!file.caption && <Text numberOfLines={2} style={s.caption}>{file.caption}</Text>}
+            <View style={s.meta}>
+              <Text numberOfLines={1} style={s.source}>{where}</Text>
+              <Text style={s.source}>{file.state === 'available' ? fileDate(file.created_at) : 'No longer available'}</Text>
+            </View>
+          </Pressable>;
+        }
         const item = entry.row, todo = hasTodo(item.markers);
         const source = multiple ? `${item.channelName} · ${item.connectionName}` : item.channelName;
         return <Pressable accessibilityRole="button" onPress={() => navigation.threadOn(item.slot, item.id)}
@@ -93,7 +143,8 @@ export default function Recents() {
           </View>
         </Pressable>;
       }}
-      ListEmptyComponent={loading ? null : <Text style={s.empty}>{searching ? 'No matching conversations' : 'Conversations you take part in during the last 72 hours appear here.'}</Text>} />
+      ListEmptyComponent={loading || files.state === 'loading' ? null : <Text style={s.empty}>{searching ? (fileSources.length ? 'No matching conversations or files' : 'No matching conversations') : 'Conversations you take part in during the last 72 hours appear here.'}</Text>}
+      ListFooterComponent={searching && files.failed > 0 ? <Text accessibilityRole="alert" style={s.empty}>Files could not be searched on {files.failed === 1 ? 'one server' : `${files.failed} servers`}.</Text> : null} />
     <NewFab label="New conversation" onPress={() => router.push('/new-thread')} />
   </SafeAreaView>;
 }
@@ -112,6 +163,7 @@ const s = StyleSheet.create({
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, marginBottom: 8 },
   pressed: { backgroundColor: '#eef3fa' },
   heading: { fontSize: 17, fontWeight: '600', color: '#172a40' },
+  fileTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 }, caption: { fontSize: 14, color: '#42566f', marginTop: 4 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   source: { flexShrink: 1, fontSize: 13, color: '#607187' },
   running: { flexDirection: 'row', alignItems: 'center', gap: 4 }, runningDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#238636' },

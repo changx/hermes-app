@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { useSessionNavigation } from './sessionNavigation';
 import { File, Paths } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import type { Attachment } from '../../../packages/client/src/index';
 import type { LiveSessionClient } from '../../../packages/client/src/liveClient';
+import { useSessionNavigation } from './sessionNavigation';
 import { Text } from './FontSize';
 import { FilePreview } from './FilePreview';
 import { PREVIEW_MAX_BYTES, previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
@@ -18,39 +18,35 @@ function raster(bytes: Uint8Array): boolean {
     ['GIF87a', 'GIF89a'].includes(String.fromCharCode(...bytes.slice(0, 6))) ||
     bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP');
 }
-export function WorkspaceFilePreview({ client, channelId, path, attachment, name, size }: {
-  client: LiveSessionClient; channelId: string; path?: string; attachment?: Attachment; name: string; size: number;
-}) {
+
+/**
+ * Preview of one Session file (a delivered file or an uploaded attachment). The bytes go to a
+ * private cache file that is deleted when the viewer closes. `refSeq` is the message that
+ * delivered or sent the file; "View in conversation" opens the Session there.
+ */
+export function SessionFilePreview({ client, attachment, refSeq }: { client: LiveSessionClient; attachment: Attachment; refSeq: number | null }) {
   const [preview, setPreview] = useState<{ uri: string; kind: PreviewKind } | null>(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const cache = useRef<File | null>(null);
   const navigation = useSessionNavigation();
-  const [source, setSource] = useState<{ threadId: string; refSeq: number } | null>(null), [sourceError, setSourceError] = useState(false), [sourceRetry, setSourceRetry] = useState(0);
-  useEffect(() => {
-    let active = true; const controller = new AbortController();
-    setSource(null); setSourceError(false);
-    if (attachment && client.supportsAttachmentOrigin) void client.workspace.attachmentSource(channelId, attachment, controller.signal)
-      .then(value => { if (active) setSource(value); }).catch(() => { if (active) setSourceError(true); });
-    return () => { active = false; controller.abort(); };
-  }, [client, channelId, attachment?.id, attachment?.thread_id, sourceRetry]);
-  const origin = source ? <View style={s.toolbar}><Action label="View in conversation" onPress={() => navigation.thread(source.threadId, source.refSeq)} /></View>
-    : sourceError ? <View style={s.toolbar}><Text style={s.hint}>Could not find the source message.</Text><Action label="Try again" onPress={() => setSourceRetry(value => value + 1)} /></View> : null;
-  const declared = previewKind(name, attachment?.mime), allowed = declared !== 'other' && size <= PREVIEW_MAX_BYTES;
+  const name = attachment.name || 'Attachment', size = attachment.size || 0;
+  const origin = refSeq !== null
+    ? <View style={s.toolbar}><Action label="View in conversation" onPress={() => navigation.thread(attachment.thread_id, refSeq)} /></View> : null;
+  const declared = previewKind(name, attachment.mime), allowed = declared !== 'other' && size <= PREVIEW_MAX_BYTES;
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     if (allowed) {
       setLoading(true); setError(''); setPreview(null);
       void (async () => {
-        const bytes = attachment ? await client.workspace.readAttachment(attachment, controller.signal)
-          : await client.workspace.readFile(channelId, path!, controller.signal);
+        const bytes = await client.workspace.readAttachment(attachment, controller.signal);
         if (!active) return;
-        const kind = previewKind(name, attachment?.mime, bytes);
+        const kind = previewKind(name, attachment.mime, bytes);
         if (bytes.byteLength > PREVIEW_MAX_BYTES || kind === 'other' || kind === 'image' && rasterName(name) && !raster(bytes)) throw new Error('Preview unavailable');
-        const file = new File(Paths.cache, 'hermes-workspace-' + Crypto.randomUUID() + previewSuffix(name));
+        const file = new File(Paths.cache, 'hermes-session-file-' + Crypto.randomUUID() + previewSuffix(name));
         cache.current = file; file.create(); file.write(bytes);
         setPreview({ uri: file.uri, kind });
-      })().catch(() => { if (active) setError('Could not preview this file. Refresh or try again.'); })
+      })().catch(() => { if (active) setError('Could not preview this file. Try again.'); })
         .finally(() => { if (active) setLoading(false); });
     }
     return () => {
@@ -58,7 +54,7 @@ export function WorkspaceFilePreview({ client, channelId, path, attachment, name
       const file = cache.current; cache.current = null;
       try { if (file?.exists) file.delete(); } catch { /* only this preview's private cache */ }
     };
-  }, [client, channelId, path, attachment?.id, attachment?.thread_id, name, size, allowed, retry]);
+  }, [client, attachment.id, attachment.thread_id, name, size, allowed, retry]);
   if (!allowed) return <View style={s.page}>{origin}<Text style={s.hint}>{size > PREVIEW_MAX_BYTES ? 'This file is too large to preview in the app.' : 'This file type cannot be previewed in the app yet.'}</Text></View>;
   if (preview) return <View style={{ flex: 1 }}>{origin}<FilePreview uri={preview.uri} kind={preview.kind} /></View>;
   return <View style={s.page}>{origin}

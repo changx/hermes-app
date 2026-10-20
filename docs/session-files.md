@@ -3,7 +3,8 @@
 Status (2026-10-20):
 
 - Done on branches, not merged or installed: plugin Phase 1 API with the label filter (`plugins/hermes_app/session_files.py`, `tests/p1/test_session_files.py`); shared client contracts (`packages/client/src/sessionFiles.ts`); desktop Project modal layout and Files removal; desktop Session files panel; desktop unified search (Cmd+K) and removal of the sidebar search box.
-- Not started: mobile changes, Phase 2.
+- Also done on the App branch: mobile Channel Files removal, the Session files page and file results in the Recents search.
+- Not started: Phase 2 (semantic search).
 - Branches: App `feat/session-files`, plugin `feat/session-files`.
 
 ## Confirmed requirements (Jamie, 2026-10-20)
@@ -44,7 +45,7 @@ Data source: the existing `attachments` table. No new file table is added for th
 ### App entry points
 
 - Desktop: a `Session files` icon button in the Session status bar tools (see [desktop-session-status-bar.md](desktop-session-status-bar.md)). It opens a panel with the `Files` and `Attachments` tabs.
-- Mobile: a `Files` row in `Session options` (see [mobile-session-options.md](mobile-session-options.md)). It pushes a native Stack page with the same two tabs.
+- Mobile: a `Files` row in `Session options` (see [mobile-session-options.md](mobile-session-options.md)). It pushes `threads/[threadId]/files`, a native Stack page titled `Session files` with the same two tabs. A tap previews an available file in the shared viewer (`SessionFilePreview`), which has `View in conversation`.
 
 ## Removal of Channel files
 
@@ -124,7 +125,7 @@ Phase 2 needs separate authorization before work starts: a new user systemd serv
   - The query is a keyword plus label chips; every part must match. Clicking a label on a Session page opens the dialog with that label.
   - Results: matching labels (choosing one adds a chip), Sessions, then files from every connection that supports `file_search`.
   - Enter opens a Session, or opens a file with the system app. Cmd+Enter opens the file's Session. Option+Enter saves the file. Jumping to the source message is not implemented yet.
-- Mobile: a search entry in Recents. It opens a search page with the same query rules.
+- Mobile: the existing Recents search box (keyword plus quick label filter, AND) also searches files. 300 ms after typing stops, every online connection with `file_search` is asked. The results appear in a `Files` section under the matching Sessions, newest first, at most 30. A tap opens the file's Session at the source message. If a server fails, a line under the list says so; the other results stay.
 
 ## Open items
 

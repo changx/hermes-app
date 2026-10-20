@@ -36,11 +36,13 @@ export function HeaderIcon({ label, ios, android, onPress }: { label: string; io
     <SymbolView name={{ ios, android }} size={21} tintColor="#2b4e81" weight="medium" fallback={<Text style={styles.headerLink}>{label}</Text>} />
   </Pressable>;
 }
-export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/files' | '/agents' | '/new-topic' | '/automations' = '', extra: Record<string, string> = {}) =>
+export const channelRoute = (connection: string, channelId: string, page: '' | '/context' | '/agents' | '/new-topic' | '/automations' = '', extra: Record<string, string> = {}) =>
   ({ pathname: `/channels/[channelId]${page}` as '/channels/[channelId]', params: { channelId, connection, ...extra } });
 /** Pushed label editor of one Session on one connection. */
 export const labelsRoute = (connection: string, threadId: string) =>
   ({ pathname: '/threads/[threadId]/labels' as const, params: { threadId, connection } });
+export const sessionFilesRoute = (connection: string, threadId: string) =>
+  ({ pathname: '/threads/[threadId]/files' as const, params: { threadId, connection } });
 
 /** One Settings entry; connections, Agents, models and appearance live inside it. */
 export function HeaderActions({ onSettings }: { onSettings: () => void }) {
@@ -438,7 +440,6 @@ export function ChannelsScreen({ channelId }: { channelId: string }) {
       <ChannelScreens key={config.id} client={client} channelId={channelId} draftThreads={draftThreads}
         onThread={id => navigation.thread(id)}
         onContext={id => router.push(channelRoute(slot, id, '/context'))}
-        onFiles={id => router.push(channelRoute(slot, id, '/files'))}
         onAgents={id => router.push(channelRoute(slot, id, '/agents'))}
         onLabels={id => router.push(labelsRoute(slot, id))}
         onArchive={async () => { await client.archiveChannel(channelId); if (router.canGoBack()) router.back(); else router.replace('/'); }}
