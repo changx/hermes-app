@@ -117,7 +117,33 @@ Design:
 5. **Ranking**: keyword and vector results are merged with reciprocal-rank fusion (RRF). Keyword search keeps working when the service is down.
 6. Capability: `file_search_semantic: true`, only while the service is healthy.
 
-Phase 2 needs separate authorization before work starts: a new user systemd service, new Python dependencies in a separate environment, and a model download (about 1.5 GB in bf16). Expected memory use is about 2–3 GB.
+Phase 2 needs separate authorization before work starts: a new user systemd service, new Python dependencies in a separate environment, and a model download (about 1.5 GB in bf16).
+
+#### Benchmark on this host (2026-10-20)
+
+Setup: `google/embeddinggemma-2` from Hugging Face, `sentence-transformers` 6.1.0, PyTorch 2.14.1 CPU, 8 threads, float32. Host CPU: Xeon E3-1270 v6 (AVX2; no bfloat16 or AMX hardware). The test environment and data are in the scratch directory; nothing was installed as a service.
+
+| Item | Result |
+|---|---|
+| Load | Text encoder only: 2 s, 1.4 GB RSS. All encoders: 3–9 s, 3.6 GB RSS. Peak during the media tests: 4.8 GB. |
+| Text | Query 58 ms. Document of 512 tokens 0.73 s; 2,048 tokens 4.4 s; 8,000 tokens 32 s. 32 documents of 256 tokens: 14 s. |
+| Image | Default budget 4.9 s; 70 tokens 0.86 s; 1,120 tokens 35 s. |
+| Video (30 s clip) | 8 frames 19 s; 16 frames 37 s. The default (up to 32 frames) used more than 15 GB and was killed. |
+| Audio (3 s clip) | 0.44 s. |
+| Text retrieval, Chinese ⇄ English | 12 documents, queries in the other language: recall@1 = 1.0 at 768, 256 and 128 dimensions. |
+| Text → image, video, audio | 12 items (photos, generated invoice, chart and code images with Chinese and English text, two videos, speech, a tone): recall@1 = 0.917, recall@3 = 1.0, for Chinese and English queries. |
+| Mixed index | 12 documents and 12 media items, 36 queries: recall@1 = 0.944, recall@3 = 1.0. |
+
+- The only miss in every run: the query "photo of the Golden Gate Bridge" ranked a zoom video made from the same photo first (0.780 against 0.766). This is a test-set duplicate, not a wrong match.
+- Limits: the test set is small and hand-made. It shows that the model works on this host. It does not measure quality on Jamie's real files.
+
+Consequences for the design:
+
+- Use float32. bfloat16 is emulated on this CPU and was much slower.
+- Limit video to 8 frames (about 19 s per video) and images to the default budget or less. Never use the default video settings.
+- Limit document text to about 2,048 tokens (4.4 s), not 8K.
+- Run the service in its own systemd unit with a memory limit (for example `MemoryMax=8G`). A test run from the agent terminal ran inside the Gateway cgroup and reached 20.6 GB before the kernel killed it.
+- With the 2026-10-20 file counts (about 150 files per profile), a first full index takes minutes, not hours. New files are indexed in the background in seconds.
 
 ### Search entry points (confirmed 2026-10-20)
 
