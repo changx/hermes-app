@@ -1,11 +1,6 @@
 # Session files, file search and the wider Project modal
 
-Status (2026-10-20):
-
-- Done on branches, not merged or installed: plugin Phase 1 API with the label filter (`plugins/hermes_app/session_files.py`, `tests/p1/test_session_files.py`); shared client contracts (`packages/client/src/sessionFiles.ts`); desktop Project modal layout and Files removal; desktop Session files panel; desktop unified search (Cmd+K) and removal of the sidebar search box.
-- Also done on the App branch: mobile Channel Files removal, the Session files page and file results in the Recents search.
-- Not started: Phase 2 (semantic search).
-- Branches: App `feat/session-files`, plugin `feat/session-files`.
+Status (2026-10-20): Phase 1 released (plugin v0.2.43, desktop v0.1.99, mobile through Expo). Phase 2 (semantic search) not started. See the release record at the end.
 
 ## Confirmed requirements (Jamie, 2026-10-20)
 
@@ -164,3 +159,11 @@ Consequences for the design:
 3. Desktop: Project modal layout and Files removal; Session files panel; search dialog.
 4. Mobile: Channel Files removal; Session files page; search page.
 5. Phase 2 after authorization.
+
+## Release record (2026-10-20)
+
+- Plugin v0.2.43 (`d92a4de`): pushed with its tag, packed and installed through the shared `current` link (`releases/0.2.43`; profiles `emma`, `hermes-app-dev`, `jamie`, `nan`). No schema change. It takes effect after the next `hermes-gateway.service` restart; until then servers report no `session_files` / `file_search`, and the clients keep the features hidden.
+- Desktop v0.1.99 (`87d82f8`): Mac mini run 39413063266 succeeded (241 tests, 188 pass, 0 fail, 53 skipped; audit 0). The downloaded zip passes `sha256sum -c`, Info.plist shows 0.1.99, and all 35 ASAR `dist/` files equal the local build of the same commit.
+- Candidate checks before the tag: `client:check` passed; `desktop:check` with Chromium 233 pass, 0 fail, 8 skipped; mobile `tsc` and `npm test` (229 pass, 0 fail); iOS and Android `expo export` built.
+- Mobile: runtime checkout fast-forwarded to `87d82f8` (lockfile unchanged); `hermes-app-expo.service` restarted (PID 1720561). Public bundles on iOS and Android (SDK 57): `No matching conversations or files`, `You have not sent files in this session.` and `hermes-session-file-` rose from 0 to 1; `Could not load channel files. Try again.` fell from 1 to 0. Gateway PID unchanged (1953184).
+- Not checked: Jamie's Mac and iPhone; the features after the Gateway restart.
