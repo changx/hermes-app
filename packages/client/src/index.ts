@@ -1,9 +1,11 @@
 /** Owner-scoped HTTP operations and projections. Live connection lifecycle is separate. */
 import { createWorkspaceApi, type ConditionalHeaders, type WorkspaceApi } from './workspace';
 import { createSessionFilesApi, type SessionFilesApi } from './sessionFiles';
+import { createSessionTextApi, type SessionTextApi } from './sessionText';
 import { parseAutomationDetail, parseAutomationPage, parseAutomationUpdate, parseAutomations, type Automation, type AutomationDetail, type AutomationPage } from './automations';
 export { utf8Size, workspacePath } from './workspace';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
+export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
@@ -219,6 +221,9 @@ export class HermesClient {
   supportsChannelPrimaryPath = false;
   supportsSessionFiles = false;
   supportsFileSearch = false;
+  /** Session full-text search over message text, and its AI refine (plugin `session_search`). */
+  supportsSessionSearch = false;
+  supportsSessionSearchRefine = false;
   supportsAttachmentOrigin = false;
   supportsSessionLabels = false;
   /** directory_changed may name changed Threads, read at /v1/catalogue/threads (plugin 0.2.29+). */
@@ -241,6 +246,7 @@ export class HermesClient {
   uploadMaxBytes = SINGLE_UPLOAD_BYTES;
   readonly workspace: WorkspaceApi;
   readonly files: SessionFilesApi;
+  readonly sessionText: SessionTextApi;
   readonly tailIncomplete = new Set<string>();
   private tailContinuations = new Map<string, { cursor: string }>();
   private tailRecoveryJobs = new Map<string, { promise: Promise<Message[]>; signal?: AbortSignal }>();
@@ -253,6 +259,7 @@ export class HermesClient {
       (path,headers,bytes,signal) => this.putPath(path,headers,bytes,signal));
     this.files = createSessionFilesApi((method,path,body,signal) => this.call(method,path,body,signal), message => new ProtocolError(message),
       (threadId,id,destination,size,signal,onProgress) => this.transferToFile(threadId,id,destination,size,signal,onProgress));
+    this.sessionText = createSessionTextApi((method,path,body,signal) => this.call(method,path,body,signal), message => new ProtocolError(message));
   }
 
 
@@ -360,7 +367,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   protected adoptCapabilities(owner: HermesClient): void {
     this.capabilitiesReady = owner.capabilitiesReady;
     this.supportsLatest = owner.supportsLatest;
@@ -370,6 +377,8 @@ export class HermesClient {
     this.supportsChannelPrimaryPath = owner.supportsChannelPrimaryPath;
     this.supportsSessionFiles = owner.supportsSessionFiles;
     this.supportsFileSearch = owner.supportsFileSearch;
+    this.supportsSessionSearch = owner.supportsSessionSearch;
+    this.supportsSessionSearchRefine = owner.supportsSessionSearchRefine;
     this.supportsAttachmentOrigin = owner.supportsAttachmentOrigin;
     this.supportsSessionLabels = owner.supportsSessionLabels;
     this.supportsCatalogueThreads = owner.supportsCatalogueThreads;
