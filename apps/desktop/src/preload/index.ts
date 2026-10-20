@@ -121,6 +121,7 @@ const api: HermesDesktopApi = Object.freeze({
   prepareSessionFile: (id: string) => ipcRenderer.invoke("desktop:prepare-session-file", id),
   searchFiles: (query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>) => ipcRenderer.invoke("desktop:search-files", query, [...labels], cursors),
   openSessionFile: (threadId: string, id: string, action: 'open' | 'save') => ipcRenderer.invoke("desktop:open-session-file", threadId, id, action),
+  openMessage: (threadId: string, refSeq: number) => ipcRenderer.invoke("desktop:open-message", threadId, refSeq),
   downloadAttachment: (attachmentId: string, action: "save" | "open"): Promise<void> => ipcRenderer.invoke("desktop:download-attachment", attachmentId, action),
   onDownloadProgress(listener: (progress: { attachmentId: string; received: number; total?: number }) => void): () => void {
     const receive = (_event: Electron.IpcRendererEvent, value: unknown) => {

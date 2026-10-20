@@ -81,7 +81,7 @@ const RenameDialog = ({ thread, close }: { thread: DesktopSnapshot['threads'][nu
   </form></div>;
 };
 
-const MessageRow = memo(({ message, continuation, hidden = false, toolbar = false, canRetry = false, running = false, branch = false, sources = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean; toolbar?: boolean; canRetry?: boolean; running?: boolean; branch?: boolean; sources?: boolean }) => {
+const MessageRow = memo(({ message, continuation, hidden = false, focused = false, toolbar = false, canRetry = false, running = false, branch = false, sources = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean; focused?: boolean; toolbar?: boolean; canRetry?: boolean; running?: boolean; branch?: boolean; sources?: boolean }) => {
   const revealed = useRef(false);
   if (!hidden) revealed.current = true;
   // A never-opened process does not parse Markdown or initialize attachments.
@@ -93,7 +93,7 @@ const MessageRow = memo(({ message, continuation, hidden = false, toolbar = fals
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
   const timeLabel = hasTime && timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const warning = processingWarning(message.receiptState, message.processing);
-  return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}`}>
+  return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}${focused ? " message-focused" : ""}`}>
     {message.role !== "assistant" && message.role !== "user" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
     <MessageContent text={message.text} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
@@ -180,6 +180,30 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     previous.current = { threadId: snapshot.selectedThreadId ?? "", first, height: node.scrollHeight, count: snapshot.messages.length };
     geometry.current = { height: node.scrollHeight, viewport: node.clientHeight };
   }, [active, first, following, snapshot.messages, snapshot.selectedThreadId, awaitingWork]);
+  // A file search result opened this Session at one message: unfold its work group, then scroll it into view once.
+  const focus = snapshot.focusMessage, shownFocus = useRef(0);
+  const focusGroup = focus ? snapshot.messages.find(message => message.refSeq === focus.refSeq) : undefined;
+  const focusGroupInfo = focusGroup ? groups.get(focusGroup.id) : undefined;
+  useEffect(() => {
+    if (!focus || !focusGroupInfo || shownFocus.current === focus.version || workIsExpanded(focusGroupInfo, workChoices[choiceKey(focusGroupInfo)])) return;
+    setWorkChoices(old => ({ ...old, [choiceKey(focusGroupInfo)]: { completion: focusGroupInfo.completion, expanded: true } }));
+  });
+  const [focusedRef, setFocusedRef] = useState<number>();
+  useLayoutEffect(() => {
+    const root = list.current;
+    if (!active || !root || !focus || shownFocus.current === focus.version || snapshot.loadingMessages || snapshot.loadingHistory) return;
+    const target = root.querySelector<HTMLElement>(`[data-result-ref="${focus.refSeq}"]`);
+    if (!target || target.hidden) return;
+    shownFocus.current = focus.version;
+    followingRef.current = false; setFollowing(false);
+    target.scrollIntoView({ block: "center" });
+    setFocusedRef(focus.refSeq);
+  });
+  useEffect(() => {
+    if (focusedRef === undefined) return;
+    const timer = setTimeout(() => setFocusedRef(undefined), 2400);
+    return () => clearTimeout(timer);
+  }, [focusedRef, focus?.version]);
   const scroll = () => {
     const node = list.current;
     if (!node) return;
@@ -212,7 +236,7 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
         return <div className="timeline-entry" key={message.id}>
           {dates.has(message.id) && <div className="chat-date-separator">{dates.get(message.id)}</div>}
           {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
-          <MessageRow message={message} continuation={continuation} hidden={!expanded} toolbar canRetry={message.id === retryId} running={busyTurn}
+          <MessageRow message={message} continuation={continuation} hidden={!expanded} focused={focusedRef !== undefined && message.refSeq === focusedRef} toolbar canRetry={message.id === retryId} running={busyTurn}
             branch={snapshot.supportsThreadBranch === true} sources={snapshot.supportsMessageSources === true} />
         </div>;
       }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
@@ -222,7 +246,7 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div></AttachmentSequence.Provider>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage
-  && before.snapshot.interactions.length === after.snapshot.interactions.length && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
+  && before.snapshot.interactions.length === after.snapshot.interactions.length && before.snapshot.focusMessage?.version === after.snapshot.focusMessage?.version && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
 
 // Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
 const COMPOSER_INPUT_MIN = 48;

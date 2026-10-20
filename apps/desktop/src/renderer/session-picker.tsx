@@ -16,8 +16,8 @@ const fileDate = (seconds: number): string => new Date(seconds * 1000).toLocaleD
  * The one search (Cmd+K; Shift+Cmd+F starts with files only). A keyword plus exact labels, all
  * required. Results: matching labels (choosing one adds it to the search), Sessions from the
  * directory, then files that the Agent delivered or the user sent, from every server that
- * searches files. Enter opens the highlighted Session or file; Cmd+Enter opens a file's
- * Session; Option+Enter saves a file.
+ * searches files. Enter opens the highlighted Session, or a file's Session at the message with the
+ * file; Cmd+Enter opens the file itself; Option+Enter saves it.
  */
 export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'all' }: { snapshot: DesktopSnapshot; close: () => void; initialQuery?: SessionQuery; initialScope?: SearchScope }) {
   const [query, setQuery] = useState<SessionQuery>(() => initialQuery ?? emptySessionQuery()), [selected, setSelected] = useState(0);
@@ -52,8 +52,10 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
     setError('');
     if (option.kind === 'label') { setQuery(old => ({ ...addQueryLabel(old, option.label), text: '' })); setSelected(0); }
     else if (option.kind === 'session') void window.hermesDesktop.selectThread(option.thread.id).then(close, fail('The session could not be opened.'));
-    else if (keys.metaKey || keys.ctrlKey) void window.hermesDesktop.selectThread(option.file.threadId).then(close, fail('The session could not be opened.'));
-    else void window.hermesDesktop.openSessionFile(option.file.threadId, option.file.id, keys.altKey ? 'save' : 'open').then(() => { if (!keys.altKey) close(); }, fail(keys.altKey ? 'The file could not be saved.' : 'The file could not be opened.'));
+    // A file opens its Session at the message that carried it. Cmd+Enter opens the file itself; Option+Enter saves it.
+    else if (keys.altKey || keys.metaKey || keys.ctrlKey) void window.hermesDesktop.openSessionFile(option.file.threadId, option.file.id, keys.altKey ? 'save' : 'open').then(() => { if (!keys.altKey) close(); }, fail(keys.altKey ? 'The file could not be saved.' : 'The file could not be opened.'));
+    else if (option.file.refSeq !== undefined) void window.hermesDesktop.openMessage(option.file.threadId, option.file.refSeq).then(close, fail('The session could not be opened.'));
+    else void window.hermesDesktop.selectThread(option.file.threadId).then(close, fail('The session could not be opened.'));
   };
   const name = (channelId: string) => snapshot.channels.find(c => c.id === channelId)?.name;
   const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -97,7 +99,7 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
       {nothing && <p role="status">{scope === 'files' ? 'No files found.' : 'No sessions or files found.'}</p>}
       {!active && scope === 'files' && <p className="palette-note">Type a file name, a session title or choose a label.</p>}
       {error && <p className="palette-note" role="alert">{error}</p>}
-      {files.items.length > 0 && <p className="palette-hint">Enter opens the file · ⌘Enter opens its session · ⌥Enter saves the file</p>}
+      {files.items.length > 0 && <p className="palette-hint">Enter shows the file in its session · ⌘Enter opens the file · ⌥Enter saves it</p>}
     </section>
   </div>;
 }

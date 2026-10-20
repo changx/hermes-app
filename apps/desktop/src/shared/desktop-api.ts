@@ -133,9 +133,11 @@ export type DesktopSnapshot = Readonly<{
   selectedThreadId?: string;
   selectedThreadTitle?: string;
   canLoadOlder: boolean;
+  /** Session page: show this message (a file search result). A new `version` asks again for the same message. */
+  focusMessage?: DesktopMessageFocus;
   sessionPages?: readonly Readonly<{ id: string; messages: readonly DesktopMessage[];
     interactions: readonly DesktopInteraction[]; loadingMessages?: boolean; loadingHistory?: boolean;
-    canLoadOlder: boolean; selectedThreadTitle?: string }>[];
+    canLoadOlder: boolean; selectedThreadTitle?: string; focusMessage?: DesktopMessageFocus }>[];
 }>;
 
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
@@ -146,9 +148,12 @@ export type DesktopProjectWorkspace = Readonly<{
   supported: boolean;
   agents: Readonly<{ content: string; etag: string }> | null;
 }>;
+export type DesktopMessageFocus = Readonly<{ refSeq: number; version: number }>;
 /** A file of one Session: delivered by the Agent (MEDIA:) or uploaded by the user. See docs/session-files.md. */
 export type DesktopSessionFile = Readonly<{ id: string; threadId: string; name: string; mime: string; size: number; state: 'available' | 'missing';
-  list: 'delivered' | 'uploaded'; createdAt: number; caption?: string }>;
+  list: 'delivered' | 'uploaded'; createdAt: number; caption?: string;
+  /** The message that delivered or sent the file, when the server knows it. */
+  refSeq?: number }>;
 export type DesktopSessionFilePage = Readonly<{ supported: boolean; items: readonly DesktopSessionFile[]; nextAfter: string | null }>;
 /** A file search result. `threadId` and `channelId` are qualified like every other desktop ID. */
 /** `rank` (1 = best) when the server ranked its results by meaning and keywords. */
@@ -326,6 +331,8 @@ export interface HermesDesktopApi {
   searchFiles(query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>): Promise<DesktopFileSearch>;
   /** Opens a search result with the system app, or saves it. */
   openSessionFile(threadId: string, attachmentId: string, action: 'open' | 'save'): Promise<void>;
+  /** Opens a Session and shows one of its messages (a file search result), loading earlier messages when needed. */
+  openMessage(threadId: string, refSeq: number): Promise<void>;
 }
 
 /** Sidebar Session card content and where its row is. Coordinates are main-window content (CSS) pixels. */

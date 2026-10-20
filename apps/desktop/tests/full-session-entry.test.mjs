@@ -57,6 +57,13 @@ test('desktop service and real HTTP/WS transport open complete history above 64 
     assert.ok(paths.filter(path => path.includes('/messages')).every(path => path.endsWith('?full=true')));
     service.closeSessionPage('A'); assert.equal(client.messages.size, 0);
     await service.selectThread('A'); snapshot = service.snapshot(); assert.equal(snapshot.messages.length, 251); assert.equal(snapshot.canLoadOlder, false);
+    // A file search result: the open page shows the file message, with no further history request.
+    const reads = paths.filter(path => path.includes('/messages')).length;
+    await service.openMessage('A', 3); const first = service.snapshot().focusMessage;
+    assert.equal(first.refSeq, 3); assert.equal(service.snapshot().sessionPages.find(page => page.id === 'A').focusMessage.version, first.version);
+    await service.openMessage('A', 3); assert.ok(service.snapshot().focusMessage.version > first.version);
+    assert.equal(paths.filter(path => path.includes('/messages')).length, reads);
+    service.closeSessionPage('A'); assert.equal(service.snapshot('A').focusMessage, undefined);
   } finally {
     service.close(); for (const socket of ws.clients) socket.terminate();
     await new Promise(resolve => ws.close(resolve)); await new Promise(resolve => server.close(resolve));

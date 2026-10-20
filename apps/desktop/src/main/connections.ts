@@ -238,7 +238,7 @@ export class DesktopConnections {
   private sessionFile(account: Account, file: SessionFile): DesktopSessionFile {
     return { id: file.id, threadId: this.encode(account, file.thread_id)!, name: file.name ?? 'File', mime: file.mime ?? 'application/octet-stream',
       size: file.size ?? 0, state: file.state === 'available' ? 'available' : 'missing', list: file.list, createdAt: file.created_at,
-      ...(file.caption ? { caption: file.caption } : {}) };
+      ...(file.caption ? { caption: file.caption } : {}), ...(file.ref_seq !== null ? { refSeq: file.ref_seq } : {}) };
   }
   /** One page of a qualified Session's files. `supported: false` on a server without Session files. */
   async sessionFiles(id: string, list: 'delivered' | 'uploaded', after?: string): Promise<DesktopSessionFilePage> {
@@ -247,6 +247,8 @@ export class DesktopConnections {
     return { supported: true, items: page.items.map(file => this.sessionFile(r.account, file)), nextAfter: page.nextAfter };
   }
   async prepareSessionFile(id: string, attachmentId: string): Promise<void> { const r = this.route(id); await r.account.service.prepareAttachment(r.raw, attachmentId); }
+  /** Search result: opens the Session on its own connection and shows the message with the file. */
+  async openMessage(id: string, refSeq: number): Promise<void> { const r = this.route(id); this.active = r.account.id; await r.account.service.openMessage(r.raw, refSeq); }
   /** Search result: opens or saves a file of any Session on its own connection, without opening the Session. */
   async openSessionFile(id: string, attachmentId: string, action: 'save' | 'open'): Promise<void> { const r = this.route(id); await r.account.service.openSessionFile(r.raw, attachmentId, action); }
   /**

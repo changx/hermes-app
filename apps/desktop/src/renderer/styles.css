@@ -576,6 +576,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .timeline-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .message-list { height: 100%; overflow: auto; }
 .message.optimistic { opacity: .78; }
+/* A file search result opened the Session here. */
+.message.message-focused { border-radius: 10px; animation: message-focus 2.4s ease-out; }
+@keyframes message-focus { 0%, 40% { box-shadow: 0 0 0 2px var(--app-accent); background: color-mix(in srgb, var(--app-accent) 10%, transparent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+@media (prefers-reduced-motion: reduce) { .message.message-focused { animation: none; box-shadow: 0 0 0 2px var(--app-accent); } }
 /* Match mobile's 80% cap after deducting the two 14px timeline gutters. */
 .message-user { width: fit-content; min-width: 0; max-width: calc(80% - 22.4px); margin-left: auto; margin-right: 14px; padding: 13px 14px; border: 0; border-radius: 22px; background: #f3f3f3; color: #000000; text-align: left; }
 .message[hidden] { display: none; }

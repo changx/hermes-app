@@ -56,13 +56,13 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
       import {DesktopShellView} from './apps/desktop/src/renderer/shell';
       const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
       const tick=(ms=30)=>new Promise(r=>setTimeout(r,ms));
-      let labelListener, selected=[], searches=[], opened=[];
+      let labelListener, selected=[], searches=[], opened=[], shown=[];
       const hit=(id,name,threadId,title,extra={})=>({id,threadId,name,mime:'image/png',size:2048,state:'available',list:'delivered',createdAt:1792000000,threadTitle:title,channelId:'p',channelName:'Research',...extra});
-      const files={'':[hit('att_1','crash-chart.png','a','Login crash'),hit('att_2','notes.md','b','Slow sync',{list:'uploaded',mime:'text/markdown'})]};
+      const files={'':[hit('att_1','crash-chart.png','a','Login crash',{refSeq:7}),hit('att_2','notes.md','b','Slow sync',{list:'uploaded',mime:'text/markdown'})]};
       window.hermesDesktop={getRuntimeInfo:()=>({platform:'linux',versions:{}}),setContentBounds:async()=>{},newTab:async()=>{},selectThread:async id=>{selected.push(id)},browserAction:async()=>{},openBrowser:async()=>{},activateTab:async()=>{},closeTab:async()=>{},
         loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},onSearchLabel:listener=>{labelListener=listener;return()=>{labelListener=undefined}},
         searchFiles:async(query,labels)=>{searches.push([query,[...labels]]);const all=files[''];return {supported:true,failed:[],cursors:{},items:all.filter(f=>(!query||(f.name+f.threadTitle).toLowerCase().includes(query.toLowerCase()))&&(!labels.length||labels.includes('bug')&&f.threadId==='a'))};},
-        openSessionFile:async(threadId,id,action)=>{opened.push([threadId,id,action])}};
+        openSessionFile:async(threadId,id,action)=>{opened.push([threadId,id,action])},openMessage:async(threadId,ref)=>{shown.push([threadId,ref])}};
       const now=Date.now()/1000, t=(id,title,markers,ago=8*86400,channelId='p')=>({id,channelId,title,markers,running:false,lastMessageAt:now-ago});
       const snapshot={phase:'connected',connectionKey:'one',connectionState:'online',supportsSessionLabels:true,supportsFileSearch:true,selectedChannelId:'p',
         channels:[{id:'p',name:'Research'},{id:'q',name:'Mobile'}],
@@ -99,19 +99,24 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
         key(box(),'Enter'); await tick();
         ensure('Enter on a label adds a chip',box().value===''&&qa('.palette .session-query-chip > span').map(e=>e.textContent).join('|')==='urgent');
         key(box(),'Backspace'); await tick(); ensure('Backspace removes the label',!q('.palette .session-query-chip'));
-        // Files: Enter opens the file, Cmd+Enter its session, Option+Enter saves it.
+        // Files: Enter shows the file in its session, Cmd+Enter opens the file, Option+Enter saves it.
         setValue(box(),'crash'); await tick();
         ensure('a keyword finds the session and the file',await wait(()=>qa('.palette-file-option').length===1)&&opts().map(optionText).join('|')==='Login crash|crash-chart.png');
         ensure('file row names its session, project and source',q('.palette-file-option small').textContent.startsWith('Login crash · Research · From Hermes · 2.0 KB'));
-        ensure('hint for file keys',q('.palette-hint').textContent.includes('⌘Enter opens its session'));
+        ensure('hint for file keys',q('.palette-hint').textContent.includes('Enter shows the file in its session · ⌘Enter opens the file'));
         key(box(),'ArrowDown'); await tick(); key(box(),'Enter',{altKey:true}); await tick();
         ensure('Option+Enter saves the file and keeps the dialog',opened.at(-1).join()==='a,att_1,save'&&!!q('.palette'));
         key(box(),'Enter',{metaKey:true}); await tick();
-        ensure('Cmd+Enter opens the file session',selected.at(-1)==='a');
+        ensure('Cmd+Enter opens the file and closes the dialog',opened.at(-1).join()==='a,att_1,open'&&!q('.palette'));
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
         setValue(box(),'crash'); await wait(()=>qa('.palette-file-option').length===1);
         key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
-        ensure('Enter opens the file and closes the dialog',opened.at(-1).join()==='a,att_1,open'&&!q('.palette'));
+        ensure('Enter opens the session at the file message and closes the dialog',shown.at(-1).join()==='a,7'&&opened.length===2&&!q('.palette'));
+        // A file without a known message opens its session.
+        window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
+        setValue(box(),'notes'); await wait(()=>qa('.palette-file-option').length===1);
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        ensure('Enter on a file without its message opens the session',selected.at(-1)==='b'&&shown.length===1&&!q('.palette'));
         // Shift+Cmd+F: files only.
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'F',shiftKey:true,metaKey:true,bubbles:true,cancelable:true})); await tick();
         ensure('Shift+Cmd+F opens the search for files',q('.palette-scope [aria-checked="true"]')?.textContent==='Files'&&box().placeholder.startsWith('Search files'));

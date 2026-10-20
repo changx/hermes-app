@@ -455,6 +455,11 @@ const registerDesktopApi = (): void => {
     const thread = text(threadId, 200), attachmentId = text(id, 200);
     await service.openSessionFile(thread, attachmentId, action);
   });
+  handle("desktop:open-message", async (event, threadId: unknown, refSeq: unknown) => {
+    trustedSender(event);
+    if (typeof refSeq !== 'number' || !Number.isSafeInteger(refSeq) || refSeq <= 0) throw new Error('Invalid desktop request');
+    await service.openMessage(text(threadId, 200), refSeq);
+  });
   handle("desktop:preview-image", async (event, id: unknown) => { return service.previewAttachmentImage(text(id, 200), target(event)); });
   handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => {
     const threadId = target(event), attachmentId = text(id, 200);

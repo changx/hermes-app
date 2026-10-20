@@ -103,7 +103,8 @@ export class DesktopConnectionService {
   private selectingInitialChannel = false;
   private outbox: OutboxRecord[] = [];
   private flushingOutbox = false;
-  private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean; historyLoading?: boolean }>();
+  private readonly pageStates = new Map<string, { older?: string; start?: number; loading: boolean; historyLoading?: boolean; focus?: { refSeq: number; version: number } }>();
+  private focusVersion = 0;
   private readonly openPages: string[] = [];
   private get currentPageState() { return this.selectedThreadId ? this.pageStates.get(this.selectedThreadId) : undefined; }
   private get olderCursor(): string | undefined { return this.currentPageState?.older; }
@@ -387,6 +388,7 @@ export class DesktopConnectionService {
       messages,
       interactions,
       canLoadOlder: Boolean(pageState?.older),
+      ...(pageState?.focus ? { focusMessage: pageState.focus } : {}),
       ...(this.selectedChannelId ? { selectedChannelId: this.selectedChannelId } : {}),
       ...(pageId ? { selectedThreadId: pageId } : {}),
       ...(selected ? { selectedThreadTitle: selected.title } : {}),
@@ -394,7 +396,7 @@ export class DesktopConnectionService {
         const page = this.snapshot(id, false);
         return { id, messages: page.messages, interactions: page.interactions,
           loadingMessages: page.loadingMessages, loadingHistory: page.loadingHistory, canLoadOlder: page.canLoadOlder,
-          selectedThreadTitle: page.selectedThreadTitle };
+          selectedThreadTitle: page.selectedThreadTitle, ...(page.focusMessage ? { focusMessage: page.focusMessage } : {}) };
       }) } : {}),
     });
   }
@@ -721,6 +723,21 @@ export class DesktopConnectionService {
       await page.openConversation(threadId, undefined, undefined, releaseContent);
       releaseContent();
     }, valid);
+  }
+
+  /**
+   * Opens a Session and asks its page to show one message (a file search result). The first page
+   * holds only the latest messages; an earlier message loads the complete history first.
+   */
+  async openMessage(threadId: string, refSeq: number): Promise<void> {
+    await this.selectThread(threadId);
+    const state = this.pageStates.get(threadId);
+    if (!state) throw new Error("The session could not be opened.");
+    if (state.loading) throw new Error("The session could not be opened.");
+    if (state.older && (state.start === undefined || refSeq < state.start)) await this.loadOlder(threadId);
+    if (this.pageStates.get(threadId) !== state) return;
+    state.focus = { refSeq, version: ++this.focusVersion };
+    this.changed();
   }
 
   private requireClient(): LivePageClient {
