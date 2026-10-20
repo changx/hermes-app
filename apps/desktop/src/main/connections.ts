@@ -247,6 +247,8 @@ export class DesktopConnections {
     return { supported: true, items: page.items.map(file => this.sessionFile(r.account, file)), nextAfter: page.nextAfter };
   }
   async prepareSessionFile(id: string, attachmentId: string): Promise<void> { const r = this.route(id); await r.account.service.prepareAttachment(r.raw, attachmentId); }
+  /** Search result: opens or saves a file of any Session on its own connection, without opening the Session. */
+  async openSessionFile(id: string, attachmentId: string, action: 'save' | 'open'): Promise<void> { const r = this.route(id); await r.account.service.openSessionFile(r.raw, attachmentId, action); }
   /**
    * Files of every connected server that offers file search, newest first. `cursors` (keyed by
    * connection) asks only those connections for their next page.

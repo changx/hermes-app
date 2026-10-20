@@ -1371,7 +1371,26 @@ export class DesktopConnectionService {
     const client = this.requireClient(), threadId = targetThreadId;
     const attachment = client.attachments.get(attachmentId);
     if (!threadId || !attachment || attachment.thread_id !== threadId || attachment.state !== "available") return;
-    const safeName = (attachment.name ?? "Attachment").replace(/[\x00-\x1f\x7f/\\:]/g, "_").slice(0, 180) || "Attachment";
+    await this.saveOrOpen(attachment.name, attachment.size, action, async (temporary) => {
+      onProgress?.(0, attachment.size);
+      return client.downloadFile(threadId, attachmentId, temporary, undefined, received => onProgress?.(received, attachment.size));
+    });
+  }
+
+  /**
+   * A file of any Session (a search result): opens it with the system app or saves it, without
+   * opening the Session. Reads through the route-owned file API; the chat caches stay untouched.
+   */
+  async openSessionFile(threadId: string, attachmentId: string, action: "save" | "open"): Promise<void> {
+    const client = this.requireClient();
+    const file = await client.files.metadata(threadId, attachmentId);
+    if (file.state !== "available") throw new Error("The file is no longer available.");
+    await this.saveOrOpen(file.name, file.size, action, temporary => client.files.downloadFile(file, temporary));
+  }
+
+  /** Streams to a hidden partial file, checks the size, then saves it where the user chose or opens a temporary copy. */
+  private async saveOrOpen(name: string | undefined, expected: number | undefined, action: "save" | "open", fetch: (temporary: string) => Promise<number>): Promise<void> {
+    const safeName = (name ?? "Attachment").replace(/[\x00-\x1f\x7f/\\:]/g, "_").slice(0, 180) || "Attachment";
     let target: string;
     if (action === "save") {
       const selected = await dialog.showSaveDialog({ title: "Save Hermes attachment", defaultPath: safeName });
@@ -1387,10 +1406,8 @@ export class DesktopConnectionService {
     await mkdir(dirname(target), { recursive: true });
     // Stream to disk: Agent files have no size limit, so never hold the whole file in memory.
     try {
-      onProgress?.(0, attachment.size);
-      const size = await client.downloadFile(threadId, attachmentId, temporary, undefined,
-        received => onProgress?.(received, attachment.size));
-      if (attachment.size !== undefined && size !== attachment.size) throw new Error("The attachment is incomplete. Try again.");
+      const size = await fetch(temporary);
+      if (expected !== undefined && size !== expected) throw new Error("The attachment is incomplete. Try again.");
     } catch (error) { await rm(temporary, { force: true }); throw error; }
     await rename(temporary, target);
     if (action === "open") {

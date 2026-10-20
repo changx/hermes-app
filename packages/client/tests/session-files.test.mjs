@@ -59,3 +59,30 @@ test('A ranked file search keeps its order, needs ranks 1..n and has no cursor',
   const plain = await client(() => ({ query: 'chart', labels: [], items: [hit(B, 9)], next_after: null })).files.search('chart');
   assert.equal(plain.ranked, false); assert.equal(plain.items[0].rank, undefined, 'an unranked page ignores rank fields');
 });
+
+test('A search result file opens without opening its Session and leaves the chat caches untouched', async () => {
+  const requests = [], writes = [];
+  const meta = { attachment: { id: A, thread_id: 'th_other', name: 'clip.mp4', mime: 'video/mp4', size: 9908074, receipt_id: 'r1', state: 'available' } };
+  const c = new LiveSessionClient({ token: () => 'synthetic', onChange: () => {},
+    socket: { connect: async () => { throw Error('no socket expected'); } },
+    http: { request: async (method, path) => { requests.push([method, path]); return { status: 200, body: meta }; },
+      downloadFile: async (path, _token, destination) => { writes.push([path, destination]); return { status: 200, size: 9908074 }; } } });
+  // The chat API refuses a Session that is not open; the file API must not.
+  await assert.rejects(c.getAttachment('th_other', A), /not open/);
+  const file = await c.files.metadata('th_other', A);
+  assert.deepEqual(requests, [['GET', `/v1/threads/th_other/attachments/${A}/metadata`]]);
+  assert.equal(file.state, 'available'); assert.equal(file.size, 9908074);
+  assert.equal(await c.files.downloadFile(file, '/tmp/out.mp4'), 9908074);
+  assert.deepEqual(writes, [[`/v1/threads/th_other/attachments/${A}`, '/tmp/out.mp4']]);
+  assert.equal(c.attachments.get(A), undefined);
+  await assert.rejects(c.files.downloadFile({ ...file, state: 'missing' }, '/tmp/x'), /unavailable/);
+  await assert.rejects(c.files.metadata('th_other', 'not-a-file'));
+});
+
+test('A file download fails when the written size differs and metadata must match the request', async () => {
+  const short = new LiveSessionClient({ token: () => 'synthetic', onChange: () => {}, socket: { connect: async () => { throw Error('no socket'); } },
+    http: { request: async () => ({ status: 200, body: { attachment: { id: B, thread_id: 'th_one', name: 'x', mime: 'x', size: 3, receipt_id: null, state: 'available' } } }),
+      downloadFile: async () => ({ status: 200, size: 2 }) } });
+  await assert.rejects(short.files.downloadFile(await short.files.metadata('th_one', B), '/tmp/x'), /incomplete/);
+  await assert.rejects(short.files.metadata('th_two', B), /mismatch/);
+});

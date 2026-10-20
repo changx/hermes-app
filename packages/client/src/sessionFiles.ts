@@ -1,4 +1,4 @@
-import type { Attachment } from './index';
+import type { Attachment, TransferProgress } from './index';
 
 /** Delivered: the Agent sent the file with MEDIA:. Uploaded: the user sent it with a message. */
 export type SessionFileList = 'delivered' | 'uploaded';
@@ -10,12 +10,17 @@ export type FileSearchHit = SessionFile & { thread_title: string; channel_id: st
 export type FileSearchPage = { query: string; labels: string[]; items: FileSearchHit[]; nextAfter: string | null; ranked: boolean };
 
 type Call = (method: string, path: string, body?: unknown, signal?: AbortSignal) => Promise<Record<string, unknown>>;
+type Transfer = (threadId: string, id: string, destination: string, size: number | undefined, signal?: AbortSignal, onProgress?: TransferProgress) => Promise<number>;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const CURSOR = /^\d{1,12}:att_[A-Za-z0-9_-]{1,124}$/;
 const MAX_QUERY = 200, MAX_LABELS = 10;
 
-/** Session files and file search (plugin capabilities `session_files`, `file_search`). Route-owned; never cached in the directory. */
-export function createSessionFilesApi(call: Call, error: (message: string) => Error) {
+/**
+ * Session files and file search (plugin capabilities `session_files`, `file_search`). Route-owned:
+ * nothing is cached in the directory or the chat caches, and a file of any Session can be read
+ * without opening that Session (search results come from every Session).
+ */
+export function createSessionFilesApi(call: Call, error: (message: string) => Error, transfer?: Transfer) {
   const fail = (message = 'Invalid file response'): never => { throw error(message); };
   const object = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : fail();
   const id = (v: unknown): string => typeof v === 'string' && ID.test(v) ? v : fail('Invalid file identity');
@@ -39,6 +44,27 @@ export function createSessionFilesApi(call: Call, error: (message: string) => Er
   };
   const unique = <T extends { id: string }>(items: T[]): T[] => new Set(items.map(item => item.id)).size === items.length ? items : fail('Duplicate file');
   return {
+    /** Current metadata of one file (for example a search result) before it is opened or saved. */
+    async metadata(threadId: string, attachmentId: string, signal?: AbortSignal): Promise<Attachment> {
+      const thread = id(threadId), key = id(attachmentId);
+      if (!key.startsWith('att_')) return fail('Invalid file identity');
+      const body = await call('GET', `/v1/threads/${encodeURIComponent(thread)}/attachments/${encodeURIComponent(key)}/metadata`, undefined, signal);
+      const item = object(body.attachment);
+      if (item.id !== key || item.thread_id !== thread) return fail('File identity mismatch');
+      if (!['available', 'missing', 'deleted'].includes(item.state as string)) return fail();
+      const value: Attachment = { id: key, thread_id: thread, state: item.state as Attachment['state'] };
+      if (value.state !== 'deleted') { value.name = text(item.name); value.mime = text(item.mime); value.size = count(item.size); }
+      return value;
+    },
+    /** Streams an available file to `destination`; the written size must equal its metadata size. */
+    async downloadFile(file: Attachment, destination: string, signal?: AbortSignal, onProgress?: TransferProgress): Promise<number> {
+      if (!transfer) return fail('File download unavailable');
+      const key = id(file.id), thread = id(file.thread_id);
+      if (!key.startsWith('att_') || file.state !== 'available') return fail('File unavailable');
+      const size = await transfer(thread, key, destination, file.size, signal, onProgress);
+      if (file.size !== undefined && size !== file.size) return fail('The file is incomplete');
+      return size;
+    },
     async list(threadId: string, list: SessionFileList, after: string | null = null, signal?: AbortSignal): Promise<SessionFilePage> {
       const thread = id(threadId);
       if (list !== 'delivered' && list !== 'uploaded') return fail('Invalid file list');
