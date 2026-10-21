@@ -54,6 +54,7 @@ Data source: the existing `attachments` table. No new file table is added for th
 - Two columns:
   - Left: Connection (create mode), Title, Primary folder, messages.
   - Right: one large editor with the tabs `Context` and `AGENTS.md`. The editor fills the column height and scrolls inside itself. Context is the first and default tab.
+- Both editors use the same monospace font and size (`ui-monospace`, 0.875 × the App font size).
 - Both editors stay mounted. A tab switch keeps the text, undo history and scroll position. A dot on a tab marks unsaved changes. The Context tab shows the character count (limit 4000). Left and Right arrow keys move between the tabs.
 - When a save fails, the modal opens the tab of the failed text.
 - If the server does not support Project files, the editor shows the Context tab only. The modal keeps the two-column width.

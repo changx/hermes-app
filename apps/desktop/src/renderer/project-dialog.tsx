@@ -167,7 +167,7 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
           </div>
           {showAgents && <div className="project-editor-panel" role="tabpanel" id="project-panel-agents" aria-labelledby="project-tab-agents" hidden={activeTab !== 'agents'}>
             <p className="field-hint project-editor-hint"><span>Working rules for new sessions in this project. Existing sessions keep their rules.</span></p>
-            <textarea className="project-editor-text project-agents" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked || folderChanged} onChange={event => setAgents(event.target.value)} />
+            <textarea className="project-editor-text" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked || folderChanged} onChange={event => setAgents(event.target.value)} />
             {folderChanged && <p className="field-hint">Save the primary folder first. Then reopen this project to edit the AGENTS.md from that folder.</p>}
           </div>}
         </div>
