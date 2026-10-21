@@ -52,9 +52,11 @@ Data source: the existing `attachments` table. No new file table is added for th
 
 - Width: `min(1040px, 100%)`. Height: the current limit (`100dvh - 48px`).
 - Two columns:
-  - Left: Connection (create mode), Title, Context, Primary folder, messages.
-  - Right: AGENTS.md editor. It fills the column height and scrolls inside itself.
-- If the server does not support Project files, the right column is not shown and the modal keeps the one-column width.
+  - Left: Connection (create mode), Title, Primary folder, messages.
+  - Right: one large editor with the tabs `Context` and `AGENTS.md`. The editor fills the column height and scrolls inside itself. Context is the first and default tab.
+- Both editors stay mounted. A tab switch keeps the text, undo history and scroll position. A dot on a tab marks unsaved changes. The Context tab shows the character count (limit 4000). Left and Right arrow keys move between the tabs.
+- When a save fails, the modal opens the tab of the failed text.
+- If the server does not support Project files, the editor shows the Context tab only. The modal keeps the two-column width.
 - Below a 760px window width, the columns stack: the editor goes under the other fields.
 - Save, Cancel, Archive and the save rules do not change.
 - The desktop main process no longer lists or uploads Project files: `addProjectFiles`, its IPC channel `desktop:add-project-files` and the file list in `getProjectWorkspace` are removed.

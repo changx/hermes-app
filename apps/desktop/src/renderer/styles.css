@@ -697,24 +697,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .session-hint { color: #50647b; font-size: var(--app-font-size); line-height: 1.5; }
 .editor-dialog textarea { min-height: 100px; resize: vertical; }
 /* Project modal: same for New project and Project settings. Body scrolls; actions stay visible.
-   With AGENTS.md (`.wide`), the fields are on the left and the editor fills the right column. */
+   Fields on the left; the right column is one large tabbed editor (Context, AGENTS.md). */
 .project-dialog { width: min(620px, 100%); max-height: calc(100dvh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; }
 .project-dialog.wide { width: min(1040px, 100%); }
 .project-dialog h2 { margin: 0; }
 .project-dialog-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-.project-dialog-fields, .project-dialog-agents { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.project-dialog-fields { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .project-dialog.wide .project-dialog-body { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 22px; height: min(640px, calc(100dvh - 180px)); overflow: hidden; }
 .project-dialog.wide .project-dialog-fields { min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-.project-dialog.wide .project-dialog-agents { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
-.project-dialog.wide .project-dialog-agents label { grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
-.project-dialog.wide .project-agents { height: 100%; min-height: 0; resize: none; }
+.project-dialog-editor { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; min-width: 0; min-height: 0; }
+.project-editor-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--app-border); }
+.project-editor-tabs button { margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px; background: transparent; color: var(--app-label); font: inherit; font-weight: 600; cursor: pointer; }
+.project-editor-tabs button[aria-selected="true"] { border-bottom-color: var(--app-accent); color: var(--app-text); }
+.project-tab-changed { margin-left: 5px; color: var(--app-accent); }
+.project-editor-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; min-height: 0; }
+.project-editor-panel[hidden] { display: none; }
+.project-editor-hint { display: flex; justify-content: space-between; gap: 12px; margin: 0; }
+.project-editor-count { flex: none; font-variant-numeric: tabular-nums; }
+.project-dialog .project-editor-text { height: 100%; min-height: 180px; resize: none; }
 .project-dialog .field-hint { color: var(--app-muted); font-size: calc(var(--app-font-size) * .875); font-weight: 400; line-height: 1.4; }
-.project-dialog .project-agents { min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--app-font-size) * .875); }
+.project-dialog .project-agents { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--app-font-size) * .875); }
 /* Narrow window: one column, the editor under the fields, the whole body scrolls. */
 @media (max-width: 760px) {
   .project-dialog.wide .project-dialog-body { grid-template-columns: minmax(0, 1fr); height: auto; overflow-y: auto; }
   .project-dialog.wide .project-dialog-fields { overflow: visible; }
-  .project-dialog.wide .project-agents { height: auto; min-height: 280px; resize: vertical; }
+  .project-dialog .project-editor-text { height: auto; min-height: 280px; resize: vertical; }
 }
 .dialog-actions .danger { margin-right: auto; color: #9d1b32; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
