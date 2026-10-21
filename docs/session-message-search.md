@@ -43,3 +43,15 @@ LCM search was measured on the same 97 questions: MRR 0.26 (native), 0.72 with O
 - Evidence: Channel workspace `session-message-search-release/`.
 - Rollback: desktop, reinstall v0.1.100; mobile, `git -C /opt/projects/jamie/hermes-app checkout -q --detach fc38f4f && systemctl --user restart hermes-app-expo.service`.
 - Open: device acceptance on Jamie's Mac and iPhone. Not done: hide the Session you are searching from (it ranks first for its own test queries).
+
+## Update: AI ranking with TypeSafe Jev (plugin v0.2.46, 2026-10-21)
+
+Jamie found the Haiku ranking too slow ("每次都是 ranking by ai 好半天": 4-8 s). The ranking now uses TypeSafe Jev when the profile has `TYPESAFE_API_KEY` (hermes-app-dev and jamie do).
+- How: one request scores each of the 1-2 best excerpts (600 characters, with title and Project) of the top 30 Sessions as "does this excerpt come from the discussion the user is looking for?". A Session takes its best excerpt score; Sessions under 0.3 are hidden.
+- Measured on the 97-query set: first-result hits 0.90, MRR 0.93 (Haiku 0.89 / 0.93; search alone 0.77 / 0.83); 94 % of no-match queries show nothing (Haiku 50 %). Real data after deploy: 0.4-0.7 s per ranking on hermes-app-dev and jamie. Evaluation: Channel workspace `search-eval-2026-10-20/jev_*`.
+- No client change: the clients still ask for the ranking 0.5 s after typing stops, so "AI is ranking…" shows for well under a second. A later client release can drop that wait.
+- `HERMES_APP_SEARCH_RANKER=llm` in a profile `.env`, or no key, keeps Haiku. A Jev failure keeps the first order on screen.
+- The embedding service now returns 600-character excerpts (was 300).
+- LCM recall uses the same provider: `LCM_RERANK_PROVIDER=typesafe` in the hermes-app-dev and jamie `.env` (was `llm`, gpt-6-luna).
+- Activation: needs a `hermes-gateway.service` restart (plugin and LCM settings load at start).
+
