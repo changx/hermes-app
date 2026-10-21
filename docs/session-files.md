@@ -192,3 +192,10 @@ Consequences for the design:
 - Not checked: Jamie's Mac and iPhone; semantic search through the live plugin after the Gateway restart.
 
 **Released in desktop v0.1.101 (2026-10-20):** a file search result opens its Session at the file message (`731b31e`, `2ab1478`), shipped with [Session message search](session-message-search.md).
+
+### Release: tabbed Context and AGENTS.md editor (desktop v0.1.102)
+
+- Released 2026-10-21 in desktop `v0.1.102` (GitHub Release, run `39560494271` on `macmini-m4`). Desktop only; no mobile, shared client or plugin change.
+- Candidate checks (Linux, Chrome tests on): typecheck and build pass; `npm test` 237 pass, 0 fail, 8 skipped. Headless Chrome measurement at 1280×820: dialog 1040 px, fields 368 px, editor 612×475 px on both tabs; at 700 px width the editor stacks under the fields at 280 px.
+- Release checks: runner suite 190 pass, 0 fail, 55 skipped; audit 0. Downloaded zip passes `sha256sum -c`; `CFBundleShortVersionString` is `0.1.102`; the ASAR `dist/main`, `dist/preload`, `dist/renderer/index.js` and `styles.css` are byte-identical to the local build.
+- Open: visual check on Jamie's Mac.
