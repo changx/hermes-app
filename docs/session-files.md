@@ -188,3 +188,5 @@ Consequences for the design:
 - Candidate checks: plugin `test_session_files.py` 8 pass and `tests/embed` 6 pass; `client:check` 95 pass; `desktop:check` with Chromium 233 pass, 0 fail; mobile `tsc` and `npm test` 230 pass, 0 fail; iOS and Android `expo export` built.
 - Mobile: runtime checkout fast-forwarded to `0a2c2db` (lockfile unchanged); `hermes-app-expo.service` restarted (PID 1851610). Public bundles on iOS and Android: the new source comment `(semantic search) first by rank, interleaving connections, then the newest` 0 -> 1 and `file.rank ?? Infinity` 0 -> 2. Gateway PID unchanged (1953184).
 - Not checked: Jamie's Mac and iPhone; semantic search through the live plugin after the Gateway restart.
+
+**Released in desktop v0.1.101 (2026-10-20):** a file search result opens its Session at the file message (`731b31e`, `2ab1478`), shipped with [Session message search](session-message-search.md).

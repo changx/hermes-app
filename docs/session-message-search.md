@@ -35,6 +35,11 @@ LCM search was measured on the same 97 questions: MRR 0.26 (native), 0.72 with O
 - Plugin: `tests/p1/test_session_search.py`, `tests/embed/test_message_index.py`.
 - Real data (jamie, index partly built): "oceanpay 合规改造项目有哪些" lists the four OceanPay compliance Sessions first; "跑步后膝盖疼怎么办" gets AI none.
 
-## Status
+## Release: plugin v0.2.45, desktop v0.1.101, Expo
 
-Not released. Device acceptance on Jamie's iPhone and Mac is pending.
+- **Plugin v0.2.45** (released by another session, 2026-10-20 20:55): contains `032080c` (message index) and `39f6308` (`/v1/sessions/search`, `/refine`). Gateway restarted at 20:57:47, after the install.
+- **Desktop v0.1.101**: release commit `537581c`, tag `v0.1.101`. It also ships the unreleased `fix/search-file-open` commits (`731b31e`, `2ab1478`: a file result opens its Session at the file message), which message results depend on. Candidate checks on the same tree: client 102/102, mobile 233/233 + TypeScript + iOS/Android exports, desktop 242/244 with Chrome and Electron. The two failures (`native-electron` at `label search in the sidebar`; `browser-window-native` `UnknownVizError`) fail the same way on the base `2ab1478`. Tag run `39543800584`: 244 tests, 189 pass, 0 fail, 55 skipped, audit 0. The downloaded zip passed its SHA-256 check; Info.plist 0.1.101; arm64. `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `styles.css` in the ASAR are byte-identical to the local build.
+- **Expo**: runtime checkout `fc38f4f` → `537581c` (lockfile unchanged), Expo restarted (PID 1851610 → 3122984, 21:24:00). Public bundles: "AI found no message that answers this" and `sessionText.search(text, query.labels` 0 → 1 on iOS and Android. Gateway PID 3089431 unchanged.
+- Evidence: Channel workspace `session-message-search-release/`.
+- Rollback: desktop, reinstall v0.1.100; mobile, `git -C /opt/projects/jamie/hermes-app checkout -q --detach fc38f4f && systemctl --user restart hermes-app-expo.service`.
+- Open: device acceptance on Jamie's Mac and iPhone. Not done: hide the Session you are searching from (it ranks first for its own test queries).
