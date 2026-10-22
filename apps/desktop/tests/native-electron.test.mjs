@@ -122,17 +122,29 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  const create=calls.find(x=>x[0]==='create'),upload=calls.filter(x=>x[0]==='upload').at(-1),send=calls.filter(x=>x[0]==='send').at(-1);
  assert.equal(create[1],'q');assert.equal(upload[1],draft.threadId);assert.equal(send[1],draft.threadId);assert.equal(send[3],'First line\nA long body with multiple paragraphs.\nFinal paragraph.');assert.equal(send[4].length,1);
  await until(()=>evaluate(dc,'!!document.querySelector(".session-tab-page")'),'promoted page');
- // A status bar label in Session B's own page searches the main window's sidebar through the real IPC route.
+ // A status bar label in Session B's own page opens the main window's search with that label, through the real IPC route.
+ const activeView=()=>manager.tabs.get(manager.activeTabId).view;
  await until(()=>evaluate(bc,'!!document.querySelector(".status-labels button[aria-label=\'Find sessions labeled bug\']")'),'session B status bar label');
  await evaluate(bc,'document.querySelector(".status-labels button").click()');
- await until(()=>evaluate(shell,'document.querySelectorAll(".search-result-list .tree-thread").length===1&&[...document.querySelectorAll(".session-query-chip > span")].map(e=>e.textContent).join()==="bug"'),'label search in the sidebar');
- assert.equal(await evaluate(shell,'document.querySelector(".search-result-list .tree-thread").textContent.includes("Session B")'),true);
- await evaluate(shell,'document.querySelector(".sidebar-search-clear").click()');await until(()=>evaluate(shell,'!!document.querySelector(".channel-tree")'),'search cleared');
- // Session B's Project name shows that Project in the main window's sidebar; a search is cleared first.
- await evaluate(shell,'(()=>{const e=document.querySelector(".sidebar-search input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"Session");e.dispatchEvent(new Event("input",{bubbles:true}));})()');await until(()=>evaluate(shell,'!document.querySelector(".channel-tree")'),'search replaces the tree');
+ await until(()=>evaluate(shell,'!!document.querySelector(".palette")&&[...document.querySelectorAll(".palette .session-query-chip > span")].map(e=>e.textContent).join()==="bug"&&[...document.querySelectorAll(".palette [role=option]")].some(e=>e.textContent.includes("Session B"))'),'label search in the main window');
+ const closeSearch=async()=>{await evaluate(shell,'document.querySelector(".palette input").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))');await until(()=>evaluate(shell,'!document.querySelector(".palette")'),'search closed');await until(()=>activeView().getVisible(),'session view shown again');};
+ await closeSearch();
+ // Cmd+K (Ctrl+K here) in a Session page opens the search over the whole window, not inside that page.
+ const modifier=process.platform==='darwin'?'meta':'control';
+ dc.focus();await until(()=>evaluate(dc,'document.hasFocus()'),'session page has the keyboard');
+ dc.sendInputEvent({type:'keyDown',keyCode:'K',modifiers:[modifier]});
+ await until(()=>evaluate(shell,'!!document.querySelector(".native-workspace .palette")&&document.activeElement===document.querySelector(".palette input")'),'Cmd+K search in the main window has the keyboard');
+ assert.equal(await evaluate(dc,'!!document.querySelector(".palette")'),false,'the Session page has no search of its own');
+ await until(()=>!activeView().getVisible(),'the search covers the Session area');
+ await closeSearch();
+ dc.focus();dc.sendInputEvent({type:'keyDown',keyCode:'F',modifiers:[modifier,'shift']});
+ await until(()=>evaluate(shell,'document.querySelector(".palette input")?.placeholder==="Search files or labels…"'),'Shift+Cmd+F file search in the main window');
+ assert.equal(await evaluate(dc,'!!document.querySelector(".palette")'),false,'no file search inside the Session page');
+ await closeSearch();
+ // Session B's Project name shows that Project in the main window's sidebar.
  assert.equal(await evaluate(bc,'document.querySelector(".status-project").textContent'),'Project Beta');
  await evaluate(bc,'document.querySelector(".status-project").click()');
- await until(()=>evaluate(shell,'document.querySelector(".channel-revealed strong")?.textContent==="Project Beta"&&!!document.querySelector(".channel-tree")&&document.querySelector(".sidebar-search input").value===""'),'Project revealed in the sidebar');
+ await until(()=>evaluate(shell,'document.querySelector(".channel-revealed strong")?.textContent==="Project Beta"&&!!document.querySelector(".channel-tree")'),'Project revealed in the sidebar');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x<100,'collapsed native bounds');
  await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").click()');await until(()=>draft.view.getBounds().x===280,'expanded native bounds');
  // Real input reaches the production host renderer while retained native views resize.

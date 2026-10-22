@@ -405,12 +405,15 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       if (event.key === "Escape") { setEditor(null); setProjectEditor(null); setRenameTarget(null); return; }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
 
-      if (event.key.toLocaleLowerCase() === "k" && !event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette" }); }
-      if (event.key.toLocaleLowerCase() === "f" && event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette", scope: "files" }); }
+      // Session pages never open their own search: the main process sends Cmd+K to the main window (desktop:open-search).
+      if (viewRole === 'workspace' && event.key.toLocaleLowerCase() === "k" && !event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette" }); }
+      if (viewRole === 'workspace' && event.key.toLocaleLowerCase() === "f" && event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette", scope: "files" }); }
       if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); safely(window.hermesDesktop.newTab(snapshot.selectedChannelId)); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
-  }, [snapshot.selectedChannelId, snapshot.channels.length, editor]);
+  }, [snapshot.selectedChannelId, snapshot.channels.length, editor, viewRole]);
+  // Cmd+K from any page opens the search in the main window, over the whole window.
+  useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onOpenSearch?.(scope => setEditor({ kind: "palette", scope })) : undefined, [viewRole]);
   // A Session page's label click opens the search in the main window with that label.
   useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onSearchLabel?.(label => setEditor({ kind: "palette", query: { ...emptySessionQuery(), labels: [label] } })) : undefined, [viewRole]);
   // Shift+Cmd+L arrives from the main process for the active Session page only. It acts like a click on the flag button.

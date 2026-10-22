@@ -281,6 +281,8 @@ export interface HermesDesktopApi {
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */
   onSearchLabel(listener: (label: string) => void): () => void;
+  /** The main window receives Cmd+K (`all`) and Shift+Cmd+F (`files`) from every page, so the search covers the whole window. */
+  onOpenSearch?(listener: (scope: 'all' | 'files') => void): () => void;
   /** A Session page asks the main window's sidebar to show this Project. */
   revealProject(channelId: string): Promise<void>;
   /** The main window receives Project reveal requests from Session pages. */

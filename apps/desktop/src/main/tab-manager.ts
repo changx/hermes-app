@@ -48,6 +48,13 @@ export class DesktopTabManager {
         if (tab?.kind === 'session' && !tab.view.webContents.isDestroyed()) tab.view.webContents.send('desktop:toggle-todo');
         return;
       }
+      // Cmd+K and Shift+Cmd+F open the search in the main window, so it covers the whole window from every page.
+      // The search dialog hides the Session view, so the main window's own page takes the keyboard focus.
+      if ((key === 'k' && !input.shift) || (key === 'f' && input.shift)) {
+        event.preventDefault(); if (this.window.isDestroyed()) return;
+        this.window.webContents.focus(); this.window.webContents.send('desktop:open-search', key === 'f' ? 'files' : 'all');
+        return;
+      }
       if ((key === 't' || key === 'n') && this.service.snapshot().phase === 'connected') {
         event.preventDefault(); const tab = this.sender(contents), snapshot = this.snapshot(contents);
         this.newTab(tab?.initialChannelId ?? snapshot.selectedChannelId); return;

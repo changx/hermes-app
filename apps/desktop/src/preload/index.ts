@@ -69,6 +69,11 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:search-label", receive);
     return () => ipcRenderer.removeListener("desktop:search-label", receive);
   },
+  onOpenSearch(listener: (scope: 'all' | 'files') => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, scope: unknown) => { if (scope === 'all' || scope === 'files') listener(scope); };
+    ipcRenderer.on("desktop:open-search", receive);
+    return () => ipcRenderer.removeListener("desktop:open-search", receive);
+  },
   revealProject: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:reveal-project", channelId),
   onRevealProject(listener: (channelId: string) => void): () => void {
     const receive = (_event: Electron.IpcRendererEvent, channelId: unknown) => { if (typeof channelId === 'string') listener(channelId); };
