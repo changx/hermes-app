@@ -225,7 +225,7 @@
 
 - 阅读 README.md 和 docs/ 下的需求、架构、开发阶段文档后再工作。
 - 最终交付独立可安装的桌面和手机 App；不能以 Web 页面、PWA 或桌面响应式页面冒充手机 App。
-- Discord 是成熟交互和同步设计的参考，不是兼容目标。不要新增 Discord 服务、Discord 协议模拟或完整 IM 平台。
+- 交互和同步设计参考成熟 IM 产品；Hermes App 只实现自己的 adapter 协议与服务，范围限定在 Hermes App 本身。
 - 用户可见 Thread 是连续对话，底层 session、idle compaction、上下文续接不应破坏或污染历史。
 - Hermes 管理项目结构、历史、公共提示、任务执行和同步状态；adapter 只做通信、认证与协议转换。
 
