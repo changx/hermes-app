@@ -44,3 +44,7 @@ Fix `08b8d27`, release commit `161cecf`, tag `v0.1.56`. Before the tag: the full
 ## Frequent labels (candidate)
 
 Requested by Jamie: show the 5 most used labels below the sidebar search box. Desktop only (the phone has no left sidebar). Verification: `session-search.test.mjs` covers the ranking rule (session count, then most recent use, then name; a label counts once per session; at most five) and, in Chromium with the production workspace, the order, the position between the search box and Recents inside the sidebar, click to search, the pressed state and the second click that restores the tree. The Chromium check fails without the product change. Mac acceptance is pending.
+
+## Release: desktop v0.1.104 (one search for the whole window)
+
+Fix `e2dcafe`, release commit `595e7d4`, tag `v0.1.104`. Before the tag, the full desktop suite with Chromium and Electron had 245 passed, 0 failed, 0 skipped; the Electron test fails at the Cmd+K step without the main-process change. The tag workflow on the macOS runner passed (245 tests: 190 passed, 0 failed, 55 skipped for the Chromium/Electron env tests; audit 0). The downloaded `Hermes-0.1.104-macOS-arm64.zip` passed its SHA-256 check; Info.plist reports 0.1.104; the four ASAR `dist/` bundles are byte-identical to the local build and contain `desktop:open-search`. Plugin, mobile, Expo and Gateway are unchanged. Real-device acceptance on Jamie's Mac is pending.
