@@ -228,7 +228,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
       {snapshot.canLoadOlder || snapshot.loadingHistory ? <div className="history-loading-slot">
         {snapshot.loadingHistory ? <div className="history-loading-status" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" />Loading messages…</div> : <button className="load-older" type="button" onClick={() => safely(window.hermesDesktop.loadOlder())}>Load all earlier messages</button>}
       </div> : null}
-      {snapshot.loadingMessages && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" /><h3>Loading messages…</h3></div> : snapshot.messages.length ? snapshot.messages.map((message, index) => {
+      {/* Loading never hides messages already shown (an unsent first message stays in place). */}
+      {snapshot.loadingMessages && !snapshot.messages.length && !snapshot.errorMessage ? <div className="conversation-empty" role="status" aria-live="polite" aria-busy="true"><span className="conversation-loading-spinner" aria-hidden="true" /><h3>Loading messages…</h3></div> : snapshot.messages.length ? snapshot.messages.map((message, index) => {
         const previous = snapshot.messages[index - 1];
         const continuation = message.role === "assistant" && previous?.role === "assistant" && !message.displayKind && !previous.displayKind;
         const group = groups.get(message.id);
