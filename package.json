@@ -9,6 +9,7 @@
     "npm": "11.11.0"
   },
   "overrides": {
+    "dompurify": "3.4.17",
     "katex": "0.18.10"
   },
   "workspaces": [
