@@ -24,6 +24,15 @@ Jamie 报告：桌面 Session 中 Markdown 代码块（包括只有一行的代�
 - Chromium 回归 `apps/desktop/tests/code-block-copy.test.mjs`：4 个代码块各有按钮，行内代码与 Mermaid 没有；按钮距代码块上、右各 8px；单行文字右端在按钮左侧；横向滚动 200px 后按钮不移动；复制内容与原文完全相同；失败提示正确；无 app API 时使用 web clipboard。去掉本改动后此测试失败。
 - `code-block-wrap.test.mjs` 仍通过；`npm run typecheck`、`npm run build` 通过。
 
+## 发布（v0.1.107）
+
+- 功能提交 `4a0562f`，发布提交 `13260d6`，tag `v0.1.107`。[Release v0.1.107](https://github.com/changx/hermes-app/releases/tag/v0.1.107)。
+- Linux 发布树全套（Chromium，未下载 Electron）：246 个测试，238 通过，0 失败，8 跳过。
+- Mac mini workflow：246 个测试，190 通过，0 失败，56 跳过；audit 0。
+- 下载的 `Hermes-0.1.107-macOS-arm64.zip` 通过 SHA-256 sidecar 校验；Info.plist 为 0.1.107；ASAR 中 `dist/` 的 9 个 js/cjs/css 文件与本地构建逐字节相同。未签名、未 notarize。
+- 插件、手机、Expo 和 Gateway 未变化。
+- 回滚：`git revert 4a0562f`，再发布下一个补丁版本。
+
 ## 待验收
 
-Mac 真机显示与复制待验收。未发布桌面安装包。
+Mac 真机显示与复制待 Jamie 验收。
