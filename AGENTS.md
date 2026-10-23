@@ -168,6 +168,7 @@
 - [docs/markdown-table-release-0.1.7.md](docs/markdown-table-release-0.1.7.md)
 - [docs/markdown-table-width.md](docs/markdown-table-width.md)
 - [docs/code-block-wrap.md](docs/code-block-wrap.md)
+- [docs/code-block-copy.md](docs/code-block-copy.md)（桌面代码块复制按钮）
 - [docs/message-hierarchy.md](docs/message-hierarchy.md)
 - [docs/reply-models.md](docs/reply-models.md)
 - [docs/thread-model.md](docs/thread-model.md)

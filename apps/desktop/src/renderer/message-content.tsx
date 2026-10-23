@@ -7,6 +7,7 @@ import remarkMath from "remark-math";
 import { remarkStrictInlineMath } from "./strict-inline-math";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
+import { MessageIcon } from "./message-toolbar";
 
 const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br"]);
 const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "class", "id", "role", "aria-label"]);
@@ -54,6 +55,31 @@ const allowedLink = (href: string | undefined): string | undefined => {
   } catch { return undefined; }
 };
 
+type HastNode = { type: string; value?: string; children?: readonly HastNode[] };
+const nodeText = (node: HastNode | undefined): string =>
+  !node ? "" : node.type === "text" ? node.value ?? "" : (node.children ?? []).map(nodeText).join("");
+
+// Session pages copy through the app; the Markdown preview page has no app API and uses the web clipboard.
+const writeClipboard = (text: string): Promise<void> =>
+  window.hermesDesktop?.copyText ? window.hermesDesktop.copyText(text) : navigator.clipboard.writeText(text);
+
+/** Copy button on a code block. It sits outside the scrolling `pre`, so it stays in the top-right corner. */
+const CodeCopy = ({ text }: { text: string }) => {
+  const [note, setNote] = useState("");
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { if (!note) return; const timer = setTimeout(() => setNote(""), 1400); return () => clearTimeout(timer); }, [note]);
+  const onCopy = () => {
+    let copy: Promise<void>;
+    try { copy = writeClipboard(text); } catch (error) { copy = Promise.reject(error); }
+    void copy.then(() => { if (mounted.current) setNote("Copied"); }, () => { if (mounted.current) setNote("Could not copy."); });
+  };
+  return <div className="code-copy">
+    {note && <span className="code-copy-note" role="status">{note}</span>}
+    <button type="button" aria-label="Copy code" title="Copy" onClick={onCopy}><MessageIcon name="copy" /></button>
+  </div>;
+};
+
 // Stable component functions keep code/diagram subtrees mounted across updates.
 const markdownComponents: Components = {
   table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
@@ -72,7 +98,9 @@ const markdownComponents: Components = {
     const code = node?.children?.[0];
     const classes = code?.type === "element" ? code.properties?.className : undefined;
     const language = (Array.isArray(classes) ? classes : []).map(String).find(name => name.startsWith("language-"))?.slice(9);
-    return <pre className={wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block"}>{children}</pre>;
+    const block = <pre className={wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block"}>{children}</pre>;
+    if (language === "mermaid") return block;
+    return <div className="code-block-frame">{block}<CodeCopy text={nodeText(code).replace(/\n$/, "")} /></div>;
   },
 };
 // A Markdown file preview shows its images: web images and plain sibling file names,
