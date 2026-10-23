@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { getMermaid } from "./mermaid-engine";
 import rehypeKatex from "rehype-katex";
@@ -8,6 +8,7 @@ import { remarkStrictInlineMath } from "./strict-inline-math";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
 import { MessageIcon } from "./message-toolbar";
+import { ClickCopy, InCodeBlock, useCopyNote } from "./click-copy";
 
 const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br"]);
 const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "class", "id", "role", "aria-label"]);
@@ -59,25 +60,21 @@ type HastNode = { type: string; value?: string; children?: readonly HastNode[] }
 const nodeText = (node: HastNode | undefined): string =>
   !node ? "" : node.type === "text" ? node.value ?? "" : (node.children ?? []).map(nodeText).join("");
 
-// Session pages copy through the app; the Markdown preview page has no app API and uses the web clipboard.
-const writeClipboard = (text: string): Promise<void> =>
-  window.hermesDesktop?.copyText ? window.hermesDesktop.copyText(text) : navigator.clipboard.writeText(text);
-
-/** Copy button on a code block. It sits outside the scrolling `pre`, so it stays in the top-right corner. */
+/** Copy button on a multi-line code block. It sits outside the scrolling `pre`, so it stays in the top-right corner. */
 const CodeCopy = ({ text }: { text: string }) => {
-  const [note, setNote] = useState("");
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { if (!note) return; const timer = setTimeout(() => setNote(""), 1400); return () => clearTimeout(timer); }, [note]);
-  const onCopy = () => {
-    let copy: Promise<void>;
-    try { copy = writeClipboard(text); } catch (error) { copy = Promise.reject(error); }
-    void copy.then(() => { if (mounted.current) setNote("Copied"); }, () => { if (mounted.current) setNote("Could not copy."); });
-  };
+  const { note, copy } = useCopyNote();
   return <div className="code-copy">
     {note && <span className="code-copy-note" role="status">{note}</span>}
-    <button type="button" aria-label="Copy code" title="Copy" onClick={onCopy}><MessageIcon name="copy" /></button>
+    <button type="button" aria-label="Copy code" title="Copy" onClick={() => copy(text)}><MessageIcon name="copy" /></button>
   </div>;
+};
+
+/** Inline code copies on click, except inside a link, where a click opens the link. */
+const InLink = createContext(false);
+const InlineCode = ({ className, children }: { className?: string; children: ReactNode }) => {
+  const block = useContext(InCodeBlock), link = useContext(InLink);
+  if (block || link) return <code className={className}>{children}</code>;
+  return <ClickCopy as="code" className={className} text={String(children)}>{children}</ClickCopy>;
 };
 
 // Stable component functions keep code/diagram subtrees mounted across updates.
@@ -85,22 +82,26 @@ const markdownComponents: Components = {
   table: ({ children }) => <div className="markdown-table" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
   a: ({ href, children }) => {
     const safe = allowedLink(href);
-    if (safe && isSessionLinkHref(safe)) return <a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop?.openSessionLink?.(safe)?.catch(() => {}); }}>{children}</a>;
-    return safe ? <a href={safe} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
+    if (safe && isSessionLinkHref(safe)) return <InLink.Provider value><a href={safe} onClick={event => { event.preventDefault(); void window.hermesDesktop?.openSessionLink?.(safe)?.catch(() => {}); }}>{children}</a></InLink.Provider>;
+    return safe ? <InLink.Provider value><a href={safe} target="_blank" rel="noreferrer">{children}</a></InLink.Provider> : <span>{children}</span>;
   },
   img: ({ alt }) => <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
-  code: ({ className, children, ...props }) => {
+  code: ({ className, children }) => {
     const language = /language-([^ ]+)/.exec(className ?? "")?.[1];
     const source = String(children).replace(/\n$/, "");
-    return language === "mermaid" ? <MermaidDiagram source={source} /> : <code className={className} {...props}>{children}</code>;
+    return language === "mermaid" ? <MermaidDiagram source={source} /> : <InlineCode className={className}>{children}</InlineCode>;
   },
   pre: ({ node, children }) => {
     const code = node?.children?.[0];
     const classes = code?.type === "element" ? code.properties?.className : undefined;
     const language = (Array.isArray(classes) ? classes : []).map(String).find(name => name.startsWith("language-"))?.slice(9);
-    const block = <pre className={wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block"}>{children}</pre>;
-    if (language === "mermaid") return block;
-    return <div className="code-block-frame">{block}<CodeCopy text={nodeText(code).replace(/\n$/, "")} /></div>;
+    const className = wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block";
+    const inner = <InCodeBlock.Provider value>{children}</InCodeBlock.Provider>;
+    if (language === "mermaid") return <pre className={className}>{inner}</pre>;
+    const text = nodeText(code).replace(/\n$/, "");
+    // A one-line block copies on a click anywhere in the line; longer blocks keep the corner button.
+    if (!text.includes("\n")) return <ClickCopy as="pre" className={`${className} code-block-line`} text={text}>{inner}</ClickCopy>;
+    return <div className="code-block-frame"><pre className={className}>{inner}</pre><CodeCopy text={text} /></div>;
   },
 };
 // A Markdown file preview shows its images: web images and plain sibling file names,

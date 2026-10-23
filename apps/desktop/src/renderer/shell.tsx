@@ -8,6 +8,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { LocalDraftMap } from "../../../../packages/client/src/localDraftMap";
 import { useDesktopSnapshot } from "./desktop-store";
 import { MessageContent } from "./message-content";
+import { ClickCopy } from "./click-copy";
 import { MessageToolbar, UserMessageCopy } from "./message-toolbar";
 import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../../../../packages/client/src/workPresentation";
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
@@ -100,7 +101,7 @@ const MessageRow = memo(({ message, continuation, hidden = false, focused = fals
       const presentation = toolPresentation(tool.name);
       return <section className="tool-record" key={tool.id} aria-label={tool.label}>
         <div className="tool-line"><span className="tool-icon" aria-hidden="true">{tool.icon ?? presentation.icon}</span><span className="tool-label" title={`${tool.label}${!presentation.command && tool.detail ? ` · ${tool.detail}` : ""}`}>{compactToolCaption(tool.name ?? '', tool.label, tool.detail, tool.caption)}</span></div>
-        {presentation.command && tool.detail ? <pre className="tool-command">{tool.detail}</pre> : null}
+        {presentation.command && tool.detail ? <ClickCopy as="pre" className="tool-command" text={tool.detail}>{tool.detail}</ClickCopy> : null}
       </section>;
     })}</div>
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
