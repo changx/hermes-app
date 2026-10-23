@@ -32,6 +32,13 @@
 
 ## 发布记录
 
+### v0.1.108（单行代码块、行内代码与命令行点击复制）
+
+- 功能提交 `8acd569`，发布提交 `2ee40ba`，tag `v0.1.108`。[Release v0.1.108](https://github.com/changx/hermes-app/releases/tag/v0.1.108)。
+- Linux 全套：246 个测试，238 通过，0 失败，8 跳过。Mac mini workflow：246 个测试，190 通过，0 失败，56 跳过；audit 0。
+- 下载的 `Hermes-0.1.108-macOS-arm64.zip` 通过 SHA-256 sidecar 校验；Info.plist 为 0.1.108；ASAR 中 `dist/` 的 9 个 js/cjs/css 文件与本地构建逐字节相同。未签名、未 notarize。
+- 回滚：`git revert 8acd569`，再发布下一个补丁版本。
+
 ### v0.1.107（多行与单行代码块的右上角按钮）
 
 - 功能提交 `4a0562f`，发布提交 `13260d6`，tag `v0.1.107`。[Release v0.1.107](https://github.com/changx/hermes-app/releases/tag/v0.1.107)。
@@ -40,4 +47,4 @@
 
 ## 待验收
 
-单行点击复制尚未发布。Mac 真机显示与复制待 Jamie 验收。插件、手机、Expo 和 Gateway 未变化。
+Mac 真机显示与复制待 Jamie 验收。插件、手机、Expo 和 Gateway 未变化。
