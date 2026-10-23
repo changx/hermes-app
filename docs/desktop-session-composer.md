@@ -285,3 +285,12 @@ Evidence: active Channel workspace `collapsible-work/release/`, including baseli
 - 桌面：Mac mini 构建 122 通过/0 失败/33 跳过，audit 0。[Release v0.1.62](https://github.com/changx/hermes-app/releases/tag/v0.1.62) 下载包 sha256 sidecar 通过、与构建产物一致、ZIP 完整、Info.plist 0.1.62、arm64，ASAR 含新 Stop 样式与标签。未签名/未 notarize。
 - 证据：Channel workspace `inline-stop/`。iPhone/Mac 真机视觉验收待 Jamie。
 - 回滚：`git revert 2460252`，手机运行目录快进后重启 Expo；桌面发布下一补丁版本。
+
+## Page loading keeps messages already shown (v0.1.106)
+
+Requested by Jamie: after New chat, the first message disappeared and came back when the Session page opened. Cause: the tab shows the unsent first message at once; when the server confirms the session, `selectThread` opens the live page with `loading: true`, and the full-page "Loading messages…" state replaced the message list until the empty history arrived.
+
+- Rule: the full-page loading state appears only when the page has no messages. Messages already shown (outbox entries, kept rows) stay in place while the history loads; rows merge by their stable `client:<id>` key, so the row is not remounted. No separate loading line is shown then, because adding and removing it would move the messages.
+- Trade-off: opening an older Session that only holds an unsent message on a slow network shows that message first; earlier history appears above it when it arrives.
+- Same release, audit gate: npm advisories published after v0.1.104 blocked the v0.1.105 tag run (tests passed, `npm audit` failed). Fix `102e3f2`: dompurify 3.4.17 via root override (critical, through mermaid) and electron pinned to 44.5.1 (first patched minor for GHSA-x562-297c-g43g). The v0.1.105 tag stays without a Release; v0.1.106 carries both changes.
+- Fix `7feff9e`, deps `102e3f2`, release commit `7f3c19b`, tag `v0.1.106`. Linux full suite with Chromium and Electron on the release tree: 244 passed, 1 failed (`browser-window-native`, known flaky). In the release worktree, `native-electron` timed out at the Xvfb drag step under load, and orphaned Electron processes from earlier timed-out runs also broke a Chromium cleanup; the same tree and lockfile in a clean worktree passed both. Mac mini workflow: 245 tests, 190 passed, 0 failed, 55 skipped; audit 0. The downloaded `Hermes-0.1.106-macOS-arm64.zip` passed its SHA-256 check; Info.plist reports 0.1.106 with Electron 44.5.1; the four ASAR `dist/` bundles are byte-identical to the local build. Plugin, mobile, Expo and Gateway are unchanged. Real-device acceptance on Jamie's Mac is pending.
