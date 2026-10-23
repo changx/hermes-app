@@ -1,6 +1,6 @@
 {
   "name": "@hermes-app/desktop",
-  "version": "0.1.105",
+  "version": "0.1.106",
   "private": true,
   "description": "Hermes App desktop client for macOS",
   "main": "dist/main/index.cjs",
