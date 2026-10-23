@@ -55,3 +55,12 @@ Jamie found the Haiku ranking too slow ("每次都是 ranking by ai 好半天": 
 - LCM recall uses the same provider: `LCM_RERANK_PROVIDER=typesafe` in the hermes-app-dev and jamie `.env` (was `llm`, gpt-6-luna).
 - Activation: needs a `hermes-gateway.service` restart (plugin and LCM settings load at start).
 
+
+## Fix: excerpts from questions and replies (plugin `f942b98`, embedding service, 2026-10-23)
+
+Jamie searched "寻汇 费率" and got only attachments. The search ranked the Session "寻汇文档及附件费率汇总" first, but its two excerpts for the AI ranking were the title-only meta chunk (Jev 0.28) and a progress note "附件里没有寻汇账户的付款费率。我先查寻汇官网…" (0.10). Both were under 0.3, so the AI answered none. The final reply scores 0.86.
+- Fix: every index chunk has a kind (`meta`, `user`, `reply`, `note`; a note is an assistant message sent with tool calls). The order is unchanged. Snippet, `seq` and AI excerpts come from `user` and `reply` chunks; a Session without them keeps the old picks. Existing chunks got their kind at the first scan, without new vectors.
+- A/B on jamie data (97 eval queries + this case, same order, Jev 1.14.0): S@1 0.823 → 0.848, S@10 0.937 → 0.949, MRR 0.859 → 0.879, no-match empty 0.74 both. "寻汇 费率": hidden → rank 1.
+- Release: plugin repo `main` `f942b98`, `services/embed/install.sh`, `hermes-app-embed.service` restarted (PID 4023132 → 3465423, 06:46:12 PDT). Gateway (PID 4045158) and clients unchanged. Live check: rank 1, Jev keeps it (0.54).
+- Rollback: install `435a10a` with `install.sh` (or copy back the files in the jamie workspace `embed-release-20261023-064604/`) and restart `hermes-app-embed.service`.
+- Open: the title match needs the whole query as one string, so "寻汇 费率" does not match that title. Matching each word is a client change.
