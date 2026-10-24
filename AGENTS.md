@@ -99,6 +99,7 @@
 - [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)
 - [docs/mobile-tabs-recents.md](docs/mobile-tabs-recents.md)
 - [docs/mobile-composer-tap-collapse.md](docs/mobile-composer-tap-collapse.md)（点击 session 页面收起输入框；键盘收起后输入区复位；切后台不再收起键盘）
+- [docs/form-keyboard-background-events.md](docs/form-keyboard-background-events.md)（表单页忽略后台和全 0 的键盘事件，切后台回来输入区仍在键盘上方）
 
 ### 桌面应用
 
