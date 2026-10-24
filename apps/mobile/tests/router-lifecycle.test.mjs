@@ -126,6 +126,7 @@ async function harness({ multiple = false, list = false, strict = false, product
   const store = { getItemAsync: async key => secure.get(key) ?? null, setItemAsync: async (key, value) => { secure.set(key, value); }, deleteItemAsync: async key => { secure.delete(key); } };
   const mocks = {
     './connections': connectionExports,
+    './FormKeyboardAvoidingView': { FormKeyboardAvoidingView: ({ children }) => React.createElement('FormKeyboardAvoidingView', null, children) },
     './connectionSlots': slotsModule.exports,
     './sessionNavigation': navigationExports,
     './pairing': { CONFIG_KEY: 'hermes-app-connection-v1', PAIRING_KEY: 'hermes-app-pairing-v1', restorePairing: () => null, completePairing: async () => { throw Error('not used'); }, newPairing() {}, normalizePairingCode: v => v },
