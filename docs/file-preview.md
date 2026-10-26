@@ -120,3 +120,24 @@ Fix (desktop only, scoped to `main.markdown-preview`; chat replies do not change
 - Page: maximum width 880 px; side padding `clamp(16px, 4vw, 32px)`.
 
 Verification: `tests/browser-sidebar-native.test.mjs` now checks H1 > H2 > body size and the blockquote rule (it checked body-size headings before). Computed styles in Chromium at 720 px after the fix: H1 29.6 px, H2 23.2 px, H3 19.2 px, H4 16.8 px, body 16 px, code 14 px, blockquote rule 4 px, cells 6 × 13 px.
+
+## Desktop Mermaid diagrams (2026-10-26)
+
+Report (Jamie): Mermaid diagrams in the Markdown preview are broken. The same renderer draws diagrams in chat replies, so replies had the same faults.
+
+Causes, measured in Chromium with the old code:
+
+- The diagram sanitizer removed Mermaid's `<style>` element and every `style` attribute. Flowchart, state, ER and gantt shapes fell back to black fills (13 black shapes in one flowchart); edges had no stroke.
+- The sanitizer removed `refX`, `refY`, `markerWidth`, `markerHeight`, `orient` and `marker-end="url(#…)"`, so arrowheads were lost or misplaced.
+- With `max-width` removed, `width="100%"` stretched every diagram to the pane width: `graph TD; A-->B` became 630 × 1159 px.
+- The diagram sat inside a `pre.code-block` (grey background, monospace, `white-space: pre`). Labels measured in one font were drawn in another and spilled out of their nodes.
+
+Fix (`apps/desktop/src/renderer/message-content.tsx`, `mermaid-engine.ts`, `styles.css`):
+
+- The app page CSP is `style-src 'self'`, which blocks `<style>` and `style` attributes in markup. Mermaid's CSS is now applied as an adopted stylesheet (`CSSStyleSheet.replaceSync`), and each `style` attribute through `element.style.cssText`. CSSOM changes are not blocked by `style-src`. The CSS loses `@import`, `url()`, `expression(` and backslash escapes. The sheet is removed when the diagram unmounts. Rules are scoped by Mermaid to the diagram id.
+- Mermaid measures labels while it renders, before its blocked `<style>` can apply. The diagram renders once to get its CSS, adopts it, and renders again with the same id. Without this, a cylinder label in a flowchart was shifted by half its width.
+- Marker geometry attributes are allowed. `marker-start`/`marker-end` keep only `url(#id)`.
+- Mermaid uses the app font for measuring and display.
+- A Mermaid block is no longer wrapped in `pre.code-block`.
+
+Verification: new `tests/mermaid-diagram.test.mjs` renders flowchart, sequence, small graph and state diagrams in Chromium under the app CSP. It checks no black shapes, labels inside their shapes, edge lines with arrowheads, natural size and no code-block wrapper. It fails on the old code and passes on the new code. The Electron preview test also checks the natural size and no black shapes. A manual check of flowchart, sequence, class, state, ER, pie and gantt diagrams, with and without the strict CSP, found no black shapes and no labels outside their shapes. `desktop:check`: 256/256.

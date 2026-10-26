@@ -10,21 +10,33 @@ import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
 import { MessageIcon } from "./message-toolbar";
 import { ClickCopy, InCodeBlock, useCopyNote } from "./click-copy";
 
-const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br"]);
-const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "class", "id", "role", "aria-label"]);
+const allowedSvgTags = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "marker", "defs", "text", "tspan", "foreignObject", "div", "span", "p", "br", "style"]);
+const allowedSvgAttributes = new Set(["xmlns", "viewBox", "width", "height", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "dx", "dy", "d", "points", "transform", "fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "stroke-linecap", "stroke-linejoin", "marker-end", "marker-start", "text-anchor", "dominant-baseline", "alignment-baseline", "font-size", "font-family", "font-weight", "opacity", "refX", "refY", "markerWidth", "markerHeight", "markerUnits", "orient", "class", "id", "role", "aria-label", "aria-roledescription", "style"]);
 
-const sanitizeDiagram = (source: string): string => {
+/** Mermaid styles the diagram with a `<style>` element and `style` attributes. The app CSP
+ * (`style-src 'self'`) blocks both when they arrive as markup, so they are re-applied through
+ * the CSSOM. Resource loads are removed: no `@import`, `url()` or CSS escapes. */
+const safeCss = (css: string): string =>
+  css.replace(/\\/g, "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\([^)]*\)?/gi, "none").replace(/expression\s*\(/gi, "(").replace(/javascript:/gi, "");
+
+type Diagram = { svg: SVGSVGElement; css: string };
+const sanitizeDiagram = (source: string): Diagram => {
   const parsed = new DOMParser().parseFromString(source, "image/svg+xml");
   if (parsed.querySelector("parsererror") || parsed.documentElement.tagName !== "svg") throw new Error("invalid diagram");
+  const css: string[] = [];
   const visit = (element: Element): void => {
     if (!allowedSvgTags.has(element.tagName)) { element.remove(); return; }
+    if (element.tagName === "style") { css.push(safeCss(element.textContent ?? "")); element.remove(); return; }
     for (const attribute of [...element.attributes]) {
-      if (!allowedSvgAttributes.has(attribute.name) || /url\s*\(|javascript:|data:/i.test(attribute.value)) element.removeAttribute(attribute.name);
+      // Arrowheads point at a marker in the same diagram: only `url(#id)` is kept for them.
+      const localMarker = /^marker-(start|end)$/.test(attribute.name) && /^url\(#[A-Za-z0-9_-]+\)$/.test(attribute.value);
+      if (!allowedSvgAttributes.has(attribute.name) || (!localMarker && /url\s*\(|javascript:|data:|expression\s*\(|\\/i.test(attribute.value))) element.removeAttribute(attribute.name);
+      else if (attribute.name === "style") { element.setAttribute("data-diagram-style", attribute.value); element.removeAttribute("style"); }
     }
     for (const child of [...element.children]) visit(child);
   };
   visit(parsed.documentElement);
-  return new XMLSerializer().serializeToString(parsed.documentElement);
+  return { svg: document.importNode(parsed.documentElement, true) as unknown as SVGSVGElement, css: css.join("\n") };
 };
 
 const MermaidDiagram = ({ source }: { source: string }) => {
@@ -32,16 +44,37 @@ const MermaidDiagram = ({ source }: { source: string }) => {
   const host = useRef<HTMLDivElement>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    let active = true;
+    let active = true, sheet: CSSStyleSheet | undefined;
     if (source.length > 20_000) { setError(true); return; }
     setError(false);
     if (host.current) host.current.replaceChildren();
     void getMermaid().then(async mermaid => {
       if (!active) return;
-      const { svg } = await mermaid.render(`diagram${id}`, source);
-      if (active && host.current) host.current.innerHTML = sanitizeDiagram(svg);
+      // The rules are scoped to the diagram id (#diagram…), so one shared sheet per diagram is safe.
+      // Mermaid measures labels while it renders. Under the app CSP its own <style> is blocked
+      // during that measurement, so render once to get the CSS, adopt it, then render again.
+      const first = sanitizeDiagram((await mermaid.render(`diagram${id}`, source)).svg);
+      if (!active) return;
+      sheet = new CSSStyleSheet();
+      sheet.replaceSync(first.css);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      const diagram = sanitizeDiagram((await mermaid.render(`diagram${id}`, source)).svg);
+      if (!active || !host.current) return;
+      sheet.replaceSync(diagram.css);
+      for (const element of diagram.svg.querySelectorAll<SVGElement | HTMLElement>("[data-diagram-style]")) {
+        element.style.cssText = element.getAttribute("data-diagram-style") ?? "";
+        element.removeAttribute("data-diagram-style");
+      }
+      if (diagram.svg.getAttribute("data-diagram-style") !== null) {
+        diagram.svg.style.cssText = diagram.svg.getAttribute("data-diagram-style") ?? "";
+        diagram.svg.removeAttribute("data-diagram-style");
+      }
+      host.current.replaceChildren(diagram.svg);
     }).catch(() => { if (active) setError(true); });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (sheet) { const remove = sheet; document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== remove); }
+    };
   }, [id, source]);
   return error ? <pre className="code-block"><code>{source}</code><small>Diagram preview unavailable</small></pre> : <div ref={host} className="mermaid-diagram" role="img" aria-label="Mermaid diagram" />;
 };
@@ -97,7 +130,8 @@ const markdownComponents: Components = {
     const language = (Array.isArray(classes) ? classes : []).map(String).find(name => name.startsWith("language-"))?.slice(9);
     const className = wrapsCodeLines(language) ? "code-block code-block-wrap" : "code-block";
     const inner = <InCodeBlock.Provider value>{children}</InCodeBlock.Provider>;
-    if (language === "mermaid") return <pre className={className}>{inner}</pre>;
+    // A diagram is not code: no code background, monospace font or `white-space: pre` around it.
+    if (language === "mermaid") return inner;
     const text = nodeText(code).replace(/\n$/, "");
     // A one-line block copies on a click anywhere in the line; longer blocks keep the corner button.
     if (!text.includes("\n")) return <ClickCopy as="pre" className={`${className} code-block-line`} text={text}>{inner}</ClickCopy>;

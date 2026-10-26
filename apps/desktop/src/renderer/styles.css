@@ -619,7 +619,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 code.click-copy[data-copy-note]::after { bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); }
 pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: translateY(-50%); }
 .mermaid-diagram { overflow: auto; margin: 12px 0; text-align: center; white-space: normal; }
-.mermaid-diagram svg { max-width: 100%; height: auto; }
+.mermaid-diagram svg { display: inline-block; max-width: 100%; height: auto; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .blocked-image { color: var(--app-muted); font-style: italic; }
 .message:has(+ .message-continuation) { margin-bottom: 6px; }
 .message-continuation { margin-top: 0; }
