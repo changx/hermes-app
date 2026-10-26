@@ -69,10 +69,18 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:search-label", receive);
     return () => ipcRenderer.removeListener("desktop:search-label", receive);
   },
-  onOpenSearch(listener: (scope: 'all' | 'files') => void): () => void {
-    const receive = (_event: Electron.IpcRendererEvent, scope: unknown) => { if (scope === 'all' || scope === 'files') listener(scope); };
+  onOpenSearch(listener: (scope: 'all' | 'files', text?: string) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, scope: unknown, text: unknown) => { if (scope === 'all' || scope === 'files') listener(scope, typeof text === 'string' && text ? text : undefined); };
     ipcRenderer.on("desktop:open-search", receive);
     return () => ipcRenderer.removeListener("desktop:open-search", receive);
+  },
+  searchWeb: (text: string): Promise<void> => ipcRenderer.invoke("desktop:search-web", text),
+  onFind(listener: (action: 'open' | 'next' | 'previous' | 'selection', text?: string) => void): () => void {
+    const receive = (_event: Electron.IpcRendererEvent, action: unknown, text: unknown) => {
+      if (action === 'open' || action === 'next' || action === 'previous' || action === 'selection') listener(action, typeof text === 'string' && text ? text : undefined);
+    };
+    ipcRenderer.on("desktop:find", receive);
+    return () => ipcRenderer.removeListener("desktop:find", receive);
   },
   revealProject: (channelId: string): Promise<void> => ipcRenderer.invoke("desktop:reveal-project", channelId),
   onRevealProject(listener: (channelId: string) => void): () => void {

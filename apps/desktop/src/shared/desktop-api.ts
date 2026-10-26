@@ -186,6 +186,7 @@ export type StartThreadInput = Readonly<{ title: string; clientThreadId: string;
 export type DesktopLocalDraft = Readonly<{ text: string; attachments: readonly DesktopAttachment[] }>;
 /** A page the agent opened ('read') or a link its reply cites ('cited'). */
 export type DesktopMessageSource = Readonly<{ url: string; kind: 'read' | 'cited' }>;
+export type FindAction = 'open' | 'next' | 'previous' | 'selection';
 /** A native context-menu entry. `id` comes back when the user chooses the item. */
 export type ContextMenuItem = Readonly<{ id: string; label: string; enabled?: boolean } | { separator: true }>;
 export type BranchResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
@@ -281,8 +282,14 @@ export interface HermesDesktopApi {
   searchLabel(label: string): Promise<void>;
   /** The main window receives label searches requested by Session pages. */
   onSearchLabel(listener: (label: string) => void): () => void;
-  /** The main window receives Cmd+K (`all`) and Shift+Cmd+F (`files`) from every page, so the search covers the whole window. */
-  onOpenSearch?(listener: (scope: 'all' | 'files') => void): () => void;
+  /** The main window receives Cmd+K (`all`) and Shift+Cmd+F (`files`) from every page, so the search covers the whole window.
+   * `text` is the selected text when the page's right-click menu asks for the search. */
+  onOpenSearch?(listener: (scope: 'all' | 'files', text?: string) => void): () => void;
+  /** Searches the web for the selected text (Shift+Cmd+E), in the page's browser panel. */
+  searchWeb?(text: string): Promise<void>;
+  /** A tab page receives find-in-page requests: Cmd+F (`open`), Cmd+G (`next`), Shift+Cmd+G (`previous`),
+   * Cmd+E (`selection`) and the right-click menu (`open` with the selected text). */
+  onFind?(listener: (action: FindAction, text?: string) => void): () => void;
   /** A Session page asks the main window's sidebar to show this Project. */
   revealProject(channelId: string): Promise<void>;
   /** The main window receives Project reveal requests from Session pages. */

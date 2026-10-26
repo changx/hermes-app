@@ -17,6 +17,7 @@ import { DesktopConnections } from "./connections";
 import { attachmentInputs } from '../shared/attachment-input';
 import { DesktopTabManager } from './tab-manager';
 import { contextMenuItems, menuPosition } from './context-menu';
+import { pageMenuEntries, searchText, webSearchUrl, type PageMenuAction } from './page-menu';
 import { DesktopSettingsWindow } from './settings-window';
 import { DesktopAppIcon } from './app-icon';
 import { SessionCardWindow, sessionCardRequest } from './session-card-window';
@@ -101,6 +102,33 @@ const service = new DesktopConnections((snapshot) => {
   }
 });
 
+/** Opens a web link in the browser panel of the sender's tab (or of the active tab), else in the system browser. */
+const openWebLink = (contents: Electron.WebContents, url: string) => {
+  try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
+    if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+  } catch { /* Reject unsupported schemes and embedded credentials. */ }
+};
+/** The right-click menu of the main window and the tab pages: copy, web search, find in page, Hermes search. */
+const attachPageMenu = (contents: Electron.WebContents): void => {
+  contents.on('context-menu', (_event, params) => {
+    const owner = mainWindow, manager = tabs;
+    if (!owner || owner.isDestroyed() || !manager || contents.isDestroyed()) return;
+    const entries = pageMenuEntries(params, !!manager.findTarget(contents));
+    const run = (action: PageMenuAction) => {
+      if (contents.isDestroyed() || manager !== tabs) return;
+      // Edit commands act on the focused page; the right-click target may not have the focus yet.
+      if (['cut', 'copy', 'paste', 'select-all'].includes(action)) contents.focus();
+      if (action === 'cut') contents.cut(); else if (action === 'copy') contents.copy(); else if (action === 'paste') contents.paste();
+      else if (action === 'select-all') contents.selectAll(); else if (action === 'copy-link') clipboard.writeText(params.linkURL);
+      else if (action === 'search-web') { const url = webSearchUrl(params.selectionText); if (url) openWebLink(contents, url); }
+      else if (action === 'find') manager.find(contents, 'open', searchText(params.selectionText) || undefined);
+      else manager.openSearch('all', searchText(params.selectionText) || undefined);
+    };
+    // The accelerators are shown only; tab-manager.ts and the pages handle the keys.
+    Menu.buildFromTemplate(entries.map(entry => 'separator' in entry ? { type: 'separator' as const }
+      : { label: entry.label, enabled: entry.enabled !== false, accelerator: entry.accelerator, registerAccelerator: false, click: () => run(entry.action) })).popup({ window: owner });
+  });
+};
 const trustedSender = (event: Electron.IpcMainInvokeEvent): void => {
   if (event.senderFrame !== event.sender.mainFrame) throw new Error("Untrusted desktop request");
   // Reached only through the Settings channel allowlist in registerDesktopApi.
@@ -337,6 +365,11 @@ const registerDesktopApi = (): void => {
   });
   // A Session page's status bar label: the main window opens its search with that label. Only the label text crosses windows.
   // The search dialog hides the Session view, so the main window's own page takes the keyboard focus.
+  // Shift+Cmd+E in a page: search the web for the selected text, in that page's browser panel.
+  handle("desktop:search-web", (event, value: unknown) => {
+    trustedSender(event); if (event.sender !== mainWindow?.webContents && !tabs?.sender(event.sender)) throw new Error('Shell action required');
+    const url = webSearchUrl(text(value, 4000)); if (url) openWebLink(event.sender, url);
+  });
   handle("desktop:search-label", (event, label: unknown) => {
     trustedSender(event); const value = text(label, 1024);
     if (!value.trim() || !mainWindow || mainWindow.isDestroyed()) return;
@@ -512,11 +545,6 @@ const createMainWindow = (): BrowserWindow => {
       return browserPartition(tab?.connectionKey, channel);
     },
   });
-  const openWebLink = (contents: Electron.WebContents, url: string) => {
-    try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
-      if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
-    } catch { /* Reject unsupported schemes and embedded credentials. */ }
-  };
   tabs = new DesktopTabManager(window, service, __dirname, contents => {
     contents.session.setPermissionCheckHandler(() => false);
     contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -524,6 +552,7 @@ const createMainWindow = (): BrowserWindow => {
     contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url); return { action: 'deny' }; });
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
+    attachPageMenu(contents);
   }, browser, () => settingsWindow.open(), () => browserControl?.sync());
   window.on('focus', () => { browserControl?.sync(); tabs?.windowFocused(); }); window.on('blur', () => browserControl?.sync());
 
@@ -540,6 +569,7 @@ const createMainWindow = (): BrowserWindow => {
     if (!isSameDocumentNavigation(window.webContents.getURL(), url)) event.preventDefault();
   });
   window.webContents.on("will-redirect", (event) => event.preventDefault());
+  attachPageMenu(window.webContents);
   window.once("ready-to-show", () => { window.show(); sessionCard.prepare(); });
   // The card belongs to a row at a fixed place; any window change closes it.
   for (const name of ['blur', 'move', 'resize', 'minimize', 'hide', 'enter-full-screen', 'leave-full-screen'] as const) window.on(name as 'blur', () => sessionCard.hide());

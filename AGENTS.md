@@ -128,6 +128,7 @@
 - [docs/message-toolbar-release-0.1.46.md](docs/message-toolbar-release-0.1.46.md)
 - [docs/desktop-browser-window.md](docs/desktop-browser-window.md)
 - [docs/desktop-session-search.md](docs/desktop-session-search.md)
+- [docs/desktop-page-menu.md](docs/desktop-page-menu.md)（页面右键菜单：复制、Web 搜索、页内搜索、全局搜索；Cmd+F/G/E、Shift+Cmd+E 快捷键）
 - [docs/desktop-session-menu.md](docs/desktop-session-menu.md)
 - [docs/desktop-session-status-bar.md](docs/desktop-session-status-bar.md)（Session 页底部状态栏：连接、Project、全部工具按钮和 labels；取代顶部浮动工具条）
 - [docs/desktop-automations.md](docs/desktop-automations.md)

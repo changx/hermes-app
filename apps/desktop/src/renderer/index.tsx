@@ -6,6 +6,7 @@ import { SettingsPage } from './settings';
 import { useDesktopSnapshot } from './desktop-store';
 import { initializeFontSize } from './font-preference';
 import { BrowserSidebar } from './browser-sidebar';
+import { FindBar } from './find-bar';
 
 initializeFontSize();
 
@@ -23,6 +24,7 @@ createRoot(root).render(
   <StrictMode>
     <ShellErrorBoundary>
       {settingsWindow ? <SettingsWindow /> : role === 'browser' ? <BrowserWindowPage /> : <DesktopShell />}
+      {role === 'tab' && <FindBar />}
     </ShellErrorBoundary>
   </StrictMode>,
 );

@@ -56,8 +56,15 @@ export class DesktopTabManager {
       // Cmd+K and Shift+Cmd+F open the search in the main window, so it covers the whole window from every page.
       // The search dialog hides the Session view, so the main window's own page takes the keyboard focus.
       if ((key === 'k' && !input.shift) || (key === 'f' && input.shift)) {
-        event.preventDefault(); if (this.window.isDestroyed()) return;
-        this.window.webContents.focus(); this.window.webContents.send('desktop:open-search', key === 'f' ? 'files' : 'all');
+        event.preventDefault(); this.openSearch(key === 'f' ? 'files' : 'all');
+        return;
+      }
+      // Find in page: Cmd+F opens the find bar, Cmd+G / Shift+Cmd+G go to the next / previous match,
+      // Cmd+E finds the selected text. From the main window they act on the active tab's page.
+      // Pages in the browser panel keep these keys for themselves.
+      if ((key === 'f' || key === 'g' || (key === 'e' && !input.shift)) && (contents === this.window.webContents || this.sender(contents))) {
+        const action = key === 'f' ? 'open' : key === 'e' ? 'selection' : input.shift ? 'previous' : 'next';
+        if (this.find(contents, action)) event.preventDefault();
         return;
       }
       if ((key === 't' || key === 'n') && this.service.snapshot().phase === 'connected') {
@@ -215,6 +222,23 @@ export class DesktopTabManager {
   dispose(): void { this.closed = true; for (const tab of [...this.tabs.values()]) this.destroy(tab); this.browser?.dispose(); this.baseline = undefined; }
   /** Window content position of the Session pages; a page's menu coordinates are relative to it. */
   contentOrigin(): { x: number; y: number } { return { x: this.bounds.x, y: this.bounds.y }; }
+  /** Opens the search of the main window, over the whole window. `text` fills the keyword. */
+  openSearch(scope: 'all' | 'files', text?: string): void {
+    if (this.window.isDestroyed()) return;
+    this.window.webContents.focus(); this.window.webContents.send('desktop:open-search', scope, text);
+  }
+  /** The page that shows the find bar for `contents`: its own tab page, or the active tab for the main window. */
+  findTarget(contents: WebContents): Tab | undefined {
+    const own = this.sender(contents);
+    const tab = own ?? (contents === this.window.webContents && this.activeTabId ? this.tabs.get(this.activeTabId) : undefined);
+    return tab && tab.id === this.activeTabId && this.bounds.visible && !tab.view.webContents.isDestroyed() ? tab : undefined;
+  }
+  /** Sends a find request to the page of `contents` and gives that page the keyboard focus. False when no page can find. */
+  find(contents: WebContents, action: 'open' | 'next' | 'previous' | 'selection', text?: string): boolean {
+    const tab = this.findTarget(contents); if (!tab) return false;
+    tab.view.webContents.focus(); tab.view.webContents.send('desktop:find', action, text);
+    return true;
+  }
   sender(contents: WebContents): Tab | undefined { return [...this.tabs.values()].find(tab => tab.view.webContents === contents); }
   authorize(contents: WebContents, frameUrl: string | undefined): Tab | undefined {
     if (frameUrl !== contents.getURL()) throw new Error('Untrusted desktop request');

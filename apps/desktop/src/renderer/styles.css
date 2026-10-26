@@ -904,3 +904,16 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .thread-todo { display: inline-flex; flex: none; color: #d9480f; }
 .thread-todo .app-icon { width: 14px; height: 14px; font-size: 13px; line-height: 14px; }
 .native-sidebar .sidebar-todo .sidebar-section-header { margin-top: 8px; }
+
+/* Find in page (Cmd+F) in a tab page: a floating bar at the top right; matches use the Custom Highlight API. */
+.find-bar { position: fixed; top: 10px; right: 16px; z-index: 50; display: flex; align-items: center; gap: 2px; width: min(360px, calc(100vw - 32px)); padding: 4px 4px 4px 10px; border: 1px solid var(--app-field-border); border-radius: 10px; background: #fff; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12); font-size: 13px; }
+.find-bar input { flex: 1; min-width: 0; padding: 4px 0; border: 0; outline: none; background: transparent; color: var(--app-text); font: inherit; }
+.find-bar input:focus, .find-bar input:focus-visible { outline: none; }
+.find-bar input::-webkit-search-cancel-button { display: none; }
+.find-bar-count { flex: none; padding: 0 6px; color: var(--app-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.find-bar-button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); font: inherit; font-size: 16px; cursor: pointer; }
+.find-bar-button:hover:not(:disabled) { background: var(--app-hover); color: var(--app-text); }
+.find-bar-button:disabled { opacity: 0.4; cursor: default; }
+.find-bar-previous .app-icon { display: inline-block; transform: rotate(180deg); }
+::highlight(hermes-find) { background-color: #fde68a; color: inherit; }
+::highlight(hermes-find-current) { background-color: #f59e0b; color: #111827; }

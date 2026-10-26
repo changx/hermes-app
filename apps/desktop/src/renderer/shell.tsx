@@ -14,6 +14,7 @@ import { workGroups, workIsExpanded, type WorkChoice, type WorkGroup } from "../
 import { chatClock, chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from "../../../../packages/client/src/chatPresentation";
 import { compactToolCaption, toolPresentation } from "../../../../packages/client/src/toolPresentation";
 import { SessionPicker, type SearchScope } from './session-picker';
+import { pageSelection } from './find-bar';
 import { SessionFilesPanel } from './session-files-panel';
 import { emptySessionQuery, type SessionQuery } from '../../../../packages/client/src/sessionSearch';
 import { NativeWorkspace } from './native-workspace';
@@ -410,12 +411,14 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       // Session pages never open their own search: the main process sends Cmd+K to the main window (desktop:open-search).
       if (viewRole === 'workspace' && event.key.toLocaleLowerCase() === "k" && !event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette" }); }
       if (viewRole === 'workspace' && event.key.toLocaleLowerCase() === "f" && event.shiftKey) { event.preventDefault(); setEditor({ kind: "palette", scope: "files" }); }
+      // Shift+Cmd+E searches the web for the selected text, in this page's browser panel.
+      if (event.key.toLocaleLowerCase() === "e" && event.shiftKey) { const text = pageSelection().trim(); const search = window.hermesDesktop.searchWeb; if (text && search) { event.preventDefault(); safely(search(text.slice(0, 4000))); } return; }
       if (event.key.toLocaleLowerCase() === "n" && snapshot.channels.length) { event.preventDefault(); safely(window.hermesDesktop.newTab(snapshot.selectedChannelId)); }
     };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, [snapshot.selectedChannelId, snapshot.channels.length, editor, viewRole]);
   // Cmd+K from any page opens the search in the main window, over the whole window.
-  useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onOpenSearch?.(scope => setEditor({ kind: "palette", scope })) : undefined, [viewRole]);
+  useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onOpenSearch?.((scope, text) => setEditor({ kind: "palette", scope, query: text ? { ...emptySessionQuery(), text } : undefined })) : undefined, [viewRole]);
   // A Session page's label click opens the search in the main window with that label.
   useEffect(() => viewRole === 'workspace' ? window.hermesDesktop.onSearchLabel?.(label => setEditor({ kind: "palette", query: { ...emptySessionQuery(), labels: [label] } })) : undefined, [viewRole]);
   // Shift+Cmd+L arrives from the main process for the active Session page only. It acts like a click on the flag button.
