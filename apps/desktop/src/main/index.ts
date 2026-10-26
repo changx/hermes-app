@@ -572,6 +572,8 @@ const createMainWindow = (): BrowserWindow => {
   });
   window.webContents.on("will-redirect", (event) => event.preventDefault());
   attachPageMenu(window.webContents);
+  // The title comes from the active tab (tab-manager.ts), not from the page's <title>.
+  window.on("page-title-updated", (event) => event.preventDefault());
   window.once("ready-to-show", () => { window.show(); sessionCard.prepare(); });
   // The card belongs to a row at a fixed place; any window change closes it.
   for (const name of ['blur', 'move', 'resize', 'minimize', 'hide', 'enter-full-screen', 'leave-full-screen'] as const) window.on(name as 'blur', () => sessionCard.hide());

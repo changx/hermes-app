@@ -19,7 +19,7 @@ const { DesktopTabManager } = mod.exports;
 function fixture() {
   const views = [], closed = [], snapshot = { revision: 1, phase: 'connected', connectionKey: 'identity', channels: [{ id:'p', name:'Project' }],
     threads: ['a','b'].map(id=>({id, channelId:'p', title:id, running:false})), messages: [], interactions: [], canLoadOlder: false };
-  const window = { webContents: new Contents(), contentView: { addChildView(v){views.push(v);}, removeChildView(v){views.splice(views.indexOf(v),1);} }, isDestroyed:()=>false, getContentSize:()=>[1280,820] };
+  const window = { webContents: new Contents(), contentView: { addChildView(v){views.push(v);}, removeChildView(v){views.splice(views.indexOf(v),1);} }, isDestroyed:()=>false, getContentSize:()=>[1280,820], title:'Hermes', getTitle(){return this.title;}, setTitle(value){this.title=value;} };
   const service = { snapshot(id){return {...snapshot, selectedThreadId:id ?? snapshot.selectedThreadId, messages:id ? [{id:`${id}-message`,role:'assistant',text:id,toolCalls:[],attachments:[]}] : []};},
     selectThread(id){snapshot.selectedThreadId=id; manager.sync(snapshot); return Promise.resolve();}, deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);},
     closeSessionPage(id){closed.push(id);manager.sync(snapshot);},

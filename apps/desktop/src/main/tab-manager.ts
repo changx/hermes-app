@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DesktopSnapshot, DesktopTabKind } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
+import { windowTitle } from './window-title';
 import type { DesktopConnections } from './connections';
 import type { DesktopBrowserSidebar } from './browser-sidebar';
 
@@ -302,6 +303,9 @@ export class DesktopTabManager {
     if (this.closed || this.window.isDestroyed()) return;
     this.revision++; this.layout();
     const shell = this.snapshot();
+    // The window title bar shows the active tab's title (the Session title); "Hermes" with no tab.
+    const title = windowTitle(shell.tabs?.find(tab => tab.id === shell.activeTabId)?.title);
+    if (this.window.getTitle() !== title) this.window.setTitle(title);
     this.window.webContents.send('desktop:snapshot', this.baseline ? snapshotDelta(this.baseline, shell) : shell); this.baseline = shell;
     for (const tab of this.tabs.values()) {
       if (tab.view.webContents.isDestroyed()) continue;

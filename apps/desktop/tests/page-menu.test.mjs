@@ -57,3 +57,11 @@ test('Cmd+click: background-tab requests open http and https links without crede
   assert.equal(isSystemBrowserUrl('http://example.org/'), true);
   for (const url of ['https://user:pw@example.com/', 'file:///etc/passwd', 'javascript:alert(1)', 'hermesapp://session/th_x', 'mailto:a@b.c', 'not a url']) assert.equal(isSystemBrowserUrl(url), false, url);
 });
+
+test('window title: the active tab title on one line, at most 200 characters; Hermes without a tab', async () => {
+  const { windowTitle } = await load('../src/main/window-title.ts');
+  assert.equal(windowTitle(' OceanPay\n compliance '), 'OceanPay compliance');
+  assert.equal(windowTitle(undefined), 'Hermes');
+  assert.equal(windowTitle('   '), 'Hermes');
+  assert.equal(windowTitle('寻'.repeat(250)), '寻'.repeat(200));
+});

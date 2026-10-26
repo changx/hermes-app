@@ -30,6 +30,15 @@ Requested by Jamie (2026-10-25): "再给桌面端增加一个 cmd+click 点击�
 - Only `http` and `https` links without a user name or password open. Session links (`hermesapp://`) still open in the app.
 - How: Chromium reports Cmd+click (Ctrl+click on Linux and Windows) and a middle click as a `background-tab` window request. `opensInSystemBrowser` and `isSystemBrowserUrl` in `src/main/security.ts`; used by `openWebLink` in `index.ts` and by the browser pane's window-open handler in `browser-sidebar.ts`.
 
+## Window title
+
+Requested by Jamie (2026-10-25): "当前 active 的 session title 显示在 window title bar 上。"
+
+- The main window's title bar shows the title of the active tab: the Session title, "New chat", "New automation", an automation's name or "Automations". With no open tab it shows "Hermes".
+- The title follows a rename, a generated title and every tab switch. It is one line, at most 200 characters; macOS shortens it to fit the bar.
+- The page's own `<title>` does not replace it (`page-title-updated` is ignored on the main window).
+- How: `DesktopTabManager.publish()` sets the title from the active tab of the main-window snapshot (`windowTitle` in `src/main/window-title.ts`).
+
 ## Shortcuts
 
 | Keys | Action |
@@ -66,10 +75,10 @@ Cmd+F, Cmd+G and Cmd+E work from the main window too; they act on the active tab
 
 ## Verification
 
-- `tests/page-menu.test.mjs`: menu entries for selection, no selection, text fields, links, long text; web search URL; the Cmd+click rule (disposition and allowed URLs).
-- `tests/page-menu-native.test.mjs` (Electron/Xvfb, `HERMES_TEST_ELECTRON=1`): production main process, preload and renderer with real right-click and key input. It checks the menu items and their shortcuts; Copy writes the clipboard; web search opens Google in that tab's browser panel; Find from the menu fills the bar, finds 3 case-insensitive matches including a bold-split word; Cmd+G, Shift+Cmd+G and Enter move and wrap; no results; a new message is counted; Esc clears the highlights; Cmd+F from the main window focuses the bar in the Session page; Cmd+E finds the selection; Shift+Cmd+E searches the web; Search Hermes opens the main window search with the text; the composer gets Cut/Copy/Paste/Select All; sidebar rows keep their own menu; a main-window Find in Page opens in the Session page; Cmd+click and middle click on message links open the system browser, a plain click uses the browser panel. The native popup is captured, because Xvfb cannot click it.
+- `tests/page-menu.test.mjs`: menu entries for selection, no selection, text fields, links, long text; web search URL; the Cmd+click rule (disposition and allowed URLs); the window title rule.
+- `tests/page-menu-native.test.mjs` (Electron/Xvfb, `HERMES_TEST_ELECTRON=1`): production main process, preload and renderer with real right-click and key input. It checks the menu items and their shortcuts; Copy writes the clipboard; web search opens Google in that tab's browser panel; Find from the menu fills the bar, finds 3 case-insensitive matches including a bold-split word; Cmd+G, Shift+Cmd+G and Enter move and wrap; no results; a new message is counted; Esc clears the highlights; Cmd+F from the main window focuses the bar in the Session page; Cmd+E finds the selection; Shift+Cmd+E searches the web; Search Hermes opens the main window search with the text; the composer gets Cut/Copy/Paste/Select All; sidebar rows keep their own menu; a main-window Find in Page opens in the Session page; Cmd+click and middle click on message links open the system browser, a plain click uses the browser panel; the window title shows the active Session, follows a rename, ignores the page title, and changes for another Session, New chat and no tab. The native popup is captured, because Xvfb cannot click it.
 - `tests/browser-sidebar-native.test.mjs`: Cmd+click on a link in a web page in the browser panel opens the system browser, and the pane keeps its page.
-- Both native Cmd+click checks fail without the product change (red check run).
+- The native Cmd+click and window-title checks fail without the product change (red check run).
 
 ## Limits
 
@@ -79,4 +88,4 @@ Cmd+F, Cmd+G and Cmd+E work from the main window too; they act on the active tab
 
 ## Candidate status
 
-Branch `feat/desktop-page-context-menu` (base `13a4157`, equal to `origin/main`), with the right-click menu, the find bar and Cmd+click. Full desktop suite with Chromium and Electron on the final tree: 254 tests, 254 passed, 0 failed, 0 skipped. (An earlier run of the menu-only tree had 1 failure, `browser-window-native` with the known flake signature `UnknownVizError` after `CHECK window A back`; it passed 5 of 5 runs alone.) Logs: Channel workspace `desktop-page-menu/`. Not released. Device acceptance on Jamie's Mac is pending.
+Branch `feat/desktop-page-context-menu` (base `13a4157`, equal to `origin/main`), with the right-click menu, the find bar, Cmd+click and the window title. Full desktop suite with Chromium and Electron on the final tree: 255 tests, 254 passed, 0 skipped, 1 failure: `native-electron` at `CHECK native view tracks drag 380`. That step also fails on the base (2 of 5 runs alone; candidate 1 of 3 alone), so it is not caused by this branch. The previous run of the Cmd+click tree had 254 of 254. Logs: Channel workspace `desktop-page-menu/`. Not released. Device acceptance on Jamie's Mac is pending.

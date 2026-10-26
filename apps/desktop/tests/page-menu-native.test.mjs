@@ -54,6 +54,12 @@ const findState=contents=>evaluate(contents,'({open:!!document.querySelector(".f
  await evaluate(shell,'window.hermesDesktop.selectThread("'+a+'")');const tab=[...manager.tabs.values()][0],ac=tab.view.webContents;
  await until(()=>evaluate(ac,'document.querySelectorAll(".message-assistant").length===12'),'session A history');
  const modifier=process.platform==='darwin'?'meta':'control';
+ // 0. The window title bar shows the active Session's title, and follows a rename.
+ await until(()=>window.getTitle()==='Session A','window title is the Session title');
+ client.threads.set(a,{...client.threads.get(a),title:'  Renamed\n session A '});service.changed();
+ await until(()=>window.getTitle()==='Renamed session A','window title follows a rename (one line)');
+ // The page <title> does not replace it.
+ await evaluate(shell,'document.title="Page title"');await new Promise(r=>setTimeout(r,200));assert.equal(window.getTitle(),'Renamed session A');
 
  // 1. Selected message text: Copy, then the three searches with their shortcuts.
  assert.equal(await select(ac,'.message-assistant','rollout notes'),'rollout notes');
@@ -95,7 +101,7 @@ const findState=contents=>evaluate(contents,'({open:!!document.querySelector(".f
  key(ac,'Escape');await until(async()=>!(await findState(ac)).open,'closed');
  // Cmd+E finds the selected text.
  await select(ac,'.message-assistant','compliance');key(ac,'E',[modifier]);
- await until(async()=>{const s=await findState(ac);return s.value==='compliance'&&s.count==='1 of 1';},'Cmd+E finds the selection');
+ await until(async()=>{const s=await findState(ac);return s.value==='compliance'&&s.count==='1 of 1'&&s.focused;},'Cmd+E finds the selection');
  key(ac,'Escape');await until(async()=>!(await findState(ac)).open,'closed again');
 
  // 4. Shift+Cmd+E searches the web for the selection.
@@ -139,6 +145,11 @@ const findState=contents=>evaluate(contents,'({open:!!document.querySelector(".f
  await click('http://example.org/plain','middle');await until(()=>external.length===2,'middle click opens the system browser');assert.equal(external[1],'http://example.org/plain');
  await click('https://example.com/docs','left');await until(()=>opened.length===panel+1,'plain click uses the browser panel');
  assert.deepEqual(opened.at(-1),[tab.id,'https://example.com/docs']);assert.equal(external.length,2,'plain click does not open the system browser');
+ // 9. Window title per active tab: another Session, New chat, and no tab.
+ await evaluate(shell,'window.hermesDesktop.selectThread("'+b+'")');await until(()=>window.getTitle()==='Session B','window title after switching to Session B');
+ await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');await until(()=>window.getTitle()==='Renamed session A','window title back on Session A');
+ await evaluate(shell,'window.hermesDesktop.newTab("p")');await until(()=>window.getTitle()==='New chat','window title for New chat');
+ for(const id of [...manager.tabs.keys()])manager.close(id);await until(()=>window.getTitle()==='Hermes','window title with no tab');
  console.log('PAGE_MENU_OK '+JSON.stringify({menus:menus.length,panelOpens:opened.length,systemBrowser:external.length}));app.exit(0);
 })().catch(error=>{console.error(error.stack);app.exit(1)});
 `;
