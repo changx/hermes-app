@@ -98,8 +98,25 @@ Request (Jamie): Markdown attachments must look like reply text, including table
 - Difference from replies: a preview shows images. Web images and plain file names of image attachments in the same Session (PNG, JPEG, GIF, WebP) are allowed; replies still show `[Image: …]`.
 - Files above 1 MiB show as plain text. If the script cannot run, the source text appears after 1.5 s.
 - Replies: the app page did not load KaTeX CSS, so formulas in replies had no KaTeX layout. `katex.css` and the woff2 fonts are now part of the renderer build and loaded by `index.html`.
-- Same as replies, by design: headings H1–H3 use the body font size (bold), and a Mermaid diagram scales to the full width.
+- A Mermaid diagram scales to the full width, as in replies. Headings: see "Document typography" below.
 
 Verification: `desktop:check` (Chromium + Electron/Xvfb) 137/137. The Electron test opens a Markdown attachment with a table, inline and display formulas, a Mermaid diagram, a JS code block, a task list, a sibling image, `<script>` and an `onerror` image. It checks the reply table layout, KaTeX CSS and font loaded, the diagram SVG, the image, that only the app script exists, no injected code ran, no horizontal overflow, and that the page cannot fetch other app files. It also checks that a formula in a chat reply uses KaTeX CSS. Jamie's real `REPORT.md` renders through the same component (14 headings, 1 table with 8 rows, 11 lists). macOS visual check is still open.
 
 Release v0.1.50 (2026-10-08, authorized by Jamie: "合并发布"): `main` fast-forwarded `26c544d..2012436`, tag `v0.1.50`, tag run 37766563230 succeeded. Release `Hermes-0.1.50-macOS-arm64.zip`: checksum OK, Info.plist 0.1.50; ASAR main, preload, renderer `index.js`/`index.html`/`styles.css`/`katex.css`/`markdown-preview.js` byte-identical to the local build; 20 KaTeX fonts included. Desktop-only: Expo, plugin and Gateway not touched. Rollback: `v0.1.49`. macOS visual check still open.
+
+## Desktop Markdown preview: document typography (2026-10-26)
+
+Report (Jamie): Markdown file previews on desktop render badly.
+
+Cause: the preview page loads the app's `styles.css`. That file resets `h1`–`h3` to the body size with no margin (app chrome) and uses the compact chat-reply rules. Measured in Chromium before the fix: H1, H2, H3 and H4 all 16 px like the body; H1–H3 margin 0; blockquote with no rule or colour (only a 40 px indent); default inset `hr`; table cells with 2 px side padding and equal fixed-width columns; code at body size.
+
+Fix (desktop only, scoped to `main.markdown-preview`; chat replies do not change):
+
+- Headings: H1 1.85em, H2 1.45em (both with a bottom rule), H3 1.2em, H4 1.05em, H5 1em, H6 0.9em muted; weight 650; margin 1.6em above, 0.6em below.
+- Body: line height 1.65; blocks 1em apart; list items 0.3em apart; task lists without bullets.
+- Blockquote: 4 px left rule, muted text. `hr`: one 1 px line.
+- Tables: columns size to the content (`table-layout: auto`), cells 6 px × 13 px, light header and striped rows. GFM column alignment is kept. The table still scrolls inside its region.
+- Code: inline and block code at 0.875em; blocks have 14 × 16 px padding.
+- Page: maximum width 880 px; side padding `clamp(16px, 4vw, 32px)`.
+
+Verification: `tests/browser-sidebar-native.test.mjs` now checks H1 > H2 > body size and the blockquote rule (it checked body-size headings before). Computed styles in Chromium at 720 px after the fix: H1 29.6 px, H2 23.2 px, H3 19.2 px, H4 16.8 px, body 16 px, code 14 px, blockquote rule 4 px, cells 6 × 13 px.

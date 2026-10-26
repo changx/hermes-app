@@ -60,7 +60,7 @@ export function markdownPage(name: string, text: string): { html: string; csp: s
   const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title>`
     + `<link rel="stylesheet" href="${asset}katex.css"><link rel="stylesheet" href="${asset}styles.css">`
     + '<style>html,body{height:auto;min-height:0;overflow:auto;background:white}body{min-width:0}'
-    + '.markdown-preview{max-width:900px;margin:0 auto;padding:16px 14px 48px}.markdown-preview .message-markdown img{max-width:100%;height:auto}'
+    + '.markdown-preview{max-width:880px;margin:0 auto;padding:24px clamp(16px,4vw,32px) 64px}'
     + '.markdown-source{visibility:hidden;animation:markdown-fallback 0s 1.5s forwards;white-space:pre-wrap;font:13px/1.5 ui-monospace,Menlo,monospace}@keyframes markdown-fallback{to{visibility:visible}}</style>'
     + `<main class="message message-assistant markdown-preview"><div id="markdown-root"><pre class="markdown-source">${escapeHtml(text)}</pre></div></main>`
     + `<script type="application/json" id="hermes-markdown">${json}</script><script nonce="${key}" src="${asset}markdown-preview.js"></script>`;
