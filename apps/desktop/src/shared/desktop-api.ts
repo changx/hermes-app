@@ -287,6 +287,8 @@ export interface HermesDesktopApi {
   revealProject(channelId: string): Promise<void>;
   /** The main window receives Project reveal requests from Session pages. */
   onRevealProject?(listener: (channelId: string) => void): () => void;
+  /** The main window receives the sidebar shortcut (Cmd+B) from every page. */
+  onToggleSidebar?(listener: () => void): () => void;
   /** A Session page receives this when the app window becomes active. */
   onFocusComposer?(listener: () => void): () => void;
   /** The active Session page receives this for the todo shortcut (Shift+Cmd+L). */

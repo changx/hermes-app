@@ -101,6 +101,10 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   }, []);
   const threadsById = new Map(snapshot.threads.map(thread => [thread.id, thread]));
   const invoke = (operation: Promise<void>) => { setError(''); void operation.catch(() => setError('The tab action could not be completed. Try again.')); };
+  // The edge button and Cmd+B: a narrow window with an open preview closes the preview to make room for the sidebar.
+  const toggleSidebar = () => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); };
+  const latestToggleSidebar = useRef(toggleSidebar); latestToggleSidebar.current = toggleSidebar;
+  useEffect(() => window.hermesDesktop.onToggleSidebar?.(() => { if (!document.querySelector('dialog[open]')) latestToggleSidebar.current(); }), []);
   // One IPC per real change: the effect re-runs and the ResizeObserver often report the same rectangle.
   const sentBounds = useRef('');
   useEffect(() => {
@@ -127,7 +131,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
     window.addEventListener('keydown', keyboard); return () => window.removeEventListener('keydown', keyboard);
   }, [snapshot.activeTabId, snapshot.phase, snapshot.selectedChannelId]);
   return <div ref={shell} style={{ '--sidebar-width': `${sidebarWidth}px`, '--browser-width': `${browserWidth}px` } as CSSProperties} className={`desktop-shell native-workspace ${sidebarHidden ? 'sidebar-collapsed' : ''} ${browserOpen ? 'browser-open' : ''} ${dragging === 'sidebar' ? 'sidebar-resizing' : ''} ${dragging === 'browser' ? 'browser-resizing' : ''}`}>
-    <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} onClick={() => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); }}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
+    <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} title={`${sidebarHidden ? 'Expand' : 'Collapse'} sidebar (⌘B)`} onClick={toggleSidebar}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
       <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} onSearch={onSearch} reveal={reveal} />
     </aside>}

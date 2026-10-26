@@ -74,6 +74,7 @@ function Shortcuts() {
     ['Find a session', [modifier, 'K']], ['New chat', [modifier, 'N']],
     ['New tab', [modifier, 'T']], ['Close current tab', [modifier, 'W']],
     ['Next tab', [modifier, 'Tab']], ['Previous tab', [modifier, 'Shift', 'Tab']],
+    ['Show or hide sidebar', [modifier, 'B']],
     ['Mark or remove todo', [modifier, 'Shift', 'L']],
     ['Paste text or files', [modifier, 'V']], ['Open Settings', [modifier, ',']], ['Close Settings or dialog', ['Esc']],
   ] as const;

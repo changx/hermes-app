@@ -68,6 +68,7 @@ New chat 打开完整标签页，提供多行正文、附件选择/拖放及 Pro
 - 所有 Running Session 均展示，不受近 72 小时（2026-10-12 前为 24 小时）及初始 24 条窗口限制。
 - 非 Running Session 使用最近活动窗口；筛选时采用全时段目录，并按 24 条逐批 Show more。
 - 浮动折叠按钮保持 sidebar 边缘位置，折叠后同步调整原生 View bounds。
+- Cmd+B（其他平台 Ctrl+B）显示或隐藏左侧 sidebar，效果与浮动折叠按钮相同。焦点在主窗口、Session 页面或预览栏时都有效：主进程收到按键后发 `desktop:toggle-sidebar` 给主窗口。主窗口有打开的对话框时不响应。按钮 tooltip 显示 `Collapse sidebar (⌘B)` 或 `Expand sidebar (⌘B)`。Settings 的 Shortcuts 列出 `Show or hide sidebar`。
 
 ## 右侧预览栏宽度
 

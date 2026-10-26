@@ -80,6 +80,11 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:reveal-project", receive);
     return () => ipcRenderer.removeListener("desktop:reveal-project", receive);
   },
+  onToggleSidebar(listener: () => void): () => void {
+    const receive = () => listener();
+    ipcRenderer.on("desktop:toggle-sidebar", receive);
+    return () => ipcRenderer.removeListener("desktop:toggle-sidebar", receive);
+  },
   onFocusComposer(listener: () => void): () => void {
     const receive = () => listener();
     ipcRenderer.on("desktop:focus-composer", receive);

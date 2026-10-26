@@ -141,6 +141,13 @@ async function input(contents,label,text){await evaluate(contents,'(()=>{const e
  await until(()=>evaluate(shell,'document.querySelector(".palette input")?.placeholder==="Search files or labels…"'),'Shift+Cmd+F file search in the main window');
  assert.equal(await evaluate(dc,'!!document.querySelector(".palette")'),false,'no file search inside the Session page');
  await closeSearch();
+ // Cmd+B (Ctrl+B here) in a Session page or in the main window hides and shows the main window's left sidebar.
+ const sidebarShown=()=>evaluate(shell,'!!document.querySelector(".native-sidebar")');
+ assert.equal(await sidebarShown(),true);
+ dc.focus();dc.sendInputEvent({type:'keyDown',keyCode:'B',modifiers:[modifier]});dc.sendInputEvent({type:'keyUp',keyCode:'B',modifiers:[modifier]});
+ await until(async()=>!(await sidebarShown())&&await evaluate(shell,'document.querySelector(".sidebar-edge-toggle").getAttribute("aria-expanded")==="false"'),'Cmd+B in a Session page hides the sidebar');
+ shell.focus();shell.sendInputEvent({type:'keyDown',keyCode:'B',modifiers:[modifier]});shell.sendInputEvent({type:'keyUp',keyCode:'B',modifiers:[modifier]});
+ await until(sidebarShown,'Cmd+B in the main window shows the sidebar again');
  // Session B's Project name shows that Project in the main window's sidebar.
  assert.equal(await evaluate(bc,'document.querySelector(".status-project").textContent'),'Project Beta');
  await evaluate(bc,'document.querySelector(".status-project").click()');
