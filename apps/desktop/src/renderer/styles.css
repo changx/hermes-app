@@ -914,6 +914,6 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .find-bar-button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); font: inherit; font-size: 16px; cursor: pointer; }
 .find-bar-button:hover:not(:disabled) { background: var(--app-hover); color: var(--app-text); }
 .find-bar-button:disabled { opacity: 0.4; cursor: default; }
-.find-bar-previous .app-icon { display: inline-block; transform: rotate(180deg); }
+.find-bar-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 ::highlight(hermes-find) { background-color: #fde68a; color: inherit; }
 ::highlight(hermes-find-current) { background-color: #f59e0b; color: #111827; }

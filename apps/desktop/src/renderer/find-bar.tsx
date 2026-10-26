@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FindAction } from '../shared/desktop-api';
-import { Icon } from './icons';
 
 /**
  * Find in page for the app's own tab pages. The matches are painted with the CSS Custom Highlight API,
@@ -84,6 +83,9 @@ export function pageSelection(): string {
 }
 const oneLine = (value: string) => value.replace(/\s+/g, ' ').trim().slice(0, 500);
 
+const FindIcon = ({ d }: { d: string }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={d} /></svg>;
+const UP = 'M5 12.5l5-5 5 5', DOWN = 'M5 7.5l5 5 5-5', CLOSE = 'M5.5 5.5l9 9M14.5 5.5l-9 9';
+
 export function FindBar() {
   const [open, setOpen] = useState(false), [query, setQuery] = useState(''), [count, setCount] = useState(0), [current, setCurrent] = useState(0);
   const bar = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), ranges = useRef<Range[]>([]);
@@ -149,8 +151,8 @@ export function FindBar() {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
       }} />
     <span className="find-bar-count" aria-live="polite">{status}</span>
-    <button type="button" className="find-bar-button find-bar-previous" aria-label="Previous match" title="Previous match (⇧⌘G)" disabled={!count} onClick={() => step(-1)}><Icon name="chevronDown" /></button>
-    <button type="button" className="find-bar-button" aria-label="Next match" title="Next match (⌘G)" disabled={!count} onClick={() => step(1)}><Icon name="chevronDown" /></button>
-    <button type="button" className="find-bar-button" aria-label="Close find" title="Close (Esc)" onClick={close}>×</button>
+    <button type="button" className="find-bar-button" aria-label="Previous match" title="Previous match (⇧⌘G)" disabled={!count} onClick={() => step(-1)}><FindIcon d={UP} /></button>
+    <button type="button" className="find-bar-button" aria-label="Next match" title="Next match (⌘G)" disabled={!count} onClick={() => step(1)}><FindIcon d={DOWN} /></button>
+    <button type="button" className="find-bar-button" aria-label="Close find" title="Close (Esc)" onClick={close}><FindIcon d={CLOSE} /></button>
   </div>;
 }

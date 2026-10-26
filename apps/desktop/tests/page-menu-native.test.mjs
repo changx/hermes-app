@@ -68,6 +68,11 @@ const findState=contents=>evaluate(contents,'({open:!!document.querySelector(".f
  await select(ac,'.message-assistant','oceanpay');menu=await rightClick(ac,'selection');choose(menu,'Find “oceanpay”');
  await until(async()=>{const s=await findState(ac);return s.open&&s.value==='oceanpay'&&s.count==='1 of 3'&&s.focused&&s.all===2&&s.current==='OceanPay';},'find bar with 3 matches, first is the bold-split OceanPay');
  if(process.env.HERMES_NATIVE_EVIDENCE){const fs=require('node:fs');fs.mkdirSync(process.env.HERMES_NATIVE_EVIDENCE,{recursive:true});fs.writeFileSync(path.join(process.env.HERMES_NATIVE_EVIDENCE,'find-bar.png'),(await ac.capturePage()).toPNG());}
+ // Layout: the bar is inside the page at the top right; three 26 px buttons with 16 px icons; no overflow.
+ const layout=await evaluate(ac,'(()=>{const b=document.querySelector(".find-bar").getBoundingClientRect(),i=document.querySelector(".find-bar input");return {left:b.left,right:innerWidth-b.right,top:b.top,width:b.width,height:b.height,buttons:[...document.querySelectorAll(".find-bar-button")].map(e=>[e.getBoundingClientRect().width,e.querySelector("svg").getBoundingClientRect().width]),inputWidth:i.getBoundingClientRect().width}})()');
+ console.log('LAYOUT '+JSON.stringify(layout));
+ assert.ok(layout.left>0&&layout.right===16&&layout.top===10&&layout.width===360&&layout.height<=40&&layout.inputWidth>150,'find bar placement');
+ assert.deepEqual(layout.buttons,[[26,16],[26,16],[26,16]]);
  // Cmd+G / Shift+Cmd+G move through the matches (real key input in the Session page).
  key(ac,'G',[modifier]);await until(async()=>(await findState(ac)).count==='2 of 3','Cmd+G next');
  key(ac,'G',[modifier]);key(ac,'G',[modifier]);await until(async()=>(await findState(ac)).count==='1 of 3','Cmd+G wraps');
