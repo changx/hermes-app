@@ -69,6 +69,10 @@ New chat 打开完整标签页，提供多行正文、附件选择/拖放及 Pro
 - 非 Running Session 使用最近活动窗口；筛选时采用全时段目录，并按 24 条逐批 Show more。
 - 浮动折叠按钮保持 sidebar 边缘位置，折叠后同步调整原生 View bounds。
 - Cmd+B（其他平台 Ctrl+B）显示或隐藏左侧 sidebar，效果与浮动折叠按钮相同。焦点在主窗口、Session 页面或预览栏时都有效：主进程收到按键后发 `desktop:toggle-sidebar` 给主窗口。主窗口有打开的对话框时不响应。按钮 tooltip 显示 `Collapse sidebar (⌘B)` 或 `Expand sidebar (⌘B)`。Settings 的 Shortcuts 列出 `Show or hide sidebar`。
+- 发布（Jamie 授权「合并发布」）：功能提交 `681ae64`。v0.1.109（发布提交 `74989b4`）在 Mac mini 上测试全部通过，但 `npm audit` 因 2026-10-23 新公布的 advisory 失败，该 tag 没有 Release。修复提交 `f042835`：electron 固定为 44.9.3（GHSA-jr5w-w6x2-84p9），undici 固定为 7.30.1（GHSA-xjj6-f33q-929c、GHSA-4qv8-2p9j-2685、GHSA-f72v-6w45-q472）。v0.1.110（发布提交 `52af2d1`）包含两者。[Release v0.1.110](https://github.com/changx/hermes-app/releases/tag/v0.1.110)。
+  - Linux 全套（Chromium 与 Electron/Xvfb）：246 个测试。`browser-window-native` 在全套并行运行时超时；单独运行两次都通过（约 2.4 s），Electron 44.5.1 下也有同样的超时。Mac mini workflow：246 个测试，190 通过，0 失败，56 跳过；audit 0。
+  - 下载的 `Hermes-0.1.110-macOS-arm64.zip` 通过 SHA-256 sidecar 校验；Info.plist 为 0.1.110；Electron Framework 为 44.9.3；ASAR 中 `dist/` 的 9 个 js/cjs/css 文件与本地构建逐字节相同。未签名、未 notarize。保留 Release：v0.1.110 与 v0.1.108。
+  - 回滚：`git revert 681ae64`，再发布下一个补丁版本。插件、手机、Expo 和 Gateway 未变化。Mac 真机快捷键验收待 Jamie 完成。
 
 ## 右侧预览栏宽度
 
