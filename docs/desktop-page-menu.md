@@ -64,3 +64,7 @@ Cmd+F, Cmd+G and Cmd+E work from the main window too; they act on the active tab
 - External web pages in the browser panel have no page menu and no app find bar.
 - The web search engine is Google; there is no setting.
 - Shift+Cmd+E is a new app shortcut, not a macOS standard.
+
+## Candidate status
+
+Branch `feat/desktop-page-context-menu` (base `13a4157`, equal to `origin/main`). Full desktop suite with Chromium and Electron on the final tree: 253 tests, 252 passed, 0 skipped, 1 failure. The failure is `browser-window-native` with the known flake signature (`UnknownVizError` after `CHECK window A back`); that file then passed 5 of 5 runs alone on the candidate and 3 of 3 on the base. Logs: Channel workspace `desktop-page-menu/`. Not released. Device acceptance on Jamie's Mac is pending.
