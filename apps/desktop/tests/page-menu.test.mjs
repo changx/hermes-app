@@ -48,3 +48,12 @@ test('web search URL: Google with the encoded one-line query; nothing for empty 
   assert.equal(webSearchUrl('  '), undefined);
   assert.equal(webSearchUrl(undefined), undefined);
 });
+
+test('Cmd+click: background-tab requests open http and https links without credentials in the system browser', async () => {
+  const { isSystemBrowserUrl, opensInSystemBrowser } = await load('../src/main/security.ts');
+  assert.equal(opensInSystemBrowser('background-tab'), true);
+  for (const disposition of ['foreground-tab', 'new-window', 'default', 'other']) assert.equal(opensInSystemBrowser(disposition), false);
+  assert.equal(isSystemBrowserUrl('https://example.com/a?b=1'), true);
+  assert.equal(isSystemBrowserUrl('http://example.org/'), true);
+  for (const url of ['https://user:pw@example.com/', 'file:///etc/passwd', 'javascript:alert(1)', 'hermesapp://session/th_x', 'mailto:a@b.c', 'not a url']) assert.equal(isSystemBrowserUrl(url), false, url);
+});

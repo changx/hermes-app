@@ -20,6 +20,16 @@ A right-click in the app's own pages (the main window and every tab page) opens 
 - Menus that the app already had stay unchanged: sidebar Session rows, tabs, the status bar labels. They replace the page menu where they apply.
 - The menu shows each item's shortcut.
 
+## Cmd+click on a link
+
+Requested by Jamie (2026-10-25): "再给桌面端增加一个 cmd+click 点击链接，用系统浏览器打开的功能。"
+
+- A plain click on a web link opens it in the browser panel of the page (unchanged).
+- Cmd+click opens it in the system browser (the Mac's default browser). A middle click does the same.
+- This works in the app's own pages (messages, sources, file links) and in web pages inside the browser panel. In the browser panel the pane stays on its page.
+- Only `http` and `https` links without a user name or password open. Session links (`hermesapp://`) still open in the app.
+- How: Chromium reports Cmd+click (Ctrl+click on Linux and Windows) and a middle click as a `background-tab` window request. `opensInSystemBrowser` and `isSystemBrowserUrl` in `src/main/security.ts`; used by `openWebLink` in `index.ts` and by the browser pane's window-open handler in `browser-sidebar.ts`.
+
 ## Shortcuts
 
 | Keys | Action |
@@ -56,8 +66,10 @@ Cmd+F, Cmd+G and Cmd+E work from the main window too; they act on the active tab
 
 ## Verification
 
-- `tests/page-menu.test.mjs`: menu entries for selection, no selection, text fields, links, long text; web search URL.
-- `tests/page-menu-native.test.mjs` (Electron/Xvfb, `HERMES_TEST_ELECTRON=1`): production main process, preload and renderer with real right-click and key input. It checks the menu items and their shortcuts; Copy writes the clipboard; web search opens Google in that tab's browser panel; Find from the menu fills the bar, finds 3 case-insensitive matches including a bold-split word; Cmd+G, Shift+Cmd+G and Enter move and wrap; no results; a new message is counted; Esc clears the highlights; Cmd+F from the main window focuses the bar in the Session page; Cmd+E finds the selection; Shift+Cmd+E searches the web; Search Hermes opens the main window search with the text; the composer gets Cut/Copy/Paste/Select All; sidebar rows keep their own menu; a main-window Find in Page opens in the Session page. The native popup is captured, because Xvfb cannot click it.
+- `tests/page-menu.test.mjs`: menu entries for selection, no selection, text fields, links, long text; web search URL; the Cmd+click rule (disposition and allowed URLs).
+- `tests/page-menu-native.test.mjs` (Electron/Xvfb, `HERMES_TEST_ELECTRON=1`): production main process, preload and renderer with real right-click and key input. It checks the menu items and their shortcuts; Copy writes the clipboard; web search opens Google in that tab's browser panel; Find from the menu fills the bar, finds 3 case-insensitive matches including a bold-split word; Cmd+G, Shift+Cmd+G and Enter move and wrap; no results; a new message is counted; Esc clears the highlights; Cmd+F from the main window focuses the bar in the Session page; Cmd+E finds the selection; Shift+Cmd+E searches the web; Search Hermes opens the main window search with the text; the composer gets Cut/Copy/Paste/Select All; sidebar rows keep their own menu; a main-window Find in Page opens in the Session page; Cmd+click and middle click on message links open the system browser, a plain click uses the browser panel. The native popup is captured, because Xvfb cannot click it.
+- `tests/browser-sidebar-native.test.mjs`: Cmd+click on a link in a web page in the browser panel opens the system browser, and the pane keeps its page.
+- Both native Cmd+click checks fail without the product change (red check run).
 
 ## Limits
 
@@ -67,4 +79,4 @@ Cmd+F, Cmd+G and Cmd+E work from the main window too; they act on the active tab
 
 ## Candidate status
 
-Branch `feat/desktop-page-context-menu` (base `13a4157`, equal to `origin/main`). Full desktop suite with Chromium and Electron on the final tree: 253 tests, 252 passed, 0 skipped, 1 failure. The failure is `browser-window-native` with the known flake signature (`UnknownVizError` after `CHECK window A back`); that file then passed 5 of 5 runs alone on the candidate and 3 of 3 on the base. Logs: Channel workspace `desktop-page-menu/`. Not released. Device acceptance on Jamie's Mac is pending.
+Branch `feat/desktop-page-context-menu` (base `13a4157`, equal to `origin/main`), with the right-click menu, the find bar and Cmd+click. Full desktop suite with Chromium and Electron on the final tree: 254 tests, 254 passed, 0 failed, 0 skipped. (An earlier run of the menu-only tree had 1 failure, `browser-window-native` with the known flake signature `UnknownVizError` after `CHECK window A back`; it passed 5 of 5 runs alone.) Logs: Channel workspace `desktop-page-menu/`. Not released. Device acceptance on Jamie's Mac is pending.

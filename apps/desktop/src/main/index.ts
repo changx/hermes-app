@@ -23,7 +23,7 @@ import { DesktopAppIcon } from './app-icon';
 import { SessionCardWindow, sessionCardRequest } from './session-card-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
-import { isAllowedExternalUrl, isSameDocumentNavigation } from "./security";
+import { isAllowedExternalUrl, isSameDocumentNavigation, isSystemBrowserUrl, opensInSystemBrowser } from "./security";
 import { installHttpKeepAlive } from "./transport";
 import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord } from "./shutdown";
 import { socketsClosed } from "./socket-registry";
@@ -103,7 +103,9 @@ const service = new DesktopConnections((snapshot) => {
 });
 
 /** Opens a web link in the browser panel of the sender's tab (or of the active tab), else in the system browser. */
-const openWebLink = (contents: Electron.WebContents, url: string) => {
+const openWebLink = (contents: Electron.WebContents, url: string, disposition = 'foreground-tab') => {
+  // Cmd+click: the system browser.
+  if (opensInSystemBrowser(disposition)) { if (isSystemBrowserUrl(url)) void shell.openExternal(url); return; }
   try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
     if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
   } catch { /* Reject unsupported schemes and embedded credentials. */ }
@@ -549,7 +551,7 @@ const createMainWindow = (): BrowserWindow => {
     contents.session.setPermissionCheckHandler(() => false);
     contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     contents.on('will-attach-webview', event => event.preventDefault());
-    contents.setWindowOpenHandler(({ url }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url); return { action: 'deny' }; });
+    contents.setWindowOpenHandler(({ url, disposition }) => { if (parseSessionLink(url)) service.openSessionLink(url); else openWebLink(contents, url, disposition); return { action: 'deny' }; });
     contents.on('will-navigate', (event, url) => { if (parseSessionLink(url)) { event.preventDefault(); service.openSessionLink(url); } else if (!isSameDocumentNavigation(contents.getURL(), url)) event.preventDefault(); });
     contents.on('will-redirect', event => event.preventDefault());
     attachPageMenu(contents);
@@ -559,9 +561,9 @@ const createMainWindow = (): BrowserWindow => {
   window.webContents.session.setPermissionCheckHandler(() => false);
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url, disposition }) => {
     if (parseSessionLink(url)) service.openSessionLink(url);
-    else openWebLink(window.webContents, url);
+    else openWebLink(window.webContents, url, disposition);
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, url) => {

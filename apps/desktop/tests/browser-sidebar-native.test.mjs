@@ -22,6 +22,7 @@ const appWindows=()=>BrowserWindow.getAllWindows().filter(w=>w.isFocusable());co
 app.setPath('userData',path.join(__dirname,'user-data'));app.setPath('downloads',path.join(__dirname,'downloads'));app.commandLine.appendSwitch('disable-gpu');
 const {service:accounts,sidebarForTest,tabsForTest,settingsForTest}=require('./dist/main/index.cjs');
 const service=accounts.primary;
+const systemOpened=[];require('electron').shell.openExternal=async url=>{systemOpened.push(url);};
 const requests=[],downloads=[],a='th_aaaaaaaa',b='th_bbbbbbbb',pages=new Map();let base;
 const server=http.createServer((req,res)=>{requests.push({url:req.url,ua:req.headers['user-agent'],authorization:req.headers.authorization,cookie:req.headers.cookie});
  if(req.url==='/doc.pdf'){res.writeHead(200,{'Content-Type':'application/pdf'});res.end(data.get('pdf').bytes);return;}
@@ -132,6 +133,12 @@ async function until(check,label){console.log('CHECK '+label);const end=Date.now
  assert.equal(await evaluate(chat,'(m=>!!m&&getComputedStyle(m).position==="absolute")(document.querySelector(".message-markdown .katex-mathml"))'),true,'reply formulas use KaTeX CSS');
  await evaluate(chat,'document.querySelector(".message-markdown a").click()');await until(()=>web.getURL()===base+'/linked','message link opens in same sidebar');assert.equal(appWindows().length,1);
  await evaluate(web,'window.open('+JSON.stringify(base+'/popup')+',"_blank")');await until(()=>web.getURL()===base+'/popup','popup stays in sidebar');assert.equal(appWindows().length,1);
+ // Cmd+click (Ctrl+click on Linux) on a page link opens the system browser; the pane stays on its page.
+ await evaluate(web,'(()=>{const a=document.createElement("a");a.id="outside";a.href='+JSON.stringify(base+'/outside')+';a.textContent="Outside link";a.style.cssText="position:fixed;left:20px;top:120px;font-size:24px";document.body.append(a)})()');
+ { const p=await evaluate(web,'(()=>{const r=document.querySelector("#outside").getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()');const m=process.platform==='darwin'?'meta':'control';
+   web.sendInputEvent({type:'mouseDown',...p,button:'left',clickCount:1,modifiers:[m]});web.sendInputEvent({type:'mouseUp',...p,button:'left',clickCount:1,modifiers:[m]}); }
+ await until(()=>systemOpened.length===1,'Cmd+click in a web page opens the system browser');assert.deepEqual(systemOpened,[base+'/outside']);
+ await new Promise(r=>setTimeout(r,300));assert.equal(web.getURL(),base+'/popup','the pane keeps its page');assert.equal(appWindows().length,1);
  await evaluate(shell,'window.hermesDesktop.selectThread('+JSON.stringify(b)+')');await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');web.focus();web.sendInputEvent({type:'keyDown',keyCode:'Tab',modifiers:['control']});web.sendInputEvent({type:'keyUp',keyCode:'Tab',modifiers:['control']});await until(()=>!pane.view.getVisible(),'focused browser retains app tab shortcut');assert.equal(web.isDestroyed(),false);
  await evaluate(shell,'window.hermesDesktop.activateTab('+JSON.stringify(tab.id)+')');await until(()=>pane.view.getVisible(),'browser retained with tab');assert.equal(web.getURL(),base+'/popup');
  const retainedChat=chat.id,retainedBrowser=web.id;

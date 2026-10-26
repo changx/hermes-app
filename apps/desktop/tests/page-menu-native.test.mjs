@@ -19,7 +19,7 @@ test('Electron: page right-click menu (copy, web search, find in page, Hermes se
       plugins: [{ name: 'test-only-exports', setup(builder) { builder.onLoad({ filter: /src\/main\/index\.ts$/ }, async args => ({ contents: await readFile(args.path, 'utf8') + '\nexport {service}; export const nativeTabsForTest=()=>tabs; export const browserForTest=()=>browser;\n', loader: 'ts' })); } }] });
     await writeFile(join(folder, 'dist/main/index.cjs'), candidate.outputFiles[0].text);
     const harness = String.raw`
-const electron=require('electron'),{app,BrowserWindow,clipboard,Menu}=electron; const assert=require('node:assert/strict'); const path=require('node:path');
+const electron=require('electron'),{app,BrowserWindow,clipboard,Menu,shell:system}=electron;const external=[];system.openExternal=async url=>{external.push(url);}; const assert=require('node:assert/strict'); const path=require('node:path');
 app.setPath('userData',path.join(__dirname,'user-data'));app.commandLine.appendSwitch('disable-gpu');
 const menus=[];
 const {service:accounts,nativeTabsForTest,browserForTest}=require('./dist/main/index.cjs');
@@ -127,7 +127,19 @@ const findState=contents=>evaluate(contents,'({open:!!document.querySelector(".f
  // Plain sidebar text gets the page menu, and Find in Page acts on the active Session page.
  menu=await rightClick(shell,'.sidebar-section-title');assert.deepEqual(labels(menu),['Find in Page…','Search Hermes…']);
  choose(menu,'Find in Page');await until(async()=>(await findState(ac)).open,'main-window menu find opens in the Session page');
- console.log('PAGE_MENU_OK '+JSON.stringify({menus:menus.length,webSearches:opened.length}));app.exit(0);
+ // 8. Cmd+click (Ctrl+click on Linux) and a middle click open a link in the system browser; a plain click uses the browser panel.
+ key(ac,'Escape');
+ server.set(a,[...server.get(a),{id:a+'_links',ref_seq:14,role:'assistant',text:'See [the docs](https://example.com/docs) and [plain page](http://example.org/plain).'}]);client.messages.set(a,server.get(a));service.changed();
+ await until(()=>evaluate(ac,'!!document.querySelector("a[href=\\"https://example.com/docs\\"]")'),'link message');
+ const click=async(href,button,modifiers=[])=>{const p=await evaluate(ac,'(()=>{const e=document.querySelector("a[href=\\""+'+JSON.stringify(href)+'+"\\"]");e.scrollIntoView({block:"center"});const r=e.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()');
+   ac.sendInputEvent({type:'mouseDown',...p,button,clickCount:1,modifiers});ac.sendInputEvent({type:'mouseUp',...p,button,clickCount:1,modifiers});};
+ const panel=opened.length;
+ await click('https://example.com/docs','left',[modifier]);await until(()=>external.length===1,'Cmd+click opens the system browser');
+ assert.deepEqual(external,['https://example.com/docs']);assert.equal(opened.length,panel,'Cmd+click does not use the browser panel');
+ await click('http://example.org/plain','middle');await until(()=>external.length===2,'middle click opens the system browser');assert.equal(external[1],'http://example.org/plain');
+ await click('https://example.com/docs','left');await until(()=>opened.length===panel+1,'plain click uses the browser panel');
+ assert.deepEqual(opened.at(-1),[tab.id,'https://example.com/docs']);assert.equal(external.length,2,'plain click does not open the system browser');
+ console.log('PAGE_MENU_OK '+JSON.stringify({menus:menus.length,panelOpens:opened.length,systemBrowser:external.length}));app.exit(0);
 })().catch(error=>{console.error(error.stack);app.exit(1)});
 `;
     await writeFile(join(folder, 'harness.cjs'), harness);

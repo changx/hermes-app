@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, session as electronSession, WebContentsView, type Session, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, shell, session as electronSession, WebContentsView, type Session, type WebContents } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DesktopBrowserMode, DesktopBrowserState, DesktopSnapshot } from '../shared/desktop-api';
 import { snapshotDelta } from '../shared/snapshot-delta';
 import { browserUrl, chromeUserAgent, GALLERY_PATH, galleryItemPath, galleryPage, pdfExtension, pdfViewerResource, PREVIEW_ASSET_PATH, previewAssetType, previewResponse, unavailableResponse, type GalleryEntry, type PreviewDocument } from '../shared/browser-policy';
+import { isSystemBrowserUrl, opensInSystemBrowser } from './security';
 
 // The app's own preview files (Markdown renderer, KaTeX, styles) next to the main bundle.
 const previewAssets = join(__dirname, '..', 'renderer');
@@ -380,6 +381,8 @@ export class DesktopBrowserSidebar {
     contents.on('will-redirect', (event, url) => { if (!allowed(url)) event.preventDefault(); });
     contents.setWindowOpenHandler(({ url, disposition }) => {
       if (!allowed(url) || url === 'about:blank') return { action: 'deny' };
+      // Cmd+click on a page link: the system browser, as in the app's own pages.
+      if (opensInSystemBrowser(disposition)) { if (isSystemBrowserUrl(url)) void shell.openExternal(url); return { action: 'deny' }; }
       // Sign-in popups need a real window with an opener; ordinary new-tab links stay in this pane.
       if (disposition === 'new-window') return { action: 'allow', overrideBrowserWindowOptions: { parent: this.host(pane), width: 520, height: 720, autoHideMenuBar: true,
         webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, allowRunningInsecureContent: false } } };
