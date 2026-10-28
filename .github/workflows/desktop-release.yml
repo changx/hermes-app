@@ -1,7 +1,8 @@
 name: Desktop Release (Mac mini)
 
-# Builds the unsigned Apple Silicon desktop package on the project Mac mini
-# (self-hosted runner `macmini-m4`) and publishes it from there.
+# Builds the Apple Silicon desktop package on the project Mac mini
+# (self-hosted runner `macmini-m4`), signs it with Developer ID, notarizes and
+# staples it, and publishes it from there (docs/desktop-signing.md).
 # - Pushing a vX.Y.Z tag builds and publishes that tag.
 # - Manual run: build any existing tag; publish only when `publish` is true,
 #   otherwise leave a draft Release for checking.
@@ -33,13 +34,17 @@ permissions:
 jobs:
   macos-arm64:
     runs-on: [self-hosted, macOS, ARM64, macmini]
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
     env:
       TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
       PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
       GH_TOKEN: ${{ github.token }}
+      # Signing material stays on the Mac mini (docs/desktop-signing.md).
+      HERMES_MAC_SIGN_IDENTITY: "Developer ID Application: Nan Zhang (4R5932XFRV)"
+      HERMES_MAC_SIGN_KEYCHAIN: /Users/aws/Library/Keychains/hermes-signing.keychain-db
+      HERMES_MAC_NOTARY_PROFILE: hermes-notary
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,7 +76,14 @@ jobs:
           npm run desktop:check
           npm audit
 
-      - name: Package unsigned macOS app
+      - name: Unlock signing keychain
+        run: |
+          set -euo pipefail
+          security unlock-keychain -p "$(cat "$HOME/.hermes-signing/keychain-password")" "$HERMES_MAC_SIGN_KEYCHAIN"
+          security find-identity -v -p codesigning "$HERMES_MAC_SIGN_KEYCHAIN" | grep -F "\"$HERMES_MAC_SIGN_IDENTITY\""
+
+      # Signs with hardened runtime, submits to Apple's notary service and staples the ticket.
+      - name: Package, sign and notarize macOS app
         run: npm run desktop:package:mac
 
       - name: Verify and archive app
@@ -80,6 +92,11 @@ jobs:
           APP="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
           test -f "$APP/Contents/Resources/app.asar"
           /usr/bin/file "$APP/Contents/MacOS/Hermes" | /usr/bin/grep -q arm64
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP"
+          /usr/bin/codesign -dvv "$APP" 2>&1 | /usr/bin/grep -F "Authority=$HERMES_MAC_SIGN_IDENTITY"
+          /usr/bin/codesign -dvv "$APP" 2>&1 | /usr/bin/grep -q 'flags=0x10000(runtime)'
+          /usr/bin/xcrun stapler validate "$APP"
+          /usr/sbin/spctl --assess --type execute --verbose=2 "$APP" 2>&1 | tee /dev/stderr | /usr/bin/grep -q 'source=Notarized Developer ID'
           rm -rf release && mkdir release
           /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ARCHIVE"
           cd release
@@ -107,7 +124,7 @@ jobs:
           args=(release create "$TAG"
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes
             --title "Hermes Desktop $TAG"
-            --notes "Unsigned Apple Silicon macOS development build, packaged on the project Mac mini. This artifact is not notarized and is not an App Store distribution.")
+            --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. It opens after download without removing the quarantine flag. It is not an App Store distribution.")
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
           # A new draft appears in the release list only after a short delay; wait up to 30 s.

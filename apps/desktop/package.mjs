@@ -31,7 +31,25 @@ await writeFile(
   )}\n`,
 );
 
+// Release builds on the Mac mini sign with Developer ID and notarize (docs/desktop-signing.md).
+// Without HERMES_MAC_SIGN_IDENTITY (Linux, local builds) the package stays unsigned.
+const identity = process.env.HERMES_MAC_SIGN_IDENTITY;
+const keychain = process.env.HERMES_MAC_SIGN_KEYCHAIN || undefined;
+const notaryProfile = process.env.HERMES_MAC_NOTARY_PROFILE;
+if (notaryProfile && !identity) {
+  throw new Error("HERMES_MAC_NOTARY_PROFILE needs HERMES_MAC_SIGN_IDENTITY");
+}
+// @electron/osx-sign defaults: hardened runtime, and Electron's entitlements for the
+// app and each helper (JIT; camera and microphone for pages in the built-in browser).
+const signing = identity
+  ? {
+      osxSign: { identity, keychain, preAutoEntitlements: false },
+      ...(notaryProfile ? { osxNotarize: { keychainProfile: notaryProfile, keychain } } : {}),
+    }
+  : {};
+
 const paths = await packager({
+  ...signing,
   dir: staging,
   out: artifacts,
   name: "Hermes",
@@ -48,6 +66,9 @@ const paths = await packager({
   extendInfo: {
     LSMinimumSystemVersion: "12.0",
     CFBundleURLTypes: [{ CFBundleURLName: "Hermes session", CFBundleURLSchemes: ["hermesapp"] }],
+    // Shown when a page in the built-in browser asks for the camera or microphone.
+    NSCameraUsageDescription: "A website in the Hermes browser wants to use the camera.",
+    NSMicrophoneUsageDescription: "A website in the Hermes browser wants to use the microphone.",
   },
 });
 
@@ -55,4 +76,4 @@ await rm(staging, { recursive: true, force: true });
 if (paths.length !== 1) {
   throw new Error(`Expected one packaged app, received ${paths.length}`);
 }
-console.log(`Packaged unsigned macOS arm64 app at ${paths[0]}`);
+console.log(`Packaged ${identity ? (notaryProfile ? "signed and notarized" : "signed") : "unsigned"} macOS arm64 app at ${paths[0]}`);

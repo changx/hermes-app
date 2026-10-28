@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the unsigned Apple Silicon desktop package for a pushed tag on the Mac mini,
+# Build the signed and notarized Apple Silicon desktop package for a pushed tag on the Mac mini,
 # then publish it as a GitHub Release from this host.
 #
 # Usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish | --publish-built]
@@ -68,10 +68,18 @@ npm ci --no-audit --no-fund
 node -p 'require("electron")' >/dev/null
 npm run desktop:check
 npm audit
+# Developer ID signing and notarization (docs/desktop-signing.md).
+export HERMES_MAC_SIGN_IDENTITY="Developer ID Application: Nan Zhang (4R5932XFRV)"
+export HERMES_MAC_SIGN_KEYCHAIN="$HOME/Library/Keychains/hermes-signing.keychain-db"
+export HERMES_MAC_NOTARY_PROFILE=hermes-notary
+security unlock-keychain -p "$(cat "$HOME/.hermes-signing/keychain-password")" "$HERMES_MAC_SIGN_KEYCHAIN"
 npm run desktop:package:mac
 app="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
 test -f "$app/Contents/Resources/app.asar"
 /usr/bin/file "$app/Contents/MacOS/Hermes" | /usr/bin/grep -q arm64
+/usr/bin/codesign --verify --deep --strict "$app"
+/usr/bin/xcrun stapler validate "$app"
+/usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
 mkdir -p release
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "release/$3"
 cd release
@@ -89,7 +97,7 @@ if $publish; then
   gh release create "$tag" "$out/$archive" "$out/$archive.sha256" \
     --repo "$repo" --verify-tag --draft --generate-notes \
     --title "Hermes Desktop $tag" \
-    --notes "Unsigned Apple Silicon macOS development build, packaged on the project Mac mini. This artifact is not notarized and is not an App Store distribution."
+    --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. It opens after download without removing the quarantine flag. It is not an App Store distribution."
   gh release edit "$tag" --repo "$repo" --draft=false
   bash scripts/prune-releases.sh "$repo" 2 --protect "$tag"
 fi
