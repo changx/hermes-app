@@ -35,7 +35,7 @@ Never print, copy off the Mac mini, or commit the key, the keychain password or 
 ## Timing
 
 - Signing takes about a minute.
-- Notarization uploads the ~130 MB zip to Apple and waits for the scan. The job timeout is 45 minutes. The first submission of a new team can take much longer than later ones.
+- Notarization uploads the ~130 MB zip to Apple and waits for the scan. The first submission of this team took 34 minutes in total (2,027 s for package + notarize). Later submissions are expected to be faster; the release records will show it. The job timeout is 60 minutes.
 - To follow a slow submission: `xcrun notarytool history --keychain-profile hermes-notary --keychain <keychain>` and `xcrun notarytool info <id> ...` (unlock the keychain first). After a rejection, `xcrun notarytool log <id> ...` names each file and the reason.
 
 ## Verification for each release
@@ -64,5 +64,11 @@ The certificate is valid for about 13 months. Apps signed before expiry keep ope
 
 ## Status
 
-- Change: branch `feat/desktop-signing`. First real build: signing passed; notarization submission `aee3576f-9dac-4c09-833a-1a4a61a99539` (2026-10-28 04:29 UTC) was still in progress at the time of writing.
-- Not yet released.
+- Change: branch `feat/desktop-signing`.
+- First real build on the Mac mini (branch code, 2026-10-27): all checks passed.
+  - `codesign --verify --deep --strict`: valid on disk, satisfies its Designated Requirement; `flags=0x10000(runtime)`; Authority chain Developer ID Application: Nan Zhang (4R5932XFRV) → Developer ID Certification Authority → Apple Root CA; secure timestamp.
+  - Notarization submission `aee3576f-9dac-4c09-833a-1a4a61a99539`: `Accepted`. `stapler validate`: "The validate action worked!".
+  - `spctl --assess --type execute`: accepted, `source=Notarized Developer ID`.
+  - Download simulation (zip with a Safari quarantine flag, unpacked with `ditto`, flag present on the app): accepted, `source=Notarized Developer ID`.
+  - Info.plist has the camera usage description.
+- Not yet released. Open: Jamie opens the first signed Release on his Mac.

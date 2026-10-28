@@ -34,7 +34,7 @@ permissions:
 jobs:
   macos-arm64:
     runs-on: [self-hosted, macOS, ARM64, macmini]
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: write
     env:
