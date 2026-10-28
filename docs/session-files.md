@@ -202,3 +202,12 @@ Consequences for the design:
 - Release checks: runner suite 190 pass, 0 fail, 55 skipped; audit 0. Downloaded zip passes `sha256sum -c`; `CFBundleShortVersionString` is `0.1.102`; the ASAR `dist/main`, `dist/preload`, `dist/renderer/index.js` and `styles.css` are byte-identical to the local build.
 - Open: visual check on Jamie's Mac.
 - Follow-up in desktop `v0.1.103` (run `39562818630`): the Context and AGENTS.md editors use the same monospace font and size. Headless Chrome reads `ui-monospace, SFMono-Regular, Menlo, monospace`, 14px for both. Candidate `npm test` 237 pass, 0 fail, 8 skipped; runner 190 pass, 0 fail, 55 skipped, audit 0; zip checksum OK, version `0.1.103`, ASAR `dist` byte-identical to the local build. Open: visual check on Jamie's Mac.
+
+## Release: desktop v0.1.113 (Cmd+K Enter starts the search)
+
+- Change `f8077d8`: Enter right after typing starts the search at once and opens nothing; Up/Down then Enter opens a result (see "Enter and the arrow keys" above). Release commit `59f1318`, tag `v0.1.113`.
+- Candidate checks: desktop typecheck and build; full desktop suite with Chrome and Electron 256/256 (a first full run had 4 Electron browser tests fail under load; they pass alone on this branch and on `main`).
+- Tag run `40628614748`: 256 tests, 198 pass, 0 fail, 58 skipped, audit 0. Downloaded zip passed its SHA-256 check; Info.plist 0.1.113. All 9 `.js`/`.cjs`/`.css` files under `dist/` in the ASAR are byte-identical to the local build.
+- Mobile, plugin and Gateway unchanged; no Expo restart.
+- Rollback: reinstall v0.1.112.
+- Open: check on Jamie's Mac.
