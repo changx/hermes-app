@@ -8,7 +8,7 @@ Requested by Jamie (2026-10-20): "加全文索引。加 ai 精排。" Example qu
 - A row shows the Session title, a short excerpt of the best matching message, and the Project (and connection when there are several).
 - The first rows come from keywords plus meaning, in about 0.2 s. About half a second after typing stops, an AI model picks and orders the rows again. The section title shows `Messages · AI is ranking…`, then `Messages · ranked by AI`.
 - When the AI finds that no Session answers the question, the rows go away and the note "AI found no message that answers this." shows.
-- Enter (desktop) or a tap (mobile) opens the Session at the matching message. When only the title or labels matched, the Session opens normally. On mobile a long press gives the Session menu, as on every Session row.
+- On desktop, Up/Down then Enter (or a click) opens the Session at the matching message; Enter right after typing only starts the search at once. On mobile a tap opens it. When only the title or labels matched, the Session opens normally. On mobile a long press gives the Session menu, as on every Session row.
 - A Session that already matches by title is not listed again under Messages.
 - Labels in the query filter message results too (AND, exact text). A query with labels and no keyword does not search messages.
 - While the server still indexes older messages, the note "Older messages are still being indexed. Some may be missing." shows.

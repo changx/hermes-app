@@ -23,15 +23,27 @@ const fileDate = (seconds: number): string => new Date(seconds * 1000).toLocaleD
  * The one search (Cmd+K; Shift+Cmd+F starts with files only). A keyword plus exact labels, all
  * required. Results: matching labels (choosing one adds it to the search), Sessions from the
  * directory by title, Sessions whose messages match (keywords and meaning at once, then the AI
- * order a few seconds later; Enter opens the Session at the best message), then files that the Agent delivered or the user sent, from every server that
- * searches files. Enter opens the highlighted Session, or a file's Session at the message with the
- * file; Cmd+Enter opens the file itself; Option+Enter saves it.
+ * order a few seconds later), then files that the Agent delivered or the user sent, from every server that
+ * searches files. Typing highlights no row: Enter in the input starts the search at once (no
+ * typing pause, no wait for the AI order). Up/Down highlight a row; then Enter opens it (a
+ * message row opens its Session at the best message; a file opens its Session at the message
+ * with the file; Cmd+Enter opens the file itself; Option+Enter saves it). Up from the first row
+ * returns to the input.
  */
 export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'all' }: { snapshot: DesktopSnapshot; close: () => void; initialQuery?: SessionQuery; initialScope?: SearchScope }) {
-  const [query, setQuery] = useState<SessionQuery>(() => initialQuery ?? emptySessionQuery()), [selected, setSelected] = useState(0);
+  const [query, setQuery] = useState<SessionQuery>(() => initialQuery ?? emptySessionQuery()), [selected, setSelected] = useState(-1);
   const [scope, setScope] = useState<SearchScope>(initialScope), [files, setFiles] = useState<Files>(NO_FILES), [error, setError] = useState('');
   const [messages, setMessages] = useState<Messages>(NO_MESSAGES), pinned = useRef<string | null>(null);
   const listId = useId(), list = useRef<HTMLDivElement>(null), request = useRef(0), messageRequest = useRef(0);
+  // Searches that wait for a typing pause; Enter runs them now. `eager`: the message search whose AI order runs without a pause.
+  const pending = useRef(new Map<string, () => void>()), eager = useRef(-1);
+  const later = (key: string, ms: number, run: () => void) => {
+    const timer = setTimeout(() => { pending.current.delete(key); run(); }, ms);
+    const now = () => { clearTimeout(timer); pending.current.delete(key); run(); };
+    pending.current.set(key, now);
+    return () => { clearTimeout(timer); if (pending.current.get(key) === now) pending.current.delete(key); };
+  };
+  const searchNow = () => { eager.current = messageRequest.current; [...pending.current.values()].forEach(run => run()); };
   const active = sessionQueryActive(query), fileSearch = snapshot.supportsFileSearch === true, messageSearch = snapshot.supportsSessionSearch === true;
   const labels = useMemo(() => snapshot.supportsSessionLabels === true ? sessionLabelSuggestions(snapshot.threads, query) : [], [snapshot.threads, query, snapshot.supportsSessionLabels]);
   const sessions = useMemo(() => scope === 'files' ? [] : searchSessions(snapshot, snapshot.threads, query).slice(0, 24), [snapshot.threads, snapshot.channels, query, scope]);
@@ -39,34 +51,33 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
     const id = ++request.current;
     if (!fileSearch || !active) { setFiles(NO_FILES); return; }
     setFiles(old => ({ ...old, state: 'loading' }));
-    const timer = setTimeout(() => {
+    return later('files', FILE_DELAY_MS, () => {
       void window.hermesDesktop.searchFiles(query.text, query.labels).then(result => {
         if (id === request.current) setFiles({ state: 'ready', items: result.items, cursors: result.cursors, failed: result.failed });
       }, () => { if (id === request.current) setFiles({ ...NO_FILES, state: 'failed' }); });
-    }, FILE_DELAY_MS);
-    return () => clearTimeout(timer);
+    });
   }, [query, fileSearch, active]);
   useEffect(() => {
     const id = ++messageRequest.current, text = query.text.trim();
     if (!messageSearch || scope === 'files' || !text) { setMessages(NO_MESSAGES); return; }
     setMessages(old => ({ ...old, state: 'loading', ranking: false }));
-    let refineTimer: ReturnType<typeof setTimeout> | undefined;
-    const timer = setTimeout(() => {
+    let cancelRefine = () => {};
+    const cancel = later('messages', FILE_DELAY_MS, () => {
       void window.hermesDesktop.searchMessages(text, query.labels).then(result => {
         if (id !== messageRequest.current) return;
         const ranking = result.items.length > 0;
         setMessages({ state: 'ready', items: result.items, ranking, refined: false, none: false, indexing: result.indexing, failed: result.failed });
         if (!ranking) return;
-        refineTimer = setTimeout(() => {
+        cancelRefine = later('refine', id === eager.current ? 0 : REFINE_DELAY_MS, () => {
           void window.hermesDesktop.searchMessages(text, query.labels, true).then(ai => {
             if (id !== messageRequest.current) return;
             // A server without AI ranking returns its first order again; keep the rows the user sees.
             setMessages(old => ai.refined ? { ...old, items: ai.items, ranking: false, refined: true, none: ai.none } : { ...old, ranking: false });
           }, () => { if (id === messageRequest.current) setMessages(old => ({ ...old, ranking: false })); });
-        }, REFINE_DELAY_MS);
+        });
       }, () => { if (id === messageRequest.current) setMessages({ ...NO_MESSAGES, state: 'failed' }); });
-    }, FILE_DELAY_MS);
-    return () => { clearTimeout(timer); clearTimeout(refineTimer); };
+    });
+    return () => { cancel(); cancelRefine(); };
   }, [query, messageSearch, scope]);
   const more = () => {
     const id = request.current;
@@ -79,16 +90,17 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
   const found = messages.items.filter(hit => !byTitle.has(hit.threadId)).slice(0, 20);
   const options: Option[] = [...labels.map(label => ({ kind: 'label' as const, label })), ...sessions.map(thread => ({ kind: 'session' as const, thread })),
     ...found.map(hit => ({ kind: 'message' as const, hit })), ...files.items.map(file => ({ kind: 'file' as const, file }))];
-  // The highlight stays on the same row when the AI order or other results arrive later.
+  // No row is highlighted until Up/Down choose one (index -1: the input). The highlight stays on
+  // the same row when the AI order or other results arrive later.
   const pinnedIndex = pinned.current === null ? -1 : options.findIndex(option => optionKey(option) === pinned.current);
-  const index = pinnedIndex >= 0 ? pinnedIndex : Math.min(selected, Math.max(0, options.length - 1));
+  const index = selected < 0 ? -1 : pinnedIndex >= 0 ? pinnedIndex : Math.min(selected, options.length - 1);
   const select = (i: number) => { setSelected(i); pinned.current = options[i] ? optionKey(options[i]) : null; };
-  useEffect(() => { list.current?.querySelector(`#${CSS.escape(`${listId}-${index}`)}`)?.scrollIntoView?.({ block: 'nearest' }); }, [index, options.length, listId]);
+  useEffect(() => { if (index >= 0) list.current?.querySelector(`#${CSS.escape(`${listId}-${index}`)}`)?.scrollIntoView?.({ block: 'nearest' }); }, [index, options.length, listId]);
   const fail = (text: string) => () => setError(text);
   const choose = (option: Option | undefined, keys: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) => {
     if (!option) return;
     setError('');
-    if (option.kind === 'label') { setQuery(old => ({ ...addQueryLabel(old, option.label), text: '' })); setSelected(0); pinned.current = null; }
+    if (option.kind === 'label') { setQuery(old => ({ ...addQueryLabel(old, option.label), text: '' })); setSelected(-1); pinned.current = null; }
     else if (option.kind === 'message') void (option.hit.refSeq !== undefined ? window.hermesDesktop.openMessage(option.hit.threadId, option.hit.refSeq)
       : window.hermesDesktop.selectThread(option.hit.threadId)).then(close, fail('The session could not be opened.'));
     else if (option.kind === 'session') void window.hermesDesktop.selectThread(option.thread.id).then(close, fail('The session could not be opened.'));
@@ -101,13 +113,17 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
   const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault(); event.stopPropagation();
-      select(options.length ? Math.max(0, Math.min(options.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))) : 0);
-    } else if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); choose(options[index], event); }
+      select(options.length ? Math.max(-1, Math.min(options.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))) : -1);
+    } else if (event.key === 'Enter') {
+      // Enter after typing searches; only a row chosen with Up/Down opens.
+      event.preventDefault(); event.stopPropagation();
+      if (index >= 0) choose(options[index], event); else searchNow();
+    }
     else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
   };
   const row = (option: Option, i: number) => <button id={`${listId}-${i}`} key={optionKey(option)}
     type="button" role="option" tabIndex={-1} className={option.kind === 'label' ? 'palette-label-option' : option.kind === 'file' ? 'palette-file-option' : option.kind === 'message' ? 'palette-message-option' : undefined}
-    aria-selected={i === index} disabled={option.kind === 'file' && option.file.state !== 'available'} onMouseMove={() => { if (i !== index) select(i); }} onMouseDown={event => event.preventDefault()}
+    aria-selected={i === index} disabled={option.kind === 'file' && option.file.state !== 'available'} onMouseDown={event => event.preventDefault()}
     onClick={(event: MouseEvent<HTMLButtonElement>) => choose(option, event)}>
     {option.kind === 'label' ? <><span className="palette-option-kind">Label</span><span className="label-pill">{option.label}</span></>
       : option.kind === 'session' ? <>{option.thread.title}<small>{[name(option.thread.channelId), ...(option.thread.markers ?? [])].filter(Boolean).join(' · ')}</small></>
@@ -121,12 +137,12 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
   const messageTitle = messages.ranking ? 'Messages · AI is ranking…' : messages.refined ? 'Messages · ranked by AI' : 'Messages';
   return <div className="modal-backdrop" role="presentation" onMouseDown={close}>
     <section className="editor-dialog palette" role="dialog" aria-modal="true" aria-label="Search" onMouseDown={event => event.stopPropagation()}>
-      <SessionQueryInput query={query} onChange={next => { setQuery(next); setSelected(0); pinned.current = null; setError(''); }} className="palette-query" inputProps={{
+      <SessionQueryInput query={query} onChange={next => { setQuery(next); setSelected(-1); pinned.current = null; setError(''); }} className="palette-query" inputProps={{
         autoFocus: true, role: 'combobox', 'aria-label': 'Search', placeholder: scope === 'files' ? 'Search files or labels…' : messageSearch ? 'Search sessions, messages, files or labels…' : 'Search sessions, files or labels…', 'aria-expanded': true,
-        'aria-controls': listId, 'aria-autocomplete': 'list', 'aria-activedescendant': options.length ? `${listId}-${index}` : undefined, onKeyDown: keyDown }} />
+        'aria-controls': listId, 'aria-autocomplete': 'list', 'aria-activedescendant': index >= 0 ? `${listId}-${index}` : undefined, onKeyDown: keyDown }} />
       {fileSearch && <div className="palette-scope" role="radiogroup" aria-label="Search in">
         {(['all', 'files'] as const).map(value => <button key={value} type="button" role="radio" aria-checked={scope === value} onMouseDown={event => event.preventDefault()}
-          onClick={() => { setScope(value); setSelected(0); pinned.current = null; }}>{value === 'all' ? 'Sessions and files' : 'Files'}</button>)}
+          onClick={() => { setScope(value); setSelected(-1); pinned.current = null; }}>{value === 'all' ? 'Sessions and files' : 'Files'}</button>)}
       </div>}
       <div className="palette-results" id={listId} ref={list} role="listbox" aria-label="Search results">
         {options.slice(0, firstSession).map((option, i) => row(option, i))}
@@ -148,7 +164,7 @@ export function SessionPicker({ snapshot, close, initialQuery, initialScope = 'a
       {nothing && <p role="status">{scope === 'files' ? 'No files found.' : messageSearch ? 'No sessions, messages or files found.' : 'No sessions or files found.'}</p>}
       {!active && scope === 'files' && <p className="palette-note">Type a file name, a session title or choose a label.</p>}
       {error && <p className="palette-note" role="alert">{error}</p>}
-      {files.items.length > 0 && <p className="palette-hint">Enter shows the file in its session · ⌘Enter opens the file · ⌥Enter saves it</p>}
+      {files.items.length > 0 && <p className="palette-hint">↑↓ choose · Enter shows the file in its session · ⌘Enter opens the file · ⌥Enter saves it</p>}
     </section>
   </div>;
 }

@@ -21,11 +21,12 @@ test('Chromium: title alphabet search, keyboard selection, IME and New topic cre
     const input=()=>document.querySelector('input'), options=()=>[...document.querySelectorAll('[role=option]')];
     const key=(name,extra={})=>flushSync(()=>input().dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,...extra})));
     const query=value=>flushSync(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input(),value);input().dispatchEvent(new Event('input',{bubbles:true}));});
-    (async()=>{try{render();ensure('input focused',document.activeElement===input());ensure('initial first selected',options()[0].getAttribute('aria-selected')==='true');
-      key('ArrowDown');ensure('next selected',options()[1].getAttribute('aria-selected')==='true');key('ArrowUp');ensure('previous selected',options()[0].getAttribute('aria-selected')==='true');key('ArrowUp');ensure('top clamped',options()[0].getAttribute('aria-selected')==='true');
-      key('ArrowDown',{isComposing:true});key('Enter',{isComposing:true});key('Escape',{isComposing:true});ensure('IME untouched',options()[0].getAttribute('aria-selected')==='true'&&!actions.length&&!closed);
-      key('ArrowDown');key('Enter');await Promise.resolve();ensure('Enter exact selected',actions[0]==='t1');ensure('close after open',closed===1);
-      for(const value of ['自动标题','zi dong biao ti','zidongbiaoti','zdbt','HUIFU']){query(value);ensure('search '+value,options().length===1&&options()[0].textContent.includes('恢复自动标题'));ensure('search resets selected',options()[0].getAttribute('aria-selected')==='true');}
+    (async()=>{try{render();ensure('input focused',document.activeElement===input());const none=()=>!options().some(o=>o.getAttribute('aria-selected')==='true');ensure('initially no row selected',none());
+      key('Enter');await Promise.resolve();ensure('Enter without a chosen row opens nothing',!actions.length&&!closed);
+      key('ArrowDown');ensure('first selected',options()[0].getAttribute('aria-selected')==='true');key('ArrowDown');ensure('next selected',options()[1].getAttribute('aria-selected')==='true');key('ArrowUp');ensure('previous selected',options()[0].getAttribute('aria-selected')==='true');key('ArrowUp');ensure('Up from the top returns to the input',none());
+      key('ArrowDown',{isComposing:true});key('Enter',{isComposing:true});key('Escape',{isComposing:true});ensure('IME untouched',none()&&!actions.length&&!closed);
+      key('ArrowDown');key('ArrowDown');key('Enter');await Promise.resolve();ensure('Enter exact selected',actions[0]==='t1');ensure('close after open',closed===1);
+      for(const value of ['自动标题','zi dong biao ti','zidongbiaoti','zdbt','HUIFU']){query(value);ensure('search '+value,options().length===1&&options()[0].textContent.includes('恢复自动标题'));ensure('search clears the selection',none());}
       query('no-match');key('Enter');ensure('empty no action',actions.length===1&&!options().length);key('Escape');ensure('Escape closes',closed===2);
       ensure('non-Chinese transliteration',Number.isFinite(sessionSearchScore({title:'Привет мир',title_alphabet:'privet mir'},'pm')));
       ensure('accent folding',Number.isFinite(sessionSearchScore({title:'Café'},'cafe')));

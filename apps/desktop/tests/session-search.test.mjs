@@ -115,7 +115,10 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
           ensure('search query: only a bottom divider',wrap.borderTopWidth==='0px'&&wrap.borderLeftWidth==='0px'&&wrap.borderBottomWidth==='1px'); }
         setValue(box(),'ur'); await tick();
         ensure('label option first, then sessions by title or label',opts()[0].classList.contains('palette-label-option')&&opts()[0].textContent==='Labelurgent'&&opts().slice(1).filter(o=>!o.classList.contains('palette-file-option')).map(optionText).sort().join('|')==='Payment flow|Urgent fix plan');
+        ensure('typing highlights no row',!q('.palette [aria-selected="true"]')&&!box().hasAttribute('aria-activedescendant'));
         key(box(),'Enter'); await tick();
+        ensure('Enter without a chosen row keeps the dialog and the keyword',!!q('.palette')&&box().value==='ur'&&!q('.palette .session-query-chip')&&!selected.length);
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
         ensure('Enter on a label adds a chip',box().value===''&&qa('.palette .session-query-chip > span').map(e=>e.textContent).join('|')==='urgent');
         key(box(),'Backspace'); await tick(); ensure('Backspace removes the label',!q('.palette .session-query-chip'));
         // Files: Enter shows the file in its session, Cmd+Enter opens the file, Option+Enter saves it.
@@ -123,18 +126,22 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
         ensure('a keyword finds the session and the file',await wait(()=>qa('.palette-file-option').length===1)&&opts().map(optionText).join('|')==='Login crash|crash-chart.png');
         ensure('file row names its session, project and source',q('.palette-file-option small').textContent.startsWith('Login crash · Research · From Hermes · 2.0 KB'));
         ensure('hint for file keys',q('.palette-hint').textContent.includes('Enter shows the file in its session · ⌘Enter opens the file'));
-        key(box(),'ArrowDown'); await tick(); key(box(),'Enter',{altKey:true}); await tick();
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'ArrowUp'); await tick(); key(box(),'ArrowUp'); await tick();
+        ensure('Up from the first row returns to the input',!q('.palette [aria-selected="true"]'));
+        key(box(),'Enter',{metaKey:true}); await tick();
+        ensure('Cmd+Enter without a chosen row opens nothing',!opened.length&&!!q('.palette'));
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'Enter',{altKey:true}); await tick();
         ensure('Option+Enter saves the file and keeps the dialog',opened.at(-1).join()==='a,att_1,save'&&!!q('.palette'));
         key(box(),'Enter',{metaKey:true}); await tick();
         ensure('Cmd+Enter opens the file and closes the dialog',opened.at(-1).join()==='a,att_1,open'&&!q('.palette'));
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
         setValue(box(),'crash'); await wait(()=>qa('.palette-file-option').length===1);
-        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
         ensure('Enter opens the session at the file message and closes the dialog',shown.at(-1).join()==='a,7'&&opened.length===2&&!q('.palette'));
         // A file without a known message opens its session.
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true,cancelable:true})); await tick();
         setValue(box(),'notes'); await wait(()=>qa('.palette-file-option').length===1);
-        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
         ensure('Enter on a file without its message opens the session',selected.at(-1)==='b'&&shown.length===1&&!q('.palette'));
         // Shift+Cmd+F: files only.
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'F',shiftKey:true,metaKey:true,bubbles:true,cancelable:true})); await tick();
@@ -146,6 +153,8 @@ test('Chromium: one search dialog for Sessions, files and labels; label requests
         q('.palette-scope [role="radio"]').click(); await tick();
         ensure('scope back to Sessions and files',q('.palette-scope [aria-checked="true"]').textContent==='Sessions and files');
         setValue(box(),'crash'); await tick(); key(box(),'Enter'); await tick();
+        ensure('Enter after typing does not open a session',!!q('.palette')&&selected.at(-1)!=='a');
+        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
         ensure('Enter opens the session',selected.at(-1)==='a'&&!q('.palette'));
         checks.ok=true;
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
@@ -199,8 +208,15 @@ test('Chromium: message search lists Sessions by message text, then reorders the
         ensure('highlight follows its row',q('[aria-selected="true"]').firstChild.textContent==='Rockpay plan');
         key(box(),'Enter'); await tick();
         ensure('a row without a message opens the Session',selected.at(-1)==='y'&&!q('.palette'));
+        // Enter in the input searches at once: no typing pause, and the AI order without a pause.
+        await open(); const first=calls.length; setValue(box(),'oceanpay 合规'); key(box(),'Enter');
+        ensure('Enter starts the message search at once',calls.length===first+1&&calls.at(-1)[0]==='oceanpay 合规'&&!calls.at(-1)[2]&&!!q('.palette'));
+        await wait(()=>rows().length===2);
+        ensure('Enter asks for the AI order without a pause',calls.length===first+2&&calls.at(-1)[2]===true);
+        ensure('Enter opens nothing',!!q('.palette')&&shown.length===0);
+        release(); await tick(); key(box(),'Escape'); await tick();
         await open(); setValue(box(),'oceanpay 合规'); await wait(()=>rows().length===2);
-        key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
+        key(box(),'ArrowDown'); await tick(); key(box(),'ArrowDown'); await tick(); key(box(),'Enter'); await tick();
         ensure('Enter opens the Session at the matching message',shown.at(-1).join()==='x,10'&&!q('.palette'));
         // The AI can say that nothing fits.
         await open(); setValue(box(),'knee'); await wait(()=>rows().length===1); await wait(()=>calls.at(-1)[2]===true); release();
