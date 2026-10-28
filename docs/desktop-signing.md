@@ -71,4 +71,12 @@ The certificate is valid for about 13 months. Apps signed before expiry keep ope
   - `spctl --assess --type execute`: accepted, `source=Notarized Developer ID`.
   - Download simulation (zip with a Safari quarantine flag, unpacked with `ditto`, flag present on the app): accepted, `source=Notarized Developer ID`.
   - Info.plist has the camera usage description.
-- Not yet released. Open: Jamie opens the first signed Release on his Mac.
+
+## Release: desktop v0.1.114 (first signed and notarized build)
+
+- Commits `525b62b` (signing), `4f680d3` (docs), `e115a13` (60-minute job timeout); release commit `9bee5c3`, tag `v0.1.114`. No app code change since v0.1.113; Info.plist gains the camera and microphone descriptions.
+- Candidate check: on Linux, `node package.mjs` without the signing variables still builds an unsigned package; Info.plist has both descriptions.
+- Tag run `40642203322`: 256 tests, 198 pass, 0 fail, 58 skipped, audit 0. "Package, sign and notarize" took 4 min 17 s (06:10:24 to 06:14:41 UTC). "Verify and archive app": valid on disk, satisfies its Designated Requirement, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, hardened runtime, "The validate action worked!", `accepted`, `source=Notarized Developer ID`.
+- Downloaded zip: SHA-256 OK; Info.plist 0.1.114; the stapled ticket (`Contents/CodeResources`) and `_CodeSignature` are present; all 9 `.js`/`.cjs`/`.css` files under `dist/` in the ASAR are byte-identical to the local build. Release notes say signed and notarized.
+- Rollback: reinstall v0.1.113 (unsigned; needs `xattr` again).
+- Open: Jamie downloads v0.1.114 on his Mac and opens it with a double-click, without `xattr`; one possible keychain prompt for "Hermes Safe Storage" (choose Always Allow).
