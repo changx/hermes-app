@@ -118,6 +118,7 @@
 - [docs/desktop-sidebar-release-0.1.37.md](docs/desktop-sidebar-release-0.1.37.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
+- [docs/desktop-signing.md](docs/desktop-signing.md)（macOS 发布必须 Developer ID 签名并公证：签名材料位置、workflow 检查、证书到期续签）
 - [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
 - [docs/desktop-browser-resize-release-0.1.40.md](docs/desktop-browser-resize-release-0.1.40.md)
 - [docs/desktop-file-preview-release-0.1.41.md](docs/desktop-file-preview-release-0.1.41.md)
@@ -309,5 +310,6 @@
 - 实现阶段必须验证历史/压缩、双客户端、断网/重连、进程重启、幂等与审批竞态。
 - 原文消息与模型压缩历史分开；实时展示和重新加载采用同一规则。
 - 交付桌面/手机真实安装包并做真实设备验收。只有网页通过不算完成。
+- 每个 macOS 桌面版发布都必须用 Developer ID 签名（hardened runtime）、经 Apple 公证并 staple，下载后无需 `xattr` 即可打开。签名、公证或 `spctl` 检查失败时停止发布，不发布未签名的包。签名材料只在 Mac mini 的专用钥匙串中，不复制、不输出、不提交。证书 2027-11-27 到期，需提前续签。详见 docs/desktop-signing.md。
 - 使用 uv 管理 Python；前端沿用选定基线已有包管理器与依赖，不新增无必要框架。
 - 任务完成清理自己创建的临时资源，保留产物、证据与恢复状态。
