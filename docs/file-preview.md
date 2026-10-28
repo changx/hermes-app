@@ -74,6 +74,7 @@ Jamie confirmed (2026-10-28): an HTML file that the Agent delivers opens as a we
 - Desktop card: Preview opens the page in the sidebar browser, Open externally opens it in the default browser, and the link reads "View page". Save still saves the HTML file. The gallery leaves pages out.
 - Phone row: "Web page. Tap to open in your browser"; a tap opens the page in the system browser. The gallery leaves pages out.
 - Verified: shared unit tests; desktop Linux/Xvfb Electron test with a local server (sidebar loads the page and its relative image, system browser gets the page link, no bare file download). Mac and iPhone acceptance pending.
+- Released 2026-10-28: desktop [v0.1.115](https://github.com/changx/hermes-app/releases/tag/v0.1.115) (workflow `40672197063`: 257 tests, 198 pass, 0 fail, 59 skipped on the runner; audit 0; `valid on disk`, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, `The validate action worked!`, `source=Notarized Developer ID`). The downloaded zip passed `sha256sum -c`, Info.plist 0.1.115, and its 9 ASAR `dist` code files equal the candidate build. Phone: Expo restart 03:27:11 PDT; the public iOS and Android bundles (SDK 57) went from 0 to 1 for the new row text and the new source comment. Gateway unchanged (PID 3302268). Candidate gate: client-check, mobile tsc/test/exports passed; desktop 254/257, the 3 failures are known flakes that fail at the same rate on origin/main (3 runs each). Mac and iPhone acceptance pending.
 
 ## Not included
 
