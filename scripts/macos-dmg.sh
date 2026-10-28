@@ -15,8 +15,13 @@ test -d "$app"
 
 work="$(mktemp -d)"
 mnt="$work/mnt"
+mounted=false
+# Never delete the work folder while the image is still mounted inside it.
 cleanup() {
-  if [[ -d "$mnt" ]] && /sbin/mount | /usr/bin/grep -qF " on $mnt "; then /usr/bin/hdiutil detach -quiet "$mnt" || true; fi
+  if $mounted; then
+    /usr/bin/hdiutil detach -quiet "$mnt" || /usr/bin/hdiutil detach -quiet -force "$mnt" || {
+      echo "Could not detach $mnt; leaving $work in place." >&2; return; }
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -54,6 +59,7 @@ fi
 # 5. Checks on the app inside the read-only mount, and hashes of the app code for the release record.
 mkdir "$mnt"
 /usr/bin/hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$dmg"
+mounted=true
 test -L "$mnt/Applications"
 /usr/bin/codesign --verify --deep --strict "$mnt/Hermes.app"
 /usr/bin/xcrun stapler validate "$mnt/Hermes.app"
@@ -65,4 +71,6 @@ if [[ -f "$asar_tool" ]]; then
   echo "App code SHA-256 (compare with a local build of the same commit):"
   (cd "$work/asar/dist" && find . \( -name '*.js' -o -name '*.cjs' -o -name '*.css' \) -print0 | sort -z | xargs -0 /usr/bin/shasum -a 256)
 fi
+/usr/bin/hdiutil detach -quiet "$mnt"
+mounted=false
 echo "DMG ready: $dmg"

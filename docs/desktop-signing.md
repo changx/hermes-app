@@ -5,7 +5,9 @@ Requested by Jamie (2026-10-27): downloaded Mac builds must open without `xattr 
 ## Rule
 
 - Every macOS desktop release (tag `v0.1.N`, workflow `desktop-release.yml`, or the fallback `scripts/macmini-desktop-release.sh`) is signed with the Developer ID Application identity, uses hardened runtime, is notarized, and has the notarization ticket stapled.
-- The workflow publishes only when all checks in "Verify and archive app" pass: `codesign --verify --deep --strict`, the Developer ID authority, the hardened runtime flag, `stapler validate`, and `spctl` with `source=Notarized Developer ID`. A failed check stops the release; do not publish an unsigned build instead.
+- The download is one DMG (Jamie, 2026-10-28: "只发 dmg", plain window). The Release has `Hermes-<version>-macOS-arm64.dmg` and its `.sha256`, no zip. The DMG holds `Hermes.app` and an `Applications` shortcut, with no background image.
+- The DMG is signed with the same identity, notarized and stapled too.
+- The workflow publishes only when all checks in "Verify app and build DMG" pass. On the app: `codesign --verify --deep --strict`, the Developer ID authority, the hardened runtime flag, `stapler validate`, and `spctl --type execute` with `source=Notarized Developer ID`. On the DMG: `codesign --verify`, `stapler validate`, and `spctl --type open --context context:primary-signature` with `source=Notarized Developer ID`; then the same app checks again inside a read-only mount. A failed check stops the release; do not publish an unsigned build or a zip instead.
 - Notarization is Apple's automated security scan. It is not App Store review, and the app is not distributed through the App Store.
 - Local and Linux builds (`npm run package:mac` without `HERMES_MAC_SIGN_IDENTITY`) stay unsigned. They are for tests only.
 
@@ -30,7 +32,8 @@ Never print, copy off the Mac mini, or commit the key, the keychain password or 
 - `@electron/osx-sign` (2.7.1) signs every binary inside out, enables hardened runtime, and uses Electron's default entitlements per helper: JIT for all; camera, microphone and the other device entitlements for the main app (pages in the built-in browser can ask for them).
 - Info.plist has `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`. A hardened app that opens the camera or microphone without them is stopped by macOS.
 - `@electron/notarize` (3.1.1) zips the app, runs `notarytool submit --wait`, and staples the ticket.
-- The workflow then checks the result and zips the stapled app with `ditto`.
+- The workflow then checks the app and runs `scripts/macos-dmg.sh <app> <dmg>`: `hdiutil create` (HFS+, UDZO, volume name Hermes), `codesign` the image, `notarytool submit --wait` (the script reads the JSON status, because notarytool exits 0 for a rejected submission, and prints `notarytool log` on failure), `stapler staple`, the DMG checks, and the checks inside a read-only mount. It ends by printing the SHA-256 of every `.js`/`.cjs`/`.css` file under `dist/` in the app's ASAR.
+- `scripts/macos-dmg.sh` comes from the tagged source, so a rerun of a tag older than the DMG change fails at that step.
 
 ## Timing
 
@@ -40,9 +43,10 @@ Never print, copy off the Mac mini, or commit the key, the keychain password or 
 
 ## Verification for each release
 
-1. The tag run passes "Verify and archive app" (signature, hardened runtime, stapler, `spctl` Notarized Developer ID).
-2. After `gh release download`: SHA-256 check, Info.plist version, and the existing byte comparison of `dist/`. The signature does not change the files in `app.asar`.
-3. Jamie's Mac: the downloaded zip opens with a double-click and no `xattr` step.
+1. The tag run passes "Verify app and build DMG" (app and DMG: signature, stapler, `spctl` Notarized Developer ID; app: hardened runtime).
+2. Compare the app-code SHA-256 lines in that step's log with `sha256sum` of the same files from `npm run build` of the release commit; all must match. This host cannot unpack a DMG, so this replaces the old ASAR extraction of the zip.
+3. After `gh release download`: `sha256sum -c` of the DMG.
+4. Jamie's Mac: open the downloaded DMG, drag Hermes to Applications, and open it with a double-click, with no `xattr` step.
 
 ## Effects for users
 
