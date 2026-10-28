@@ -85,7 +85,7 @@ The certificate is valid for about 13 months. Apps signed before expiry keep ope
 - Rollback: reinstall v0.1.113 (unsigned; needs `xattr` again).
 - Open: Jamie downloads v0.1.114 on his Mac and opens it with a double-click, without `xattr`; one possible keychain prompt for "Hermes Safe Storage" (choose Always Allow).
 
-## DMG (branch `feat/desktop-dmg`, not yet released)
+## DMG (released in v0.1.116)
 
 - Jamie (2026-10-28): publish only a DMG, with the plainest window. Changes: `scripts/macos-dmg.sh`; the workflow step "Verify app and build DMG"; the fallback script; Release assets `Hermes-<version>-macOS-arm64.dmg` and `.sha256`.
 - Test on the Mac mini (branch code, 2026-10-28):
@@ -94,3 +94,13 @@ The certificate is valid for about 13 months. Apps signed before expiry keep ope
   - Download simulation: the DMG with a Safari quarantine flag is accepted; the app copied out of it with a quarantine flag is accepted.
   - App-code SHA-256 printed by the script: all 9 files match a local `npm run build` of the same commit.
   - No volume stays mounted after the script. The first run showed a cleanup fault (the mount check missed the `/private` path, and `rm -rf` reached the read-only mount); the script now detaches explicitly and never deletes while mounted.
+
+## Release: desktop v0.1.116 (first DMG)
+
+- Commits `a00254e` (DMG), `f4c924d` (cleanup fix), `5e45d18` (test record), rebased on v0.1.115 (released by another session while this branch waited; no shared files). Release commit `4cc68e2`, tag `v0.1.116`. App code is the same as v0.1.115.
+- Tag run `40784613721`: 257 tests, 198 pass, 0 fail, 59 skipped, audit 0. App package + notarization 3 min 35 s; "Verify app and build DMG" 2 min 0 s (DMG submission `34f970a1-6273-4438-86fa-18c2fb2efe3d`, `Accepted`); upload 21 s.
+- Checks in the log: app valid on disk, Developer ID authority, staple validated, `accepted` / `source=Notarized Developer ID`; DMG valid on disk, "The staple and validate action worked!", `accepted` / `source=Notarized Developer ID`; app inside the mount `accepted`.
+- The 9 app-code SHA-256 lines printed by the script equal a local `npm run build` of the release commit.
+- Release assets: only `Hermes-0.1.116-macOS-arm64.dmg` (146.9 MB) and its `.sha256`; downloaded checksum OK. The release before it (v0.1.115) keeps its zip.
+- Rollback: install v0.1.115 (signed zip).
+- Open: Jamie opens the DMG on his Mac, drags Hermes to Applications and starts it without `xattr`.
