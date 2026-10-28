@@ -84,3 +84,13 @@ The certificate is valid for about 13 months. Apps signed before expiry keep ope
 - Downloaded zip: SHA-256 OK; Info.plist 0.1.114; the stapled ticket (`Contents/CodeResources`) and `_CodeSignature` are present; all 9 `.js`/`.cjs`/`.css` files under `dist/` in the ASAR are byte-identical to the local build. Release notes say signed and notarized.
 - Rollback: reinstall v0.1.113 (unsigned; needs `xattr` again).
 - Open: Jamie downloads v0.1.114 on his Mac and opens it with a double-click, without `xattr`; one possible keychain prompt for "Hermes Safe Storage" (choose Always Allow).
+
+## DMG (branch `feat/desktop-dmg`, not yet released)
+
+- Jamie (2026-10-28): publish only a DMG, with the plainest window. Changes: `scripts/macos-dmg.sh`; the workflow step "Verify app and build DMG"; the fallback script; Release assets `Hermes-<version>-macOS-arm64.dmg` and `.sha256`.
+- Test on the Mac mini (branch code, 2026-10-28):
+  - App package + notarization 258 s; DMG build + notarization + checks 110 s (submission `733b9fe7-76a2-457c-846d-07cb0e16c3bc`, `Accepted`). The DMG is about 147 MB.
+  - DMG: valid on disk, Developer ID authority, staple and validate OK, `spctl --type open` accepted, `source=Notarized Developer ID`. Inside the mount: `Hermes.app` and `Applications -> /Applications`; the app is accepted as Notarized Developer ID.
+  - Download simulation: the DMG with a Safari quarantine flag is accepted; the app copied out of it with a quarantine flag is accepted.
+  - App-code SHA-256 printed by the script: all 9 files match a local `npm run build` of the same commit.
+  - No volume stays mounted after the script. The first run showed a cleanup fault (the mount check missed the `/private` path, and `rm -rf` reached the read-only mount); the script now detaches explicitly and never deletes while mounted.
