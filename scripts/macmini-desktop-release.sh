@@ -10,7 +10,7 @@
 #
 # Fallback for when the self-hosted runner (.github/workflows/desktop-release.yml)
 # is offline; the package crosses the slow Cloudflare Access SSH link (~9 min).
-# Steps: npm ci, desktop:check, npm audit, desktop:package:mac, ditto zip, SHA-256.
+# Steps: npm ci, desktop:check, npm audit, desktop:package:mac, signed and notarized DMG (scripts/macos-dmg.sh), SHA-256.
 # The source is `git archive` of the tag commit, so the Mac mini needs no GitHub login.
 # Prerequisites:
 # - `ssh macmini` works (override with MACMINI_HOST).
@@ -47,7 +47,7 @@ if $publish && gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   echo "Release $tag already exists; refusing to replace published assets." >&2; exit 1
 fi
 
-archive="Hermes-$version-macOS-arm64.zip"
+archive="Hermes-$version-macOS-arm64.dmg"
 remote_dir="hermes-desktop-build/$tag"
 out="$root/tmp/release/$tag"
 
@@ -81,7 +81,7 @@ test -f "$app/Contents/Resources/app.asar"
 /usr/bin/xcrun stapler validate "$app"
 /usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
 mkdir -p release
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "release/$3"
+bash scripts/macos-dmg.sh "$app" "release/$3"
 cd release
 /usr/bin/shasum -a 256 "$3" > "$3.sha256"
 /usr/bin/shasum -a 256 -c "$3.sha256"
@@ -97,7 +97,7 @@ if $publish; then
   gh release create "$tag" "$out/$archive" "$out/$archive.sha256" \
     --repo "$repo" --verify-tag --draft --generate-notes \
     --title "Hermes Desktop $tag" \
-    --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. It opens after download without removing the quarantine flag. It is not an App Store distribution."
+    --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. Open the DMG and drag Hermes to Applications; it opens without removing the quarantine flag. It is not an App Store distribution."
   gh release edit "$tag" --repo "$repo" --draft=false
   bash scripts/prune-releases.sh "$repo" 2 --protect "$tag"
 fi

@@ -2,7 +2,8 @@ name: Desktop Release (Mac mini)
 
 # Builds the Apple Silicon desktop package on the project Mac mini
 # (self-hosted runner `macmini-m4`), signs it with Developer ID, notarizes and
-# staples it, and publishes it from there (docs/desktop-signing.md).
+# staples it, wraps it in a signed and notarized DMG, and publishes the DMG
+# from there (docs/desktop-signing.md).
 # - Pushing a vX.Y.Z tag builds and publishes that tag.
 # - Manual run: build any existing tag; publish only when `publish` is true,
 #   otherwise leave a draft Release for checking.
@@ -60,7 +61,7 @@ jobs:
           test "$(uname -m)" = "arm64"
           test "$(node --version)" = "v24.14.1"
           test "$(npm --version)" = "11.11.0"
-          echo "ARCHIVE=Hermes-${VERSION}-macOS-arm64.zip" >> "$GITHUB_ENV"
+          echo "ARCHIVE=Hermes-${VERSION}-macOS-arm64.dmg" >> "$GITHUB_ENV"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG (published or draft) already exists; refusing to replace its assets." >&2
             exit 1
@@ -86,7 +87,7 @@ jobs:
       - name: Package, sign and notarize macOS app
         run: npm run desktop:package:mac
 
-      - name: Verify and archive app
+      - name: Verify app and build DMG
         run: |
           set -euo pipefail
           APP="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
@@ -98,7 +99,8 @@ jobs:
           /usr/bin/xcrun stapler validate "$APP"
           /usr/sbin/spctl --assess --type execute --verbose=2 "$APP" 2>&1 | tee /dev/stderr | /usr/bin/grep -q 'source=Notarized Developer ID'
           rm -rf release && mkdir release
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "release/$ARCHIVE"
+          # DMG: app + Applications shortcut, signed, notarized, stapled and checked from a mount.
+          bash scripts/macos-dmg.sh "$APP" "release/$ARCHIVE"
           cd release
           /usr/bin/shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           /usr/bin/shasum -a 256 -c "$ARCHIVE.sha256"
@@ -124,7 +126,7 @@ jobs:
           args=(release create "$TAG"
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes
             --title "Hermes Desktop $TAG"
-            --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. It opens after download without removing the quarantine flag. It is not an App Store distribution.")
+            --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. Open the DMG and drag Hermes to Applications; it opens without removing the quarantine flag. It is not an App Store distribution.")
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
           gh "${args[@]}"
           # A new draft appears in the release list only after a short delay; wait up to 30 s.
