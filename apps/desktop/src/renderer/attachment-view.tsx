@@ -38,10 +38,11 @@ export const AttachmentView = ({ attachment }: { attachment: DesktopAttachment }
       <ThumbnailFace name={attachment.name} mime={attachment.mime} src={src} failed={failed} onError={fail} />
       <div className="attachment-info"><span className="attachment-name">{attachment.name}</span><span className="attachment-size">{attachment.size ? `${Math.ceil(attachment.size / 1024)} KB` : attachment.state}</span></div>
       {available ? <div className="attachment-actions">
-        <button type="button" onClick={preview} data-tooltip="Preview in the sidebar">Preview</button>
-        <button type="button" onClick={open} disabled={!!transfer} data-tooltip="Open in the default app">Open externally</button>
+        <button type="button" onClick={preview} data-tooltip={attachment.pageUrl ? 'Open the web page in the sidebar' : 'Preview in the sidebar'}>Preview</button>
+        <button type="button" onClick={open} disabled={!!transfer} data-tooltip={attachment.pageUrl ? 'Open the web page in the default browser' : 'Open in the default app'}>Open externally</button>
         <button type="button" onClick={save} disabled={!!transfer} data-tooltip="Save a copy to this computer">Save</button>
-        {attachment.publicUrl ? <a href={attachment.publicUrl} target="_blank" rel="noreferrer" data-tooltip="Open the file link">View file</a> : null}
+        {attachment.pageUrl ? <a href={attachment.pageUrl} target="_blank" rel="noreferrer" data-tooltip="Open the web page">View page</a>
+          : attachment.publicUrl ? <a href={attachment.publicUrl} target="_blank" rel="noreferrer" data-tooltip="Open the file link">View file</a> : null}
       </div> : null}
     </div>
     {transfer?.received !== undefined ? <TransferProgressView action={transfer.action} received={transfer.received} total={transfer.total} /> : null}

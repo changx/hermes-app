@@ -122,7 +122,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   const galleryRows = useRef<readonly TimelineRow[]>([]);
   const gallery = useCallback(() => galleryRows.current.map(row => row.attachments), []);
   const renderAttachments = useCallback((row: TimelineRow) => row.attachments?.length
-    ? <MessageAttachments files={attachmentFiles} attachments={row.attachments} gallery={gallery} /> : null, [attachmentFiles, gallery]);
+    ? <MessageAttachments files={attachmentFiles} attachments={row.attachments} gallery={gallery} server={config?.baseUrl} /> : null, [attachmentFiles, gallery, config?.baseUrl]);
   const [located, setLocated] = useState(false);
   // Only a finished open that showed no content is a failure. Not located and
   // not busy also covers an open that has not started yet (the first render,

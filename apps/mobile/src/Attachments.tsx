@@ -8,6 +8,7 @@ import { File } from 'expo-file-system';
 import { toByteArray } from 'base64-js';
 import { useIsFocused } from 'expo-router';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
+import { attachmentPageUrl } from '../../../packages/client/src/attachmentPages';
 import { appDownloadLimit, browserDownloadUrl, chooseAttachments, draftBusy, isImage, tooLargeForApp, MAX_CLIPBOARD_IMAGE_BYTES, MAX_THUMBNAIL_BYTES, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
@@ -288,7 +289,8 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
  * A tap opens every available attachment of the Thread side by side, starting at the tapped one.
  */
 type RowState = 'loading' | 'ready' | 'error';
-export function MessageAttachments({ files, attachments, gallery }: { files: AttachmentFiles; attachments: Attachment[]; gallery?: () => ReadonlyArray<readonly Attachment[] | undefined> }) {
+export function MessageAttachments({ files, attachments, gallery, server }: { files: AttachmentFiles; attachments: Attachment[]; gallery?: () => ReadonlyArray<readonly Attachment[] | undefined>;
+  /** The connection's server address: a published HTML page opens at its link there. */ server?: string | null }) {
   const [state, setState] = useState<Record<string, RowState>>({});
   // Redraw while a download of this message's files reports progress.
   const [, setProgressTick] = useState(0);
@@ -314,6 +316,13 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
   }, [attachments, files]);
   const open = (attachment: Attachment) => {
     if (!focusedRef.current) return;
+    // A published HTML page opens in the browser, where its images and videos load.
+    const page = attachmentPageUrl(server, attachment);
+    if (page) {
+      setState(old => ({ ...old, [attachment.id]: 'ready' }));
+      void Linking.openURL(page).catch(() => { if (alive.current) setState(old => ({ ...old, [attachment.id]: 'error' })); });
+      return;
+    }
     if (tooLargeForApp(attachment, limit)) {
       // The system browser downloads it from the public link; the app does not hold it in memory.
       const url = browserDownloadUrl(attachment, limit);
@@ -323,7 +332,7 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
     // A failed thumbnail retries with the tap as well.
     if (state[attachment.id] === 'error' && isImage(attachment.mime, attachment.name)) load(attachment);
     const sequence = gallerySequence(gallery?.() ?? [attachments], attachment);
-    const items = sequence.items.filter(item => item.id === attachment.id || !tooLargeForApp(item, limit));
+    const items = sequence.items.filter(item => item.id === attachment.id || (!tooLargeForApp(item, limit) && !attachmentPageUrl(server, item)));
     const index = Math.max(0, items.findIndex(item => item.id === attachment.id));
     const pages: GalleryItem[] = items.map(item => ({ key: item.id, title: item.name || 'Attachment', open: () => files.load(item),
       progress: () => { const value = files.downloadProgress(item.id); return value && progressLabel(value); }, onProgress: listener => files.onProgress(listener) }));
@@ -341,7 +350,8 @@ export function MessageAttachments({ files, attachments, gallery }: { files: Att
         {ready && <Image source={{ uri: ready.uri }} style={styles.thumb} />}
       </View>}
       <View style={styles.fileText}><Text style={styles.title} numberOfLines={2}>{label}</Text>
-        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : tooLargeForApp(attachment, limit) ? (attachment.public_url ? (status === 'error' ? 'Could not open the link. Tap to retry' : 'Large file. Tap to download in your browser') : 'Too large to open in the app') : downloading ? `Downloading… ${progressLabel(downloading)}` : status === 'loading' ? 'Loading…' : status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
+        <Text style={styles.detail}>{attachment.state !== 'available' ? 'Attachment unavailable for now' : attachmentPageUrl(server, attachment)
+          ? (status === 'error' ? 'Could not open the page. Tap to retry' : 'Web page. Tap to open in your browser') : tooLargeForApp(attachment, limit) ? (attachment.public_url ? (status === 'error' ? 'Could not open the link. Tap to retry' : 'Large file. Tap to download in your browser') : 'Too large to open in the app') : downloading ? `Downloading… ${progressLabel(downloading)}` : status === 'loading' ? 'Loading…' : status === 'error' ? 'Failed to load. Tap to retry' : attachment.mime || 'File'}</Text>
       </View>
     </Pressable>;
   })}

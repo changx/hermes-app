@@ -402,6 +402,7 @@ export class DesktopConnections {
   async uploadAttachmentPaths(paths: readonly string[], id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.uploadAttachmentPaths(paths, r.raw); }
   async deleteUnattachedAttachment(attachment: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.deleteUnattachedAttachment(attachment, r.raw); }
   async attachmentPreview(attachment: string, id: string) { const r = this.route(id); return r.account.service.attachmentPreview(attachment, r.raw); }
+  attachmentPage(attachment: string, id: string) { const r = this.route(id); return r.account.service.attachmentPage(attachment, r.raw); }
   previewItems(id: string, ids: readonly string[]) { const r = this.route(id); return r.account.service.previewItems(r.raw, ids); }
   previewResources(id: string) { const r = this.route(id); return r.account.service.previewResources(r.raw); }
   async previewAttachmentImage(attachment: string, id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.previewAttachmentImage(attachment, r.raw); }

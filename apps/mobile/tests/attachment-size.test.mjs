@@ -157,7 +157,7 @@ test('Agent files above the app download limit open their public link in the bro
   const open = source.slice(source.indexOf('const open = (attachment: Attachment)'), source.indexOf('return <View style={styles.root}>{attachments.map'));
   assert.match(open, /if \(tooLargeForApp\(attachment, limit\)\) \{[\s\S]*Linking\.openURL\(url\)[\s\S]*return;\s*\}/, 'a large file never starts an in-app download');
   assert.ok(open.indexOf('tooLargeForApp(attachment, limit)') < open.indexOf('gallerySequence('), 'checked before the gallery opens');
-  assert.match(open, /filter\(item => item\.id === attachment\.id \|\| !tooLargeForApp\(item, limit\)\)/, 'the gallery skips files it cannot load');
+  assert.match(open, /filter\(item => item\.id === attachment\.id \|\| \(!tooLargeForApp\(item, limit\) && !attachmentPageUrl\(server, item\)\)\)/, 'the gallery skips files it cannot load and web pages');
   assert.match(source, /Large file\. Tap to download in your browser/);
 });
 
@@ -181,4 +181,17 @@ test('an in-app download reports progress to listeners and clears it when done',
   const source = fs.readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
   assert.match(source, /downloading \? `Downloading… \$\{progressLabel\(downloading\)\}`/);
   assert.match(fs.readFileSync(new URL('../src/AttachmentGallery.tsx', import.meta.url), 'utf8'), /Downloading… \$\{progress\}/);
+});
+
+test('a published HTML attachment opens its web page on this connection, not the bare file', () => {
+  const source = fs.readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
+  const open = source.slice(source.indexOf('const open = (attachment: Attachment)'), source.indexOf('return <View style={styles.root}>{attachments.map'));
+  assert.match(open, /const page = attachmentPageUrl\(server, attachment\);\s*if \(page\) \{[\s\S]*Linking\.openURL\(page\)[\s\S]*return;\s*\}/, 'a page opens in the browser');
+  assert.ok(open.indexOf('attachmentPageUrl(server, attachment)') < open.indexOf('tooLargeForApp(attachment, limit)'), 'before any download path');
+  assert.ok(open.indexOf('attachmentPageUrl(server, attachment)') < open.indexOf('gallerySequence('), 'before the gallery opens');
+  assert.match(source, /Web page\. Tap to open in your browser/);
+  assert.match(source, /Could not open the page\. Tap to retry/);
+  const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /<MessageAttachments files=\{attachmentFiles\} attachments=\{row\.attachments\} gallery=\{gallery\} server=\{config\?\.baseUrl\} \/>/, 'the page joins the connection server');
+  assert.match(app, /\[attachmentFiles, gallery, config\?\.baseUrl\]\);/, 'rows redraw when the server changes');
 });

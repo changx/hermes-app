@@ -242,6 +242,9 @@ const registerDesktopApi = (): void => {
     const attachmentId = text(id, 200);
     if (sequence !== undefined && (!Array.isArray(sequence) || sequence.length > 500)) throw new Error('Invalid desktop request');
     const ids = sequence === undefined ? [] : sequence.map(value => text(value, 200));
+    // A published HTML page opens at its own link, where its images and videos load.
+    const page = service.attachmentPage(attachmentId, thread);
+    if (page) { await browser?.open(tab.id, browserUrl(page)); return; }
     const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && tab.connectionKey === key && service.hasConnection(key);
     const sibling = (assets: Array<{ id: string; name: string }>) => async (name: string) => {
       const matches = assets.filter(item => item.name === name);
@@ -504,6 +507,9 @@ const registerDesktopApi = (): void => {
   handle("desktop:download-attachment", async (event, id: unknown, action: unknown) => {
     const threadId = target(event), attachmentId = text(id, 200);
     if (action !== "save" && action !== "open") throw new Error("Invalid desktop request");
+    // Open externally on a published HTML page: the system browser loads the page with its resources.
+    const page = action === "open" ? service.attachmentPage(attachmentId, threadId) : undefined;
+    if (page) { if (!isSystemBrowserUrl(page)) throw new Error("Invalid desktop request"); await shell.openExternal(page); return; }
     // Progress goes only to the window that asked, at most about 5 times a second.
     let last = 0;
     await service.downloadAttachment(attachmentId, action, threadId, (received, total) => {

@@ -52,6 +52,8 @@ export type DesktopAttachment = Readonly<{
   mime: string;
   size: number;
   publicUrl?: string;
+  /** Web page link of a published HTML attachment, on the connection's own server. */
+  pageUrl?: string;
   state: "available" | "missing" | "deleted" | "uploading";
 }>;
 export type DesktopInteraction = Readonly<{

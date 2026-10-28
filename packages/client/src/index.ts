@@ -4,6 +4,8 @@ import { createSessionFilesApi, type SessionFilesApi } from './sessionFiles';
 import { createSessionTextApi, type SessionTextApi } from './sessionText';
 import { parseAutomationDetail, parseAutomationPage, parseAutomationUpdate, parseAutomations, type Automation, type AutomationDetail, type AutomationPage } from './automations';
 export { utf8Size, workspacePath } from './workspace';
+import { validSitePath } from './attachmentPages';
+export { attachmentPageUrl, validSitePath } from './attachmentPages';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
@@ -20,7 +22,7 @@ export interface AgentModelSettings { scope: 'connected-default'; provider: stri
 export interface ModelSelectionConfirmation { confirmation_required: true; warning: string; provider: string; model: string }
 /** Model for one new Thread. Omit it to use the connection's primary model. */
 export interface ThreadModelChoice { provider: string; model: string }
-export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; public_url?: string; state: 'available' | 'missing' | 'deleted' }
+export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; public_url?: string; site_path?: string; state: 'available' | 'missing' | 'deleted' }
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
@@ -106,7 +108,7 @@ const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x
 
 const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str(x.name); return x as unknown as Channel };
 
-const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} if(typeof x.public_url==='string') {try {const u=new URL(x.public_url);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash&&u.pathname.startsWith('/media/'+a.id+'/'))a.public_url=u.href;}catch{/* Optional links never invalidate durable attachment metadata. */}} return a };
+const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} if(typeof x.public_url==='string') {try {const u=new URL(x.public_url);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash&&u.pathname.startsWith('/media/'+a.id+'/'))a.public_url=u.href;}catch{/* Optional links never invalidate durable attachment metadata. */}} const site=validSitePath(a.id,x.site_path); if(site&&state==='available')a.site_path=site; return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
 const displayString = (value: unknown, max: number): string => { const s = str(value); if (!s || s.length > max) throw new ProtocolError('invalid tool display'); return s };
 const displayLine = (value: unknown, max: number): string => { const s = displayString(value, max); if (/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(s)) throw new ProtocolError('invalid tool display line'); return s };

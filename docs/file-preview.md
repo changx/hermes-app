@@ -65,6 +65,16 @@ Request (Jamie): image and attachment previews on phone and desktop are a contin
 
 Release v0.1.79 (2026-10-13, authorized by Jamie: "合并发布"): `main` fast-forwarded `6c061ba..bfe60e6`, tag `v0.1.79`, tag run 38398865964 succeeded (196 tests, 148 pass, 0 fail, 48 skipped; audit 0). Release `Hermes-0.1.79-macOS-arm64.zip`: checksum OK, Info.plist 0.1.79; ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js`, `dist/renderer/styles.css` byte-identical to the local build. Expo: runtime checkout at `bfe60e6`, `hermes-app-expo.service` restarted (PID 14073 → 210935); public iOS and Android manifests 200, SDK 57.0.0, launch assets 200, marker `Tap to try again` present on both. Gateway PID 3564617 and plugin hash unchanged. Rollback: `v0.1.78` / `6c061ba`. iPhone and Mac checks still open.
 
+## Agent web pages: HTML attachments open as a site (2026-10-28)
+
+Jamie confirmed (2026-10-28): an HTML file that the Agent delivers opens as a web page with its images and videos, on desktop and phone, without any server setting.
+
+- Server (plugin 0.2.51): at delivery the plugin copies the page and the files it links by relative path inside its own folder to `/media/<id>/site/<page>`. The attachment metadata carries `site_path` (relative path only).
+- Client: `packages/client/src/attachmentPages.ts` validates `site_path` (this attachment, one `.html`/`.htm` page) and joins it to the connection's own server address. No `HERMES_APP_PUBLIC_BASE_URL` is needed.
+- Desktop card: Preview opens the page in the sidebar browser, Open externally opens it in the default browser, and the link reads "View page". Save still saves the HTML file. The gallery leaves pages out.
+- Phone row: "Web page. Tap to open in your browser"; a tap opens the page in the system browser. The gallery leaves pages out.
+- Verified: shared unit tests; desktop Linux/Xvfb Electron test with a local server (sidebar loads the page and its relative image, system browser gets the page link, no bare file download). Mac and iPhone acceptance pending.
+
 ## Not included
 
 - PDF and Office rendering on Android.

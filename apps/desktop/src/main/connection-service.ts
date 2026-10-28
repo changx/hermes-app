@@ -7,6 +7,7 @@ import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, 
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
+import { attachmentPageUrl } from "../../../../packages/client/src/attachmentPages";
 import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import type { FileSearchPage, SessionFile, SessionFileList } from "../../../../packages/client/src/sessionFiles";
@@ -417,8 +418,10 @@ export class DesktopConnectionService {
     });
   }
 
-  private projectAttachment({ id, name = "Attachment", mime = "application/octet-stream", size = 0, state, public_url }: Attachment): DesktopAttachment {
-    return { id, name, mime, size, state, ...(public_url ? { publicUrl: public_url } : {}) };
+  private projectAttachment(attachment: Attachment): DesktopAttachment {
+    const { id, name = "Attachment", mime = "application/octet-stream", size = 0, state, public_url } = attachment;
+    const pageUrl = attachmentPageUrl(this.connection?.baseUrl, attachment);
+    return { id, name, mime, size, state, ...(public_url ? { publicUrl: public_url } : {}), ...(pageUrl ? { pageUrl } : {}) };
   }
 
   private changed(): void {
@@ -1381,12 +1384,20 @@ export class DesktopConnectionService {
     return { name: attachment.name ?? 'Attachment', mime: attachment.mime ?? 'application/octet-stream', bytes };
   }
 
-  /** Attachments of this Session for the preview gallery, in the given (message) order. Skips files that cannot be previewed. */
+  /** The web page of a published HTML attachment of this Session, on this connection's server; else undefined. */
+  attachmentPage(attachmentId: string, threadId: string): string | undefined {
+    const item = this.client?.attachments.get(attachmentId);
+    return item && item.thread_id === threadId ? attachmentPageUrl(this.connection?.baseUrl, item) : undefined;
+  }
+
+  /** Attachments of this Session for the preview gallery, in the given (message) order. Skips files that cannot be
+   * previewed, and web pages: those open at their own link with their images and videos. */
   previewItems(threadId: string, ids: readonly string[]): Array<{ id: string; name: string; mime: string }> {
     const client = this.requireClient(), seen = new Set<string>(), items: Array<{ id: string; name: string; mime: string }> = [];
     for (const id of ids) {
       const item = client.attachments.get(id);
-      if (!item || seen.has(id) || item.thread_id !== threadId || item.state !== 'available' || !item.size || item.size > MAX_PREVIEW_BYTES) continue;
+      if (!item || seen.has(id) || item.thread_id !== threadId || item.state !== 'available' || !item.size || item.size > MAX_PREVIEW_BYTES
+        || attachmentPageUrl(this.connection?.baseUrl, item)) continue;
       seen.add(id); items.push({ id, name: item.name ?? 'Attachment', mime: item.mime ?? 'application/octet-stream' });
     }
     return items;

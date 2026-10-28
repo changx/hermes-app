@@ -206,3 +206,5 @@ Hermes 实现项目结构、存储、历史维护、公共提示与运行管理�
 ## 6. 非目标
 
 不重写 Agent，不模拟 Discord 服务或协议，不构建完整社交/角色/语音房体系。Web 演示不是独立手机 App 的替代交付。不因项目初始化自动开展生产部署。
+
+2026-10-28 Jamie 确认：Agent 发出的 HTML 附件在桌面和手机都按网页打开，页面引用的图片和视频一起加载。服务端只给相对路径 `site_path`，客户端用当前连接的服务地址补全，不依赖服务端配置公开地址。桌面 Preview 在侧栏打开页面，Open externally 用默认浏览器打开，Save 仍保存 HTML 文件；手机点按用系统浏览器打开。见 [In-app file preview](file-preview.md#agent-web-pages-html-attachments-open-as-a-site-2026-10-28)。
