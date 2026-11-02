@@ -44,3 +44,14 @@ Jamie 确认的范围：
 - 手机：直接回复的解析结果中每行是独立段落；普通消息解析结果不变。
 - 用实际 `/commands` 输出文本做渲染测试；客户端现有测试和 TypeScript 检查通过。
 - 真机视觉验收另行记录，不以单元测试代替。
+
+## 发布记录（2026-11-01）
+
+- 实现提交 `96bef57`（PR #1），快进合入 `main`。回滚分支 `rollback/direct-reply-layout-before-440298e`（已推送）。
+- 手机：只重启 `hermes-app-expo.service`（PID 3565508 → 3629198），开发 Gateway、插件和 core 不变。`/status` 为 `packager-status:running`；公网 iOS / Android manifest 均 HTTP 200，各自 launchAsset 均 HTTP 200（iOS 12,853,852 bytes，Android 12,944,906 bytes），两个 bundle 都包含 `lines: row.displayKind === 'direct'`。
+- 桌面 v0.1.117（tag，release 提交 `c9f82b0`）：tag run `41402261718` 在 `npm audit` 停止。新公布的 GHSA-g3hv-75wg-m249（minimatch <11.0.1）和 GHSA-3g3m-2fjr-6pw4（glob ≤14.0.1）经 `@electron/packager → @electron/asar 4.3.1` 引入，均为构建依赖；没有生成 Release。按 Jamie 决定保留该 tag，改发 v0.1.118。
+- 依赖修复 `2b39f3c`：根 `package.json` overrides `glob 14.0.3`、`minimatch 11.0.4`。npm 11 在已有 lockfile 的 workspaces 项目中不应用新增 override，所以 lockfile 中 `glob`、`minimatch`、`path-scurry`、`@isaacs/nonrecursive-glob-match` 四项取自同 override 的干净解析，其余条目不变。`npm ci` 通过，`npm audit` 0。`npm ls` 显示 `invalid` 是 npm 对 override 的已知显示问题。Linux 无签名打包前后 `app.asar` SHA-256 相同（`e5b07289…33c9`），36 个文件哈希相同。上游 `@electron/asar` 依赖修复版本后删除这两项 override。
+- 桌面 v0.1.118（release 提交 `0dfe541`）：tag run `41403904271` 用时 6 分 33 秒。测试 261 项：202 通过、0 失败、59 跳过；audit 0。App 与 DMG：Developer ID 签名、hardened runtime、staple 验证通过、`source=Notarized Developer ID`；DMG 公证提交 `8fd7260f-b81d-48a2-8d2d-3cc199eaa688` `Accepted`。
+- CI 打印的 9 个 app 代码 SHA-256 与本地 `npm run build`（同一提交）完全一致。Release 资产只有 `Hermes-0.1.118-macOS-arm64.dmg`（146,945,159 bytes）及 `.sha256`，下载后 `sha256sum -c` OK。保留的上一版为 v0.1.116。
+- 回滚：手机切回回滚分支后重启 Expo；桌面安装 v0.1.116。
+- 待验收：Jamie 在桌面（v0.1.118）和手机（Expo Go 重新加载）上发送 `/commands`，确认显示效果。
