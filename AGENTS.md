@@ -97,6 +97,7 @@
 - [docs/mobile-workspace-entry-release.md](docs/mobile-workspace-entry-release.md)
 - [docs/mobile-session-options.md](docs/mobile-session-options.md)
 - [docs/mobile-battery.md](docs/mobile-battery.md)
+- [docs/client-error-logs.md](docs/client-error-logs.md)（手机端错误上传到 `POST /v1/client-logs`，写入 profile 的 `hermes-app/client-logs.jsonl`）
 - [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)
 - [docs/mobile-tabs-recents.md](docs/mobile-tabs-recents.md)
 - [docs/mobile-composer-tap-collapse.md](docs/mobile-composer-tap-collapse.md)（点击 session 页面收起输入框；键盘收起后输入区复位；切后台不再收起键盘）
