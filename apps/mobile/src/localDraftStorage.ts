@@ -49,7 +49,7 @@ export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments:
         if (!durable.exists) return { ...item, status: 'failed' as const, error: 'This file is unavailable. Remove it and select it again.' };
         // Composer cleanup owns a cache copy, never the last committed durable file.
         const working = new File(Paths.cache, `hermes-restored-draft-${randomUUID()}`);
-        durable.copy(working); files.push([item.key, working]); copies.set(working.uri, durable.uri);
+        durable.copySync(working); files.push([item.key, working]); copies.set(working.uri, durable.uri);
         return { ...item, source: { ...item.source, uri: working.uri }, ...(item.status === 'uploading' ? { status: 'failed' as const, error: 'Upload was interrupted. Retry or remove it.' } : {}) };
       });
       attachments.set(key, { items: restored, files });
@@ -65,7 +65,7 @@ export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments:
           if (!uri || !new File(uri).exists) {
             const durable = new File(directory, `attachment-${randomUUID()}`);
             if (item.source.data) { durable.create(); durable.writeSync(item.source.data); }
-            else if (item.source.uri && new File(item.source.uri).exists) new File(item.source.uri).copy(durable);
+            else if (item.source.uri && new File(item.source.uri).exists) new File(item.source.uri).copySync(durable);
             else if (item.status === 'failed' && item.source.uri && owns(item.source.uri)) return item;
             else throw new Error('draft attachment unavailable');
             uri = durable.uri;

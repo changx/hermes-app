@@ -20,7 +20,7 @@ function harness(root) {
     create() { if(failure)throw Error('disk full');fs.writeFileSync(this.path,''); }
     writeSync(data) { if(failure)throw Error('disk full');fs.writeFileSync(this.path,data); }
     textSync() { return fs.readFileSync(this.path,'utf8'); }
-    copy(target) { if(failure)throw Error('disk full');fs.copyFileSync(this.path,target.path); }
+    copySync(target) { if(failure)throw Error('disk full');fs.copyFileSync(this.path,target.path); }
     delete() { fs.unlinkSync(this.path); }
   }
   class Directory {
