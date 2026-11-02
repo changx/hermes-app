@@ -42,3 +42,12 @@ Jamie 的 iPhone 上 Expo Go 已升级到 SDK 58。新版 Expo Go 只支持 SDK 
 - https://expo.dev/changelog/sdk-58
 - https://docs.expo.dev/router/migrate/sdk-57-to-58/
 - npm registry：`expo` latest 为 58.0.22。
+
+## 发布记录（2026-11-01）
+
+- 代码提交 `3aa9d7b` 快进合入 `main`。运行目录 `apps/mobile` 执行 `npm ci`（lockfile 已变更），`expo install --check` 通过。
+- 只重启 `hermes-app-expo.service`（PID 3345925 → 3320064）。开发 Gateway 与插件不变。
+- `/status` 返回 `packager-status:running`；未认证 API 仍为 HTTP 401。
+- 公网 iOS / Android manifest 均 HTTP 200，runtime `exposdk:58.0.0`，SDK `58.0.0`，Expo 账号 `jamsben`。
+- 各自精确 launchAsset 均 HTTP 200：iOS 12,842,452 bytes，Android 12,933,502 bytes；两个 bundle 都包含 `writeSync` 新代码。
+- 测试链接不变：`exps://agent.tuly.space`。真机界面待 Jamie 复测。
