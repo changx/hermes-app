@@ -9,6 +9,7 @@ import { Text } from './FontSize';
 import { MessageContent } from './MessageContent';
 import { openLink } from './openLink';
 import { PREVIEW_MARKDOWN_BYTES, PREVIEW_MAX_BYTES, PREVIEW_TEXT_BYTES, type PreviewKind } from './filePreviewKind';
+import { fileSize } from './nativeNumber';
 
 /** `onZoom` reports when the image is larger than the page, so a gallery can stop paging. */
 export function ImageViewer({ uri, width: pageWidth, onZoom }: { uri: string; width?: number; onZoom?: (zoomed: boolean) => void }) {
@@ -80,8 +81,8 @@ function TextFile({ uri, kind }: { uri: string; kind: 'markdown' | 'text' | 'htm
     let active = true;
     const file = new File(uri);
     // Attachments can be 100 MiB; the text viewer reads the whole file into one string, so it stops at the preview limit.
-    if (file.size > PREVIEW_MAX_BYTES) { setState('large'); return; }
-    file.text().then(text => { if (active) setState({ text, size: file.size }); }, () => { if (active) setState('error'); });
+    if (fileSize(file) > PREVIEW_MAX_BYTES) { setState('large'); return; }
+    file.text().then(text => { if (active) setState({ text, size: fileSize(file) }); }, () => { if (active) setState('error'); });
     return () => { active = false; };
   }, [uri]);
   if (state === 'error') return <Notice text="Could not read this file. Go back and try again." />;

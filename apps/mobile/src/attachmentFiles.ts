@@ -2,6 +2,7 @@ import { File, Paths } from 'expo-file-system';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
 import { appDownloadLimit, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, type PickedAttachment } from './attachmentHelpers';
 import { previewKind, previewSuffix, type PreviewKind } from './filePreviewKind';
+import { fileSize, nativeNumber } from './nativeNumber';
 
 let fileSequence = 0;
 /** A private cache file. The suffix keeps the original extension (AVPlayer and WKWebView need it). */
@@ -33,8 +34,8 @@ export async function attachmentSlot(signal: AbortSignal): Promise<() => void> {
  */
 export async function uploadSource(client: HermesClient, threadId: string, source: PickedAttachment, signal: AbortSignal,
   stale: () => boolean): Promise<Attachment | undefined> {
-  if (source.uri && !source.data && new File(source.uri).size > MAX_ATTACHMENT_BYTES) {
-    const file = new File(source.uri), size = file.size;
+  if (source.uri && !source.data && fileSize(new File(source.uri)) > MAX_ATTACHMENT_BYTES) {
+    const file = new File(source.uri), size = fileSize(file);
     if (!client.supportsChunkedUpload || size > Math.min(client.uploadMaxBytes, MAX_FILE_ATTACHMENT_BYTES)) throw new Error('invalid size');
     if (stale()) return undefined;
     const handle = file.open();
@@ -46,7 +47,7 @@ export async function uploadSource(client: HermesClient, threadId: string, sourc
     } finally { handle.close(); }
   }
   if (source.uri && !source.data && client.supportsFileTransfer) {
-    const size = new File(source.uri).size;
+    const size = fileSize(new File(source.uri));
     if (!size || size > MAX_ATTACHMENT_BYTES) throw new Error('invalid size');
     if (stale()) return undefined;
     return client.uploadFile(threadId, source.name, { uri: source.uri, size }, signal);
@@ -60,7 +61,7 @@ export async function uploadSource(client: HermesClient, threadId: string, sourc
 /** The first bytes of a file, for signature checks, without reading the whole file. */
 function leadingBytes(file: File, length: number): Uint8Array {
   const handle = file.open();
-  try { return handle.readBytesSync(Math.min(length, file.size)); } finally { handle.close(); }
+  try { return handle.readBytesSync(Math.min(length, fileSize(file))); } finally { handle.close(); }
 }
 
 export type LoadedAttachment = { uri: string; kind: PreviewKind };
@@ -117,7 +118,7 @@ export class AttachmentFiles {
             this.report(attachment.id, { received: 0, total: attachment.size }, true);
             const size = await this.client.downloadFile(this.threadId, attachment.id, file.uri, controller.signal,
               received => { if (generation === this.generation) this.report(attachment.id, { received, total: attachment.size }); });
-            if (!size || size > MAX_FILE_ATTACHMENT_BYTES || size !== file.size || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
+            if (!size || size > MAX_FILE_ATTACHMENT_BYTES || size !== fileSize(file) || (attachment.size !== undefined && attachment.size !== size)) throw new Error('invalid body');
             head = leadingBytes(file, 16);
           } catch (error) { forgetFile(file); throw error; }
           if (controller.signal.aborted || generation !== this.generation) { forgetFile(file); return undefined; }
@@ -157,6 +158,7 @@ export class AttachmentFiles {
 
 /** "45% · 67 of 150 MB" or "67 MB" when the size is unknown. */
 export function progressLabel({ received, total }: DownloadProgress): string {
+  received = nativeNumber(received); total = nativeNumber(total);
   const mb = (bytes: number) => bytes < 10 * 1024 * 1024 ? (bytes / 1048576).toFixed(1) : String(Math.round(bytes / 1048576));
   if (!total) return `${mb(received)} MB`;
   return `${Math.min(100, Math.floor(received / total * 100))}% · ${mb(received)} of ${mb(total)} MB`;

@@ -178,6 +178,9 @@ test('an in-app download reports progress to listeners and clears it when done',
   stop(); files.dispose();
   assert.equal(progressLabel({ received: 67 * MiB, total: 150 * MiB }), '44% · 67 of 150 MB');
   assert.equal(progressLabel({ received: 3.5 * MiB }), '3.5 MB');
+  // Expo SDK 58 on iOS reports native Int64 progress as BigInt.
+  assert.equal(progressLabel({ received: 388864n, total: 777728 }), '50% · 0.4 of 0.7 MB');
+  assert.equal(progressLabel({ received: 67n * BigInt(MiB), total: 150n * BigInt(MiB) }), '44% · 67 of 150 MB');
   const source = fs.readFileSync(new URL('../src/Attachments.tsx', import.meta.url), 'utf8');
   assert.match(source, /downloading \? `Downloading… \$\{progressLabel\(downloading\)\}`/);
   assert.match(fs.readFileSync(new URL('../src/AttachmentGallery.tsx', import.meta.url), 'utf8'), /Downloading… \$\{progress\}/);

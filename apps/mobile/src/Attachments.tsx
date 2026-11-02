@@ -16,6 +16,7 @@ import { ComposerCard } from './ComposerCard';
 import { AttachmentGallery, type GalleryItem } from './AttachmentGallery';
 import { attachmentSlot, forgetFile, ownedFile, progressLabel, uploadSource, type AttachmentFiles } from './attachmentFiles';
 import { gallerySequence } from './gallerySequence';
+import { fileSize } from './nativeNumber';
 
 const friendlyFailure = 'Upload failed. The file is still here. Retry or remove it.';
 function Action({ label, title = label, onPress, disabled = false }: { label: string; title?: string; onPress: () => void; disabled?: boolean }) {
@@ -112,7 +113,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: Math.max(1, 8 - itemsRef.current.length), quality: 1 });
       if (picked.canceled || epoch.current !== generation) return;
-      const sources = picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `image.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? new File(asset.uri).size }));
+      const sources = picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `image.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) }));
       add(sources);
     } catch { if (epoch.current === generation) setNotice('Could not select images. Please try again.'); }
   };
@@ -122,7 +123,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     try {
       const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true, copyToCacheDirectory: true });
       if (picked.canceled || epoch.current !== generation) return;
-      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.name, mime: asset.mimeType, size: asset.size ?? new File(asset.uri).size })));
+      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.name, mime: asset.mimeType, size: asset.size ?? fileSize(new File(asset.uri)) })));
     } catch { if (epoch.current === generation) setNotice('Could not select files. Please try again.'); }
   };
 
@@ -135,7 +136,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       if (!permission.granted) { setNotice('Allow camera access to take a photo, or choose one from your library.'); return; }
       const picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
       if (picked.canceled || epoch.current !== generation) return;
-      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? new File(asset.uri).size })));
+      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) })));
     } catch { if (epoch.current === generation) setNotice('Could not open the camera. Try again or choose a photo from your library.'); }
   };
 

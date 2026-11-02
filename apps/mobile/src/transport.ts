@@ -2,6 +2,7 @@ import { File, UploadType } from 'expo-file-system';
 import { requireOptionalNativeModule } from 'expo';
 import type { HttpTransport, SocketFactory, ConditionalHeaders } from '../../../packages/client/src/index';
 import { MAX_ATTACHMENT_BYTES } from './attachmentHelpers';
+import { fileSize, nativeNumber } from './nativeNumber';
 
 
 // RN's WebSocket constructor accepts a third `options` argument with headers.
@@ -72,7 +73,7 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
   const uploadFile: NonNullable<HttpTransport['uploadFile']> = async (path, token, name, file, signal) => {
     if (!validName(name)) throw new Error('Invalid attachment name.');
     const source = new File(file.uri);
-    if (!source.exists || source.size !== file.size || !file.size || file.size > MAX_ATTACHMENT_BYTES) throw new Error('Attachments must be between 1 byte and 100 MiB.');
+    if (!source.exists || fileSize(source) !== file.size || !file.size || file.size > MAX_ATTACHMENT_BYTES) throw new Error('Attachments must be between 1 byte and 100 MiB.');
     const result = await source.upload(base + path, { httpMethod: 'POST', uploadType: UploadType.BINARY_CONTENT, sessionType: 'foreground', signal, headers: {
       ...authorization(token), 'X-File-Name': encodeURIComponent(name), 'X-File-Name-Encoding': 'percent-utf8', 'Content-Type': 'application/octet-stream'
     } });
@@ -90,12 +91,12 @@ export function nativeTransport(base: string): { http: HttpTransport; socket: So
       // A download task reports progress; older native modules only have downloadFileAsync.
       if (onProgress && nativeDownloadTask) {
         const written = await File.createDownloadTask(base + path, target, { headers, sessionType: 'foreground', signal,
-          onProgress: ({ bytesWritten, totalBytes }) => onProgress(bytesWritten, totalBytes > 0 ? totalBytes : undefined) }).downloadAsync();
+          onProgress: ({ bytesWritten, totalBytes }) => { const total = nativeNumber(totalBytes); onProgress(nativeNumber(bytesWritten), total > 0 ? total : undefined); } }).downloadAsync();
         if (!written) throw new Error('The download was paused.');
-        return { status: 200, size: written.size };
+        return { status: 200, size: fileSize(written) };
       }
       const written = await File.downloadFileAsync(base + path, target, { headers, idempotent: true, signal });
-      return { status: 200, size: written.size };
+      return { status: 200, size: fileSize(written) };
     } catch (error) {
       try { if (target.exists) target.delete(); } catch { /* best effort */ }
       throw error;
