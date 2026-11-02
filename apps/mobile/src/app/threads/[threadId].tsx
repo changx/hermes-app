@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ConnectionScope, Notice, ThreadScreen, routeConnection, useConnections } from '../../App';
 import { sessionServer } from '../../../../../packages/client/src/sessionLinks';
 import { routeId } from '../../routeId';
+import { PageErrorBoundary } from '../../PageErrorBoundary';
 
 export default function Thread() {
   const { threadId: rawId, messageRef, server, connection } = useLocalSearchParams<{ threadId: string; messageRef?: string | string[]; server?: string | string[]; connection?: string | string[] }>();
@@ -24,7 +25,7 @@ export default function Thread() {
   // its layout already stops above the bottom safe area.
   return <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
     <ConnectionScope slot={slot} fallback={<Notice text="This conversation is unavailable." />}>
-      <ThreadScreen key={targetRef === undefined ? id : id + ':' + targetRef} threadId={id} targetRef={targetRef} />
+      <PageErrorBoundary><ThreadScreen key={targetRef === undefined ? id : id + ':' + targetRef} threadId={id} targetRef={targetRef} /></PageErrorBoundary>
     </ConnectionScope>
   </SafeAreaView>;
 }

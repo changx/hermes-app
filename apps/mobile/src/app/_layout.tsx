@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Stack, useNavigationContainerRef } from 'expo-router';
+import { Stack, useNavigationContainerRef, usePathname } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { FontSizeProvider, useFontSize } from '../FontSize';
@@ -9,6 +9,9 @@ import { ViewerProvider, useViewerOwner } from '../Viewers';
 import { NetworkStatusToast } from '../NetworkStatusToast';
 import { CopyToast } from '../CopyToast';
 import { removedConnectionRoutes } from '../routeOwnership';
+import { installClientLogs, setClientLogRoute, setClientLogSinks } from '../clientLogs';
+
+installClientLogs();
 
 export const unstable_settings = { anchor: '(tabs)' };
 
@@ -66,6 +69,16 @@ function NativeRoutes() {
   </ViewerProvider>;
 }
 
+/** Crash reports go to the connected servers and name the open route. */
+function ClientLogSinks() {
+  const { connections } = useConnections();
+  const pathname = usePathname();
+  useEffect(() => { setClientLogRoute(pathname); }, [pathname]);
+  const clients = useMemo(() => connections.flatMap(c => c.client && c.config ? [c.client] : []), [connections]);
+  useEffect(() => { setClientLogSinks(clients); }, [clients]);
+  return null;
+}
+
 /** One status line: the first connection that needs attention, named when several exist. */
 function ConnectionToast() {
   const { connections } = useConnections();
@@ -83,7 +96,7 @@ function ActivityCapture({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><ActivityCapture><NativeRoutes /><ConnectionToast /><CopyToast /></ActivityCapture></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><FontSizeProvider><KeyboardProvider><AppProvider><ActivityCapture><NativeRoutes /><ClientLogSinks /><ConnectionToast /><CopyToast /></ActivityCapture></AppProvider></KeyboardProvider></FontSizeProvider></SafeAreaProvider>;
 }
 
 const styles = StyleSheet.create({ fill: { flex: 1 } });
