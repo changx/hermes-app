@@ -18,6 +18,7 @@
 - [docs/p2-mobile-dev.md](docs/p2-mobile-dev.md)
 - [apps/mobile/README.md](apps/mobile/README.md)
 - [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
+- [docs/expo-sdk58-upgrade.md](docs/expo-sdk58-upgrade.md)
 - [docs/channel-repository-agents.md](docs/channel-repository-agents.md)
 - [docs/channel-primary-path.md](docs/channel-primary-path.md)
 
@@ -240,7 +241,7 @@
 - 通信恢复默认自动完成，尽量不打扰用户：重连、确认核对、安全重试、历史补齐不要求用户做技术判断；临时故障只给轻量状态，不弹“重试/放弃”或要求手动重建同步。仅确实需要用户动作时给明确下一步；执行结果不明自动核对但不得盲目重跑，不能以静默掩盖失败。
 - 用户不负责查找、复制或修复令牌；初次接入通过管理员授权的一次性设备配对，App安全保存设备凭据，正常断线/重启自动恢复。既有开发连接继续兼容；设备撤销不得靠自动重新授权绕过。
 - 运行中的 Expo 根目录也是发布来源。未经相应部署授权，候选变更保留在隔离分支，不直接合入运行目录触发热更新。更新手机测试入口时，只发布已验证的客户端与必要开发插件，保留回滚；不顺带升级固定 Hermes 核心或重启 Jamie 主实例。公网资源验证和 iPhone 故障实测分别记录。
-- 当前手机采用 Expo/React Native SDK 57 与共享 HermesClient，使用隔离 hermes-app-dev 开发环境（主模型以该 profile 的 config.yaml 为准，见 docs/dev-environment.md）。Expo Go 是当前测试入口，不等于独立安装包交付。
+- 当前手机采用 Expo SDK 58（React Native 0.88）与共享 HermesClient，使用隔离 hermes-app-dev 开发环境（主模型以该 profile 的 config.yaml 为准，见 docs/dev-environment.md）。Expo Go 是当前测试入口，不等于独立安装包交付。
 - 桌面、独立签名包、系统推送、复杂搜索/管理和完整附件平台保留后续，不作为本轮聊天体验的前置条件。
 - 默认滚屏：新建话题页面定位到最新消息；返回仍存活页面保留原阅读位置和历史窗口。底部跟随；用户上翻停止跟随；新消息提供回到最新入口；主动发送或点击回到最新恢复跟随；加载旧历史保持阅读锚点。频道详情页首帧显示列表底部，话题按最后消息时间从旧到新排列。正常加载不显示“Opening…”一类过程文字，只在确有问题时提示。
 - 页面头部入口用紧凑图标（连接、Agent 设置），返回按钮只显示箭头，不显示上一级标题。键盘和动态内容高度变化不得抢走阅读位置。

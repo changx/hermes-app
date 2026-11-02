@@ -203,8 +203,8 @@ export default function Recents() {
           </View>
         </Pressable>;
       }}
-      ListEmptyComponent={loading || files.state === 'loading' || messages.state === 'loading' || messages.none ? null : <Text style={s.empty}>{searching ? (fileSources.length ? 'No matching conversations or files' : 'No matching conversations') : 'Conversations you take part in during the last 72 hours appear here.'}</Text>}
-      ListFooterComponent={searching ? <SearchNotes files={files.failed} messages={messages} /> : null} />
+      ListEmptyComponent={loading || files.state === 'loading' || messages.state === 'loading' || messages.none ? undefined : <Text style={s.empty}>{searching ? (fileSources.length ? 'No matching conversations or files' : 'No matching conversations') : 'Conversations you take part in during the last 72 hours appear here.'}</Text>}
+      ListFooterComponent={searching ? <SearchNotes files={files.failed} messages={messages} /> : undefined} />
     <NewFab label="New conversation" onPress={() => router.push('/new-thread')} />
   </SafeAreaView>;
 }

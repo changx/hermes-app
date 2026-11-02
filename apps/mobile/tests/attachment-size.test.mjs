@@ -21,10 +21,10 @@ class File {
   get exists() { return fs.existsSync(this.path); }
   get size() { return this.exists ? fs.statSync(this.path).size : 0; }
   create() { fs.writeFileSync(this.path, ''); }
-  write(data) { fs.writeFileSync(this.path, data); }
+  writeSync(data) { fs.writeFileSync(this.path, data); }
   delete() { fs.unlinkSync(this.path); }
   async bytes() { return new Uint8Array(fs.readFileSync(this.path)); }
-  open() { const fd = fs.openSync(this.path, 'r'); return { offset: 0, readBytes(n) { const b = Buffer.alloc(n); const r = fs.readSync(fd, b, 0, n, this.offset); this.offset += r; return new Uint8Array(b.subarray(0, r)); }, close() { fs.closeSync(fd); } }; }
+  open() { const fd = fs.openSync(this.path, 'r'); return { offset: 0, readBytesSync(n) { const b = Buffer.alloc(n); const r = fs.readSync(fd, b, 0, n, this.offset); this.offset += r; return new Uint8Array(b.subarray(0, r)); }, close() { fs.closeSync(fd); } }; }
   async upload(url, options) { uploads.push({ url, options, size: this.size }); return { status: 201, body: JSON.stringify({ attachment: { id: 'att_x', thread_id: 'T', name: 'big.mp4', mime: 'video/mp4', size: this.size } }), headers: { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': '3' } }; }
   static async downloadFileAsync(url, target, options) { downloads.push({ url, options }); fs.writeFileSync(target.path, Buffer.from('%PDF-1.7 rest')); return target; }
 }

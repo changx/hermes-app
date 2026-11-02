@@ -53,7 +53,7 @@ function Page({ id }: { id: string }) {
       {more && <ActivityIndicator style={s.spinner} />}
       {notes.map(note => <Text key={note.key} style={s.note}>{note.text}</Text>)}
     </>}
-    ListEmptyComponent={loading || notes.length ? null : <Text style={s.empty}>No automations deliver to {channelName} yet.</Text>} />;
+    ListEmptyComponent={loading || notes.length ? undefined : <Text style={s.empty}>No automations deliver to {channelName} yet.</Text>} />;
 }
 
 export default function ChannelAutomations() {

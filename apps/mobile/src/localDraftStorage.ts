@@ -64,7 +64,7 @@ export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments:
           let uri = item.source.uri && copies.get(item.source.uri);
           if (!uri || !new File(uri).exists) {
             const durable = new File(directory, `attachment-${randomUUID()}`);
-            if (item.source.data) { durable.create(); durable.write(item.source.data); }
+            if (item.source.data) { durable.create(); durable.writeSync(item.source.data); }
             else if (item.source.uri && new File(item.source.uri).exists) new File(item.source.uri).copy(durable);
             else if (item.status === 'failed' && item.source.uri && owns(item.source.uri)) return item;
             else throw new Error('draft attachment unavailable');
@@ -78,14 +78,14 @@ export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments:
       }
       const destination = slot(next.generation % 2);
       if (!destination.exists) destination.create();
-      destination.write(JSON.stringify(next));
+      destination.writeSync(JSON.stringify(next));
       // Only advance after a verified complete write; retain both slots' attachment bytes.
       if (parse(destination.textSync()).generation !== next.generation) throw new Error('draft storage');
       generation = next.generation;
       // Mirror the committed state so explicit clear/forget cannot recover deleted drafts from a stale slot.
       const mirror = slot((next.generation + 1) % 2);
       if (!mirror.exists) mirror.create();
-      mirror.write(JSON.stringify(next));
+      mirror.writeSync(JSON.stringify(next));
       if (parse(mirror.textSync()).generation !== next.generation) throw new Error('draft storage');
       const retained = new Set(next.attachments.flatMap(([, items]) => items.map(item => item.source.uri)));
       const other = slot((next.generation + 1) % 2);

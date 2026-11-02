@@ -10,7 +10,7 @@ import { NetworkStatusToast } from '../NetworkStatusToast';
 import { CopyToast } from '../CopyToast';
 import { removedConnectionRoutes } from '../routeOwnership';
 
-export const unstable_settings = { initialRouteName: '(tabs)' };
+export const unstable_settings = { anchor: '(tabs)' };
 
 /**
  * The Stack is never remounted for a connection change. Removing one
@@ -27,7 +27,7 @@ function RouteOwnership({ owners }: { owners: ReadonlyMap<string, string | null>
     known.current = owners;
     if (!removed.size || !navigation.isReady()) return;
     const next = removedConnectionRoutes(navigation.getRootState(), removed, id => { const owner = ownerOf(id); return !!owner && removedOwners.has(owner); });
-    if (next) navigation.resetRoot(next);
+    if (next) navigation.reset(next);
   }, [owners, navigation, ownerOf]);
   return null;
 }
@@ -38,7 +38,7 @@ function NativeRoutes() {
   const owners = useMemo(() => new Map(connections.map(c => [c.slot, c.config?.id ?? c.pairing?.config.id ?? null])), [connections]);
   return <ViewerProvider>
     <RouteOwnership owners={owners} />
-    <Stack screenOptions={{ keyboardHandlingEnabled: true, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
+    <Stack screenOptions={{ keyboardHandlingEnabled: true, headerTransparent: false, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: '#f8fafc' }, headerTintColor: '#2b4e81',
       headerTitleStyle: { fontSize: 17 * scale }, headerBackTitleStyle: { fontSize: 17 * scale } }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
       <Stack.Screen name="welcome" options={{ headerShown: false }} />

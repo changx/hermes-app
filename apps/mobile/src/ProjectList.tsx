@@ -32,8 +32,8 @@ export function ProjectList({ connections, revision, onProject, onNewChannel, on
       ListFooterComponent={pending.length ? <View style={s.pending}>{pending.map(row =>
         <Pressable key={row.key} accessibilityRole="button" accessibilityLabel={`${row.connectionName}, ${row.text}. Open connections.`} onPress={onConnections} style={s.pendingRow}>
           <Text numberOfLines={1} style={s.pendingName}>{row.connectionName}</Text><Text numberOfLines={1} style={s.pendingText}>{row.text}</Text>
-        </Pressable>)}</View> : null}
-      ListEmptyComponent={pending.length ? null : <Text style={s.empty}>Create a channel to keep related topics together.</Text>} />
+        </Pressable>)}</View> : undefined}
+      ListEmptyComponent={pending.length ? undefined : <Text style={s.empty}>Create a channel to keep related topics together.</Text>} />
     <NewFab label="New channel" onPress={onNewChannel} />
   </View>;
 }

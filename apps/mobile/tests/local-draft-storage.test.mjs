@@ -18,7 +18,7 @@ function harness(root) {
     constructor(...parts) { this.path = resolve(...parts); this.uri = pathToFileURL(this.path).href; this.name = this.path.split('/').at(-1); }
     get exists() { return fs.existsSync(this.path); }
     create() { if(failure)throw Error('disk full');fs.writeFileSync(this.path,''); }
-    write(data) { if(failure)throw Error('disk full');fs.writeFileSync(this.path,data); }
+    writeSync(data) { if(failure)throw Error('disk full');fs.writeFileSync(this.path,data); }
     textSync() { return fs.readFileSync(this.path,'utf8'); }
     copy(target) { if(failure)throw Error('disk full');fs.copyFileSync(this.path,target.path); }
     delete() { fs.unlinkSync(this.path); }
@@ -52,7 +52,7 @@ test('selected attachment bytes survive cache deletion and interrupted upload re
   const root=await mkdtemp(join(tmpdir(),'local-draft-files-'));
   try {
     const h=harness(root),a=h.maps();const stop=h.bindLocalDraftStorage(a.texts,a.attachments,()=>assert.fail('save failed'));
-    const source=new h.File(h.Paths.cache,'picked');source.create();source.write('real selected bytes');
+    const source=new h.File(h.Paths.cache,'picked');source.create();source.writeSync('real selected bytes');
     a.attachments.set('connection:t',{items:[{key:1,source:{uri:source.uri,name:'note.txt',size:19},status:'uploading'}],files:[[1,source]]});stop();source.delete();
     const b=h.maps();h.bindLocalDraftStorage(b.texts,b.attachments,()=>assert.fail('save failed'));
     const draft=b.attachments.get('connection:t');assert.ok(b.attachments.hasDraft('connection:t'));assert.equal(draft.items[0].status,'failed');assert.equal(new h.File(draft.items[0].source.uri).textSync(),'real selected bytes');assert.equal(draft.files.length,1);

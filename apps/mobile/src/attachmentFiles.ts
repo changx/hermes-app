@@ -41,7 +41,7 @@ export async function uploadSource(client: HermesClient, threadId: string, sourc
     try {
       return await client.uploadChunked(threadId, source.name, size, async (offset, length) => {
         handle.offset = offset;
-        return handle.readBytes(length);
+        return handle.readBytesSync(length);
       }, signal);
     } finally { handle.close(); }
   }
@@ -60,7 +60,7 @@ export async function uploadSource(client: HermesClient, threadId: string, sourc
 /** The first bytes of a file, for signature checks, without reading the whole file. */
 function leadingBytes(file: File, length: number): Uint8Array {
   const handle = file.open();
-  try { return handle.readBytes(Math.min(length, file.size)); } finally { handle.close(); }
+  try { return handle.readBytesSync(Math.min(length, file.size)); } finally { handle.close(); }
 }
 
 export type LoadedAttachment = { uri: string; kind: PreviewKind };
@@ -126,7 +126,7 @@ export class AttachmentFiles {
           if (bytes.length > MAX_ATTACHMENT_BYTES || !bytes.length || (attachment.size !== undefined && attachment.size !== bytes.length)) throw new Error('invalid body');
           if (controller.signal.aborted || generation !== this.generation) return undefined;
           file = ownedFile(previewSuffix(name)); file.create();
-          try { file.write(bytes); } catch (error) { forgetFile(file); throw error; }
+          try { file.writeSync(bytes); } catch (error) { forgetFile(file); throw error; }
           head = bytes.subarray(0, 16);
         }
         this.files.push(file);

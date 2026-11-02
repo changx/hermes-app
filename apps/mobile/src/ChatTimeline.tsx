@@ -1,5 +1,5 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ViewInstance } from 'react-native';
 import { Text, TextInput, useFontSize } from './FontSize';
 import type { LayoutChangeEvent } from 'react-native';
 import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
@@ -208,7 +208,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   // swipe-back. Never address its scroll view once the route has lost focus.
   const active = useRef(props.active);
   active.current = props.active;
-  const blurTarget = useRef<View | null>(null);
+  const blurTarget = useRef<ViewInstance | null>(null);
   const followAnimation = useRef(false);
   const pendingFollow = useRef(false);
 

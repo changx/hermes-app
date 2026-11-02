@@ -44,7 +44,7 @@ export function SessionFilePreview({ client, attachment, refSeq }: { client: Liv
         const kind = previewKind(name, attachment.mime, bytes);
         if (bytes.byteLength > PREVIEW_MAX_BYTES || kind === 'other' || kind === 'image' && rasterName(name) && !raster(bytes)) throw new Error('Preview unavailable');
         const file = new File(Paths.cache, 'hermes-session-file-' + Crypto.randomUUID() + previewSuffix(name));
-        cache.current = file; file.create(); file.write(bytes);
+        cache.current = file; file.create(); file.writeSync(bytes);
         setPreview({ uri: file.uri, kind });
       })().catch(() => { if (active) setError('Could not preview this file. Try again.'); })
         .finally(() => { if (active) setLoading(false); });

@@ -58,8 +58,8 @@ export function SessionFilesScreen({ client, threadId }: { client: LiveSessionCl
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {loading ? <ActivityIndicator /> : <FlatList style={s.fill} data={items} keyExtractor={item => item.id} contentContainerStyle={s.content}
       renderItem={({ item }) => <FileRow file={item} onOpen={open} />}
-      ListEmptyComponent={error ? null : <Text style={s.hint}>{tab.empty}</Text>}
-      ListFooterComponent={after ? <Action label={busy ? 'Loading…' : 'Load more'} disabled={busy || !online} onPress={() => void more()} /> : null} />}
+      ListEmptyComponent={error ? undefined : <Text style={s.hint}>{tab.empty}</Text>}
+      ListFooterComponent={after ? <Action label={busy ? 'Loading…' : 'Load more'} disabled={busy || !online} onPress={() => void more()} /> : undefined} />}
     {!!error && !loading && <Action label="Try again" disabled={busy} onPress={() => setRetry(value => value + 1)} />}
   </View>;
 }

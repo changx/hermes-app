@@ -159,7 +159,7 @@ function Detail({ automationId }: { automationId: string }) {
       {unread && <View style={s.unreadDot} />}
     </Pressable>; }}
     ListFooterComponent={next !== null ? <Pressable accessibilityRole="button" disabled={more} onPress={() => void loadMore()} style={s.more}>
-      <Text style={s.link}>{more ? 'Loading…' : 'Show more'}</Text></Pressable> : null}
+      <Text style={s.link}>{more ? 'Loading…' : 'Show more'}</Text></Pressable> : undefined}
     ListEmptyComponent={<Text style={s.empty}>No conversations yet. They appear here after a run delivers its result.</Text>} />;
 }
 

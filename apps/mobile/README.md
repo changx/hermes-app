@@ -15,11 +15,11 @@ npm run export:ios
 npx expo start --host localhost
 ```
 
-Expo SDK **57.0.25** / RN 0.86.3 / React 19.2.3。按 Jamie 的 iPhone 实际 Expo Go SDK 57 runtime 对齐；此前 SDK 54 无法在该设备打开。SecureStore、Crypto、safe-area 与 TypeScript 由 `npx expo install --fix --npm` 对齐，Expo Doctor 21 项通过。升级依据：https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/ 。
+Expo SDK **58.0.22** / RN 0.88.1 / React 19.3.0。按 Jamie 的 iPhone 实际 Expo Go SDK 58 runtime 对齐；新版 Expo Go 只支持 SDK 58。依赖版本与 SDK 58 `bundledNativeModules` 一致，Expo Doctor 20 项通过。升级记录见 [SDK 58 兼容升级](../../docs/expo-sdk58-upgrade.md)。
 
 打开 App 后填 HTTPS 服务源（默认 `https://agent.tuly.space`）及个人令牌。令牌只存在本机 SecureStore，HTTP 和原生 RN WebSocket 升级都用 `Authorization` 请求头；不放入 URL、包或日志。改连接时最后发送记录按连接 ID 隔离；清除连接会删除本机连接和发送记录，不会停止服务端执行。
 
-当前测试链接：`exps://agent.tuly.space`，使用匹配 SDK 57 的 Expo Go 打开。已通过公网 manifest 与双平台 bundle 读取验证，尚待真机验收。服务器上的 `hermes-app-expo.service` 提供开发包，运行细节见 `../../docs/p2-mobile-dev.md`。更换服务器必须重新输入该服务器令牌，不会沿用旧源凭据。
+当前测试链接：`exps://agent.tuly.space`，使用匹配 SDK 58 的 Expo Go 打开。已通过公网 manifest 与双平台 bundle 读取验证，尚待真机验收。服务器上的 `hermes-app-expo.service` 提供开发包，运行细节见 `../../docs/p2-mobile-dev.md`。更换服务器必须重新输入该服务器令牌，不会沿用旧源凭据。
 
 ## 当前可用范围
 

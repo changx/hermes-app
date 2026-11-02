@@ -50,13 +50,13 @@ export default function Automations() {
       refreshing={false} onRefresh={() => void load()} onEndReachedThreshold={0.5} onEndReached={() => void loadMore()}
       renderItem={({ item }) => <AutomationCard job={item.job} connectionName={multiple ? item.connectionName : undefined}
         onPress={() => router.push({ pathname: '/automations/[automationId]', params: { automationId: item.job.id, connection: item.slot } })} />}
-      ListHeaderComponent={loading ? <ActivityIndicator style={s.spinner} /> : null}
+      ListHeaderComponent={loading ? <ActivityIndicator style={s.spinner} /> : undefined}
       ListFooterComponent={<>
         {more && <ActivityIndicator style={s.spinner} />}
         {notes.length > 0 && <View style={s.notes}>{notes.map(note =>
           <Text key={note.key} style={s.note}>{multiple ? `${note.connectionName}: ${note.text}` : note.text}</Text>)}</View>}
       </>}
-      ListEmptyComponent={loading || notes.length ? null : <Text style={s.empty}>{canCreate
+      ListEmptyComponent={loading || notes.length ? undefined : <Text style={s.empty}>{canCreate
         ? 'No automations yet. Tap + to describe something that should run on a schedule.'
         : 'No automations yet. Ask the agent in any conversation to run something on a schedule.'}</Text>} />
   </SafeAreaView>;

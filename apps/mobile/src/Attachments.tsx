@@ -149,7 +149,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
       const name = match[1] === 'png' ? 'pasted-image.png' : 'pasted-image.jpg';
       const checked = chooseAttachments(itemsRef.current.length, [{ name, mime: `image/${match[1]}`, data: bytes }]);
       if (!checked.accepted.length) { setNotice(checked.error || 'Could not paste the image.'); return; }
-      file = ownedFile(); file.create(); file.write(bytes);
+      file = ownedFile(); file.create(); file.writeSync(bytes);
       add([{ uri: file.uri, name, mime: `image/${match[1]}`, size: bytes.length }], file);
     } catch { if (file) forgetFile(file); setNotice('Could not paste the image. Please select it again.'); }
   };

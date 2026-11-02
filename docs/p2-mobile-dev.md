@@ -29,7 +29,7 @@ Jamie 已明确授权继续开发并启动 Expo 移动端测试，提供手机�
 
 ## 实际交付与验证（2026-09-26）
 
-测试链接：`exps://agent.tuly.space`。当前已改为 SDK 57，匹配 Jamie 的 iPhone 实际 Expo Go SDK 57 runtime；首次交付 SDK 54 被真机拒绝，旧文档的 App Store 版本说明不能替代实际设备证据。升级与复验见 [SDK 57 兼容修复](expo-sdk57-upgrade.md)。普通 HTTPS 根页面是 Expo manifest 入口，不是 Web 聊天界面。
+测试链接：`exps://agent.tuly.space`。当前为 SDK 58，匹配 Jamie 的 iPhone 实际 Expo Go SDK 58 runtime；首次交付 SDK 54 被真机拒绝，旧文档的 App Store 版本说明不能替代实际设备证据。升级与复验见 [SDK 57 兼容修复](expo-sdk57-upgrade.md) 和 [SDK 58 兼容升级](expo-sdk58-upgrade.md)。普通 HTTPS 根页面是 Expo manifest 入口，不是 Web 聊天界面。
 
 手机首次打开填默认服务器地址及开发 profile `.env` 的 `HERMES_APP_TOKEN`；它与 OpenAI OAuth 登录不同。令牌不得贴到群聊或放入链接。更换服务器须重新输入对应令牌，已新增跨源不复用凭据的回归测试。
 
