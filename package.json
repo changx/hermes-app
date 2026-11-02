@@ -10,7 +10,9 @@
   },
   "overrides": {
     "dompurify": "3.4.17",
-    "katex": "0.18.10"
+    "katex": "0.18.10",
+    "glob": "14.0.3",
+    "minimatch": "11.0.4"
   },
   "workspaces": [
     "apps/desktop",
