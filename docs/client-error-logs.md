@@ -30,3 +30,11 @@ SDK 58 把 `File.copy()` 改为异步。`localDraftStorage.ts` 恢复和保存�
 - App `main` `818a47d`（含 `c8857bc` copySync 修复），只重启 `hermes-app-expo.service`（PID 3320064 → 3558386）。公网 iOS / Android manifest 与 launchAsset 均 HTTP 200，SDK 58，bundle 含 `/v1/client-logs`。
 - 测试：插件新测试 4 项通过；P1 全量失败集合与 main 相同（main 既有 32 项失败，`test_real_runner_loopback` 在两边都偶发失败）。手机端 TypeScript 通过，测试 240 通过、0 失败、1 跳过；共享客户端 105 通过；iOS/Android 导出通过。
 - 回滚：`current` 指回 `releases/0.2.51` 并重启 Gateway；App `git revert` 后重启 Expo。
+- Jamie 重启 `hermes-gateway.service`（PID 3302268 → 3560553，22:02:45 PST）。22:04 收到第一条报告（hermes-app-dev），证明上传链路可用。
+
+## 第一个报告：SDK 58 把 Int64 变为 BigInt（2026-11-01）
+
+- 报告：iOS 26.6.2，`exposdk:58.0.0`，路由 `/threads/…`，`render`：`TypeError: Cannot convert 388864 to BigInt`，位置 `progressLabel` ← `MessageAttachments`。
+- 原因：expo-modules-core 在 iOS 上把 Swift `Int64` 映射为 JS BigInt。下载进度 `bytesWritten`/`totalBytes` 和 `File.size` 都是 `Int64`。附件进度文字用 BigInt 和 Number 做运算，抛出异常，整个 Session 页面无法渲染。与服务端大小的精确比较也会失败。
+- 修复（`f5183b0`）：`src/nativeNumber.ts` 的 `nativeNumber()` 和 `fileSize()` 在原生值进入 App 代码时转为 Number；用于进度、下载、上传、预览和选择文件。选择器返回 Swift `Int`，不受影响。
+- 验证：TypeScript 通过；测试 241 通过、0 失败、1 跳过（新增 BigInt 进度和 `fileSize` 测试）；iOS/Android 导出通过。只重启 Expo（PID 3558386 → 3565508）；公网 iOS/Android manifest 与 launchAsset 均 HTTP 200，SDK 58。iPhone 复测待 Jamie。
