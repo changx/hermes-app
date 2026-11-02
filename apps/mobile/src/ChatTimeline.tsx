@@ -55,7 +55,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
   const contentStyle = work && !workExpanded ? [messageStyle, styles.workHidden] : messageStyle;
   const content = <View accessibilityElementsHidden={!!work && !workExpanded} importantForAccessibility={work && !workExpanded ? 'no-hide-descendants' : 'auto'} style={highlighted ? [contentStyle, { backgroundColor: '#d9eaff' }] : contentStyle}>
     {!own && row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
-    {revealed.current.value && <MessageContent key={row.key} resourceId={row.key} text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} pending={own && !!row.optimistic && row.status !== 'accepted'} />}
+    {revealed.current.value && <MessageContent key={row.key} resourceId={row.key} text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} lines={row.displayKind === 'direct'} pending={own && !!row.optimistic && row.status !== 'accepted'} />}
     {revealed.current.value && finalReply && row.refSeq !== undefined && !!actions && <MessageToolbar row={row} actions={actions} canRetry={canRetry} running={running} />}
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}

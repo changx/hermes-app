@@ -404,12 +404,13 @@ function ExpandedContent({ target, text, blocks, toolCalls, onExpand, tone, allo
 }
 
 /** Native renderer: validated remote images load automatically in a fixed frame. */
-export const MessageContent = memo(function MessageContent({ text, resourceId, toolCalls, pending = false, canExpand = false }: { text: string; resourceId?: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean }) {
+/** `lines`: a direct (native command) reply; each line is its own paragraph. */
+export const MessageContent = memo(function MessageContent({ text, resourceId, toolCalls, pending = false, canExpand = false, lines = false }: { text: string; resourceId?: string; toolCalls?: readonly ToolCall[]; pending?: boolean; canExpand?: boolean; lines?: boolean }) {
   const resources = useRenderResources();
   const content = useMemo(() => {
-    const create = () => { const parsed = parseMessageMarkdown(text); return { parsed, allowed: webViewAllowlist(parsed) }; };
-    return resources && resourceId ? resources.read(`message:${resourceId}`, [text], create, value => text.length * 4 + countNodes(value.parsed) * 128) : create();
-  }, [resources, resourceId, text]);
+    const create = () => { const parsed = parseMessageMarkdown(text, { lines }); return { parsed, allowed: webViewAllowlist(parsed) }; };
+    return resources && resourceId ? resources.read(`message:${resourceId}`, [text, lines], create, value => text.length * 4 + countNodes(value.parsed) * 128) : create();
+  }, [resources, resourceId, text, lines]);
   const { parsed, allowed } = content;
   const focused = useIsFocused();
   const { openViewer } = useViewer();

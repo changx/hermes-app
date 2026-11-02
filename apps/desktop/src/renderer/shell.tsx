@@ -97,7 +97,7 @@ const MessageRow = memo(({ message, continuation, hidden = false, focused = fals
   const warning = processingWarning(message.receiptState, message.processing);
   return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}${focused ? " message-focused" : ""}`}>
     {message.role !== "assistant" && message.role !== "user" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
-    <MessageContent text={message.text} />
+    <MessageContent text={message.text} lines={message.displayKind === "direct"} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
       const presentation = toolPresentation(tool.name);
       return <section className="tool-record" key={tool.id} aria-label={tool.label}>

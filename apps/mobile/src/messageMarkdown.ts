@@ -232,8 +232,20 @@ function blocks(tokens: Token[], cursor: { index: number }, end?: string): Block
   return result;
 }
 
-export function parseMessageMarkdown(text: string): Block[] {
-  return blocks(markdown.parse(text, {}), { index: 0 });
+/** `lines`: a direct (native command) reply. Each line of a top-level paragraph
+ * becomes its own paragraph, so ordinary block spacing separates the lines. */
+export function parseMessageMarkdown(text: string, { lines = false }: { lines?: boolean } = {}): Block[] {
+  const parsed = blocks(markdown.parse(text, {}), { index: 0 });
+  if (!lines) return parsed;
+  return parsed.flatMap((block): Block[] => {
+    if (block.kind !== 'paragraph' || !block.children.some(node => node.kind === 'break')) return [block];
+    const rows: Inline[][] = [[]];
+    for (const node of block.children) {
+      if (node.kind === 'break') rows.push([]);
+      else rows[rows.length - 1].push(node);
+    }
+    return rows.filter(row => row.length).map(children => ({ kind: 'paragraph', children }));
+  });
 }
 
 /** Scroll/media surfaces need a definite viewport; normal text sizes intrinsically. */

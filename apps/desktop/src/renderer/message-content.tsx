@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { remarkStrictInlineMath } from "./strict-inline-math";
+import { remarkLineBlocks, remarkLineBreaks } from "./line-breaks";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
 import { MessageIcon } from "./message-toolbar";
@@ -146,14 +147,18 @@ const documentComponents: Components = {
   img: ({ src, alt }) => typeof src === "string" && src ? <img src={src} alt={alt ?? ""} loading="lazy" /> : <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
 };
 const remarkPlugins = [remarkGfm, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
+// Chat messages show a single newline as a line break; a Markdown file keeps standard rules.
+const chatRemarkPlugins = [...remarkPlugins, remarkLineBreaks];
+const lineRemarkPlugins = [...chatRemarkPlugins, remarkLineBlocks];
 const rehypePlugins = [rehypeKatex];
 const transformUrl = (url: string) => allowedLink(url) ?? "";
 const transformDocumentUrl = (url: string, key: string) => (key === "src" ? documentImage(url) : allowedLink(url)) ?? "";
 
-/** `document`: a Markdown file preview (images allowed); otherwise a chat message. */
-export const MessageContent = memo(({ text, document = false }: { text: string; document?: boolean }) => (
+/** `document`: a Markdown file preview (images allowed); otherwise a chat message.
+ * `lines`: a direct (native command) reply; each line is its own paragraph. */
+export const MessageContent = memo(({ text, document = false, lines = false }: { text: string; document?: boolean; lines?: boolean }) => (
   <div className="message-markdown">
-    <ReactMarkdown skipHtml remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}
+    <ReactMarkdown skipHtml remarkPlugins={document ? remarkPlugins : lines ? lineRemarkPlugins : chatRemarkPlugins} rehypePlugins={rehypePlugins}
       urlTransform={document ? transformDocumentUrl : transformUrl} components={document ? documentComponents : markdownComponents}>{text}</ReactMarkdown>
   </div>
 ));

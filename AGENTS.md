@@ -143,6 +143,7 @@
 ### 共享行为、内容呈现与发布
 
 - [docs/session-links.md](docs/session-links.md)
+- [docs/direct-reply-layout.md](docs/direct-reply-layout.md)（桌面单个换行显示为换行；原生命令直接回复按行分段）
 - [docs/app-icon.md](docs/app-icon.md)（应用图标：mochi-wings 默认图标、各平台资源与重新生成）
 - [docs/thread-branch.md](docs/thread-branch.md)
 - [docs/file-preview.md](docs/file-preview.md)
