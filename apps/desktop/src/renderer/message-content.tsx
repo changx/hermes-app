@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { getMermaid } from "./mermaid-engine";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkMath from "remark-math";
 import { remarkStrictInlineMath } from "./strict-inline-math";
 import { remarkLineBlocks, remarkLineBreaks } from "./line-breaks";
@@ -146,7 +147,8 @@ const documentComponents: Components = {
   ...markdownComponents,
   img: ({ src, alt }) => typeof src === "string" && src ? <img src={src} alt={alt ?? ""} loading="lazy" /> : <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
 };
-const remarkPlugins = [remarkGfm, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
+// remarkCjkFriendly lets `**…：**` close before CJK text (CommonMark flanking rule).
+const remarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
 // Chat messages show a single newline as a line break; a Markdown file keeps standard rules.
 const chatRemarkPlugins = [...remarkPlugins, remarkLineBreaks];
 const lineRemarkPlugins = [...chatRemarkPlugins, remarkLineBlocks];
