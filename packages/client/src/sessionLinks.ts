@@ -35,6 +35,16 @@ export function sessionLinkRoute(value: string): string | null {
   return link ? `/threads/${link.threadId}?server=${encodeURIComponent(link.server)}` : null;
 }
 
+/** Route for a URL the OS opens the installed app with. A home-screen launch carries
+ * no link, so Expo Router passes the bare app root (`hermesapp:///`): open the home
+ * page. Session links map to their Thread; every other app-scheme path is refused.
+ * Non-app URLs (ordinary routes, Expo Go `exp://` launches) pass through unchanged. */
+export function systemLinkRoute(path: string): string {
+  if (!/^hermesapp:/i.test(path)) return path;
+  if (/^hermesapp:\/{0,3}$/i.test(path)) return '/';
+  return sessionLinkRoute(path) ?? '/session-unavailable';
+}
+
 /** Short in-message form without a server (`hermesapp://session/<thread-id>`), like a
  * scheme-relative web link. Valid only inside content shown for one connection, which
  * supplies the server. External entries (OS intents, clipboard) must use the full form. */
