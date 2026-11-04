@@ -1,6 +1,6 @@
 # iOS TestFlight build and self-hosted updates
 
-Status: on branch `feat/ios-testflight-updates`. The update service is deployed. Build 1 (0.1.0) is uploaded to App Store Connect. The iPhone install and the update round trip are not verified yet.
+Status: on `main`. The update service is deployed. Build 1 (0.1.0) is installed from TestFlight on Jamie's iPhone. The update round trip is verified on that iPhone (see Verification). Build 2 contains the same code as `main` at its build commit.
 
 ## What the user gets
 
@@ -106,9 +106,9 @@ Generated Info.plist (build 1, checked): `CFBundleShortVersionString` 0.1.0, `CF
 - Public: `https://hermes-app-api.tuly.space/mobile-updates/health` returns 200; the manifest returns 204 before the first publication.
 - Build 1: Apple Distribution signature, App Store profile, `CFBundleVersion` 1, `EXUpdates.bundle/fingerprint` = `b32a4b59c09764da6bb60618bb3513d46fe43d86` (same as this host). `altool --validate-app` and `--upload-app` succeeded (30.5 MB, delivery `3511a864-ded1-418d-9239-faf56dcf1e8f`).
 - Server log lines show platform, runtime prefix and the client's current update id (`current=<8 chars>`), so a device round trip is visible in `journalctl --user -u hermes-app-mobile-updates.service`.
+- Update round trip on the iPhone (build 1, runtime `b32a4b59…`): update `e8c438a2` (same code as build 1), then update `47636b98` (commit `d34f0a7`, cold launch opens the home page instead of `session-unavailable`). The server log showed `current=47636b98` after the second cold start, and Jamie confirmed the fix on the device.
+- A build with a newer embedded update ignores older published updates for the same runtime: the client takes an update only when it is newer than the running one.
 
 ## Open
 
-1. Apple processing of build 1, then the TestFlight install on Jamie's iPhone.
-2. Publish the first update for runtime `b32a4b59c09764da6bb60618bb3513d46fe43d86` and check the round trip on the iPhone (server log shows the manifest and asset requests; the app shows the new code after a cold start).
-3. GitHub workflow on the `macmini-m4` runner for later builds.
+1. GitHub workflow on the `macmini-m4` runner for later builds.
