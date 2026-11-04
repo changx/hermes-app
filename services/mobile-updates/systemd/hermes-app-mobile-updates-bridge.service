@@ -1,0 +1,7 @@
+[Unit]
+Description=Forward private ingress to Hermes App mobile updates loopback
+Requires=hermes-app-mobile-updates-bridge.socket hermes-app-mobile-updates.service
+After=hermes-app-mobile-updates-bridge.socket hermes-app-mobile-updates.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8090

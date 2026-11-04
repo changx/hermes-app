@@ -1,0 +1,14 @@
+# Copy to /opt/projects/jamie/ovh01-ingress/dynamic/hermes-app-api.yaml (Traefik watches the folder).
+# DNS: *.tuly.space already points to this host through Cloudflare; the tuly.space certificate covers it.
+http:
+  routers:
+    hermes-app-mobile-updates:
+      rule: "Host(`hermes-app-api.tuly.space`) && PathPrefix(`/mobile-updates/`)"
+      entryPoints: [websecure]
+      tls: {}
+      service: hermes-app-mobile-updates
+  services:
+    hermes-app-mobile-updates:
+      loadBalancer:
+        servers:
+          - url: "http://172.31.0.1:18090"

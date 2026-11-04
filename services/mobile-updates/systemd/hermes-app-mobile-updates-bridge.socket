@@ -1,0 +1,9 @@
+[Unit]
+Description=Private bridge for Hermes App mobile updates
+
+[Socket]
+ListenStream=172.31.0.1:18090
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

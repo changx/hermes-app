@@ -1,0 +1,22 @@
+[Unit]
+Description=Hermes App mobile updates (Expo Updates v1, read-only, signed records)
+After=network-online.target
+
+[Service]
+Type=simple
+# Deploy copy of services/mobile-updates (see docs/ios-testflight-updates.md); the store holds
+# signed records written by publish.mjs. The service never reads the signing key.
+WorkingDirectory=%h/.hermes/profiles/jamie/workspace/hermes-app/mobile-updates/service
+Environment=MOBILE_UPDATES_STORE=%h/.hermes/profiles/jamie/workspace/hermes-app/mobile-updates/store
+Environment=MOBILE_UPDATES_HOST=127.0.0.1
+Environment=MOBILE_UPDATES_PORT=8090
+ExecStart=/home/hermes/.asdf/installs/nodejs/24.14.1/bin/node server.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+MemoryMax=256M
+TasksMax=64
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

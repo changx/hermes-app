@@ -4,12 +4,19 @@
     "slug": "hermes-app-mobile",
     "scheme": "hermesapp",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "space.tuly.hermesapp.dev"
+      "bundleIdentifier": "space.tuly.hermesapp",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "space.tuly.hermesapp.dev",
@@ -17,6 +24,16 @@
         "foregroundImage": "./assets/adaptive-foreground.png",
         "backgroundImage": "./assets/adaptive-background.png",
         "backgroundColor": "#FED5CF"
+      }
+    },
+    "updates": {
+      "url": "https://hermes-app-api.tuly.space/mobile-updates/manifest",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "codeSigningCertificate": "./certs/certificate.pem",
+      "codeSigningMetadata": {
+        "keyid": "main",
+        "alg": "rsa-v1_5-sha256"
       }
     },
     "plugins": [

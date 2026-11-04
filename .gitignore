@@ -26,3 +26,8 @@ apps/mobile/src/markdownRenderer.generated.ts
 apps/desktop/.package-staging/
 apps/desktop/artifacts/
 .DS_Store
+# Expo native projects are generated (expo prebuild); keep them out of git and out of the update fingerprint
+apps/mobile/ios/
+apps/mobile/android/
+# Public code signing certificate for mobile updates (the private key stays in the private workspace)
+!apps/mobile/certs/certificate.pem
