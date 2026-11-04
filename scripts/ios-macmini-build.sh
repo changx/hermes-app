@@ -21,7 +21,7 @@ AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY" -authenticatio
 cd "$ROOT/src/apps/mobile" || fail cd
 # The update fingerprint skips gitignored native folders only inside a git repository.
 git -C "$ROOT/src" rev-parse --git-dir >/dev/null 2>&1 || git -C "$ROOT/src" init -q || fail git-init
-git -C "$ROOT/src" check-ignore -q apps/mobile/ios || fail ios-not-ignored
+git -C "$ROOT/src" check-ignore -q apps/mobile/ios/ || fail ios-not-ignored
 
 if [ "${SKIP_PREP:-0}" != 1 ]; then
   step prebuild
