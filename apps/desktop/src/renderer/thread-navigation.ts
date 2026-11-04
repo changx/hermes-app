@@ -26,11 +26,15 @@ export const threadWindow = (threads: readonly DesktopThread[], channelId: strin
  * Sidebar Recents: Sessions from every Project and connection with activity in
  * the trailing 72 hours, plus running Sessions, that the user owns (see
  * packages/client/src/recents.ts). Running first, then newest activity.
+ * Every running Session is shown; the others come RECENT_BATCH at a time.
  */
+export const RECENT_BATCH = 10;
+
 export const recentWindow = (threads: readonly DesktopThread[], now: number, batches = 0) => {
   const rows = threads.filter(thread => inRecents(thread, now / 1000)).sort(runningFirst);
-  const count = (Math.max(0, batches) + 1) * THREAD_BATCH;
-  return { rows: rows.slice(0, count), hasMore: rows.length > count };
+  const running = rows.filter(thread => thread.running === true), others = rows.filter(thread => thread.running !== true);
+  const count = (Math.max(0, batches) + 1) * RECENT_BATCH;
+  return { rows: [...running, ...others.slice(0, count)], hasMore: others.length > count };
 };
 
 /** Sidebar Todo: every flagged Session of any age, running first, then newest activity. */

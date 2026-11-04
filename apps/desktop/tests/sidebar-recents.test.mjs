@@ -9,7 +9,7 @@ import { build } from 'esbuild';
 
 const bundle = await build({ entryPoints: [new URL('../src/renderer/thread-navigation.ts', import.meta.url).pathname], bundle: true, format: 'cjs', platform: 'node', write: false });
 const mod = { exports: {} }; new Function('module', 'exports', bundle.outputFiles[0].text)(mod, mod.exports);
-const { recentWindow, THREAD_BATCH } = mod.exports;
+const { recentWindow, RECENT_BATCH } = mod.exports;
 
 const now = 2_000_000_000_000, seconds = now / 1000;
 const row = (id, lastMessageAt, extra = {}) => ({ id, channelId: 'p', title: id, markers: [], running: false, lastMessageAt, ...extra });
@@ -25,12 +25,23 @@ test('Recents leaves out automation Threads until the user replies in them', () 
   assert.deepEqual(recentWindow(threads, now).rows.map(t => t.id), ['mine', 'replied', 'old-server']);
 });
 
-test('Recents shows one batch, then more on request', () => {
-  const threads = Array.from({ length: THREAD_BATCH + 3 }, (_, i) => row('t' + String(i).padStart(2, '0'), seconds - i));
+test('Recents shows every running Session plus the 10 newest others, then 10 more per Show more', () => {
+  assert.equal(RECENT_BATCH, 10);
+  const running = Array.from({ length: 3 }, (_, i) => row('run' + i, seconds - 50 * 3600 - i, { running: true }));
+  const others = Array.from({ length: RECENT_BATCH * 2 + 3 }, (_, i) => row('t' + String(i).padStart(2, '0'), seconds - i));
+  const threads = [...others, ...running];
   const first = recentWindow(threads, now);
-  assert.equal(first.rows.length, THREAD_BATCH); assert.equal(first.hasMore, true);
+  assert.deepEqual(first.rows.map(t => t.id), [...running, ...others.slice(0, RECENT_BATCH)].map(t => t.id)); assert.equal(first.hasMore, true);
   const second = recentWindow(threads, now, 1);
-  assert.equal(second.rows.length, threads.length); assert.equal(second.hasMore, false);
+  assert.equal(second.rows.length, running.length + RECENT_BATCH * 2); assert.equal(second.hasMore, true);
+  const third = recentWindow(threads, now, 2);
+  assert.equal(third.rows.length, threads.length); assert.equal(third.hasMore, false);
+});
+
+test('Recents never hides a running Session, even with more than 10 running', () => {
+  const threads = [...Array.from({ length: RECENT_BATCH + 2 }, (_, i) => row('run' + i, seconds - i, { running: true })), row('idle', seconds - 30)];
+  const first = recentWindow(threads, now);
+  assert.equal(first.rows.length, RECENT_BATCH + 3); assert.equal(first.hasMore, false);
 });
 
 // Production NativeWorkspace sidebar in real Chromium.
