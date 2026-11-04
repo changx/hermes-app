@@ -83,7 +83,7 @@ function handleManifest(req, res, paths) {
   if (typeof runtime !== 'string' || !RUNTIME_RE.test(runtime)) {
     return sendJson(res, 400, { error: 'Invalid expo-runtime-version.' });
   }
-  res.locals = { platform, runtime };
+  res.locals = { platform, runtime, current: String(req.headers['expo-current-update-id'] ?? '-').slice(0, 8) };
 
   const record = readRecord(paths.current(platform, runtime));
   if (!record) return noUpdate(res);
@@ -143,7 +143,7 @@ export function createUpdatesServer({ storeDir, log = () => {} }) {
     const started = Date.now();
     const url = new URL(req.url ?? '/', 'http://localhost');
     res.on('finish', () => {
-      const meta = res.locals ? ` ${res.locals.platform} ${res.locals.runtime.slice(0, 12)}` : '';
+      const meta = res.locals ? ` ${res.locals.platform} ${res.locals.runtime.slice(0, 12)} current=${res.locals.current}` : '';
       log(`${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms${meta}`);
     });
     try {

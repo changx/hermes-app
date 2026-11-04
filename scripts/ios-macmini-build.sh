@@ -12,20 +12,26 @@ step() { echo "== $(date +%H:%M:%S) $1"; }
 export PATH="$HOME/.local/node-v24.14.1/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1
 TEAM=4R5932XFRV
+# App Store Connect team API key (Admin role) for cloud signing and upload. The .p8 stays on the Mac mini.
+ASC_KEY_ID="${ASC_KEY_ID:-BZMUV5PRQN}"
+ASC_ISSUER="${ASC_ISSUER:-145d06ea-54ba-4c8b-ae49-d32284984c29}"
+ASC_KEY="$HOME/.hermes-signing/asc-api/AuthKey_$ASC_KEY_ID.p8"
+[ -f "$ASC_KEY" ] || fail asc-key-missing
+AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER")
 cd "$ROOT/src/apps/mobile" || fail cd
 # The update fingerprint skips gitignored native folders only inside a git repository.
 git -C "$ROOT/src" rev-parse --git-dir >/dev/null 2>&1 || git -C "$ROOT/src" init -q || fail git-init
 git -C "$ROOT/src" check-ignore -q apps/mobile/ios || fail ios-not-ignored
 
-step prebuild
-rm -rf ios
-npx expo prebuild --platform ios --no-install || fail prebuild
-WS=$(ls -d ios/*.xcworkspace 2>/dev/null | head -1)
+if [ "${SKIP_PREP:-0}" != 1 ]; then
+  step prebuild
+  rm -rf ios
+  npx expo prebuild --platform ios --no-install || fail prebuild
+  step pods
+  (cd ios && pod install) || fail pods
+fi
 SCHEME=$(basename "$(ls -d ios/*.xcodeproj | head -1)" .xcodeproj)
 echo "scheme=$SCHEME"
-
-step pods
-(cd ios && pod install) || fail pods
 WS=$(ls -d ios/*.xcworkspace | head -1)
 echo "workspace=$WS"
 
@@ -46,12 +52,13 @@ for key in EXUpdatesURL EXUpdatesRuntimeVersion EXUpdatesCheckOnLaunch EXUpdates
 done
 
 step archive
+# Archive unsigned: automatic signing at archive time wants a development profile, which needs a
+# registered device. The export below signs for App Store distribution (cloud signing, API key).
 ARCHIVE="$ROOT/out/HermesApp-$BUILD_NUMBER.xcarchive"
 rm -rf "$ARCHIVE"
 xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" \
-  -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  DEVELOPMENT_TEAM=$TEAM CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   archive > "$ROOT/archive.log" 2>&1 || { tail -40 "$ROOT/archive.log"; fail archive; }
 tail -3 "$ROOT/archive.log"
 
@@ -71,7 +78,7 @@ EOF
 EXPORT="$ROOT/out/export-$BUILD_NUMBER"
 rm -rf "$EXPORT"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
-  -exportOptionsPlist "$ROOT/ExportOptions.plist" -allowProvisioningUpdates \
+  -exportOptionsPlist "$ROOT/ExportOptions.plist" "${AUTH[@]}" \
   > "$ROOT/export.log" 2>&1 || { tail -40 "$ROOT/export.log"; fail export; }
 ls -la "$EXPORT"
 

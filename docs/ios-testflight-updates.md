@@ -1,6 +1,6 @@
 # iOS TestFlight build and self-hosted updates
 
-Status: in progress on branch `feat/ios-testflight-updates`. The update service is deployed. The first TestFlight build is not uploaded yet.
+Status: on branch `feat/ios-testflight-updates`. The update service is deployed. Build 1 (0.1.0) is uploaded to App Store Connect. The iPhone install and the update round trip are not verified yet.
 
 ## What the user gets
 
@@ -74,16 +74,29 @@ Script: `scripts/ios-macmini-build.sh <build number> <expected runtime>` (copy t
 
 Toolchain on the Mac mini: Xcode 27.1, Node `~/.local/node-v24.14.1`, CocoaPods 1.17.0 as `~/.local/bin/pod`. The system Ruby 2.6 is too old for CocoaPods (`ffi` needs Ruby 3.0+), so the wrapper uses Ruby 3.3 from a micromamba env (`~/.local/micromamba/bin/micromamba`, env `~/.local/cocoapods-env`, conda-forge).
 
-1. Copy the source (`git archive` of the commit: `apps/mobile`, `packages/client`, `services`, root files) to `~/hermes-ios-build/src`.
+1. Copy the source (`git archive` of the commit: `apps/mobile`, `packages/client`, `services`, `assets`, root files) to `~/hermes-ios-build/src`. The mobile code imports `../../../assets/work-icons.ttf` from the repository root, so `assets/` is required.
 2. The source folder must be a git repository (`git init` is enough). Without git, the fingerprint cannot see that `ios/` is ignored, counts it as native source (`workflow generic`) and gives a different runtime version (measured: `8d4f25a3…` instead of `b32a4b59…`). The script runs `git init` when needed and checks `git check-ignore apps/mobile/ios`.
 3. `npm ci` in `apps/mobile`, `npx expo prebuild --platform ios --no-install`, `pod install` in `ios/`.
 4. Check that `npx expo-updates runtimeversion:resolve --platform ios` matches the value on this host. The script stops on a mismatch.
-5. `xcodebuild archive` (Release, automatic signing, `-allowProvisioningUpdates`), with `CURRENT_PROJECT_VERSION` = the build number.
-6. Export with `method app-store-connect`, then upload and check the build in App Store Connect / TestFlight.
+5. `xcodebuild archive` (Release) without signing (`CODE_SIGNING_ALLOWED=NO`), with `CURRENT_PROJECT_VERSION` = the build number. Automatic signing at archive time asks for a development profile, and Apple refuses it while the team has no registered device ("Your team has no devices").
+6. `xcodebuild -exportArchive` with `method app-store-connect` and the API key signs with a cloud-managed Apple Distribution certificate and an App Store profile (`iOS Team Store Provisioning Profile: space.tuly.hermesapp`). No device is needed.
+7. `xcrun altool --validate-app` and `--upload-app` with `--apiKey`/`--apiIssuer` and `API_PRIVATE_KEYS_DIR=~/.hermes-signing/asc-api`.
 
-Signing: Xcode on the Mac mini has no Apple account (`DVTDeveloperAccountManagerAppleIDLists` is empty), so `-allowProvisioningUpdates` alone fails with "No Accounts". The build uses an App Store Connect team API key with the Admin role (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`). With that key, Xcode creates the Apple Distribution certificate and the App Store profile, and the same key uploads the build. The `.p8` stays on the Mac mini in a mode-700 folder. It is never printed, copied or committed.
+Run the build inside the logged-in GUI session (a temporary LaunchAgent `space.tuly.hermes-ios-build`, `launchctl bootstrap gui/$(id -u)`); the GitHub runner also runs there. `SKIP_PREP=1` reuses an existing `ios/` folder.
+
+Signing: xcodebuild cannot use the Xcode account on the Mac mini ("No Accounts" in the GUI session, "User interaction is not allowed" over SSH, also after Jamie signed in to Xcode). The build uses an App Store Connect team API key with the Admin role (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`). With that key, Xcode creates the Apple Distribution certificate and the App Store profile, and the same key uploads the build. The `.p8` stays on the Mac mini in a mode-700 folder. It is never printed, copied or committed.
 
 Generated Info.plist (build 1, checked): `CFBundleShortVersionString` 0.1.0, `CFBundleVersion` 1, `ITSAppUsesNonExemptEncryption` false, photo/camera/microphone usage strings from the picker plugins. Expo.plist: `EXUpdatesURL` as above, `EXUpdatesRuntimeVersion` `file:fingerprint`, `EXUpdatesCheckOnLaunch` ALWAYS, `EXUpdatesLaunchWaitMs` 0, code signing metadata keyid `main`.
+
+## Apple account objects
+
+| Object | Value |
+|---|---|
+| API key | "Hermes iOS Release", Admin, Key ID `BZMUV5PRQN`, issuer `145d06ea-54ba-4c8b-ae49-d32284984c29`; `.p8` at `~/.hermes-signing/asc-api/` on the Mac mini (700/600) |
+| Bundle ID | `space.tuly.hermesapp` (portal id `9YFCD4W9LW`), registered through the API |
+| App record | "Hermes App by Tuly" ("Hermes App" is taken on the App Store), Apple ID `6830435000`, SKU `space.tuly.hermesapp`, English (U.S.). The name on the Home Screen comes from the binary and stays "Hermes App". |
+| Certificates | cloud-managed Apple Distribution (export); one "Apple Development: Created via API (BZMUV5PRQN)" left from the failed signed-archive attempt, not used |
+| TestFlight | internal group "Internal" (all builds), Account Holder added |
 
 ## Verification
 
@@ -91,11 +104,11 @@ Generated Info.plist (build 1, checked): `CFBundleShortVersionString` 0.1.0, `CF
 - Real dry run on this host into a scratch store: iOS export with a 13.7 MB Hermes bytecode bundle and 27 assets, signature verified against the app certificate.
 - Expo Go: a dev server with the new config serves a manifest with `sdkVersion` 58.0.0; Expo Go requests `keyid="expo-root"`, which uses Expo's development certificate and not the project certificate.
 - Public: `https://hermes-app-api.tuly.space/mobile-updates/health` returns 200; the manifest returns 204 before the first publication.
+- Build 1: Apple Distribution signature, App Store profile, `CFBundleVersion` 1, `EXUpdates.bundle/fingerprint` = `b32a4b59c09764da6bb60618bb3513d46fe43d86` (same as this host). `altool --validate-app` and `--upload-app` succeeded (30.5 MB, delivery `3511a864-ded1-418d-9239-faf56dcf1e8f`).
+- Server log lines show platform, runtime prefix and the client's current update id (`current=<8 chars>`), so a device round trip is visible in `journalctl --user -u hermes-app-mobile-updates.service`.
 
 ## Open
 
-1. Jamie: unlock the Mac mini screen (Screen Sharing) and allow Chrome remote debugging once.
-2. Agent, in the logged-in Chrome: create a team API key with the Admin role (the `.p8` goes to a mode-700 folder on the Mac mini), then the App Store Connect app record "Hermes App" for `space.tuly.hermesapp`. The bundle ID is registered first through the API. The API cannot create app records.
-3. Archive build 1 with the key, upload, add Jamie to an internal TestFlight group.
-4. Publish the first update for runtime `b32a4b59c09764da6bb60618bb3513d46fe43d86` and check the round trip on the iPhone (server log shows the manifest and asset requests; the app shows the new code after a cold start).
-5. GitHub workflow on the `macmini-m4` runner for later builds.
+1. Apple processing of build 1, then the TestFlight install on Jamie's iPhone.
+2. Publish the first update for runtime `b32a4b59c09764da6bb60618bb3513d46fe43d86` and check the round trip on the iPhone (server log shows the manifest and asset requests; the app shows the new code after a cold start).
+3. GitHub workflow on the `macmini-m4` runner for later builds.
