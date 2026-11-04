@@ -19,6 +19,7 @@
 - [apps/mobile/README.md](apps/mobile/README.md)
 - [docs/expo-sdk57-upgrade.md](docs/expo-sdk57-upgrade.md)
 - [docs/expo-sdk58-upgrade.md](docs/expo-sdk58-upgrade.md)
+- [docs/ios-testflight-updates.md](docs/ios-testflight-updates.md)（iOS 独立包：Mac mini 构建上传 TestFlight，`hermes-app-api.tuly.space` 自建签名动态更新）
 - [docs/channel-repository-agents.md](docs/channel-repository-agents.md)
 - [docs/channel-primary-path.md](docs/channel-primary-path.md)
 
