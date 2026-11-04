@@ -108,6 +108,7 @@ Generated Info.plist (build 1, checked): `CFBundleShortVersionString` 0.1.0, `CF
 - Server log lines show platform, runtime prefix and the client's current update id (`current=<8 chars>`), so a device round trip is visible in `journalctl --user -u hermes-app-mobile-updates.service`.
 - Update round trip on the iPhone (build 1, runtime `b32a4b59…`): update `e8c438a2` (same code as build 1), then update `47636b98` (commit `d34f0a7`, cold launch opens the home page instead of `session-unavailable`). The server log showed `current=47636b98` after the second cold start, and Jamie confirmed the fix on the device.
 - A build with a newer embedded update ignores older published updates for the same runtime: the client takes an update only when it is newer than the running one.
+- Build 2 (source `93b3233`, full prebuild and pod install): runtime `b32a4b59…` (same as build 1), `CFBundleVersion` 2, Apple Distribution signature, App Store profile. `altool --validate-app` and `--upload-app` succeeded (30.5 MB, delivery `f635ff93-83e5-412b-a9c3-b849cd9f0e56`).
 
 ## Open
 
