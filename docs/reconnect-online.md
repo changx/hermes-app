@@ -49,3 +49,13 @@ Jamie 报告：每次重连，手机都长时间显示 “Restoring connection�
 - 手机：TypeScript 通过；测试 248 通过、0 失败、1 跳过（新增在线但目录未就绪时显示 “Loading projects…”）。
 - 桌面：`desktop:check` 266 项，207 通过、0 失败、59 跳过。
 - 插件：相关测试 10 通过、2 跳过。完整 P1：分支 20 项失败，`main` 32 项失败；分支没有新增失败，夹具修复修好了 12 项已有失败。
+
+## 发布记录（2026-11-07）
+
+- 插件：仓库 `main` `41eeb97`，0.2.53 打包（`hermes-app-plugin-0.2.53-d185ab12….tar.gz`，sha256 校验通过）。解压到 `plugin-releases/hermes-app/releases/0.2.53`，文件与源码一致；`current` 0.2.52 → 0.2.53（六个 profile 共用）。Gateway 未重启（PID 1342135，启动于 2026-11-03 23:32:09 PST），待 Jamie 重启。重启前，运行中的插件仍是 0.2.52；新客户端读不到 `catalogue_page_limit`，所以每页仍读 30 行，但收到 `hello` 即在线。
+- App：`main` `834abc7`（修复）和 `4125de7`（桌面版本）。
+- Expo Go：只重启 `hermes-app-expo.service`（PID 1210948 → 534840）。公网 iOS/Android manifest 200，SDK 58.0.0，launchAsset 200（iOS 12855049 字节，Android 12946103 字节），两个 bundle 都含 `cataloguePageLimit`。
+- TestFlight：iOS 更新 `61b433a3-8ae2-445e-a6f8-a7557dc6ec5c`，runtime `b32a4b59…`（与 build 2 相同），提交 `4125de7`。公网 manifest 返回该 ID；bundle 200，13750156 字节，SHA-256 与记录一致。下次冷启动下载，再下一次冷启动生效。
+- 桌面 v0.1.121：run 42445960354 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件的 SHA-256 与本地同一提交的构建一致；测试 266 项，0 失败。Release 已发布（`Hermes-0.1.121-macOS-arm64.dmg`）。
+- 回滚：插件把 `current` 指回 `releases/0.2.52` 并重启 Gateway；App `git revert 834abc7` 后重启 Expo，并重新发布 TestFlight 更新；桌面重装 v0.1.120。
+- 待验收：Gateway 重启后核对 capability `catalogue_page_limit: 500`；iPhone 和 Mac 真机上的重连时间。
