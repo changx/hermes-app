@@ -347,7 +347,8 @@ export class LiveSessionClient extends HermesClient {
         const channels:Channel[]=[],threads:Array<ReturnType<typeof parseCatalogue>['items'][number]>=[];
         const seen=new Set<string>();let after:string|null=null;
         do{
-          const page=parseCatalogue(await this.call('GET','/v1/catalogue?limit='+this.cataloguePageLimit+(after?'&after='+encodeURIComponent(after):''),undefined,signal));
+          const limit=this.cataloguePageLimit;
+          const page=parseCatalogue(await this.call('GET','/v1/catalogue?limit='+limit+(after?'&after='+encodeURIComponent(after):''),undefined,signal),limit);
           for(const item of page.items){const key=item.kind+':'+item.value.id;if(seen.has(key))throw new ProtocolError('duplicate directory identity');seen.add(key);if(item.kind==='channel')channels.push(item.value);else threads.push(item)}
           after=page.next_after;if(after&&seen.has('page:'+after))throw new ProtocolError('directory pagination did not finish');if(after)seen.add('page:'+after);
         }while(after);

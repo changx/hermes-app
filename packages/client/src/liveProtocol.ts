@@ -78,9 +78,12 @@ function parseSession(raw:unknown):SessionDirectoryItem{
   }
   return result;
 }
-export function parseCatalogue(value:unknown):CataloguePage {
+/** Largest `/v1/catalogue` page a client asks for (plugin 0.2.53 publishes 500). */
+export const CATALOGUE_PAGE_MAX=500;
+/** One catalogue page; `limit` is the page size the client asked for, never more rows. */
+export function parseCatalogue(value:unknown,limit=CATALOGUE_PAGE_MAX):CataloguePage {
   const body=object(value);
-  if(!Array.isArray(body.items)||body.items.length>100)throw new LiveProtocolError();
+  if(!Array.isArray(body.items)||body.items.length>Math.min(limit,CATALOGUE_PAGE_MAX))throw new LiveProtocolError();
   const seen=new Set<string>();
   const items:CatalogueItem[]=body.items.map(raw=>{
     const row=object(raw),entry=object(row.value),id=text(entry.id),key=String(row.kind)+':'+id;

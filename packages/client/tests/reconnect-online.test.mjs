@@ -9,7 +9,7 @@ const until=async predicate=>{const end=Date.now()+3000;while(!predicate()){asse
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 
 // Synthetic server whose catalogue walk can be held open with gates, one per page request.
-function fixture({pageLimit}={}){
+function fixture({pageLimit,ignoreLimit=false}={}){
   const calls=[], gates=[], sockets=[], states=[];
   const server={channels:[{id:'p',name:'P'}],threads:{
     A:{id:'A',project_id:'p',title:'A',archived:false,running:false},
@@ -23,7 +23,12 @@ function fixture({pageLimit}={}){
       if(path.startsWith('/v1/catalogue?')){
         const gate=gates.shift();if(gate)await gate.promise;
         if(failWalk)return {status:500,body:{}};
-        return {status:200,body:{items:[...server.channels.map(value=>({kind:'channel',value})),...Object.values(server.threads).map(value=>({kind:'session',value}))],next_after:null}};
+        // Same paging as the plugin: ordered keys, at most `limit` items, next_after = last key.
+        const query=new URLSearchParams(path.slice(path.indexOf('?')+1)),limit=ignoreLimit?Infinity:Number(query.get('limit')),after=query.get('after');
+        const rows=[...server.channels.map(value=>['channel:'+value.id,{kind:'channel',value}]),...Object.values(server.threads).map(value=>['session:'+value.id,{kind:'session',value}])]
+          .sort((a,b)=>a[0]<b[0]?-1:1).filter(([key])=>!after||key>after);
+        const page=rows.slice(0,limit);
+        return {status:200,body:{items:page.map(row=>row[1]),next_after:rows.length>limit?page.at(-1)[0]:null}};
       }
       if(path.includes('/messages'))return {status:200,body:{messages:[{id:'a1',ref_seq:1,role:'assistant',text:'hello'}],complete:true,older_cursor:null,next_cursor:null,incomplete_turns:[],turn_outcomes:[]}};
       if(path.endsWith('/live-state'))return {status:200,body:{thread_id:'A',active_receipts:[],pending_interactions:[]}};
@@ -81,6 +86,33 @@ test('the walk uses the page limit the server publishes, and 30 for older server
       assert.deepEqual(f.walks(),['GET /v1/catalogue?limit='+expected],'published '+String(published));
     }finally{f.sdk.close();}
   }
+});
+
+test('a directory larger than one page loads at every published page size',async()=>{
+  // jamie has 801 catalogue rows: more than 100 per page broke the walk on 500-row pages.
+  for(const [published,pages] of [[500,2],[undefined,27],[200,5]]){
+    const f=fixture({pageLimit:published});
+    for(let i=0;i<800;i++){const id='T'+String(i).padStart(4,'0');f.server.threads[id]={id,project_id:'p',title:id,archived:false,running:false}}
+    try{
+      await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);
+      assert.equal(f.walks().length,pages,'published '+String(published));
+      assert.equal(f.sdk.threads.size,802);
+      assert.equal(f.sdk.connectionState,'online');
+      assert.equal(f.states.includes('retrying'),false,'the walk must not end the connection');
+    }finally{f.sdk.close();}
+  }
+});
+
+test('a page with more rows than the client asked for is still rejected',async()=>{
+  // A server that ignores `limit` (43 rows on a 30-row page) is a protocol error, not a directory.
+  const f=fixture({ignoreLimit:true});
+  for(let i=0;i<40;i++){const id='T'+i;f.server.threads[id]={id,project_id:'p',title:id,archived:false,running:false}}
+  try{
+    await f.sdk.connect();
+    // A protocol error on the first walk suspends the connection; it is never left online.
+    await until(()=>f.states.includes('suspended')||f.states.includes('retrying'));
+    assert.equal(f.sdk.isCatalogueReady,false);
+  }finally{f.sdk.close();}
 });
 
 test('a failed background walk reconnects instead of leaving a stale online state',async()=>{
