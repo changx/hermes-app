@@ -59,3 +59,20 @@ Jamie 报告：每次重连，手机都长时间显示 “Restoring connection�
 - 桌面 v0.1.121：run 42445960354 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件的 SHA-256 与本地同一提交的构建一致；测试 266 项，0 失败。Release 已发布（`Hermes-0.1.121-macOS-arm64.dmg`）。
 - 回滚：插件把 `current` 指回 `releases/0.2.52` 并重启 Gateway；App `git revert 834abc7` 后重启 Expo，并重新发布 TestFlight 更新；桌面重装 v0.1.120。
 - 待验收：Gateway 重启后核对 capability `catalogue_page_limit: 500`；iPhone 和 Mac 真机上的重连时间。
+
+## 修复：超过 100 行的目录连不上（2026-11-07）
+
+Jamie 报告：Gateway 重启（20:30）后，手机连不上 jamie 和 hermes-app-dev 两个连接，其他连接正常。
+
+原因：客户端按 `catalogue_page_limit` 请求 500 行一页，但 `parseCatalogue` 仍只接受最多 100 行，多于 100 行时抛出 `LiveProtocolError`。第一次连接时目录读取遇到协议错误，连接进入 `suspended`，所以一直连不上。只有目录多于 100 行的连接受影响：
+
+| 连接 | 目录行数 | 旧解析，limit=500 | 新解析，limit=500 | 新解析，limit=30 |
+|---|---|---|---|---|
+| jamie | 801 | 失败 | 2 页 801 行 | 27 页 801 行 |
+| hermes-app-dev | 365 | 失败 | 1 页 365 行 | 13 页 365 行 |
+| sites-dev | 15 | 1 页 | 1 页 | 1 页 |
+| emma | 6 | 1 页 | 1 页 | 1 页 |
+
+（用公网地址读真实目录，并用两份 `liveProtocol.ts` 解析；只读请求。）服务端、Traefik、bridge 和配对设备都正常。
+
+修复：`parseCatalogue(value, limit)` 接受的行数上限改为客户端请求的 `limit`（最大 `CATALOGUE_PAGE_MAX = 500`）。服务端返回的行数多于请求时仍然拒绝。目录读取把本页请求的 `limit` 传给解析。原测试夹具不分页，只有 2 个 Thread，所以没有发现这个问题；现在夹具按插件规则分页，并新增 2 项测试：800 多行的目录在 500、200 和 30 行每页时都能读完且连接不断开；服务端忽略 `limit` 时仍拒绝。旧代码运行时这 2 项都失败。
