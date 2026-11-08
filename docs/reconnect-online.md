@@ -58,7 +58,8 @@ Jamie 报告：每次重连，手机都长时间显示 “Restoring connection�
 - TestFlight：iOS 更新 `61b433a3-8ae2-445e-a6f8-a7557dc6ec5c`，runtime `b32a4b59…`（与 build 2 相同），提交 `4125de7`。公网 manifest 返回该 ID；bundle 200，13750156 字节，SHA-256 与记录一致。下次冷启动下载，再下一次冷启动生效。
 - 桌面 v0.1.121：run 42445960354 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件的 SHA-256 与本地同一提交的构建一致；测试 266 项，0 失败。Release 已发布（`Hermes-0.1.121-macOS-arm64.dmg`）。
 - 回滚：插件把 `current` 指回 `releases/0.2.52` 并重启 Gateway；App `git revert 834abc7` 后重启 Expo，并重新发布 TestFlight 更新；桌面重装 v0.1.120。
-- 待验收：Gateway 重启后核对 capability `catalogue_page_limit: 500`；iPhone 和 Mac 真机上的重连时间。
+- Jamie 重启 `hermes-gateway.service`（PID 1342135 → 545498，20:30:39 PST）。未认证 capabilities 返回 401；认证 capabilities 在 hermes-app-dev（9790）和 jamie（9791）都返回 `catalogue_page_limit: 500`。本机完整读取目录：hermes-app-dev 1 页 365 项 0.02 s，jamie 2 页 804 项 0.04 s。
+- 待验收：iPhone 和 Mac 真机上的重连时间。
 
 ## 修复：超过 100 行的目录连不上（2026-11-07）
 
