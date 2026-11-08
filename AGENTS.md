@@ -161,6 +161,7 @@
 - [docs/session-auto-bottom.md](docs/session-auto-bottom.md)
 - [docs/send-cancel-inline.md](docs/send-cancel-inline.md)
 - [docs/session-open-timing.md](docs/session-open-timing.md)
+- [docs/reconnect-online.md](docs/reconnect-online.md)（重连收到 hello 即在线，目录后台读取；catalogue 每页最多 500 行）
 - [docs/session-labels.md](docs/session-labels.md)
 - [docs/todo-flag.md](docs/todo-flag.md)
 - [docs/archive.md](docs/archive.md)

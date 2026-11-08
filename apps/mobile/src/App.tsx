@@ -365,7 +365,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       onCancel={ignore} onStop={ignore} busy={busy} messageActions={startingActions} />
   </View>;
   if (!selected || selected.archived || !client.channels.has(selected.project_id))
-    return <Notice text={status === 'online' ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
+    return <Notice text={status === 'online' && client.isCatalogueReady ? 'This conversation is unavailable.' : 'Opening conversation…'} />;
   // Source navigation must mount the list only after the target rows exist, so its
   // native initial index points at the exact message rather than the latest.
   if (anchor !== undefined && !located) return <View style={styles.flex}>
@@ -418,7 +418,7 @@ export function ChannelsScreen({ channelId }: { channelId: string }) {
   const router = useRouter();
   if (!ready || !config || !client) return <Notice text="Opening…" />;
   if (!client.channels.has(channelId))
-    return <Notice text={client.connectionState === 'online' ? 'This channel is unavailable.' : 'Opening channel…'} />;
+    return <Notice text={client.connectionState === 'online' && client.isCatalogueReady ? 'This channel is unavailable.' : 'Opening channel…'} />;
   return <View style={styles.flex}>
     {!!error && <Text style={styles.error}>{error}</Text>}
     <FormKeyboardAvoidingView>

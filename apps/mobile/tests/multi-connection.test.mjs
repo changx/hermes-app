@@ -80,3 +80,12 @@ test('connections without a directory appear as pending rows, never as fake Proj
   assert.deepEqual(rows, []);
   assert.deepEqual(pending.map(p => [p.connectionName, p.text]), [['loading.example', 'Loading projects…'], ['pairing.example', 'Pairing'], ['broken.example', 'Needs attention']]);
 });
+
+test('an online connection whose first directory walk is still running shows loading, not unavailable', () => {
+  const { rows, pending } = projectRows([
+    runtime('primary', 'walking.example', client([], [], false), { loading: false, status: 'online' }),
+    runtime('b'.repeat(24), 'stopped.example', client([], [], false), { loading: false, status: 'suspended' }),
+  ]);
+  assert.deepEqual(rows, []);
+  assert.deepEqual(pending.map(p => [p.connectionName, p.text]), [['walking.example', 'Loading projects…'], ['stopped.example', 'Projects unavailable']]);
+});

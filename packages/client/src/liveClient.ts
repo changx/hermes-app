@@ -347,7 +347,7 @@ export class LiveSessionClient extends HermesClient {
         const channels:Channel[]=[],threads:Array<ReturnType<typeof parseCatalogue>['items'][number]>=[];
         const seen=new Set<string>();let after:string|null=null;
         do{
-          const page=parseCatalogue(await this.call('GET','/v1/catalogue?limit=30'+(after?'&after='+encodeURIComponent(after):''),undefined,signal));
+          const page=parseCatalogue(await this.call('GET','/v1/catalogue?limit='+this.cataloguePageLimit+(after?'&after='+encodeURIComponent(after):''),undefined,signal));
           for(const item of page.items){const key=item.kind+':'+item.value.id;if(seen.has(key))throw new ProtocolError('duplicate directory identity');seen.add(key);if(item.kind==='channel')channels.push(item.value);else threads.push(item)}
           after=page.next_after;if(after&&seen.has('page:'+after))throw new ProtocolError('directory pagination did not finish');if(after)seen.add('page:'+after);
         }while(after);
@@ -554,8 +554,12 @@ export class LiveSessionClient extends HermesClient {
           if(data==='pong'){if(!this.hello)throw new ProtocolError('pong before hello');awaitingPong=false;clearTimeout(pong);stable();schedule(since+gap());return}
           const frame=parseLiveFrame(JSON.parse(data));
           if(frame.type==='hello'){
-            if(this.hello)throw new ProtocolError('duplicate live hello');this.hello=true;clearTimeout(handshake);this.state('syncing');this.connectionReady(frame);
-            void this.refreshDirectory(attempt.signal).then(()=>{if(!attempt.signal.aborted)this.state('online')},failure);
+            if(this.hello)throw new ProtocolError('duplicate live hello');this.hello=true;clearTimeout(handshake);
+            // Online at hello: sends, receipts and open pages need only the socket. The last
+            // directory stays visible while a background walk replaces it in one step;
+            // availability checks wait for isCatalogueReady, never for this state.
+            this.state('online');this.connectionReady(frame);
+            void this.refreshDirectory(attempt.signal).catch(failure);
             since=Date.now();this.livenessChanged=reschedule;this.probeLiveness=probe;schedule(since+gap());
           }else if(!this.hello)throw new ProtocolError('live notification before hello');
           else if(frame.type==='directory_changed')this.directoryChangeFrame(frame,attempt.signal,failure);

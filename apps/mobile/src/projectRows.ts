@@ -26,9 +26,10 @@ export function projectRows(connections: readonly ProjectSource[]): { rows: Proj
     const client = runtime.client;
     const issue = runtime.damaged ? 'Needs attention' : runtime.failed && runtime.status === 'suspended' ? 'Offline' : hint[runtime.status];
     if (!client || !client.isCatalogueReady) {
-      // A connection without a directory yet has no Projects to show.
+      // A connection without a directory yet has no Projects to show. Online without
+      // one means the first directory walk is still running.
       pending.push({ key: runtime.slot, slot: runtime.slot, connectionName: runtime.name,
-        text: issue ?? (runtime.loading ? 'Loading projects…' : 'Projects unavailable') });
+        text: issue ?? (runtime.loading || runtime.status === 'online' ? 'Loading projects…' : 'Projects unavailable') });
       continue;
     }
     const counts = projectUnreadCounts([...client.threads.values()].map(t => ({ projectId: t.project_id, archived: Boolean(t.archived), completedUnread: t.completed_unread })), client.channels.keys());

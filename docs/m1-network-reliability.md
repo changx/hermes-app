@@ -43,7 +43,7 @@ Jamie 明确要求通信恢复尽可能不打扰用户，不把技术判断交�
 
 候选代码已完成集成、本地回归与隔离真实 Gateway 联调，并以 `bd0ca43` 发布到现有手机入口；公网 API/WS、历史与新版 iOS/Android bundle 通过，iPhone 故障验收仍待完成。详见 [本轮验证报告](m1-reliability-verification.md)。
 
-- `packages/client/src/index.ts`：初连/回前台进入统一恢复循环；HTTP、握手和hello超时；ping/pong与定期持久补齐；单连接尝试取消边界、事件突发合并及退避抖动。仅hello及补齐完成才显示online。
+- `packages/client/src/index.ts`：初连/回前台进入统一恢复循环；HTTP、握手和hello超时；ping/pong与定期持久补齐；单连接尝试取消边界、事件突发合并及退避抖动。收到hello即显示online，目录在后台读取（见 [reconnect-online.md](reconnect-online.md)）。
 - `apps/mobile/src/outbox.ts`：按连接隔离、最多24条持久待发记录；原文先分块保存再发送，SecureStore键满足原生规则；同话题按持久顺序提交，同ID安全重试；跨话题可继续发送；已接收收据独立轮询，已确认终态安全回收，不因最新历史窗口遗漏旧消息而永久占满。
 - `apps/mobile/src/App.tsx`：接入SDK状态与前后台恢复，移除必需的重试/放弃/重建同步路径；自动补齐不代表原生键盘/阅读定位已验收。
 - `pairing.ts`、`ConnectionScreen.tsx` 与插件 `device_pairing.py`：初次使用一次性管理员授权配对；手机先安全保存随机设备凭据再兑换，响应丢失自动核对；服务器只保存哈希，过期码及已撤销设备不可恢复授权；现有开发连接继续兼容。

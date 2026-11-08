@@ -39,7 +39,7 @@ The account-network candidate uses one WebSocket and one directory per account, 
 
 Reuse existing authenticated capabilities/history/receipt/interaction/attachment APIs. Catalogue contains only directory fields and running state (no unread counts, receipt bodies, prompts or messages). The account connection observes directory/running changes and content hints for its living pages. Frames remain change hints, not replay instructions. No client event cursor, data-version chain or history store is introduced.
 
-`GET /v1/catalogue?after=<ordinary page anchor>&limit=30` returns directory items and next_after; full pagination must succeed before applying absence. Ordinary history/catalogue pagination is not a synchronization cursor.
+`GET /v1/catalogue?after=<ordinary page anchor>&limit=<n>` returns directory items and next_after; `n` is at most the capability `catalogue_page_limit` (500 since plugin 0.2.53; 30 when absent). Full pagination must succeed before applying absence. The connection is online at hello; the walk runs in the background (see [reconnect-online](reconnect-online.md)). Ordinary history/catalogue pagination is not a synchronization cursor.
 
 `WS /v1/live`: hello; `{type:watch,thread_id:<id|null>,request_id:<ephemeral request identity>}`; matching watching acknowledgement; directory_changed (with `thread_ids` when only Thread rows changed; see [core data flow](core-dataflow.md)), session_state (running), conversation_changed scoped to the watched request. Request identity is only to ignore stale subscription responses, not a stored entity version. Ping/pong is health-only. Slow consumers close/reconnect instead of silently dropping required changes.
 
