@@ -76,3 +76,14 @@ Jamie 报告：Gateway 重启（20:30）后，手机连不上 jamie 和 hermes-a
 （用公网地址读真实目录，并用两份 `liveProtocol.ts` 解析；只读请求。）服务端、Traefik、bridge 和配对设备都正常。
 
 修复：`parseCatalogue(value, limit)` 接受的行数上限改为客户端请求的 `limit`（最大 `CATALOGUE_PAGE_MAX = 500`）。服务端返回的行数多于请求时仍然拒绝。目录读取把本页请求的 `limit` 传给解析。原测试夹具不分页，只有 2 个 Thread，所以没有发现这个问题；现在夹具按插件规则分页，并新增 2 项测试：800 多行的目录在 500、200 和 30 行每页时都能读完且连接不断开；服务端忽略 `limit` 时仍拒绝。旧代码运行时这 2 项都失败。
+
+验证：`client:check` 111/111；手机 TypeScript 通过，测试 249/249；iOS 和 Android 导出成功，两个 bundle 都含新判断；桌面 `desktop:check` 266 项 264 通过，2 项失败（`browser-window-native` 110 s 超时、`native-electron` native tabs，均为已知不稳定项），单独重跑都通过。本次改动不涉及桌面代码。
+
+### 发布记录（2026-11-07）
+
+- App：`main` `4ebfb9c`（修复）、`09ab778`（文档）、`65ff305`（桌面版本），tag `v0.1.122`。回滚分支 `rollback/catalogue-page-items-before-release`（`f0a8e6b`）。
+- Expo Go：只重启 `hermes-app-expo.service`（PID 534840 → 576909）。公网 iOS/Android manifest 200，SDK 58.0.0，launchAsset 200（iOS 12855506 字节，Android 12946560 字节）；两个 bundle 中 `CATALOGUE_PAGE_MAX` 0 → 5，`body.items.length > 100` 2 → 1（只剩 `parseCatalogueThreads`）。Gateway PID 545498 未变，插件未变。
+- TestFlight：iOS 更新 `bb9bbdf1-17ff-46ec-b7ef-2aaccc3da9ef`，runtime `b32a4b59…`（build 2），提交 `65ff305`。公网 manifest 返回该 ID；bundle 200，13750293 字节。
+- 桌面 v0.1.122：tag run 42448638516 在 DMG 内 stapler 检查时连接 Apple CloudKit 网络中断（`NSURLErrorDomain -1005`，Error 68），签名和公证已 `Accepted`；同一 tag 重跑 run 42449109993 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件 SHA-256 与本地同一提交构建一致；DMG `sha256sum -c` 通过。Release 已发布（`Hermes-0.1.122-macOS-arm64.dmg`）。
+- 回滚：App `git revert 4ebfb9c` 后重启 Expo，并按 `--to 61b433a3-8ae2-445e-a6f8-a7557dc6ec5c` 回滚 TestFlight 更新；桌面重装 v0.1.121。
+- 待验收：iPhone（Expo Go 重新加载；TestFlight 冷启动两次）和 Mac（安装 v0.1.122）上连接 jamie 和 hermes-app-dev。
