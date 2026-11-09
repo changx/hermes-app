@@ -70,3 +70,15 @@ Secrets: a submitted password or code is held in process memory only until the w
 - The plan depends on three core details: the callback setter names, `can_prompt_here()` checking the unlock callback, and `browser_vault` running on the caller's thread. Plugin tests pin all three against the running core; run them after every core sync.
 - A prompt needs a running Thread and an open App. With all Apps closed, the prompt times out and the agent gets "declined". Cron and other headless sessions never prompt.
 - Headless 2FA works without the App when the login has an authenticator key (`has_otp`).
+
+## Release record (2026-11-09)
+
+Authorized by Jamie ("合并发布").
+
+- Plugin 0.2.58: `main` `88d949d`, tag `v0.2.58` (the first tag since `v0.2.51`; 0.2.52–0.2.57 shipped untagged). Installed at `~/.hermes/plugin-releases/hermes-app/releases/0.2.58` (equal to `git archive v0.2.58`); `current` points to it for every linked profile (emma, hermes-app-dev, jamie, nan, sites-dev, wangyu). No schema change. Plugin P1: `test_vault.py` 64 passed on the running core; the full suite has the 20 test-setup failures that `main` already had, plus one flaky runner test that passes alone.
+- App: `main` `1e2b003` (feature), `d454140` (v0.1.127), tag `v0.1.127`. Client 122/122, desktop 269 (208 pass, 0 fail, 61 skipped), mobile 251 (250 pass, 1 skipped); type checks pass.
+- Expo Go: `hermes-app-expo.service` restarted (PID 1874302 → 1991113). The public iOS and Android bundles contain `Save & sign in` (0 → 1), `vault-prompts` (0 → 1) and `Passwords & Logins` (0 → 6).
+- TestFlight: iOS update `222a0899-d4e6-48e9-9898-c5f22cf3425e`, runtime `b32a4b59…` (unchanged), commit `d454140`, bundle 13789532 bytes; the bundle contains `Save & sign in` and `vault-prompts`.
+- Desktop v0.1.127: run 42630716760. Attempts 1 and 2 failed at staple (Error 68, CloudKit `-1005`) after notarization; attempt 3 passed. Checks: tests 269 (208 pass, 0 fail, 61 skipped), audit 0, `valid on disk`, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, `The validate action worked!`, notarytool `"status":"Accepted"`, `source=Notarized Developer ID`. `Hermes-0.1.127-macOS-arm64.dmg` (146981379 bytes) passes `sha256sum -c`; all 9 app code hashes equal a clean `npm ci` build of `v0.1.127`.
+- Rollback: plugin `current` back to `releases/0.2.57` and a Gateway restart; App `git revert 1e2b003`, restart Expo, TestFlight `rollback --to ca8e951d-7ecc-407e-b51d-adc440dbab05`; desktop reinstall v0.1.126.
+- Pending: Jamie restarts the Gateway. The feature needs the `browser` toolset for `hermes_app` (on `jamie` today, not on `hermes-app-dev`). Real model calls and Mac (v0.1.127) and iPhone acceptance are open.
