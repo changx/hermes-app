@@ -97,6 +97,7 @@
 - [docs/mobile-workspace-entry.md](docs/mobile-workspace-entry.md)
 - [docs/mobile-workspace-entry-release.md](docs/mobile-workspace-entry-release.md)
 - [docs/mobile-session-options.md](docs/mobile-session-options.md)
+- [docs/mobile-header-scroll-top.md](docs/mobile-header-scroll-top.md)（iOS Session 页头部按钮用原生 bar button item，点击不再滚动到顶部）
 - [docs/mobile-battery.md](docs/mobile-battery.md)
 - [docs/client-error-logs.md](docs/client-error-logs.md)（手机端错误上传到 `POST /v1/client-logs`，写入 profile 的 `hermes-app/client-logs.jsonl`）
 - [docs/mobile-pdf-viewer.md](docs/mobile-pdf-viewer.md)

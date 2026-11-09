@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Pressable, Share, StyleSheet, View } from 'react-native';
+import { AppState, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { Text } from './FontSize';
 import * as Crypto from 'expo-crypto';
@@ -13,6 +13,7 @@ import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './Ch
 import { ChannelScreens } from './ChannelScreens';
 import { LabelPills } from './SessionLabels';
 import { TODO_COLOR } from './TodoFlag';
+import { sessionHeaderItems } from './sessionHeaderItems';
 import { setThreadTodo } from './todoToggle';
 import { hasTodo, withoutTodo } from '../../../packages/client/src/todo';
 import { projectTimeline } from './timeline';
@@ -380,10 +381,12 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {historyBusy || awaitingOpen ? <ConversationLoading active={focused && foreground} /> : <Pressable accessibilityRole="button" accessibilityLabel="Try again" onPress={() => { setError(''); void openThread(threadId, anchor); }}><Text>Try again</Text></Pressable>}
   </View>;
+  const headerButtons = { onPress: () => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } }),
+    todo: accountClient?.supportsSessionLabels ? { on: todo, busy: todoBusy || status !== 'online', onPress: toggleTodo } : undefined };
   return <View style={styles.flex}>
     <Stack.Screen options={{ title: selected.title || 'Conversation', ...headerTitle(selected.title || 'Conversation', selected.project_id),
-      headerRight: () => <SessionOptionsButton onPress={() => router.push({ pathname: '/threads/[threadId]/options', params: { threadId, connection: slot } })}
-        todo={accountClient?.supportsSessionLabels ? { on: todo, busy: todoBusy || status !== 'online', onPress: toggleTodo } : undefined} /> }} />
+      ...(Platform.OS === 'ios' ? { headerRight: undefined, unstable_headerRightItems: () => sessionHeaderItems(headerButtons) }
+        : { headerRight: () => <SessionOptionsButton {...headerButtons} /> }) }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     {accountClient?.supportsSessionLabels && withoutTodo(selected.markers).length > 0 && <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}><LabelPills markers={withoutTodo(selected.markers)} /></View>}
     <ChatTimeline key="timeline" ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows}
