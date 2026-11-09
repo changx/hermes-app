@@ -98,7 +98,7 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     const withUsage = await waitCard(v => v && v.usage, 1000);
     assert.equal(withUsage.value?.usage, 'Context 28.2K · Cache 0% · Total 206M', 'usage line in the card; a real miss shows 0%');
     assert.equal(withUsage.value.title, LONG);
-    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /Context: 28,202 tokens in the latest request\. Cache: 0% of the latest request's input came from the prompt cache \(0 of 28,202 tokens\)\. Total: 206,250,929 tokens used by this session/, 'usage for screen readers');
+    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /Context: 28,202 tokens in the latest request\. Cache: 0% of the input of the latest turn's first request came from the prompt cache \(0 of 28,202 tokens\)\. Total: 206,250,929 tokens used by this session/, 'usage for screen readers');
     assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /^A very long Session title.*Example Project · Home/, 'screen reader description');
     assert.equal(await evaluate(`document.querySelector('${row('long')}').getAttribute('aria-describedby')`), 'sidebar-session-card');
 

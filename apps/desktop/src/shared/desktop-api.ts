@@ -364,7 +364,7 @@ export interface HermesDesktopApi {
 
 /**
  * Tokens of one Session: the latest request's context after compaction (null when unknown), the cumulative
- * total, and the latest request's prompt cache (tokens read from the cache of all input; null without data).
+ * total, and the prompt cache of the latest turn's first request (tokens read from the cache of all input; null without data).
  */
 export type DesktopThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number; cache: Readonly<{ readTokens: number; promptTokens: number }> | null }>;
 

@@ -63,8 +63,8 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
     {usage && <SettingsSection title="Usage">
       {usage.contextTokens !== null && <SettingsValueRow first title="Context" detail="Latest request, after compaction" value={`${formatTokens(usage.contextTokens)} tokens`}
         label={`Context, ${exactTokens(usage.contextTokens)} tokens in the latest request`} />}
-      {usage.cache && <SettingsValueRow first={usage.contextTokens === null} title="Cache hit" detail="Latest request, from the prompt cache" value={`${cacheHitPercent(usage.cache)}%`}
-        label={`Cache hit, ${cacheHitPercent(usage.cache)}%: ${exactTokens(usage.cache.readTokens)} of ${exactTokens(usage.cache.promptTokens)} input tokens of the latest request came from the prompt cache`} />}
+      {usage.cache && <SettingsValueRow first={usage.contextTokens === null} title="Cache hit" detail="First request of the latest turn" value={`${cacheHitPercent(usage.cache)}%`}
+        label={`Cache hit, ${cacheHitPercent(usage.cache)}%: ${exactTokens(usage.cache.readTokens)} of ${exactTokens(usage.cache.promptTokens)} input tokens of the latest turn's first request came from the prompt cache`} />}
       <SettingsValueRow first={usage.contextTokens === null && !usage.cache} title="Total" detail="All requests in this session" value={`${formatTokens(usage.totalTokens)} tokens`}
         label={`Total, ${exactTokens(usage.totalTokens)} tokens used by this session`} />
     </SettingsSection>}

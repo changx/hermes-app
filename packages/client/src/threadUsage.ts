@@ -5,8 +5,9 @@
  *   context, after compaction. `null` when the server has no current value.
  * - `totalTokens`: cumulative tokens of every model request in the Session
  *   (input + cache read + cache write + output), as Hermes core counts them.
- * - `cache`: the prompt cache of the latest model request (plugin 0.2.56+): tokens read from
- *   the cache and all input tokens. `null` when unknown, or when the provider reported no
+ * - `cache`: the prompt cache of the first model request of the latest turn (plugin 0.2.57+,
+ *   `turn_first_request`): tokens read from the cache and all input tokens. It shows whether the
+ *   cache survived the pause before the turn. `null` when unknown, or when the provider reported no
  *   cache activity (no read and no write), so that "no data" never reads as a 0% hit rate.
  */
 export type ThreadCache = Readonly<{ readTokens: number; promptTokens: number }>;
@@ -31,7 +32,7 @@ export function parseThreadUsage(body: unknown, threadId: string): ThreadUsage |
   const value = usage as Record<string, unknown>;
   const total = count(value.total_tokens);
   const context = value.context_tokens === null ? null : count(value.context_tokens);
-  const cache = parseCache(value.last_request);
+  const cache = parseCache(value.turn_first_request);
   if (value.thread_id !== threadId || total === undefined || context === undefined || cache === undefined) return undefined;
   return { contextTokens: context === 0 ? null : context, totalTokens: total, cache };
 }

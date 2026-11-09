@@ -49,8 +49,8 @@ test('token counts are compact and exact', () => {
   assert.equal(exactTokens(206250929), '206,250,929');
 });
 
-test('threadUsage reads the cache of the latest request; no cache activity is no data, not 0%', async () => {
-  const reply = last_request => client(() => ({ status: 200, body: { usage: { thread_id: 'th_one', context_tokens: 240051, total_tokens: 9, last_request } } })).sdk;
+test('threadUsage reads the cache of the latest turn\'s first request, not the latest request; no cache activity is no data, not 0%', async () => {
+  const reply = last_request => client(() => ({ status: 200, body: { usage: { thread_id: 'th_one', context_tokens: 240051, total_tokens: 9, turn_first_request: last_request, last_request: { prompt_tokens: 5, cache_read_tokens: 5, cache_write_tokens: 0, output_tokens: 1, at: 2 } } } })).sdk;
   const read = async last => { const sdk = reply(last); sdk.supportsThreadUsage = true; return (await sdk.threadUsage('th_one')).cache; };
   assert.deepEqual(await read({ prompt_tokens: 240051, cache_read_tokens: 239459, cache_write_tokens: 590, output_tokens: 1420, at: 1 }), { readTokens: 239459, promptTokens: 240051 });
   assert.deepEqual(await read({ prompt_tokens: 50000, cache_read_tokens: 0, cache_write_tokens: 50000, output_tokens: 1, at: 1 }), { readTokens: 0, promptTokens: 50000 }, 'a real miss that wrote the cache');
@@ -68,4 +68,11 @@ test('cache hit percent rounds down, so only a full hit shows 100%', () => {
   assert.equal(cacheHitPercent({ readTokens: 240000, promptTokens: 240000 }), 100);
   assert.equal(cacheHitPercent({ readTokens: 0, promptTokens: 50000 }), 0);
   assert.equal(cacheHitPercent({ readTokens: 1, promptTokens: 3 }), 33);
+});
+
+test('a 0.2.56 reply with only last_request has no cache value', async () => {
+  const sdk = client(() => ({ status: 200, body: { usage: { thread_id: 'th_one', context_tokens: 1, total_tokens: 2,
+    last_request: { prompt_tokens: 100, cache_read_tokens: 99, cache_write_tokens: 1, output_tokens: 1, at: 1 } } } })).sdk;
+  sdk.supportsThreadUsage = true;
+  assert.equal((await sdk.threadUsage('th_one')).cache, null);
 });

@@ -62,7 +62,7 @@ export const usageText = (usage: DesktopThreadUsage): string =>
 /** Full counts for the tooltip and screen readers. */
 export const usageDescription = (usage: DesktopThreadUsage): string =>
   [usage.contextTokens !== null ? `Context: ${exactTokens(usage.contextTokens)} tokens in the latest request.` : '',
-    usage.cache ? `Cache: ${cacheHitPercent(usage.cache)}% of the latest request's input came from the prompt cache (${exactTokens(usage.cache.readTokens)} of ${exactTokens(usage.cache.promptTokens)} tokens).` : '',
+    usage.cache ? `Cache: ${cacheHitPercent(usage.cache)}% of the input of the latest turn's first request came from the prompt cache (${exactTokens(usage.cache.readTokens)} of ${exactTokens(usage.cache.promptTokens)} tokens).` : '',
     `Total: ${exactTokens(usage.totalTokens)} tokens used by this session.`].filter(Boolean).join(' ');
 
 /** Test hook: forget every reading. */
