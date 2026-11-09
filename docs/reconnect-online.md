@@ -107,6 +107,14 @@ Jamie 报告：桌面端加载 jamie 和 hermes-app-dev 失败（手机正常）
 | hermes-app-dev | 读取失败，重连（too large） | 目录就绪，363 个 Thread，4 个 Channel，约 0.8 s |
 | sites-dev | 目录就绪 | 目录就绪 |
 
+验证（续）：`client:check` 115/115；桌面 `desktop:check` 269 项 268 通过，1 项失败（`browser-window-native` `UnknownVizError`，已知不稳定项），单独重跑 2 次都通过。只改桌面主进程，手机和共享客户端不变，所以不重启 Expo，也不发布 TestFlight 更新。
+
+发布记录（2026-11-09）：
+- App：`main` `ec2110e`（修复）、`a1e4a6f`（桌面版本），tag `v0.1.124`。
+- 桌面 v0.1.124：tag run 42601964118 在 DMG stapler 检查时连接 Apple CloudKit 网络中断（Error 68，与 v0.1.122 相同），签名和公证已 `Accepted`；同一 tag 重跑 run 42603133436 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件 SHA-256 与本地同一提交构建一致；DMG `sha256sum -c` 通过。Release 已发布（`Hermes-0.1.124-macOS-arm64.dmg`）。
+- 回滚：桌面重装 v0.1.123（jamie 和 hermes-app-dev 会再次读不出目录）。
+- 待验收：Mac 安装 v0.1.124 后连接 jamie 和 hermes-app-dev。
+
 ## 完整历史读取加速（插件 0.2.54）
 
 重连时，每个已打开的页面都读取一次完整历史（`GET /v1/threads/<id>/messages?full=true`）。客户端只接受完整的响应，所以超过 100 条的会话也不会缺消息。
