@@ -88,3 +88,27 @@ Jamie 报告：Gateway 重启（20:30）后，手机连不上 jamie 和 hermes-a
 - 桌面 v0.1.122：tag run 42448638516 在 DMG 内 stapler 检查时连接 Apple CloudKit 网络中断（`NSURLErrorDomain -1005`，Error 68），签名和公证已 `Accepted`；同一 tag 重跑 run 42449109993 成功。app 和 DMG 均 Developer ID 签名，公证 `Accepted`，`source=Notarized Developer ID`；ASAR `dist/` 9 个文件 SHA-256 与本地同一提交构建一致；DMG `sha256sum -c` 通过。Release 已发布（`Hermes-0.1.122-macOS-arm64.dmg`）。
 - 回滚：App `git revert 4ebfb9c` 后重启 Expo，并按 `--to 61b433a3-8ae2-445e-a6f8-a7557dc6ec5c` 回滚 TestFlight 更新；桌面重装 v0.1.121。
 - 待验收：iPhone（Expo Go 重新加载；TestFlight 冷启动两次）和 Mac（安装 v0.1.122）上连接 jamie 和 hermes-app-dev。
+
+## 完整历史读取加速（插件 0.2.54）
+
+重连时，每个已打开的页面都读取一次完整历史（`GET /v1/threads/<id>/messages?full=true`）。客户端只接受完整的响应，所以超过 100 条的会话也不会缺消息。
+
+测量（0.2.53，数据库只读副本）：jamie 最长会话 1002 条要 1.64 s，hermes-app-dev 最长会话 1165 条要 1.49 s。cProfile 显示，约 97% 的时间用在 `tool_timeline.public_tool_calls`：terminal 命令脱敏（`_command_detail`）、核心 terminal 预览（`summarize_shell_command`）和 `_safe_text`。每条 assistant 消息的工具调用还要计算两次（`visible_text` 一次，`tool_calls` 一次）。
+
+改动（插件 `7d69cdd`）：
+
+- 只依赖文字本身的计算结果进入有界 LRU 缓存：`_command_detail`、`_safe_text` 和 terminal 预览。键是文字的 SHA-256 摘要，最多 8192 条；超过 1000 字符的结果不保存。
+- 脱敏失败时（抛出异常或返回 `REDACTION_UNAVAILABLE`），结果不进入缓存。替换脱敏函数时，缓存清空。
+- 界面语言、配置和工具注册表的查询不缓存。
+- `_valid_text` 先用 `str.isprintable()` 快速判断，结果与逐字符检查相同。
+
+验证：
+
+- 真实数据：两个 profile 各取最长的 40 个会话，新旧代码输出逐字节相同（80/80）。
+- 重复读取：jamie 40 个会话合计 10.21 s → 1.58 s，其中 1002 条的会话 1.64 s → 0.17 s；hermes-app-dev 40 个会话合计 16.88 s → 3.73 s，其中 1165 条的会话 1.49 s → 0.19 s。
+- 第一次读取：同一批会话 jamie 11.44 s → 6.82 s，hermes-app-dev 18.07 s → 10.86 s。
+- 测试：新增 `tests/p1/test_tool_timeline_cache.py` 4 项。完整 P1 测试 312 通过、20 失败；这 20 项与 0.2.53 的已有失败相同。
+
+仍存在的耗时：含 commentary 的会话里，核心 `project_history_commentary` 对每行调用 `load_config`，并深拷贝配置。例如一个 600 条的会话重复读取仍要约 0.3 s。这是核心行为，本次不修改。
+
+发布：插件 0.2.54 安装到 `releases/0.2.54`，`current` 0.2.53 → 0.2.54，待 Jamie 重启 Gateway。回滚：把 `current` 指回 `releases/0.2.53`，再重启 Gateway。
