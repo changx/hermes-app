@@ -1,6 +1,6 @@
 # Session token usage
 
-Requested by Jamie: show each Session's current context size and its cumulative tokens. Desktop shows them in the sidebar Session card and in the Session status bar. Mobile shows them on the Session options page.
+Requested by Jamie: show each Session's current context size and its cumulative tokens. Later also the cache hit rate of the latest request (plugin 0.2.56). Desktop shows them in the sidebar Session card and in the Session status bar. Mobile shows them on the Session options page.
 
 ## Values
 
@@ -8,6 +8,8 @@ Both values come from Hermes core. The plugin reads them and does not count anyt
 
 - **Context**: the prompt tokens of the latest model request of the Session's current core session. Core's Gateway stores this value on the session routing entry (`SessionEntry.last_prompt_tokens`) when a turn ends, and `/status` and `/usage` show the same value. Each request sends the compacted context, so this is the context after LCM compaction. It includes the system prompt, summaries, the fresh tail and tool definitions.
 - **Total**: the sum over every core session that carried the Thread of `input + cache_read + cache_write + output` tokens (core `CanonicalUsage.total_tokens`, the `sessions` rows in the profile `state.db`). This is billed throughput, not the conversation size: each request sends the context again.
+
+- **Cache hit**: the share of the latest main-model request's input that came from the prompt cache: `cache_read / prompt_tokens`, where `prompt_tokens = input + cache_read + cache_write` (core `CanonicalUsage`; the same definition as the core CLI status bar). The plugin records the latest request of each core session from core's documented `post_api_request` hook (table `session_last_requests` in the plugin's `metadata.sqlite`, one row per session, rows idle for 90 days removed). Auxiliary calls (titles, compression) do not fire this hook, so they never count. The route gives the newest request among the Thread's sessions. A request without cache read and without cache write means the provider reported no cache data: the clients show nothing, not 0%. A request that wrote the cache but read nothing is a real miss and shows 0%. The percent is rounded down, so only a full hit shows 100%.
 
 The context is unknown (`null`) when the routing entry does not carry this Thread's session or has no value yet: a new Thread, a reset Session, or an old Thread whose session was replaced. The total is then still shown.
 
@@ -22,14 +24,14 @@ Plugin 0.2.55, capability `thread_usage`. `GET /v1/threads/{id}/usage` returns:
   "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "reasoning_tokens": 0, "api_calls": 0}}
 ```
 
-An unknown or archived Thread gives 404. See the plugin's `docs/thread-usage.md`.
+Plugin 0.2.56 adds `last_request`: `{prompt_tokens, cache_read_tokens, cache_write_tokens, output_tokens, at}` or `null` before the first recorded request. An unknown or archived Thread gives 404. See the plugin's `docs/thread-usage.md`.
 
-Shared client (`packages/client/src/threadUsage.ts`): `supportsThreadUsage`, `threadUsage(threadId)` → `{ contextTokens, totalTokens }` (`undefined` without the capability), `formatTokens` (28.2K, 125K, 1.2M, 206M) and `exactTokens` (28,202).
+Shared client (`packages/client/src/threadUsage.ts`): `supportsThreadUsage`, `threadUsage(threadId)` → `{ contextTokens, totalTokens, cache }` (`cache` is `{ readTokens, promptTokens }` or `null`; `cacheHitPercent`) (`undefined` without the capability), `formatTokens` (28.2K, 125K, 1.2M, 206M) and `exactTokens` (28,202).
 
 ## Desktop
 
-- Sidebar Session card: one more line, `Context 28.2K · Total 206M` (or `Total 206M` without a context), before `Last message`. The card opens at once; the line arrives with the reading. The screen-reader description has the full counts.
-- Session status bar: the same text at the right end, after the labels. It keeps its width; the labels give up room first. The tooltip and accessible name give the full counts: `Context: 28,202 tokens in the latest request. Total: 206,250,929 tokens used by this session.` It takes keyboard focus so the tooltip is reachable.
+- Sidebar Session card: one more line, `Context 28.2K · Cache 99% · Total 206M` (or `Total 206M` without a context), before `Last message`. The card opens at once; the line arrives with the reading. The screen-reader description has the full counts.
+- Session status bar: the same text at the right end, after the labels. It keeps its width; the labels give up room first. The tooltip and accessible name give the full counts: `Context: 28,202 tokens in the latest request. Cache: 99% of the latest request's input came from the prompt cache (239,459 of 240,051 tokens). Total: 206,250,929 tokens used by this session.` It takes keyboard focus so the tooltip is reachable.
 - Readings: `src/renderer/thread-usage.ts`. One reading per Session and version (last message time; not while running), shared by the card and the status bar, kept at most 60 s. A failed read or a server without `thread_usage` shows nothing.
 - IPC `desktop:thread-usage`: the main window reads any Session; a Session page reads only its own Session. It resolves `null` when the value is unavailable.
 
@@ -38,6 +40,7 @@ Shared client (`packages/client/src/threadUsage.ts`): `supportsThreadUsage`, `th
 Session options page, section `Usage` between `This session` and `App`:
 
 - `Context` — detail `Latest request, after compaction`, value `28.2K tokens`. Hidden without a current value.
+- `Cache hit` — detail `Latest request, from the prompt cache`, value `99%`. Hidden without cache data.
 - `Total` — detail `All requests in this session`, value `206M tokens`.
 
 The rows are read-only (no chevron). The page reads the values once when it opens. Without the capability, or after a failed read, the section does not show. Screen readers get the full counts.

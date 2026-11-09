@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { exactTokens, formatTokens } from '../../../../packages/client/src/threadUsage';
+import { cacheHitPercent, exactTokens, formatTokens } from '../../../../packages/client/src/threadUsage';
 import type { DesktopThreadUsage } from '../shared/desktop-api';
 
 /**
@@ -53,13 +53,16 @@ export function useThreadUsage(threadId: string | undefined, running: boolean, l
   return state.threadId === threadId ? state.usage : cache.get(threadId)?.usage;
 }
 
-/** Short text: "Context 28.2K · Total 206M". Without a current context: "Total 206M". */
+/** Short text: "Context 28.2K · Cache 99% · Total 206M". Parts without data are left out. */
 export const usageText = (usage: DesktopThreadUsage): string =>
-  [usage.contextTokens !== null ? `Context ${formatTokens(usage.contextTokens)}` : '', `Total ${formatTokens(usage.totalTokens)}`].filter(Boolean).join(' · ');
+  [usage.contextTokens !== null ? `Context ${formatTokens(usage.contextTokens)}` : '',
+    usage.cache ? `Cache ${cacheHitPercent(usage.cache)}%` : '',
+    `Total ${formatTokens(usage.totalTokens)}`].filter(Boolean).join(' · ');
 
 /** Full counts for the tooltip and screen readers. */
 export const usageDescription = (usage: DesktopThreadUsage): string =>
   [usage.contextTokens !== null ? `Context: ${exactTokens(usage.contextTokens)} tokens in the latest request.` : '',
+    usage.cache ? `Cache: ${cacheHitPercent(usage.cache)}% of the latest request's input came from the prompt cache (${exactTokens(usage.cache.readTokens)} of ${exactTokens(usage.cache.promptTokens)} tokens).` : '',
     `Total: ${exactTokens(usage.totalTokens)} tokens used by this session.`].filter(Boolean).join(' ');
 
 /** Test hook: forget every reading. */

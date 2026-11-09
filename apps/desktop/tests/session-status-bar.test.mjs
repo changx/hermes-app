@@ -156,10 +156,10 @@ const usagePage = (size, reply) => page(`
 
 test('Chromium: the status bar shows context and total tokens at the right end and reads them again when a turn ends', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   for (const size of ['1100,700', '640,700']) {
-    const result = await runPage(`session-status-usage-${size.split(',')[0]}`, usagePage(size, `[{contextTokens:28202,totalTokens:206250929},{contextTokens:31000,totalTokens:206300000},{contextTokens:12000,totalTokens:206400000}]`), size);
+    const result = await runPage(`session-status-usage-${size.split(',')[0]}`, usagePage(size, `[{contextTokens:28202,totalTokens:206250929,cache:{readTokens:239459,promptTokens:240051}},{contextTokens:31000,totalTokens:206300000,cache:null},{contextTokens:12000,totalTokens:206400000,cache:null}]`), size);
     assert.equal(result.failure, undefined, JSON.stringify(result));
-    assert.equal(result.first, 'Context 28.2K · Total 206M');
-    assert.equal(result.tip, 'Context: 28,202 tokens in the latest request. Total: 206,250,929 tokens used by this session.');
+    assert.equal(result.first, 'Context 28.2K · Cache 99% · Total 206M');
+    assert.equal(result.tip, "Context: 28,202 tokens in the latest request. Cache: 99% of the latest request's input came from the prompt cache (239,459 of 240,051 tokens). Total: 206,250,929 tokens used by this session.");
     assert.equal(result.label, result.tip);
     assert.equal(result.focusable, true);
     assert.deepEqual(result.asked, ['t', 't'], 'no read while the turn runs; one read when it ends');

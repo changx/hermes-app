@@ -362,8 +362,11 @@ export interface HermesDesktopApi {
   openMessage(threadId: string, refSeq: number): Promise<void>;
 }
 
-/** Tokens of one Session: the latest request's context after compaction (null when unknown) and the cumulative total. */
-export type DesktopThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number }>;
+/**
+ * Tokens of one Session: the latest request's context after compaction (null when unknown), the cumulative
+ * total, and the latest request's prompt cache (tokens read from the cache of all input; null without data).
+ */
+export type DesktopThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number; cache: Readonly<{ readTokens: number; promptTokens: number }> | null }>;
 
 /** Sidebar Session card content and where its row is. Coordinates are main-window content (CSS) pixels. */
 export type SessionCardRequest = Readonly<{

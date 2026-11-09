@@ -121,19 +121,19 @@ const usageRows = root => root.root.findAll(node => node.type === 'View' && node
 
 test('Usage shows the context size and the total tokens read once from the server', async () => {
   reset(); state.app = app([thread()]); const asked = [];
-  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async id => { asked.push(id); return { contextTokens: 28202, totalTokens: 206250929 }; } });
+  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async id => { asked.push(id); return { contextTokens: 28202, totalTokens: 206250929, cache: { readTokens: 239459, promptTokens: 240051 } }; } });
   let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
   assert.deepEqual(asked, ['th_1']);
-  assert.deepEqual(usageRows(root), ['Context, 28,202 tokens in the latest request', 'Total, 206,250,929 tokens used by this session']);
+  assert.deepEqual(usageRows(root), ['Context, 28,202 tokens in the latest request', 'Cache hit, 99%: 239,459 of 240,051 input tokens of the latest request came from the prompt cache', 'Total, 206,250,929 tokens used by this session']);
   const values = root.root.findAll(node => node.type === 'Text').map(node => node.props.children);
-  assert.ok(values.includes('Usage') && values.includes('28.2K tokens') && values.includes('206M tokens'), String(values));
+  assert.ok(values.includes('Usage') && values.includes('28.2K tokens') && values.includes('99%') && values.includes('206M tokens'), String(values));
   assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Copy session link', 'Archive session', 'Settings'], 'usage rows are not buttons');
   root.unmount();
 });
 
 test('Usage hides the context without a current value, and the whole section without support or after a failed read', async () => {
   reset(); state.app = app([thread()]);
-  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async () => ({ contextTokens: null, totalTokens: 950 }) });
+  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async () => ({ contextTokens: null, totalTokens: 950, cache: null }) });
   let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
   assert.deepEqual(usageRows(root), ['Total, 950 tokens used by this session']);
   root.unmount();

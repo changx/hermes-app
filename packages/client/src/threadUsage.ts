@@ -5,11 +5,24 @@
  *   context, after compaction. `null` when the server has no current value.
  * - `totalTokens`: cumulative tokens of every model request in the Session
  *   (input + cache read + cache write + output), as Hermes core counts them.
+ * - `cache`: the prompt cache of the latest model request (plugin 0.2.56+): tokens read from
+ *   the cache and all input tokens. `null` when unknown, or when the provider reported no
+ *   cache activity (no read and no write), so that "no data" never reads as a 0% hit rate.
  */
-export type ThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number }>;
+export type ThreadCache = Readonly<{ readTokens: number; promptTokens: number }>;
+export type ThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number; cache: ThreadCache | null }>;
 
 const count = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+
+function parseCache(value: unknown): ThreadCache | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') return undefined;
+  const last = value as Record<string, unknown>;
+  const prompt = count(last.prompt_tokens), read = count(last.cache_read_tokens), write = count(last.cache_write_tokens);
+  if (prompt === undefined || read === undefined || write === undefined || read > prompt) return undefined;
+  return prompt === 0 || read + write === 0 ? null : { readTokens: read, promptTokens: prompt };
+}
 
 /** The usage of `threadId` from the response body, or undefined when the body does not match. */
 export function parseThreadUsage(body: unknown, threadId: string): ThreadUsage | undefined {
@@ -18,8 +31,9 @@ export function parseThreadUsage(body: unknown, threadId: string): ThreadUsage |
   const value = usage as Record<string, unknown>;
   const total = count(value.total_tokens);
   const context = value.context_tokens === null ? null : count(value.context_tokens);
-  if (value.thread_id !== threadId || total === undefined || context === undefined) return undefined;
-  return { contextTokens: context === 0 ? null : context, totalTokens: total };
+  const cache = parseCache(value.last_request);
+  if (value.thread_id !== threadId || total === undefined || context === undefined || cache === undefined) return undefined;
+  return { contextTokens: context === 0 ? null : context, totalTokens: total, cache };
 }
 
 /** Compact token count: 950, 28.2K, 125K, 1.2M, 206M, 1.5B. */
@@ -36,6 +50,9 @@ export function formatTokens(value: number): string {
   }
   return String(Math.round(value));
 }
+
+/** Cache hit rate in whole percent, rounded down: 99.97% shows 99%; only a full hit shows 100%. */
+export const cacheHitPercent = (cache: ThreadCache): number => Math.floor((cache.readTokens / cache.promptTokens) * 100);
 
 /** Full count with digit groups for tooltips and screen readers: 28,202. */
 export const exactTokens = (value: number): string => Math.round(value).toLocaleString('en-US');

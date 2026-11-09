@@ -10,7 +10,7 @@ export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, File
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
 import { parseThreadUsage, type ThreadUsage } from './threadUsage';
-export { formatTokens, exactTokens, parseThreadUsage, type ThreadUsage } from './threadUsage';
+export { formatTokens, exactTokens, cacheHitPercent, parseThreadUsage, type ThreadUsage, type ThreadCache } from './threadUsage';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;

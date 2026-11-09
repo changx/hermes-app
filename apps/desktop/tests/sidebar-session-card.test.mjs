@@ -20,7 +20,7 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
       import {NavigationPanel} from './apps/desktop/src/renderer/navigation-panel';
       window.selected=[]; window.card=null; window.cardCalls=0; window.usageCalls=[];
       window.hermesDesktop={selectThread:async id=>window.selected.push(id),showSessionCard:async card=>{window.card=card;window.cardCalls++;},
-        threadUsage:async id=>{window.usageCalls.push(id);return id==='long'?{contextTokens:28202,totalTokens:206250929}:id==='short'?{contextTokens:null,totalTokens:950}:null}};
+        threadUsage:async id=>{window.usageCalls.push(id);return id==='long'?{contextTokens:28202,totalTokens:206250929,cache:{readTokens:0,promptTokens:28202}}:id==='short'?{contextTokens:null,totalTokens:950,cache:null}:null}};
       const now=Date.now()/1000;
       const threads=[{id:'long',channelId:'p',title:${JSON.stringify(LONG)},markers:['Design','todo'],running:true,completedUnread:true,lastMessageAt:now-60},
         {id:'short',channelId:'p',title:'Short one',markers:[],running:false,lastMessageAt:now-120}];
@@ -96,9 +96,9 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     assert.equal(await evaluate(`document.querySelectorAll('.session-hover-card').length`), 0, 'no in-page card inside the sidebar');
     // Token usage arrives after the card opens and is sent as one more line.
     const withUsage = await waitCard(v => v && v.usage, 1000);
-    assert.equal(withUsage.value?.usage, 'Context 28.2K · Total 206M', 'usage line in the card');
+    assert.equal(withUsage.value?.usage, 'Context 28.2K · Cache 0% · Total 206M', 'usage line in the card; a real miss shows 0%');
     assert.equal(withUsage.value.title, LONG);
-    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /Context: 28,202 tokens in the latest request\. Total: 206,250,929 tokens used by this session/, 'usage for screen readers');
+    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /Context: 28,202 tokens in the latest request\. Cache: 0% of the latest request's input came from the prompt cache \(0 of 28,202 tokens\)\. Total: 206,250,929 tokens used by this session/, 'usage for screen readers');
     assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /^A very long Session title.*Example Project · Home/, 'screen reader description');
     assert.equal(await evaluate(`document.querySelector('${row('long')}').getAttribute('aria-describedby')`), 'sidebar-session-card');
 
