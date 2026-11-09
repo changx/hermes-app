@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
+import { exactTokens, formatTokens, type ThreadUsage } from '../../../packages/client/src/threadUsage';
 import { Notice, channelRoute, labelsRoute, sessionFilesRoute, useApp } from './App';
 import { copyWithToast } from './CopyToast';
-import { SettingsPage, SettingsRow, SettingsSection } from './SettingsUI';
+import { SettingsPage, SettingsRow, SettingsSection, SettingsValueRow } from './SettingsUI';
 
 /**
  * Everything the Session header used to offer, on one native Stack page:
@@ -16,6 +17,14 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
   const [exporting, setExporting] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const thread = client?.threads.get(threadId);
+  // Token usage is read once when the page opens; the section shows only after a successful read.
+  const [usage, setUsage] = useState<ThreadUsage>();
+  useEffect(() => {
+    if (!client?.supportsThreadUsage) return;
+    let live = true;
+    client.threadUsage(threadId).then(value => { if (live && value) setUsage(value); }, () => {});
+    return () => { live = false; };
+  }, [client, threadId]);
   if (!client || !config) return <Notice text="Opening conversation…" />;
   if (!thread || thread.archived) return <Notice text="This conversation is unavailable." />;
   const labels = thread.markers ?? [];
@@ -51,6 +60,12 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
       <SettingsRow title={archiving ? 'Archiving…' : 'Archive session'} label="Archive session"
         onPress={() => { if (!archiving) archiveSession(); }} />
     </SettingsSection>
+    {usage && <SettingsSection title="Usage">
+      {usage.contextTokens !== null && <SettingsValueRow first title="Context" detail="Latest request, after compaction" value={`${formatTokens(usage.contextTokens)} tokens`}
+        label={`Context, ${exactTokens(usage.contextTokens)} tokens in the latest request`} />}
+      <SettingsValueRow first={usage.contextTokens === null} title="Total" detail="All requests in this session" value={`${formatTokens(usage.totalTokens)} tokens`}
+        label={`Total, ${exactTokens(usage.totalTokens)} tokens used by this session`} />
+    </SettingsSection>}
     <SettingsSection title="App">
       <SettingsRow first title="Settings" onPress={() => router.push('/settings')} />
     </SettingsSection>

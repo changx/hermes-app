@@ -45,6 +45,10 @@ Verification: `tests/session-menu.test.mjs` (item order, label support, busy wai
 
 Development release: `cd8007d` (merge of `fix/recents-long-press`) was released to `exps://agent.tuly.space`, lockfile unchanged. Only `hermes-app-expo.service` was restarted (PID 2680628 → 2761470). The `hermes-gateway.service` PID 2694627 and the plugin did not change. The public iOS and Android manifests return HTTP 200 with SDK 57. Each launchAsset returns HTTP 200 and contains the new hint and archive text. Evidence: private `workspace/hermes-app/20261012-recents-long-press/`. Rollback baseline: `576327a`. iPhone acceptance is pending.
 
+## Usage section
+
+With plugin 0.2.55 (`thread_usage`) the page has a `Usage` section between `This session` and `App`: `Context` and `Total` tokens, read-only. See [session-token-usage.md](session-token-usage.md).
+
 ## Not included
 
 - Home and Channel headers keep their Settings gear.

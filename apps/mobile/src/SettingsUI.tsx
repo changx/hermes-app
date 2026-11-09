@@ -34,6 +34,20 @@ export function SettingsRow({ title, value, detail, issue = false, onPress, labe
   </Pressable>;
 }
 
+/** A read-only row: a title with an optional detail line, and a value. It does not open anything. */
+export function SettingsValueRow({ title, value, detail, label, first = false }: {
+  title: string; value: string; detail?: string; label?: string; first?: boolean;
+}) {
+  return <View accessible accessibilityRole="text" accessibilityLabel={label ?? [title, value, detail].filter(Boolean).join(', ')}
+    style={[styles.row, !first && styles.divider]}>
+    <View style={styles.rowText}>
+      <Text numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+      {!!detail && <Text numberOfLines={1} style={styles.rowDetail}>{detail}</Text>}
+    </View>
+    <Text numberOfLines={1} style={styles.rowValue}>{value}</Text>
+  </View>;
+}
+
 /** Static content inside a grouped section (form, picker, notice). */
 export function SettingsBlock({ children, first = false }: { children: React.ReactNode; first?: boolean }) {
   return <View style={[styles.block, !first && styles.divider]}>{children}</View>;

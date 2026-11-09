@@ -18,7 +18,9 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     const bundle = await build({ stdin: { resolveDir: new URL('../../../', import.meta.url).pathname, loader: 'tsx', contents: `
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
       import {NavigationPanel} from './apps/desktop/src/renderer/navigation-panel';
-      window.selected=[]; window.card=null; window.cardCalls=0; window.hermesDesktop={selectThread:async id=>window.selected.push(id),showSessionCard:async card=>{window.card=card;window.cardCalls++;}};
+      window.selected=[]; window.card=null; window.cardCalls=0; window.usageCalls=[];
+      window.hermesDesktop={selectThread:async id=>window.selected.push(id),showSessionCard:async card=>{window.card=card;window.cardCalls++;},
+        threadUsage:async id=>{window.usageCalls.push(id);return id==='long'?{contextTokens:28202,totalTokens:206250929}:id==='short'?{contextTokens:null,totalTokens:950}:null}};
       const now=Date.now()/1000;
       const threads=[{id:'long',channelId:'p',title:${JSON.stringify(LONG)},markers:['Design','todo'],running:true,completedUnread:true,lastMessageAt:now-60},
         {id:'short',channelId:'p',title:'Short one',markers:[],running:false,lastMessageAt:now-120}];
@@ -92,6 +94,11 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     assert.deepEqual(shown.labels, ['Design'], 'labels without the todo flag');
     assert.match(shown.lastMessage, /\d/);
     assert.equal(await evaluate(`document.querySelectorAll('.session-hover-card').length`), 0, 'no in-page card inside the sidebar');
+    // Token usage arrives after the card opens and is sent as one more line.
+    const withUsage = await waitCard(v => v && v.usage, 1000);
+    assert.equal(withUsage.value?.usage, 'Context 28.2K · Total 206M', 'usage line in the card');
+    assert.equal(withUsage.value.title, LONG);
+    assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /Context: 28,202 tokens in the latest request\. Total: 206,250,929 tokens used by this session/, 'usage for screen readers');
     assert.match(await evaluate(`document.getElementById('sidebar-session-card').textContent`), /^A very long Session title.*Example Project · Home/, 'screen reader description');
     assert.equal(await evaluate(`document.querySelector('${row('long')}').getAttribute('aria-describedby')`), 'sidebar-session-card');
 
@@ -100,6 +107,7 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     const next = await waitCard(v => v && v.title === 'Short one', 200);
     assert.ok(next.ms >= 0 && next.ms < 120, `warm switch: ${next.ms}ms`);
     assert.deepEqual(next.value.statuses, []);
+    assert.equal((await waitCard(v => v && v.title === 'Short one' && v.usage, 1000)).value?.usage, 'Total 950', 'no context: total only');
 
     // Leaving the list closes it.
     await move({ x: 700, y: 650 });
@@ -133,6 +141,8 @@ test('Chromium: sidebar Session card asks main for a popup right of the sidebar 
     assert.equal((await waitCard(v => v && v.title === LONG, 100)).value?.title, LONG, 'focus shows the card');
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     assert.equal((await waitCard(v => v === null, 200)).value, null, 'Escape closes the card');
+
+    assert.deepEqual(await evaluate('window.usageCalls'), ['long', 'short'], 'each Session is read once; later cards reuse the reading');
 
     if (process.env.HERMES_SIDEBAR_EVIDENCE) {
       await mkdir(process.env.HERMES_SIDEBAR_EVIDENCE, { recursive: true });

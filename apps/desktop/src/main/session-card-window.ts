@@ -19,7 +19,7 @@ export function sessionCardRequest(value: unknown): SessionCardRequest | null {
   const card = value as Record<string, unknown>;
   const rowTop = num(card.rowTop, -100_000, 100_000), rowBottom = num(card.rowBottom, rowTop, 100_000);
   return { title: str(card.title, 2000), project: optional(card.project, 400), connection: optional(card.connection, 400),
-    statuses: list(card.statuses, 8, 60), labels: list(card.labels, 20, 100), lastMessage: optional(card.lastMessage, 100),
+    statuses: list(card.statuses, 8, 60), labels: list(card.labels, 20, 100), lastMessage: optional(card.lastMessage, 100), usage: optional(card.usage, 100),
     rowTop, rowBottom, sidebarRight: num(card.sidebarRight, 0, 100_000), fontSize: num(card.fontSize, 8, 48) };
 }
 
@@ -86,7 +86,7 @@ export class SessionCardWindow {
     if (generation !== this.generation || window.isDestroyed()) return;
     const content = parent.getContentBounds(), area = screen.getDisplayMatching(content).workArea;
     const width = cardBounds(content, area, card, cardWidth(card.fontSize), 0).width;
-    const text = { title: card.title, project: card.project, connection: card.connection, statuses: card.statuses, labels: card.labels, lastMessage: card.lastMessage, fontSize: card.fontSize };
+    const text = { title: card.title, project: card.project, connection: card.connection, statuses: card.statuses, labels: card.labels, lastMessage: card.lastMessage, usage: card.usage, fontSize: card.fontSize };
     const height = Number(await window.webContents.executeJavaScript(`window.showCard(${JSON.stringify({ ...text, width })})`));
     if (generation !== this.generation || window.isDestroyed() || !Number.isFinite(height) || height <= 0) return;
     window.setBounds(cardBounds(content, area, card, width, Math.ceil(height)));

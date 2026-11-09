@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { SessionCardRequest } from '../shared/desktop-api';
+import { usageDescription, usageText, useThreadUsage } from './thread-usage';
 
 /**
  * Sidebar Session card: the full title and details of the Session row under
@@ -92,17 +93,21 @@ export function SessionHoverCard({ root, describe }: { root: RefObject<HTMLEleme
       window.removeEventListener('resize', hide);
     };
   }, [root]);
-  const info = row?.isConnected ? describe(row.dataset.threadId ?? '') : undefined;
+  const threadId = row?.dataset.threadId ?? '';
+  const info = row?.isConnected ? describe(threadId) : undefined;
   const lastMessage = lastMessageText(info?.lastMessageAt);
-  // Live state (Running, labels) can change while the card is open; resend only on a real change.
-  const key = info ? JSON.stringify([info.title, info.project, info.connection, info.statuses, info.labels, lastMessage]) : '';
+  // Token usage arrives after the card opens; the card then grows by one line. Readings are reused.
+  const tokens = useThreadUsage(info ? threadId : undefined, info?.statuses.includes('Running') ?? false, info?.lastMessageAt);
+  const usage = tokens ? usageText(tokens) : undefined;
+  // Live state (Running, labels, usage) can change while the card is open; resend only on a real change.
+  const key = info ? JSON.stringify([info.title, info.project, info.connection, info.statuses, info.labels, lastMessage, usage]) : '';
   useEffect(() => {
     const container = root.current;
     if (!info || !row || !container) { if (shown.current) { shown.current = false; send(null); } return; }
     const box = row.getBoundingClientRect(), sidebar = (container.closest('aside') ?? container).getBoundingClientRect();
     const fontSize = parseFloat(getComputedStyle(row).fontSize) || 16;
     shown.current = true;
-    send({ title: info.title, project: info.project, connection: info.connection, statuses: [...info.statuses], labels: [...info.labels], lastMessage,
+    send({ title: info.title, project: info.project, connection: info.connection, statuses: [...info.statuses], labels: [...info.labels], lastMessage, usage,
       rowTop: box.top, rowBottom: box.bottom, sidebarRight: sidebar.right, fontSize });
   }, [row, key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (shown.current) { shown.current = false; send(null); } }, []);
@@ -110,6 +115,6 @@ export function SessionHoverCard({ root, describe }: { root: RefObject<HTMLEleme
   // Screen readers read this through the row's aria-describedby; the visible card is the native popup.
   const where = [info.project, info.connection].filter(Boolean).join(' · ');
   return <div id={SESSION_CARD_ID} className="visually-hidden">
-    {[info.title, where, info.statuses.join(', '), info.labels.length ? `Labels: ${info.labels.join(', ')}` : '', lastMessage ? `Last message ${lastMessage}` : ''].filter(Boolean).join('. ')}
+    {[info.title, where, info.statuses.join(', '), info.labels.length ? `Labels: ${info.labels.join(', ')}` : '', tokens ? usageDescription(tokens) : '', lastMessage ? `Last message ${lastMessage}` : ''].filter(Boolean).join('. ')}
   </div>;
 }

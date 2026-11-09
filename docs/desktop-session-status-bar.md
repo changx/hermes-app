@@ -29,6 +29,8 @@ Requested by Jamie (2026-10-19): the desktop app needs a place that shows the cu
 - Labels stay on one line, in their order, without `todo`. A click searches the sidebar for that label (unchanged; see [desktop-session-search.md](desktop-session-search.md)).
 - Labels that do not fit move into a `+N` button. Its tooltip lists them; a click opens a native menu with those labels, and a choice searches for it. Every chip stays in the DOM so its width can be measured; a chip that does not fit is out of the flow, hidden and `inert`. The fit is computed again when the row width or the labels change.
 
+Since plugin 0.2.55 the bar also shows the Session's context size and total tokens at its right end, after the labels. See [session-token-usage.md](session-token-usage.md).
+
 ## Implementation
 
 - `src/renderer/session-status-bar.tsx`: `SessionStatusBar` and `StatusLabels`.

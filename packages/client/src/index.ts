@@ -9,6 +9,8 @@ export { attachmentPageUrl, validSitePath } from './attachmentPages';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
+import { parseThreadUsage, type ThreadUsage } from './threadUsage';
+export { formatTokens, exactTokens, parseThreadUsage, type ThreadUsage } from './threadUsage';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
@@ -240,6 +242,8 @@ export class HermesClient {
   supportsMessageSources = false;
   supportsThreadExport = false;
   supportsChannelArchive = false;
+  /** Session context size and cumulative tokens at `/v1/threads/{id}/usage` (plugin 0.2.55+). */
+  supportsThreadUsage = false;
   /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
   supportsAutomations = false;
   /** Automation editing (plugin 0.2.28): paged list, direct controls, settings Threads. */
@@ -374,7 +378,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   /** Developer crash report for this server's client log; never shown to the user. */
   async reportClientLog(report: ClientLogReport, signal?: AbortSignal): Promise<void> { await this.call('POST','/v1/client-logs',report,signal,undefined,10000) }
   protected adoptCapabilities(owner: HermesClient): void {
@@ -396,6 +400,7 @@ export class HermesClient {
     this.supportsMessageSources = owner.supportsMessageSources;
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
+    this.supportsThreadUsage = owner.supportsThreadUsage;
     this.supportsAutomations = owner.supportsAutomations;
     this.supportsAutomationsPaged = owner.supportsAutomationsPaged;
     this.supportsAutomationControls = owner.supportsAutomationControls;
@@ -518,6 +523,13 @@ export class HermesClient {
   /** The visible conversation as Markdown text. */
   async exportThread(threadId: string, signal?: AbortSignal): Promise<string> {
     return new TextDecoder().decode(await this.downloadPath('/v1/threads/'+idPath(threadId)+'/export', signal));
+  }
+  /** Context size and cumulative tokens of one Session; undefined when the server does not report them. */
+  async threadUsage(threadId: string, signal?: AbortSignal): Promise<ThreadUsage | undefined> {
+    if (!this.supportsThreadUsage) return undefined;
+    const usage = parseThreadUsage(await this.call('GET','/v1/threads/'+idPath(threadId)+'/usage',undefined,signal), threadId);
+    if (!usage) throw new ProtocolError('invalid usage');
+    return usage;
   }
   async send(threadId: string, clientMessageId: string, text: string, attachments: string[] = [], signal?: AbortSignal): Promise<Receipt> {
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clientMessageId) || (!text.trim() && !attachments.length)) throw new ProtocolError('invalid send');

@@ -8,7 +8,7 @@ import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import { attachmentPageUrl } from "../../../../packages/client/src/attachmentPages";
-import type { ChannelInput, DesktopAttachment, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, DesktopAttachment, DesktopThreadUsage, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import type { FileSearchPage, SessionFile, SessionFileList } from "../../../../packages/client/src/sessionFiles";
 import type { SessionTextPage, SessionTextRefinement } from "../../../../packages/client/src/sessionText";
@@ -1176,6 +1176,13 @@ export class DesktopConnectionService {
     if (!threadId) return { ok: false };
     const title = this.client?.threads.get(threadId)?.title ?? "Message";
     return this.saveText("Export Hermes message", `${title} - message`, text.endsWith("\n") ? text : `${text}\n`);
+  }
+
+  /** Context size and total tokens of a Session; null when the server does not report them or the read fails. */
+  async threadUsage(threadId: string): Promise<DesktopThreadUsage | null> {
+    const client = this.client;
+    if (!client?.supportsThreadUsage) return null;
+    try { return (await client.threadUsage(threadId)) ?? null; } catch { return null; }
   }
 
   async exportConversation(threadId = this.selectedThreadId): Promise<{ ok: true; saved: boolean } | { ok: false }> {

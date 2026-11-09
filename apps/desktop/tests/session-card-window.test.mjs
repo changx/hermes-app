@@ -18,9 +18,10 @@ const request = { title: 'T', statuses: [], labels: [], rowTop: 100, rowBottom: 
 
 test('session card request: plain text and numbers only, bounded', () => {
   assert.equal(sessionCardRequest(null), null);
-  assert.deepEqual(sessionCardRequest({ ...request, project: 'P', lastMessage: '' }), { ...request, project: 'P', connection: undefined, lastMessage: undefined });
+  assert.deepEqual(sessionCardRequest({ ...request, project: 'P', lastMessage: '' }), { ...request, project: 'P', connection: undefined, lastMessage: undefined, usage: undefined });
+  assert.equal(sessionCardRequest({ ...request, usage: 'Context 28.2K · Total 206M' }).usage, 'Context 28.2K · Total 206M');
   for (const bad of [undefined, [], 'x', { ...request, title: 1 }, { ...request, title: 'x'.repeat(2001) }, { ...request, labels: 'a' }, { ...request, labels: Array(21).fill('a') },
-    { ...request, statuses: [{}] }, { ...request, rowTop: NaN }, { ...request, rowBottom: 50 }, { ...request, fontSize: 200 }, { ...request, sidebarRight: -1 }])
+    { ...request, statuses: [{}] }, { ...request, usage: 7 }, { ...request, usage: 'x'.repeat(101) }, { ...request, rowTop: NaN }, { ...request, rowBottom: 50 }, { ...request, fontSize: 200 }, { ...request, sidebarRight: -1 }])
     assert.throws(() => sessionCardRequest(bad), /Invalid desktop request/, JSON.stringify(bad));
 });
 

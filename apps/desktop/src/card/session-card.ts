@@ -1,6 +1,6 @@
 // Sidebar Session card page. Main calls `showCard` with plain text; this page has no preload and no IPC.
 // Text goes in through textContent only, never as HTML.
-type Card = { title: string; project?: string; connection?: string; statuses: string[]; labels: string[]; lastMessage?: string; fontSize: number; width: number };
+type Card = { title: string; project?: string; connection?: string; statuses: string[]; labels: string[]; lastMessage?: string; usage?: string; fontSize: number; width: number };
 
 const line = (className: string, text: string): HTMLDivElement => {
   const element = document.createElement('div');
@@ -23,6 +23,7 @@ function showCard(card: Card): number {
     for (const label of card.labels) labels.append(Object.assign(document.createElement('span'), { className: 'label', textContent: label }));
     parts.push(labels);
   }
+  if (card.usage) parts.push(line('meta usage', card.usage));
   if (card.lastMessage) parts.push(line('meta', `Last message ${card.lastMessage}`));
   root.replaceChildren(...parts);
   return Math.ceil(root.getBoundingClientRect().height);

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
-import type { ChannelInput, ContextMenuItem, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, SessionCardRequest, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
+import type { ChannelInput, ContextMenuItem, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, SessionCardRequest, DesktopThreadUsage, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -36,6 +36,7 @@ const api: HermesDesktopApi = Object.freeze({
   showTabMenu: (id: string, x: number, y: number): Promise<void> => ipcRenderer.invoke('desktop:tab-menu', id, x, y),
   showContextMenu: (items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null> => ipcRenderer.invoke('desktop:context-menu', items, x, y),
   showSessionCard: (card: SessionCardRequest | null): Promise<void> => ipcRenderer.invoke('desktop:session-card', card),
+  threadUsage: (threadId: string): Promise<DesktopThreadUsage | null> => ipcRenderer.invoke('desktop:thread-usage', threadId),
   completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
   listAutomations: (cursors?: Readonly<Record<string, string>>) => ipcRenderer.invoke('desktop:list-automations', cursors),
   openAutomationList: (): Promise<void> => ipcRenderer.invoke('desktop:open-automation-list'),

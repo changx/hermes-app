@@ -248,6 +248,8 @@ export interface HermesDesktopApi {
   showContextMenu(items: readonly ContextMenuItem[], x: number, y: number): Promise<string | null>;
   /** Sidebar Session card: a native popup right of the sidebar, above the Session page. `null` hides it. */
   showSessionCard(card: SessionCardRequest | null): Promise<void>;
+  /** Context size and total tokens of a Session (main window: any row; Session page: its own Session). `null` when unavailable. */
+  threadUsage(threadId: string): Promise<DesktopThreadUsage | null>;
   completeNewTab(): Promise<void>;
   /** Main window or the Automations tab: scheduled jobs of every connection; `cursors` continues the list. */
   listAutomations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList>;
@@ -360,9 +362,12 @@ export interface HermesDesktopApi {
   openMessage(threadId: string, refSeq: number): Promise<void>;
 }
 
+/** Tokens of one Session: the latest request's context after compaction (null when unknown) and the cumulative total. */
+export type DesktopThreadUsage = Readonly<{ contextTokens: number | null; totalTokens: number }>;
+
 /** Sidebar Session card content and where its row is. Coordinates are main-window content (CSS) pixels. */
 export type SessionCardRequest = Readonly<{
-  title: string; project?: string; connection?: string; statuses: readonly string[]; labels: readonly string[]; lastMessage?: string;
+  title: string; project?: string; connection?: string; statuses: readonly string[]; labels: readonly string[]; lastMessage?: string; usage?: string;
   rowTop: number; rowBottom: number; sidebarRight: number; fontSize: number;
 }>;
 

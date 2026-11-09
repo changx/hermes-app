@@ -3,6 +3,7 @@ import { withoutTodo } from '../../../../packages/client/src/todo';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { connectionHint } from './navigation-panel';
 import { MessageIcon } from './message-toolbar';
+import { usageDescription, usageText, useThreadUsage } from './thread-usage';
 
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
 const stateName: Record<DesktopSnapshot['connectionState'], string> = { online: 'Online', connecting: 'Connecting', syncing: 'Connecting', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
@@ -81,6 +82,7 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
   const connectionName = channel?.connectionName ?? connection?.name ?? snapshot.connectionName ?? 'Connection';
   const state = snapshot.connectionState, online = state === 'online', hint = connectionHint[state];
   const labels = snapshot.supportsSessionLabels === true;
+  const usage = useThreadUsage(thread?.id, thread?.running ?? false, thread?.lastMessageAt);
   return <div className="session-status-bar" role="group" aria-label="Session status">
     <nav className="status-location" aria-label="Session location">
       <button type="button" className="status-connection" aria-label={`Connection ${connectionName}, ${stateName[state]}`} data-tooltip="Connection settings"
@@ -102,5 +104,7 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
       <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={() => onAction('archive')}><ToolIcon name="archive" /></button>
     </div>
     {labels && <StatusLabels markers={withoutTodo(thread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}
+    {/* Context after compaction and total tokens; read again when a turn ends. Focusable so the keyboard reaches the tooltip. */}
+    {usage && <span className="status-usage" tabIndex={0} role="note" aria-label={usageDescription(usage)} data-tooltip={usageDescription(usage)}>{usageText(usage)}</span>}
   </div>;
 }

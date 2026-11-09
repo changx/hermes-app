@@ -376,6 +376,7 @@ export class DesktopConnections {
   }
   async renameThread(id: string, title: string): Promise<void> { const r = this.route(id); await r.account.service.renameThread(r.raw, title); }
   async archiveThread(id: string): Promise<void> { const r = this.route(id); await r.account.service.archiveThread(r.raw); }
+  async threadUsage(id: string) { const r = this.route(id); return r.account.service.threadUsage(r.raw); }
   async saveThreadLabels(id: string, markers: string[], timestamp: number, key: string) { const r = this.route(id); return r.account.service.saveThreadLabels(r.raw, markers, timestamp, key); }
   async markResultRead(id: string, version: number, ref: number): Promise<void> { const r = this.route(id); await r.account.service.markResultRead(r.raw, version, ref); }
   async loadOlder(id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.loadOlder(r.raw); }

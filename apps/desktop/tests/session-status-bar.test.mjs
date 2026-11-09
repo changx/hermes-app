@@ -134,3 +134,55 @@ test('Chromium: offline shows the state, disables server actions, and a missing 
   `, { labels: [], state: 'suspended', exportable: false, connections: false }));
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
 });
+
+// Token usage at the right end of the bar: read for this Session, again when a turn ends, kept on narrow windows.
+const usagePage = (size, reply) => page(`
+  const asked=[]; let replies=${reply};
+  window.hermesDesktop.threadUsage=async id=>{asked.push(id);return replies.shift()??null};
+  const render=extra=>flushSync(()=>root.render(<DesktopShellView snapshot={{...snapshot,threads:[{...snapshot.threads[0],...extra}]}} viewRole="tab" />));
+  render({lastMessageAt:100}); await wait(120);
+  const bar=q('.session-status-bar'), usage=()=>q('.status-usage'), b=rect(bar);
+  checks.asked=asked.slice(); checks.text=usage()?.textContent;
+  ensure('one read for this Session',asked.join('|')==='t');
+  ensure('usage is the last item, at the right end, inside the bar, one line',usage()&&bar.lastElementChild===usage()&&Math.abs(rect(usage()).right-(b.right-10))<=2&&rect(usage()).top>=b.top&&rect(usage()).bottom<=b.bottom&&rect(usage()).height<=b.height);
+  ensure('labels end before the usage',!q('.status-labels')||rect(q('.status-labels')).right<=rect(usage()).left+1);
+  ensure('location and every tool stay visible',[...qa('.status-actions button'),q('.status-dot')].every(x=>rect(x).width>0&&rect(x).right<=rect(usage()).left+1));
+  checks.first=usage().textContent; checks.tip=usage().dataset.tooltip; checks.label=usage().getAttribute('aria-label'); checks.focusable=usage().tabIndex===0;
+  render({lastMessageAt:100,running:true}); await wait(60);
+  ensure('the old reading stays while the turn runs',usage()?.textContent===checks.first);
+  render({lastMessageAt:200,running:false}); await wait(120);
+  checks.asked=asked.slice(); checks.after=usage()?.textContent;
+`, { labels: MANY }, );
+
+test('Chromium: the status bar shows context and total tokens at the right end and reads them again when a turn ends', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  for (const size of ['1100,700', '640,700']) {
+    const result = await runPage(`session-status-usage-${size.split(',')[0]}`, usagePage(size, `[{contextTokens:28202,totalTokens:206250929},{contextTokens:31000,totalTokens:206300000},{contextTokens:12000,totalTokens:206400000}]`), size);
+    assert.equal(result.failure, undefined, JSON.stringify(result));
+    assert.equal(result.first, 'Context 28.2K · Total 206M');
+    assert.equal(result.tip, 'Context: 28,202 tokens in the latest request. Total: 206,250,929 tokens used by this session.');
+    assert.equal(result.label, result.tip);
+    assert.equal(result.focusable, true);
+    assert.deepEqual(result.asked, ['t', 't'], 'no read while the turn runs; one read when it ends');
+    assert.equal(result.after, 'Context 31K · Total 206M');
+  }
+});
+
+test('Chromium: without a current context the bar shows only the total; without usage it shows nothing', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const only = await runPage('session-status-usage-total', page(`
+    window.hermesDesktop.threadUsage=async()=>({contextTokens:null,totalTokens:950});
+    flushSync(()=>root.render(<DesktopShellView snapshot={{...snapshot,threads:[{...snapshot.threads[0],lastMessageAt:5}]}} viewRole="tab" />)); await wait(120);
+    checks.text=q('.status-usage')?.textContent; checks.tip=q('.status-usage')?.dataset.tooltip;
+  `, { labels: ['bug'] }));
+  assert.equal(only.failure, undefined, JSON.stringify(only));
+  assert.equal(only.text, 'Total 950');
+  assert.equal(only.tip, 'Total: 950 tokens used by this session.');
+  for (const reply of ['async()=>null', 'async()=>{throw Error("offline")}']) {
+    const none = await runPage('session-status-usage-none', page(`
+      window.hermesDesktop.threadUsage=${reply};
+      flushSync(()=>root.render(<DesktopShellView snapshot={{...snapshot,threads:[{...snapshot.threads[0],lastMessageAt:6}]}} viewRole="tab" />)); await wait(120);
+      ensure('no usage element',!q('.status-usage'));
+      const b=rect(q('.session-status-bar')); ensure('labels still take the rest of the row',Math.abs(rect(q('.status-labels')).right-(b.right-10))<=2);
+    `, { labels: ['bug'] }));
+    assert.equal(none.failure, undefined, JSON.stringify(none));
+  }
+});

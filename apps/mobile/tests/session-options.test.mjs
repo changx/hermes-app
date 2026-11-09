@@ -116,3 +116,33 @@ test('Archive session confirms, archives on the server and returns to its channe
   assert.equal(state.alerts.at(-1)[0], 'Could not archive this session');
   root.unmount();
 });
+
+const usageRows = root => root.root.findAll(node => node.type === 'View' && node.props.accessibilityRole === 'text').map(node => node.props.accessibilityLabel);
+
+test('Usage shows the context size and the total tokens read once from the server', async () => {
+  reset(); state.app = app([thread()]); const asked = [];
+  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async id => { asked.push(id); return { contextTokens: 28202, totalTokens: 206250929 }; } });
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(asked, ['th_1']);
+  assert.deepEqual(usageRows(root), ['Context, 28,202 tokens in the latest request', 'Total, 206,250,929 tokens used by this session']);
+  const values = root.root.findAll(node => node.type === 'Text').map(node => node.props.children);
+  assert.ok(values.includes('Usage') && values.includes('28.2K tokens') && values.includes('206M tokens'), String(values));
+  assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Copy session link', 'Archive session', 'Settings'], 'usage rows are not buttons');
+  root.unmount();
+});
+
+test('Usage hides the context without a current value, and the whole section without support or after a failed read', async () => {
+  reset(); state.app = app([thread()]);
+  Object.assign(state.app.client, { supportsThreadUsage: true, threadUsage: async () => ({ contextTokens: null, totalTokens: 950 }) });
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(usageRows(root), ['Total, 950 tokens used by this session']);
+  root.unmount();
+  for (const client of [{ supportsThreadUsage: false, threadUsage: async () => { throw Error('must not read'); } },
+    { supportsThreadUsage: true, threadUsage: async () => { throw Error('offline'); } }]) {
+    reset(); state.app = app([thread()]); Object.assign(state.app.client, client);
+    await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+    assert.deepEqual(usageRows(root), []);
+    assert.ok(!root.root.findAll(node => node.type === 'Text').some(node => node.props.children === 'Usage'));
+    root.unmount();
+  }
+});

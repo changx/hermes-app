@@ -297,6 +297,13 @@ const registerDesktopApi = (): void => {
     shellSender(event); const card = sessionCardRequest(value);
     if (card) await sessionCard.show(card); else sessionCard.hide();
   });
+  // Token usage: the sidebar (main window) reads any row; a Session page reads only its own Session.
+  handle('desktop:thread-usage', async (event, id: unknown) => {
+    trustedSender(event); const threadId = text(id, 200), page = tabs?.sender(event.sender);
+    if (page) { if (threadId !== target(event)) throw new Error('Tab target mismatch'); }
+    else if (event.sender !== mainWindow?.webContents) throw new Error('Shell action required');
+    return service.threadUsage(threadId);
+  });
   // Menus of the main window (sidebar Session rows) and of a Session page (its status bar).
   // The renderer builds the items; only the chosen id comes back. A Session page gives view coordinates.
   handle('desktop:context-menu', (event, items: unknown, x: unknown, y: unknown) => {
