@@ -50,3 +50,15 @@ The rows are read-only (no chevron). The page reads the values once when it open
 - Mobile: `tests/session-options.test.mjs` (rows, values, accessible counts, not buttons, hidden context, hidden section).
 - Real data check (read-only): this Thread's sessions in the hermes-app-dev `state.db` sum to the value the route computes. The multiplexed Gateway persists routing entries in the root `~/.hermes/state.db`; the plugin reads the live `SessionStore`, not that file.
 - Pending: real-device acceptance on Mac and iPhone.
+
+## Release record (2026-11-09)
+
+Authorized by Jamie ("合并发布").
+
+- Plugin: repository `main` `e260221`, 0.2.55 package `hermes-app-plugin-0.2.55-6786c8f1….tar.gz` (sha256 check passes). Extracted to `plugin-releases/hermes-app/releases/0.2.55`; files equal the source. `current` 0.2.54 → 0.2.55 (shared by every profile). Gateway not restarted (PID 1434745, started 2026-11-08 19:11:03 PST); waits for Jamie. Until the restart, the running plugin is 0.2.54: the clients do not see `thread_usage` and show nothing.
+- App: `main` `45c6871` (feature) and `85b1a60` (desktop version), tag `v0.1.123`, pushed atomically. Rollback branch `rollback/thread-usage-before-release` (`8c8bb4c`).
+- Expo Go: only `hermes-app-expo.service` restarted (PID 576909 → 1722152). Public iOS and Android manifests 200, SDK 58.0.0; launchAssets 200 (iOS 12861827 bytes, Android 12952881 bytes); both contain the Usage section text and the `/usage` route.
+- TestFlight: iOS update `2c99cf16-1088-4dea-a4d0-5507a833ca0c`, runtime `b32a4b59…` (build 2), commit `85b1a60`. The public manifest returns this id with `expo-signature`; bundle 200, 13754991 bytes, SHA-256 equals the record.
+- Desktop v0.1.123: run 42595509778. Attempts 1 and 2 failed in the staple check: the connection to Apple CloudKit dropped (`NSURLErrorDomain -1005`, Error 68), the same failure as v0.1.122. A check from the Mac mini between the attempts reached `api.apple-cloudkit.com` normally. Attempt 3 passed every step: tests 268 (207 pass, 0 fail, 61 skipped), `npm audit` 0 vulnerabilities, `spctl` `source=Notarized Developer ID`. Release published (`Hermes-0.1.123-macOS-arm64.dmg`); the downloaded DMG passes `sha256sum -c` and equals the runner's DMG. The runner's app: Info.plist 0.1.123, Developer ID Application (team 4R5932XFRV), its ASAR contains `desktop:thread-usage`, `status-usage` and the usage text.
+- Rollback: plugin `current` back to `releases/0.2.54`, then a Gateway restart; App `git revert 45c6871`, restart Expo, TestFlight `rollback --to bb9bbdf1-17ff-46ec-b7ef-2aaccc3da9ef`; desktop reinstall v0.1.122.
+- Pending: Jamie restarts `hermes-gateway.service`; then check authenticated capabilities (`thread_usage`) and `/v1/threads/{id}/usage` on hermes-app-dev and jamie. Mac (install v0.1.123) and iPhone (Expo Go reload; TestFlight two cold launches) acceptance.
