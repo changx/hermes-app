@@ -10,7 +10,7 @@ import { SettingsBlock, SettingsPage, SettingsRow, SettingsSection } from './Set
 import { MAX_CONNECTIONS, serverName } from './connectionSlots';
 import { useApp, useConnections } from './connections';
 
-import { connectionSettingsRoute } from './settingsRoutes';
+import { connectionSettingsRoute, vaultSettingsRoute } from './settingsRoutes';
 import { AppIconSettings, useAppIcon } from './AppIcon';
 import { appIconLabel } from './appIconChoices';
 
@@ -44,6 +44,7 @@ export function SettingsHome() {
  * status, on this Hermes (every device), on this device (this connection only).
  */
 export function ConnectionSettings() {
+  const router = useRouter();
   const { removeConnection, renameConnection, connections } = useConnections();
   const { slot, config, client, agentName } = useApp();
   const row = connections.find(item => item.slot === slot);
@@ -75,6 +76,7 @@ export function ConnectionSettings() {
         {row.status === 'online' || client.connectionState === 'online' ? <ModelSettings key={config.id} client={client} />
           : <Text style={styles.hint}>Model settings are available when this connection is online.</Text>}
       </SettingsBlock>
+      {client.supportsVault && <SettingsRow title="Passwords & Logins" onPress={() => router.push(vaultSettingsRoute(slot))} />}
     </SettingsSection>}
     {/* Connection name works in every state, including pairing; Agent name needs a paired identity. */}
     <SettingsSection title="On this device">

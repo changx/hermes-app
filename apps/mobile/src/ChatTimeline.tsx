@@ -6,7 +6,8 @@ import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKey
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurTargetView, BlurView } from 'expo-blur';
-import type { Interaction, Receipt } from '../../../packages/client/src/index';
+import type { Interaction, Receipt, VaultPrompt, VaultPromptAnswer } from '../../../packages/client/src/index';
+import { VaultPromptCard } from './VaultPromptCard';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 
 import { MessageContent, copyMessageText } from './MessageContent';
@@ -106,6 +107,9 @@ interface Props {
   answers: Record<string, string>;
   onAnswerText(id: string, value: string): void;
   onAnswer(item: Interaction, choice: string): void;
+  /** Open vault prompts of this conversation (save a login, enter a one-time code). */
+  vaultPrompts?: VaultPrompt[];
+  onVaultAnswer?(prompt: VaultPrompt, answer: VaultPromptAnswer): Promise<void>;
   onCancel(receipt: Receipt): void;
   onDeleteFailed?(clientMessageId: string): void;
   onRetryFailed?(clientMessageId: string): void;
@@ -125,7 +129,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   const [workChoices, setWorkChoices] = useState<Record<string, WorkChoice>>({});
   const workMessages = useMemo(() => rows.map(row => ({ key: row.key, role: row.role, kind: row.displayKind, seconds: row.timestamp,
     waiting: row.role === 'user' && (row.optimistic && ['queued', 'sending', 'ambiguous'].includes(row.status ?? '') || !!row.receipt && ['queued', 'running'].includes(row.receipt.state) && (row.receipt.processing == null || row.receipt.processing === 'running')) })), [rows]);
-  const paused = props.interactions.some(interaction => interaction.thread_id === props.threadId && interaction.state === 'pending');
+  const paused = props.interactions.some(interaction => interaction.thread_id === props.threadId && interaction.state === 'pending') ||
+    !!props.vaultPrompts?.some(prompt => prompt.thread_id === props.threadId);
   const running = !paused && (hasRunningReceipt(props.threadId, props.receipts) || hasWaitingRequest(workMessages));
   const groups = useMemo(() => workGroups(workMessages, running), [workMessages, running]);
   // Rows receive views with stable identities; MessageRow compares `work` by identity.
@@ -427,6 +432,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         {action('Submit answer', () => props.onAnswer(i, (props.answers[i.id] || '').trim()), props.busy || !props.answers[i.id]?.trim())}
       </View>}
     </View>)}</ScrollView>}
+    {!!props.vaultPrompts?.length && props.onVaultAnswer && <ScrollView style={styles.vaultPrompts} keyboardShouldPersistTaps="handled">{props.vaultPrompts.map(p =>
+      <VaultPromptCard key={p.id} prompt={p} busy={props.busy} onAnswer={props.onVaultAnswer!} onFocusChange={dockInputFocus} />)}</ScrollView>}
 
     <View collapsable={false} style={styles.composerSurface}>
       {/* Reported iOS input blur persists despite sibling layers. Remove the
@@ -504,6 +511,7 @@ const styles = StyleSheet.create({
   latest: { minWidth: 40, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#e7eef7' }, latestText: { color: '#294e7b', fontSize: 20 },
   controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 }, controlText: { color: '#233b56', fontSize: 13, flexShrink: 1 },
   interactions: { maxHeight: 170 },
+  vaultPrompts: { maxHeight: 300 },
   interaction: { backgroundColor: '#fff7e6', paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1, borderColor: '#efdfb8', gap: 5 },
 
   // Stop follows the running text as a quiet outlined pill.

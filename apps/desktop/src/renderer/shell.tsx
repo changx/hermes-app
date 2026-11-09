@@ -24,6 +24,7 @@ import { LabelsEditor } from './session-labels';
 import { hasTodo } from '../../../../packages/client/src/todo';
 import { SessionStatusBar, type StatusAction } from './session-status-bar';
 import { setSessionTodo } from './todo-toggle';
+import { VaultPromptCard } from './vault-prompt-card';
 import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
 import { ATTACHMENT_SIZE_RULE } from "../shared/attachment-input";
 import { fileSizeLimit, namePastedFiles } from './pasted-files';
@@ -121,13 +122,14 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     waiting: message.role === 'user' && ['queued', 'running'].includes(message.receiptState ?? '') && (message.processing == null || message.processing === 'running') }));
   const lastUser = [...snapshot.messages].reverse().find(message => message.role === 'user');
   const callbackEnded = lastUser?.processing != null && lastUser.processing !== 'running';
-  const running = !snapshot.interactions.length && ((!callbackEnded && !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running) || hasWaitingRequest(workMessages));
+  const waiting = snapshot.interactions.length + (snapshot.vaultPrompts?.length ?? 0);
+  const running = !waiting && ((!callbackEnded && !!snapshot.threads.find(thread => thread.id === snapshot.selectedThreadId)?.running) || hasWaitingRequest(workMessages));
   const groups = workGroups(workMessages, running);
   // Retry re-runs only the latest turn (core /retry): the last final reply with no later input.
   const retryId = (() => { for (let i = snapshot.messages.length - 1; i >= 0; i--) { const m = snapshot.messages[i]; if (m.role === 'user') return undefined; if (m.role === 'assistant' && m.displayKind === 'final') return m.id; } return undefined; })();
-  const busyTurn = running || snapshot.interactions.length > 0;
+  const busyTurn = running || waiting > 0;
   const dates = chatDateSeparators(workMessages);
-  const awaitingWork = !snapshot.loadingMessages && !snapshot.interactions.length && needsWorkPlaceholder(workMessages, groups, running);
+  const awaitingWork = !snapshot.loadingMessages && !waiting && needsWorkPlaceholder(workMessages, groups, running);
   const choiceKey = (group: WorkGroup) => `${snapshot.selectedThreadId}:${group.key}`;
   const list = useRef<HTMLDivElement>(null);
   const contents = useRef<HTMLDivElement>(null);
@@ -249,7 +251,7 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div></AttachmentSequence.Provider>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage
-  && before.snapshot.interactions.length === after.snapshot.interactions.length && before.snapshot.focusMessage?.version === after.snapshot.focusMessage?.version && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
+  && before.snapshot.interactions.length === after.snapshot.interactions.length && (before.snapshot.vaultPrompts?.length ?? 0) === (after.snapshot.vaultPrompts?.length ?? 0) && before.snapshot.focusMessage?.version === after.snapshot.focusMessage?.version && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
 
 // Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
 const COMPOSER_INPUT_MIN = 48;
@@ -464,6 +466,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
       <Timeline snapshot={snapshot} active={snapshot.tabActive === true} sendVersion={sendVersion} />
     </div>
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
+    {snapshot.vaultPrompts?.map(prompt => <VaultPromptCard key={prompt.id} prompt={prompt} />)}
     <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />
     <SessionStatusBar snapshot={snapshot} thread={currentThread} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} />
     {overlays}<TooltipLayer />

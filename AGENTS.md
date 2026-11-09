@@ -164,6 +164,7 @@
 - [docs/reconnect-online.md](docs/reconnect-online.md)（重连收到 hello 即在线，目录后台读取；catalogue 每页最多 500 行）
 - [docs/session-labels.md](docs/session-labels.md)
 - [docs/session-token-usage.md](docs/session-token-usage.md)（Session 当前 context 与累计 tokens：桌面侧边栏卡片与状态栏、手机 Session options；插件 `thread_usage`）
+- [docs/vault.md](docs/vault.md)（Passwords & Logins：Hermes vault 的设置页与对话内「保存登录 / 验证码」卡片；插件 `vault.py`，不改核心；不含支付卡和密码管理器）
 - [docs/todo-flag.md](docs/todo-flag.md)
 - [docs/archive.md](docs/archive.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)

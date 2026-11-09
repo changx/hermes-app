@@ -75,7 +75,7 @@ async function harness({ multiple = false, list = false, strict = false, product
       this.pages = new Map();
       this.channels = new Map([['p_one', { id: 'p_one' }]]);
       this.threads = new Map(['t_one', 't_two'].map(id => [id, { id, project_id: 'p_one', title: id, last_ref: 8, read_ref: 0, unread_count: 1 }]));
-      this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
+      this.messages = new Map(); this.receipts = new Map(); this.interactions = new Map(); this.vaultPrompts = new Map(); this.drafts = new Map(); this.tailIncomplete = new Set();
     }
     async connect() { this.connectionState = 'online'; this.options.onConnectionState('online'); }
     async getThread() {}

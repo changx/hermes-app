@@ -25,6 +25,14 @@ export interface ModelSelectionConfirmation { confirmation_required: true; warni
 /** Model for one new Thread. Omit it to use the connection's primary model. */
 export interface ThreadModelChoice { provider: string; model: string }
 export interface Attachment { id: string; thread_id: string; name?: string; mime?: string; size?: number; receipt_id?: string | null; public_url?: string; site_path?: string; state: 'available' | 'missing' | 'deleted' }
+/** Saved login or address of the connected Hermes profile (metadata only; no password or address field). */
+export interface VaultItem { id: string; kind: 'login' | 'address'; label: string; origin: string | null; created_at: string; identifier?: string; identifier_type?: string; has_otp?: boolean }
+export type NewVaultItem =
+  | { kind: 'login'; label: string; origin: string; secret: { identifier: string; password: string; otp_secret?: string } }
+  | { kind: 'address'; label: string; origin?: string; secret: { address_line1: string; address_line2?: string; city: string; state?: string; postal_code: string; country: string } };
+/** An open in-chat vault prompt: Hermes waits for a login to save or a one-time code. */
+export interface VaultPrompt { id: string; kind: 'save_login' | 'code'; thread_id: string; receipt_id: string; generation: string; site: string; origin: string; hint: string; expires_at: number }
+export type VaultPromptAnswer = { decision: 'decline' } | { decision: 'submit'; identifier: string; password: string } | { decision: 'submit'; code: string };
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
@@ -115,6 +123,8 @@ const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str
 
 const validAttachment = (v: unknown): Attachment => { const x=obj(v), state=str(x.state); if (!['available','missing','deleted'].includes(state)) throw new ProtocolError('invalid attachment'); const a:Attachment={id:str(x.id),thread_id:str(x.thread_id),state:state as Attachment['state']}; if(state!=='deleted') {a.name=str(x.name);a.mime=str(x.mime);a.size=num(x.size);a.receipt_id=x.receipt_id===null?null:str(x.receipt_id)} if(typeof x.public_url==='string') {try {const u=new URL(x.public_url);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash&&u.pathname.startsWith('/media/'+a.id+'/'))a.public_url=u.href;}catch{/* Optional links never invalidate durable attachment metadata. */}} const site=validSitePath(a.id,x.site_path); if(site&&state==='available')a.site_path=site; return a };
 const validInteraction = (v: unknown): Interaction => { const x=obj(v), kind=str(x.kind), state=str(x.state); if(!['approval','clarify'].includes(kind)||!['pending','settled','expired'].includes(state)) throw new ProtocolError('invalid interaction'); return {id:str(x.id),kind:kind as Interaction['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),prompt:str(x.prompt),choices:arr(x.choices).map(str),state:state as Interaction['state']} };
+const validVaultPrompt = (v: unknown): VaultPrompt => { const x=obj(v), kind=str(x.kind); if(!['save_login','code'].includes(kind)) throw new ProtocolError('invalid vault prompt'); return {id:str(x.id),kind:kind as VaultPrompt['kind'],thread_id:str(x.thread_id),receipt_id:str(x.receipt_id),generation:str(x.generation),site:str(x.site),origin:str(x.origin),hint:str(x.hint),expires_at:num(x.expires_at)} };
+const validVaultItem = (v: unknown): VaultItem => { const x=obj(v), kind=str(x.kind); if(!['login','address'].includes(kind)) throw new ProtocolError('invalid vault item'); const item:VaultItem={id:str(x.id),kind:kind as VaultItem['kind'],label:str(x.label),origin:x.origin===null||x.origin===undefined?null:str(x.origin),created_at:str(x.created_at)}; if(kind==='login'){item.identifier=str(x.identifier);item.identifier_type=str(x.identifier_type);item.has_otp=x.has_otp===true} return item };
 const displayString = (value: unknown, max: number): string => { const s = str(value); if (!s || s.length > max) throw new ProtocolError('invalid tool display'); return s };
 const displayLine = (value: unknown, max: number): string => { const s = displayString(value, max); if (/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(s)) throw new ProtocolError('invalid tool display line'); return s };
 const validModelSettings = (x: Record<string, unknown>): AgentModelSettings => {
@@ -207,6 +217,8 @@ export class HermesClient {
   readonly receipts = new Map<string, Receipt>();
   private receiptIdentity = new Map<string, string>();
   readonly interactions = new Map<string, Interaction>();
+  /** Open vault prompts of the open conversation (process state on the server; never persisted here). */
+  readonly vaultPrompts = new Map<string, VaultPrompt>();
   readonly attachments = new Map<string, Attachment>();
   readonly messages = new Map<string, Message[]>();
   readonly drafts = new Map<string, string>(); // ephemeral stream text; never merged into durable history
@@ -244,6 +256,7 @@ export class HermesClient {
   supportsChannelArchive = false;
   /** Session context size and cumulative tokens at `/v1/threads/{id}/usage` (plugin 0.2.55+). */
   supportsThreadUsage = false;
+  supportsVault = false;
   /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
   supportsAutomations = false;
   /** Automation editing (plugin 0.2.28): paged list, direct controls, settings Threads. */
@@ -378,7 +391,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   /** Developer crash report for this server's client log; never shown to the user. */
   async reportClientLog(report: ClientLogReport, signal?: AbortSignal): Promise<void> { await this.call('POST','/v1/client-logs',report,signal,undefined,10000) }
   protected adoptCapabilities(owner: HermesClient): void {
@@ -401,6 +414,7 @@ export class HermesClient {
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
     this.supportsThreadUsage = owner.supportsThreadUsage;
+    this.supportsVault = owner.supportsVault;
     this.supportsAutomations = owner.supportsAutomations;
     this.supportsAutomationsPaged = owner.supportsAutomationsPaged;
     this.supportsAutomationControls = owner.supportsAutomationControls;
@@ -544,6 +558,11 @@ export class HermesClient {
   async getReceipt(id: string, signal?: AbortSignal): Promise<Receipt> { const epoch=this.projectionEpoch; const x=await this.call('GET','/v1/receipts/'+idPath(id),undefined,signal); const r=validReceipt(x.receipt); if (r.id!==id) throw new ProtocolError('receipt identity mismatch'); if(epoch!==this.projectionEpoch)return r; this.storeReceipt(r); return this.receipts.get(id) ?? r }
   async getInteraction(threadId:string,id:string,signal?:AbortSignal):Promise<Interaction> {const epoch=this.projectionEpoch;const x=await this.call('GET','/v1/threads/'+idPath(threadId)+'/interactions/'+idPath(id),undefined,signal);const item=validInteraction(x.interaction);if(item.id!==id||item.thread_id!==threadId)throw new ProtocolError('interaction identity mismatch');if(epoch!==this.projectionEpoch)return item;if(item.state==='pending')this.interactions.set(id,item);else this.interactions.delete(id);this.changed();return item}
   async answerInteraction(item:Interaction,choice:string):Promise<void> {const x=await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/interactions/'+idPath(item.id)+'/answer',{choice,receipt_id:item.receipt_id,generation:item.generation});if(x.state!=='settled'||x.request_id!==item.id)throw new ProtocolError('answer not settled');this.interactions.delete(item.id);this.changed()}
+  /** Settings > Passwords & Logins. Secret values go to the server once and are never returned. */
+  async vaultItems(signal?:AbortSignal):Promise<VaultItem[]> {const x=await this.call('GET','/v1/vault/items',undefined,signal);return arr(x.items).map(validVaultItem)}
+  async addVaultItem(item:NewVaultItem):Promise<VaultItem> {const x=await this.call('POST','/v1/vault/items',item);return validVaultItem(x.item)}
+  async removeVaultItem(id:string):Promise<boolean> {const x=await this.call('DELETE','/v1/vault/items/'+idPath(id));return x.removed===true}
+  async answerVaultPrompt(item:VaultPrompt,answer:VaultPromptAnswer):Promise<void> {try{await this.call('POST','/v1/threads/'+idPath(item.thread_id)+'/vault-prompts/'+idPath(item.id)+'/answer',{generation:item.generation,...answer})}finally{if(this.vaultPrompts.delete(item.id))this.changed()}}
   async stop(threadId:string):Promise<boolean> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/stop',{});return x.stopped===true}
   async cancelQueued(threadId:string,receiptId:string):Promise<Receipt> {const x=await this.call('POST','/v1/threads/'+idPath(threadId)+'/receipts/'+idPath(receiptId)+'/cancel',{});const r=validReceipt(x.receipt);this.storeReceipt(r);return r}
   async upload(threadId:string,name:string,bytes:Uint8Array,signal?:AbortSignal):Promise<Attachment> {if(!this.options.http.upload)throw new ProtocolError('binary upload unavailable');const reply=await bounded(s=>this.options.http.upload!('/v1/threads/'+idPath(threadId)+'/attachments',this.token(),name,bytes,s),transferTimeout(this.options.requestTimeoutMs,bytes.byteLength),signal);return this.uploaded(threadId,reply)}
@@ -715,7 +734,7 @@ export class HermesClient {
   /** Release server content only; directory, credentials and durable input are not touched. */
   protected releaseContent(): void {
     ++this.projectionEpoch;
-    this.messages.clear();this.receipts.clear();this.receiptIdentity.clear();this.interactions.clear();this.attachments.clear();this.drafts.clear();
+    this.messages.clear();this.receipts.clear();this.receiptIdentity.clear();this.interactions.clear();this.vaultPrompts.clear();this.attachments.clear();this.drafts.clear();
     this.messageSequence.clear();this.tailIncomplete.clear();this.tailContinuations.clear();this.tailRecoveryJobs.clear();this.knownEmptyThreads.clear();
   }
   protected retainContent(threadId:string|null): void {
@@ -723,6 +742,7 @@ export class HermesClient {
     for(const id of this.drafts.keys())if(id!==threadId)this.drafts.delete(id);
     for(const [id,row]of this.receipts)if(row.thread_id!==threadId){this.receipts.delete(id);this.receiptIdentity.delete(id)}
     for(const [id,row]of this.interactions)if(row.thread_id!==threadId)this.interactions.delete(id);
+    for(const [id,row]of this.vaultPrompts)if(row.thread_id!==threadId)this.vaultPrompts.delete(id);
     for(const [id,row]of this.attachments)if(row.thread_id!==threadId)this.attachments.delete(id);
     for(const key of this.messageSequence.keys())if(threadId===null||!key.startsWith(threadId+':'))this.messageSequence.delete(key);
     for(const id of this.knownEmptyThreads)if(id!==threadId)this.knownEmptyThreads.delete(id);
@@ -730,11 +750,13 @@ export class HermesClient {
     for(const id of this.tailContinuations.keys())if(id!==threadId)this.tailContinuations.delete(id);
     for(const id of this.tailRecoveryJobs.keys())if(id!==threadId)this.tailRecoveryJobs.delete(id);
   }
-  protected decodeScopedState(value:unknown,threadId:string):{receipts:Receipt[];interactions:Interaction[]} {
+  protected decodeScopedState(value:unknown,threadId:string):{receipts:Receipt[];interactions:Interaction[];vaultPrompts:VaultPrompt[]} {
     const body=obj(value);if(body.thread_id!==threadId)throw new ProtocolError('live state identity mismatch');
     const receipts=arr(body.active_receipts).map(validReceipt),interactions=arr(body.pending_interactions).map(validInteraction);
     if(receipts.length>32||interactions.length>20||receipts.some(r=>r.thread_id!==threadId)||interactions.some(i=>i.thread_id!==threadId))throw new ProtocolError('live state scope mismatch');
-    return {receipts,interactions};
+    const vaultPrompts=body.vault_prompts===undefined?[]:arr(body.vault_prompts).map(validVaultPrompt);
+    if(vaultPrompts.length>20||vaultPrompts.some(p=>p.thread_id!==threadId))throw new ProtocolError('live state scope mismatch');
+    return {receipts,interactions,vaultPrompts};
   }
 
   close() { this.releaseContent(); this.state('suspended') }

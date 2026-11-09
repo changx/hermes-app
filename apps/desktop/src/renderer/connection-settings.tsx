@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DesktopConnection, DesktopSnapshot } from '../shared/desktop-api';
 import { ModelSettings } from './model-settings';
+import { VaultSettings } from './vault-settings';
 
 export const CONNECTION_LIMIT = 8;
 export const connectionStateLabels = { online: 'Online', connecting: 'Connecting', syncing: 'Syncing', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention', pairing: 'Pairing' } as const;
@@ -108,6 +109,8 @@ export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disa
       <p className="settings-description">Applies to this Hermes on every device. Conversations with their own model selection keep it. Running replies are not interrupted.</p>
       <h5>Default model</h5>
       <ModelSettings key={row.connectionKey ?? 'unpaired'} connectionKey={row.connectionKey} />
+      <h5>Passwords &amp; Logins</h5>
+      <VaultSettings key={`vault:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
     </section>
     <section className="settings-group" aria-labelledby="settings-group-device">
       <h4 id="settings-group-device">On this device</h4>

@@ -1,4 +1,4 @@
-import type { AgentModelSettings, ModelSelectionConfirmation, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
+import type { AgentModelSettings, ModelSelectionConfirmation, NewVaultItem, VaultItem, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -62,6 +62,9 @@ export type DesktopInteraction = Readonly<{
   prompt: string;
   choices: readonly string[];
 }>;
+/** An open in-chat vault prompt (docs/vault.md): a login to save or a one-time code to enter. */
+export type DesktopVaultPrompt = Readonly<{ id: string; kind: "save_login" | "code"; site: string; origin: string; hint: string }>;
+export type DesktopVaultAnswer = Readonly<{ decision: "decline" } | { decision: "submit"; identifier: string; password: string } | { decision: "submit"; code: string }>;
 export type DesktopMessage = Readonly<{
   id: string;
   role: "user" | "assistant" | "system";
@@ -122,6 +125,8 @@ export type DesktopSnapshot = Readonly<{
   supportsFileSearch?: boolean;
   /** Main window: some connected server searches message text (Session full-text search). */
   supportsSessionSearch?: boolean;
+  /** Settings > Passwords & Logins on this connection. */
+  supportsVault?: boolean;
   loadingConversations?: boolean;
   loadingMessages?: boolean;
   loadingHistory?: boolean;
@@ -133,6 +138,8 @@ export type DesktopSnapshot = Readonly<{
   threads: readonly DesktopThread[];
   messages: readonly DesktopMessage[];
   interactions: readonly DesktopInteraction[];
+  /** Open vault prompts of the selected conversation; absent on older servers. */
+  vaultPrompts?: readonly DesktopVaultPrompt[];
   selectedChannelId?: string;
   selectedThreadId?: string;
   selectedThreadTitle?: string;
@@ -140,7 +147,7 @@ export type DesktopSnapshot = Readonly<{
   /** Session page: show this message (a file search result). A new `version` asks again for the same message. */
   focusMessage?: DesktopMessageFocus;
   sessionPages?: readonly Readonly<{ id: string; messages: readonly DesktopMessage[];
-    interactions: readonly DesktopInteraction[]; loadingMessages?: boolean; loadingHistory?: boolean;
+    interactions: readonly DesktopInteraction[]; vaultPrompts?: readonly DesktopVaultPrompt[]; loadingMessages?: boolean; loadingHistory?: boolean;
     canLoadOlder: boolean; selectedThreadTitle?: string; focusMessage?: DesktopMessageFocus }>[];
 }>;
 
@@ -225,6 +232,9 @@ export interface HermesDesktopApi {
   importClaudeMcp(): Promise<DesktopMcpResult>;
   showMcpFile(): Promise<void>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
+  getVaultItems(connectionKey: string): Promise<readonly VaultItem[]>;
+  addVaultItem(connectionKey: string, item: NewVaultItem): Promise<VaultItem>;
+  removeVaultItem(connectionKey: string, id: string): Promise<boolean>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */
@@ -341,6 +351,7 @@ export interface HermesDesktopApi {
   stopThread(): Promise<void>;
   cancelQueued(receiptId: string): Promise<void>;
   answerInteraction(interactionId: string, choice: string): Promise<void>;
+  answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer): Promise<void>;
   pickAndUploadAttachments(threadId?: string): Promise<readonly DesktopAttachment[]>;
   uploadDroppedFiles(files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]>;
   deleteUnattachedAttachment(attachmentId: string): Promise<void>;

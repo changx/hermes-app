@@ -697,6 +697,19 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .interaction-card { margin: 0 18px 10px; border: 1px solid #efdfb8; border-radius: 10px; padding: 12px; background: #fff7e6; }
 .interaction-card p { margin: 5px 0 10px; }
 .interaction-card button { margin-right: 7px; border: 1px solid var(--app-field-border); border-radius: 7px; padding: 6px 10px; color: var(--app-link); background: #fff; }
+/* In-chat vault prompt (docs/vault.md): blue, so it reads apart from approvals. */
+.interaction-card.vault-prompt { border-color: #cfdcf3; background: #eef4ff; }
+.vault-prompt-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.vault-prompt-fields input { flex: 1 1 200px; min-width: 0; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 8px 10px; color: var(--app-text); background: #fff; font: inherit; }
+.vault-prompt button[type=submit] { color: #fff; background: #2960ad; border-color: #2960ad; }
+.vault-prompt button:disabled { opacity: 0.5; }
+.vault-settings { display: grid; gap: 10px; }
+.vault-settings h6 { margin: 6px 0 0; font-size: var(--app-font-size); }
+.vault-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.vault-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 10px; }
+.vault-item-info { display: grid; gap: 2px; min-width: 0; }
+.vault-item-info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-badge { color: #2b6b3f; font-size: 12px; }
 .resource-actions button { border: 0; color: var(--app-link); background: transparent; font-size: var(--app-font-size); }
 .channel-description { max-width: 190px; overflow: hidden; color: var(--app-muted); font-size: var(--app-font-size); text-overflow: ellipsis; white-space: nowrap; }
 .resource-actions { padding: 5px 18px; border-bottom: 1px solid var(--app-border); text-align: right; }

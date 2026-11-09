@@ -288,12 +288,12 @@ export class DesktopTabManager {
       const session = tab.kind === 'session';
       return { ...base, revision: this.revision, automationsVersion: this.automationsVersion, selectedThreadId: session ? tab.threadId : undefined,
         selectedThreadTitle: session ? base.selectedThreadTitle : undefined, selectedChannelId: session ? base.threads.find(t => t.id === tab.threadId)?.channelId : tab.initialChannelId,
-        messages: session ? base.messages : [], interactions: session ? base.interactions : [],
+        messages: session ? base.messages : [], interactions: session ? base.interactions : [], vaultPrompts: session ? base.vaultPrompts : [],
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder, focusMessage: session ? base.focusMessage : undefined,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId,
         ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}) };
     }
-    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
         title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'

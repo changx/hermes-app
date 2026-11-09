@@ -89,3 +89,12 @@ test('an online connection whose first directory walk is still running shows loa
   assert.deepEqual(rows, []);
   assert.deepEqual(pending.map(p => [p.connectionName, p.text]), [['walking.example', 'Loading projects…'], ['stopped.example', 'Projects unavailable']]);
 });
+
+test('removing a connection also pops its Passwords & Logins page', () => {
+  const b = 'b'.repeat(24);
+  const state = { index: 3, routes: [{ key: 'home', name: '(tabs)' }, { key: 'settings', name: 'settings/index' },
+    { key: 'conn', name: 'settings/connection', params: { connection: b } }, { key: 'vault', name: 'settings/vault', params: { connection: b } }] };
+  assert.equal(routeSlot(state.routes[3]), b);
+  const next = removedConnectionRoutes(state, new Set([b]));
+  assert.deepEqual(next.routes.map(route => route.key), ['home', 'settings']);
+});

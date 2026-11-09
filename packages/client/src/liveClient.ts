@@ -1,4 +1,4 @@
-import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice, type LocalFile, type ChunkReader, type TransferProgress } from './index';
+import { HermesClient, HttpError, ProtocolError, TimeoutError, isRetryableError, type Options, type Socket, type Receipt, type Interaction, type VaultPrompt, type VaultPromptAnswer, type Channel, type ChannelPatch, type Message, type Thread, type ThreadModelChoice, type LocalFile, type ChunkReader, type TransferProgress } from './index';
 import { parseCatalogue, parseCatalogueThreads, parseLiveFrame, parseResultRead, watchCommand, LiveProtocolError, type LiveFrame } from './liveProtocol';
 import { parseLabelMetadata, validateLabels, labelTimestamp, type LabelDetail } from './sessionLabels';
 import type { OpenTimingObserver, OpenTimingEvent, OpenRequestKind } from './openTiming';
@@ -434,6 +434,7 @@ export class LiveSessionClient extends HermesClient {
         this.batchChanges(()=>{
           for(const r of state.receipts)this.storeReceipt(r,false);
           this.interactions.clear();for(const i of state.interactions)if(i.state==='pending')this.interactions.set(i.id,i);
+          this.vaultPrompts.clear();for(const p of state.vaultPrompts)this.vaultPrompts.set(p.id,p);
           this.changed();
         });
         this.observe({stage:'state-ready'},timing);
@@ -470,6 +471,7 @@ export class LiveSessionClient extends HermesClient {
   override async historyTail(id:string,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.historyTail(id,signal)}
   override async search(id:string,text:string,after?:string,limit=20,signal?:AbortSignal){if(id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.search(id,text,after,limit,s.signal)}finally{s.done()}}
   override async getInteraction(id:string,key:string,signal?:AbortSignal){if(id!==this.wanted)throw new ProtocolError('Conversation is not open');const s=this.scoped(signal,id);try{return await super.getInteraction(id,key,s.signal)}finally{s.done()}}
+  override async answerVaultPrompt(item:VaultPrompt,answer:VaultPromptAnswer){if(item.thread_id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.answerVaultPrompt(item,answer)}
   override async answerInteraction(item:Interaction,choice:string){if(item.thread_id!==this.wanted||!this.watchReady)throw new ProtocolError('Conversation is not open');return super.answerInteraction(item,choice)}
   // Attachment bytes are immutable per id, so no change hint can be missed: page ownership and
   // release-abort scope suffice. Waiting for the watch ack here made images fail during reconnects.

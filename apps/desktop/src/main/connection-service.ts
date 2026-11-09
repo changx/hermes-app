@@ -17,6 +17,8 @@ import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
 
 import { mainTransport, normalizeBaseUrl } from "./transport";
+import type { DesktopVaultAnswer } from "../shared/desktop-api";
+import type { NewVaultItem } from "@hermes-app/client";
 
 const stateLabel: Record<ConnectionState, string> = {
   connecting: "Connecting",
@@ -375,6 +377,9 @@ export class DesktopConnectionService {
     const interactions = [...(this.client?.interactions.values() ?? [])]
       .filter((item) => item.thread_id === pageId && item.state === "pending")
       .map(({ id, kind, prompt, choices }) => ({ id, kind, prompt, choices: [...choices] }));
+    const vaultPrompts = [...(this.client?.vaultPrompts?.values() ?? [])]
+      .filter((item) => item.thread_id === pageId)
+      .map(({ id, kind, site, origin, hint }) => ({ id, kind, site, origin, hint }));
     return Object.freeze({
       revision: this.revision,
       phase: this.phase,
@@ -392,6 +397,7 @@ export class DesktopConnectionService {
       supportsSessionFiles: this.client?.supportsSessionFiles === true,
       supportsFileSearch: this.client?.supportsFileSearch === true,
       supportsSessionSearch: this.client?.supportsSessionSearch === true,
+      supportsVault: this.client?.supportsVault === true,
       // The SDK cursor is established only after the authoritative initial
       // snapshot has completed, including a legitimately empty account.
       loadingConversations: this.phase === "connected" && !this.client?.isCatalogueReady,
@@ -404,6 +410,7 @@ export class DesktopConnectionService {
       threads,
       messages,
       interactions,
+      vaultPrompts,
       canLoadOlder: Boolean(pageState?.older),
       ...(pageState?.focus ? { focusMessage: pageState.focus } : {}),
       ...(this.selectedChannelId ? { selectedChannelId: this.selectedChannelId } : {}),
@@ -411,7 +418,7 @@ export class DesktopConnectionService {
       ...(selected ? { selectedThreadTitle: selected.title } : {}),
       ...(includePages ? { sessionPages: this.openPages.map(id => {
         const page = this.snapshot(id, false);
-        return { id, messages: page.messages, interactions: page.interactions,
+        return { id, messages: page.messages, interactions: page.interactions, vaultPrompts: page.vaultPrompts,
           loadingMessages: page.loadingMessages, loadingHistory: page.loadingHistory, canLoadOlder: page.canLoadOlder,
           selectedThreadTitle: page.selectedThreadTitle, ...(page.focusMessage ? { focusMessage: page.focusMessage } : {}) };
       }) } : {}),
@@ -895,6 +902,26 @@ export class DesktopConnectionService {
     return client;
   }
 
+  async getVaultItems(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsVault) throw new Error('Passwords & Logins are not available on this Hermes yet. Update its Hermes App plugin.');
+    try { return await client.vaultItems(); }
+    catch { throw new Error('Could not load saved logins. Check the connection and try again.'); }
+  }
+
+  async addVaultItem(connectionKey: string, item: NewVaultItem) {
+    const client = this.modelClient(connectionKey);
+    try { return await client.addVaultItem(item); }
+    catch { throw new Error(item.kind === 'login' ? 'Could not save this login. Check the website and the authenticator key, then try again.'
+      : 'Could not save this address. Fill in address, city, postal code and country, then try again.'); }
+  }
+
+  async removeVaultItem(connectionKey: string, id: string) {
+    const client = this.modelClient(connectionKey);
+    try { return await client.removeVaultItem(id); }
+    catch { throw new Error('Could not confirm the removal. Reload the list before trying again.'); }
+  }
+
   async getModelSettings(connectionKey: string) {
     const client = this.modelClient(connectionKey);
     try {
@@ -1291,6 +1318,18 @@ export class DesktopConnectionService {
     if (!threadId || this.client?.receipts.get(receiptId)?.thread_id !== threadId) return;
     try { await this.client.cancelQueued(threadId, receiptId); }
     catch { this.actionError("The queued message could not be cancelled. Its state may have changed."); }
+  }
+
+  /** The values go to the server once and are not kept; the server takes the first answer. */
+  async answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer, threadId = this.selectedThreadId): Promise<void> {
+    const item = this.client?.vaultPrompts.get(promptId);
+    if (!item || item.thread_id !== threadId) return;
+    try { await this.client!.answerVaultPrompt(item, answer); }
+    catch {
+      const message = "That request is no longer open. Hermes will ask again if it still needs it.";
+      this.actionError(message);
+      const timer: ReturnType<typeof setTimeout> = setTimeout(() => this.clearActionError(message), INTERACTION_NOTICE_MS); (timer as { unref?: () => void }).unref?.();
+    }
   }
 
   async answerInteraction(interactionId: string, choice: string, threadId = this.selectedThreadId): Promise<void> {

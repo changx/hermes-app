@@ -1,5 +1,5 @@
 import { LiveSessionClient } from './liveClient';
-import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction, type LocalFile, type ChunkReader, type TransferProgress } from './index';
+import { ProtocolError, type Options, type Receipt, type Attachment, type Interaction, type VaultPrompt, type VaultPromptAnswer, type LocalFile, type ChunkReader, type TransferProgress } from './index';
 import type { LiveFrame } from './liveProtocol';
 import type { OpenTimingObserver } from './openTiming';
 
@@ -58,13 +58,14 @@ export class LivePageClient extends LiveSessionClient {
   private mirror(): void {
     // These are references to page-owned objects for outbox/IPC readers, not
     // another authority or another parsed history cache.
-    this.messages.clear(); this.receipts.clear(); this.interactions.clear();
+    this.messages.clear(); this.receipts.clear(); this.interactions.clear(); this.vaultPrompts.clear();
     this.attachments.clear(); this.drafts.clear(); this.tailIncomplete.clear();
     for (const [id,page] of this.pages) {
       const rows = page.messages.get(id);
       if (rows) this.messages.set(id,rows);
       for (const [key,value] of page.receipts) this.receipts.set(key,value);
       for (const [key,value] of page.interactions) this.interactions.set(key,value);
+      for (const [key,value] of page.vaultPrompts) this.vaultPrompts.set(key,value);
       for (const [key,value] of page.attachments) this.attachments.set(key,value);
       const draft = page.drafts.get(id); if (draft) this.drafts.set(id,draft);
       if (page.tailIncomplete.has(id)) this.tailIncomplete.add(id);
@@ -115,6 +116,7 @@ export class LivePageClient extends LiveSessionClient {
   override async search(id: string,text: string,after?: string,limit=20,signal?: AbortSignal) { return this.requirePage(id).search(id,text,after,limit,signal); }
   override async getInteraction(id: string,key: string,signal?: AbortSignal) { return this.requirePage(id).getInteraction(id,key,signal); }
   override async answerInteraction(item: Interaction,choice: string) { return this.requirePage(item.thread_id).answerInteraction(item,choice); }
+  override async answerVaultPrompt(item: VaultPrompt,answer: VaultPromptAnswer) { return this.requirePage(item.thread_id).answerVaultPrompt(item,answer); }
   override async getAttachment(id: string,key: string,signal?: AbortSignal) { return this.requirePage(id).getAttachment(id,key,signal); }
   override async download(id: string,key: string,signal?: AbortSignal) { return this.requirePage(id).download(id,key,signal); }
   override async downloadFile(id: string,key: string,destination: string,signal?: AbortSignal,onProgress?: TransferProgress) { return this.requirePage(id).downloadFile(id,key,destination,signal,onProgress); }

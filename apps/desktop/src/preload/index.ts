@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, ContextMenuItem, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, SessionCardRequest, DesktopThreadUsage, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
+import type { DesktopVaultAnswer } from "../shared/desktop-api";
+import type { NewVaultItem } from "@hermes-app/client";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -21,6 +23,9 @@ const api: HermesDesktopApi = Object.freeze({
   importClaudeMcp: () => ipcRenderer.invoke('desktop:import-claude-mcp'),
   showMcpFile: (): Promise<void> => ipcRenderer.invoke('desktop:show-mcp-file'),
   getModelSettings: (connectionKey: string) => ipcRenderer.invoke('desktop:get-model-settings', connectionKey),
+  getVaultItems: (connectionKey: string) => ipcRenderer.invoke('desktop:get-vault-items', connectionKey),
+  addVaultItem: (connectionKey: string, item: NewVaultItem) => ipcRenderer.invoke('desktop:add-vault-item', connectionKey, item),
+  removeVaultItem: (connectionKey: string, id: string) => ipcRenderer.invoke('desktop:remove-vault-item', connectionKey, id),
   setModelSettings: (connectionKey: string, provider: string, model: string, confirmSelection: boolean) => ipcRenderer.invoke('desktop:set-model-settings', connectionKey, provider, model, confirmSelection),
   openBrowser: (url?: string): Promise<void> => ipcRenderer.invoke('desktop:open-browser', url),
   previewAttachment: (id: string, sequence?: readonly string[]): Promise<void> => ipcRenderer.invoke('desktop:preview-attachment', id, sequence),
@@ -132,6 +137,7 @@ const api: HermesDesktopApi = Object.freeze({
   stopThread: (): Promise<void> => ipcRenderer.invoke("desktop:stop-thread"),
   cancelQueued: (receiptId: string): Promise<void> => ipcRenderer.invoke("desktop:cancel-queued", receiptId),
   answerInteraction: (interactionId: string, choice: string): Promise<void> => ipcRenderer.invoke("desktop:answer-interaction", interactionId, choice),
+  answerVaultPrompt: (promptId: string, answer: DesktopVaultAnswer): Promise<void> => ipcRenderer.invoke("desktop:answer-vault-prompt", promptId, answer),
   pickAndUploadAttachments: (threadId?: string): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:pick-attachments", threadId),
   uploadDroppedFiles: async (files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]> => ipcRenderer.invoke("desktop:drop-attachments", await filesForUpload(files, file => webUtils.getPathForFile(file)), threadId),
   deleteUnattachedAttachment: (attachmentId: string): Promise<void> => ipcRenderer.invoke("desktop:delete-attachment", attachmentId),

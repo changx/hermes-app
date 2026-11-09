@@ -6,7 +6,7 @@ import * as Crypto from 'expo-crypto';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
-import { HttpError, type Attachment, type Interaction, type Message, type Receipt } from '../../../packages/client/src/index';
+import { HttpError, type Attachment, type Interaction, type Message, type Receipt, type VaultPrompt, type VaultPromptAnswer } from '../../../packages/client/src/index';
 import type { MessageActions } from './MessageToolbar';
 import { newSend } from './send';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
@@ -221,6 +221,11 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     if (current.state !== 'pending' || current.generation !== item.generation) throw new Error('Request is no longer active');
     if (focusedRef.current) await client.answerInteraction(current, choice);
   });
+  // One send per vault prompt; the server takes the first answer. The values never leave this call.
+  const answerVault = (prompt: VaultPrompt, value: VaultPromptAnswer) => run(async () => {
+    if (!client || !focusedRef.current) return;
+    await client.answerVaultPrompt(prompt, value);
+  }, 'That request is no longer open. Hermes will ask again if it still needs it.');
 
   const navigation = useSessionNavigation();
   // One request ID per tapped reply until the server gives a definite answer, so a
@@ -274,6 +279,8 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   const interactionSignature = JSON.stringify([...client.interactions.values()].filter(i => i.thread_id === threadId));
   const receipts = useMemo(() => [...client.receipts.values()].filter(r => r.thread_id === threadId && (r.state === 'queued' || r.state === 'running')), [client, threadId, receiptSignature]);
   const interactions = useMemo(() => [...client.interactions.values()].filter(i => i.thread_id === threadId && i.state === 'pending'), [client, threadId, interactionSignature]);
+  const vaultSignature = JSON.stringify([...client.vaultPrompts.values()].filter(p => p.thread_id === threadId).map(p => p.id));
+  const vaultPrompts = useMemo(() => [...client.vaultPrompts.values()].filter(p => p.thread_id === threadId), [client, threadId, vaultSignature]);
   const draft = client.drafts.get(threadId);
   const rows = useMemo(() => projectTimeline(visibleMessages, null, threadId, draft, client.supportsSendIdentity, records, client.receipts, interactions, messages),
     [visibleMessages, threadId, draft, client, client.supportsSendIdentity, records, receiptSignature, interactions, messages]);
@@ -360,7 +367,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={false} name={agentName.name} />}
       receipts={receipts} interactions={interactions} answers={answers}
-      onAnswerText={onAnswerText} onAnswer={answer}
+      onAnswerText={onAnswerText} onAnswer={answer} vaultPrompts={vaultPrompts} onVaultAnswer={answerVault}
       onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}
       onCancel={ignore} onStop={ignore} busy={busy} messageActions={startingActions} />
   </View>;
@@ -390,7 +397,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       typingIndicator={<TypingIndicator active={focused && isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
       composerAccessory={(parts, onHeight) => <AttachmentComposer key={composerScope} send={parts.send} expanded={parts.expanded} onPressField={parts.onPressField} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{parts.input}</AttachmentComposer>}
       receipts={receipts} interactions={interactions} answers={answers}
-      onAnswerText={onAnswerText} onAnswer={answer}
+      onAnswerText={onAnswerText} onAnswer={answer} vaultPrompts={vaultPrompts} onVaultAnswer={answerVault}
       onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}
       onCancel={cancelQueued}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy}
