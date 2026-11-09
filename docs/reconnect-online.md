@@ -89,6 +89,24 @@ Jamie 报告：Gateway 重启（20:30）后，手机连不上 jamie 和 hermes-a
 - 回滚：App `git revert 4ebfb9c` 后重启 Expo，并按 `--to 61b433a3-8ae2-445e-a6f8-a7557dc6ec5c` 回滚 TestFlight 更新；桌面重装 v0.1.121。
 - 待验收：iPhone（Expo Go 重新加载；TestFlight 冷启动两次）和 Mac（安装 v0.1.122）上连接 jamie 和 hermes-app-dev。
 
+## 修复：桌面端读取 500 行目录页超出回复大小上限（2026-11-09）
+
+Jamie 报告：桌面端加载 jamie 和 hermes-app-dev 失败（手机正常）。
+
+原因：桌面主进程 `apps/desktop/src/main/transport.ts` 对普通 JSON 回复限制 64 KiB（`MAX_REPLY_BYTES`），超过时报 “Server response is too large.”。每页 500 行后，jamie 一页约 225 KB，hermes-app-dev 约 168 KB，超过上限；目录读取失败，连接按退避重连，一直读不出目录。sites-dev（6 KB）、emma（2 KB）不受影响。手机传输层对这些请求没有大小上限，所以只有桌面端出问题。
+
+修复：成功的 `GET /v1/catalogue` 和 `GET /v1/catalogue/threads` 使用单独的上限 4 MiB（每行约 8 KiB 余量）。其他普通回复和错误回复仍为 64 KiB。
+
+验证：
+- `tests/transport.test.mjs` 新增 1 项：约 480 KB 的 500 行目录页在三种目录路径上都能读取；错误回复、POST、相似路径和其他普通回复仍按 64 KiB 拒绝。旧代码运行时该项失败（“Server response is too large.”）。
+- 用真实桌面传输层和 `LiveSessionClient` 连接线上服务（只读，管理员令牌）：
+
+| 连接 | 旧传输层 | 新传输层 |
+|---|---|---|
+| jamie | 读取失败，重连（too large） | 目录就绪，812 个 Thread，17 个 Channel，约 1.0 s |
+| hermes-app-dev | 读取失败，重连（too large） | 目录就绪，363 个 Thread，4 个 Channel，约 0.8 s |
+| sites-dev | 目录就绪 | 目录就绪 |
+
 ## 完整历史读取加速（插件 0.2.54）
 
 重连时，每个已打开的页面都读取一次完整历史（`GET /v1/threads/<id>/messages?full=true`）。客户端只接受完整的响应，所以超过 100 条的会话也不会缺消息。

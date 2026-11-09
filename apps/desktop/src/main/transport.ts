@@ -18,6 +18,9 @@ const AGENTS_TEXT_BYTES = 10 * 1024 * 1024;
 const MAX_REPLY_BYTES = 64 * 1024;
 const MAX_AGENTS_REPLY_BYTES = 6 * AGENTS_TEXT_BYTES + 4096;
 const MAX_WORKSPACE_REPLY_BYTES = 1024 * 1024;
+// Directory pages: up to 500 rows (plugin `catalogue_page_limit`); a large directory's
+// page is about 225 KB, far above the ordinary 64 KiB reply limit. 4 MiB is 8 KiB per row.
+const MAX_CATALOGUE_REPLY_BYTES = 4 * 1024 * 1024;
 const ETAG = /^"[0-9a-f]{64}"$/;
 
 export const normalizeBaseUrl = (value: string, allowLoopback = false): string => {
@@ -90,7 +93,8 @@ export const mainTransport = (baseUrl: string, allowLoopback = false): { http: H
     // AGENTS.md keeps the 10 MiB text guard; escaped JSON can need six bytes per text byte.
     const agentsRead = method === "GET" && /^\/v1\/channels\/[A-Za-z0-9_-]+\/agents$/.test(path);
     const workspaceRead = method === "GET" && /^\/v1\/channels\/[A-Za-z0-9_-]+\/(?:files|attachments)(?:\?|$)/.test(path);
-    const maxBytes = !response.ok ? MAX_REPLY_BYTES : historyRead ? MAX_HISTORY_BYTES : agentsRead ? MAX_AGENTS_REPLY_BYTES : workspaceRead ? MAX_WORKSPACE_REPLY_BYTES : MAX_REPLY_BYTES;
+    const catalogueRead = method === "GET" && /^\/v1\/catalogue(?:\/threads)?(?:\?|$)/.test(path);
+    const maxBytes = !response.ok ? MAX_REPLY_BYTES : historyRead ? MAX_HISTORY_BYTES : agentsRead ? MAX_AGENTS_REPLY_BYTES : workspaceRead ? MAX_WORKSPACE_REPLY_BYTES : catalogueRead ? MAX_CATALOGUE_REPLY_BYTES : MAX_REPLY_BYTES;
     return { status: response.status, body: await responseBody(response, maxBytes), ...(retry === undefined ? {} : { retryAfterMs: retry }) };
   };
   const http: HttpTransport = {

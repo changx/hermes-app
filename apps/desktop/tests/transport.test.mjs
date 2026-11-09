@@ -48,6 +48,27 @@ test("reply limits count UTF-8 bytes and only successful history GETs get the la
   assert.equal(reply.body.text, "汉".repeat(30_000));
 });
 
+test("catalogue pages of 500 rows fit; other ordinary replies keep 64 KiB", async (t) => {
+  // A 500-row page of a large directory is about 225 KB (jamie: 801 rows); 1000 bytes per row here.
+  const row = i => ({ kind: "session", value: { id: "th_" + String(i).padStart(32, "0"), project_id: "p_1", title: "标".repeat(300), archived: false, running: false } });
+  const page = { items: Array.from({ length: 500 }, (_, i) => row(i)), next_after: null };
+  const server = createServer((request, response) => {
+    const status = request.url.includes("error") ? 503 : 200;
+    response.writeHead(status, { "content-type": "application/json" });
+    response.end(JSON.stringify(request.url.startsWith("/v1/catalogue") ? page : { text: "汉".repeat(30_000) }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const { http } = mainTransport(`http://127.0.0.1:${server.address().port}`, true);
+  assert.ok(Buffer.byteLength(JSON.stringify(page)) > 450_000);
+  for (const path of ["/v1/catalogue?limit=500", "/v1/catalogue?limit=500&after=session%3Ath_1", "/v1/catalogue/threads?id=th_1&id=th_2"]) {
+    const reply = await http.request("GET", path, "test-token");
+    assert.equal(reply.body.items.length, 500, path);
+  }
+  for (const [method, path] of [["GET", "/v1/catalogue?limit=500&error=true"], ["POST", "/v1/catalogue"], ["GET", "/v1/catalogue-other"], ["GET", "/v1/snapshot"]])
+    await assert.rejects(http.request(method, path, "test-token"), /response is too large/, method + " " + path);
+});
+
 test("history streaming rejects beyond 64 MiB and cancels without consuming the entire response", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
