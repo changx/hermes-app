@@ -77,3 +77,13 @@ Authorized by Jamie ("合并发布").
 - Desktop v0.1.125: run 42609420711 passed at the first attempt: tests 269 (208 pass, 0 fail, 61 skipped), `npm audit` 0, `spctl` `source=Notarized Developer ID`. The downloaded DMG passes `sha256sum -c` and equals the runner's DMG; the app is 0.1.125, Developer ID Application (team 4R5932XFRV), its ASAR contains the cache text.
 - Rollback: plugin `current` back to `releases/0.2.55` and a Gateway restart (the extra table can stay); App `git revert 2f39171`, restart Expo, TestFlight `rollback --to 2c99cf16-1088-4dea-a4d0-5507a833ca0c`; desktop reinstall v0.1.124.
 - Pending: Jamie restarts the Gateway; then check `last_request` after one model request. Mac (v0.1.125) and iPhone acceptance.
+
+## Release record: cache hit rate of the turn's first request (2026-11-09)
+
+- Plugin 0.2.57: `main` `9e4ce55`. Package `hermes-app-plugin-0.2.57-f59b004c….tar.gz`, installed at `~/.hermes/plugin-releases/hermes-app/releases/0.2.57` (equal to the source tree); `current` points to it. New table `session_turn_first_requests`; the route adds `turn_first_request`. Plugin P1: usage route 11/11; the full suite has the 20 test-setup failures that `main` already had.
+- App: `main` `f0aab5c` (feature), `a9858bc` (v0.1.126), tag `v0.1.126`. Client 118/118, desktop 269 (208 pass, 0 fail), mobile 251 (250 pass, 0 fail); type checks pass.
+- Expo Go: `hermes-app-expo.service` restarted (PID 1838713 → 1874302).
+- TestFlight: iOS update `ca8e951d-7ecc-407e-b51d-adc440dbab05`, runtime `b32a4b59…`, commit `a9858bc`, bundle 13756302 bytes; the bundle contains `turn_first_request` and the new subtitle.
+- Desktop v0.1.126: run 42614129030. The first attempt failed at staple (Error 68, CloudKit) after notarization; the rerun passed. Release assets: `Hermes-0.1.126-macOS-arm64.dmg` (146964492 bytes) and its `.sha256`.
+- Rollback: plugin `current` back to `releases/0.2.56` and a Gateway restart (the extra table can stay); App `git revert f0aab5c`, restart Expo, TestFlight `rollback --to 4f5ed937-04be-4979-85a7-19edb6ddd3b6`; desktop reinstall v0.1.125.
+- Pending: Jamie restarts the Gateway; then check `turn_first_request` after one model request. Mac (v0.1.126) and iPhone acceptance.
