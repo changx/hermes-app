@@ -1,6 +1,6 @@
 # 桌面版 Remote browser：查看和操作服务器上的 AdsPower 屏幕
 
-状态：已实现。本地和服务器上的验证已通过（见第 7 节）。还没有发布。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
+状态：已实现。本地和服务器上的验证已通过（见第 7 节）。屏幕来自每个 profile 自己的 AdsPower 容器。还没有发布。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
 
 ## 1. 目标
 
@@ -18,16 +18,20 @@ AdsPower 的浏览器运行在服务器（ovh01）上，以前没有人能看到
 ## 3. 架构
 
 ```
-AdsPower SunBrowser 窗口
-  └─ Xvnc :120（X 显示 + RFB 服务，同一个进程；无 TCP 端口，无密码）
-       └─ Unix socket /run/user/<uid>/adspower-screen/rfb.sock（0600，目录 0700）
+AdsPower SunBrowser 窗口（每个 Hermes profile 一个 AdsPower 容器 adspower-<profile>）
+  └─ 容器内 Xvnc :99（X 显示 + RFB 服务，同一个进程；无 TCP 端口，无密码）
+       └─ Unix socket ~/.hermes/profiles/<profile>/workspace/adspower/sidecar/screen/rfb.sock（0600，属于 Gateway 的 OS 用户）
             └─ hermes_app 插件：GET /v1/remote-screen（WebSocket，设备凭证或管理员令牌）
                  └─ 桌面版主进程：带凭证的 WebSocket（relayRemoteScreen）
                       └─ MessagePort（凭证不进入页面）
                            └─ Remote browser 标签页：noVNC（PortChannel）
 ```
 
-- **服务器**：`adspower.service` 的 `run.sh` 把 `Xvfb :120` 换成 `Xvnc :120`。Xvnc 只监听 Unix socket：`-rfbport=-1 -rfbunixpath <socket> -rfbunixmode 0600 -SecurityTypes None -AlwaysShared`。显示尺寸保持 1920×1080。另外启动 openbox，配置为 `openbox-rc.xml`：
+- **服务器**：每个 Hermes profile 有自己的 AdsPower 容器（用户服务 `adspower-sidecar@<profile>.service`，镜像 `team/adspower`）。所以每个 profile 有自己的屏幕，一个 profile 的用户看不到另一个 profile 的浏览器。
+  - 容器内的 Xvnc 只监听 Unix socket：`-rfbport -1 -rfbunixpath <socket> -rfbunixmode 0600 -SecurityTypes None -AlwaysShared`。显示尺寸是 1920×1080。
+  - socket 所在目录从主机挂载到容器的 `/run/hermes-screen`。容器用户的 uid 与主机上 Gateway 的 OS 用户相同，所以 socket 属于 Gateway 的用户，插件的权限检查可以通过。
+  - 容器设计、端口和运维见 `adspower-browser` skill 的 `references/docker-sidecar.md`。
+  - 容器内另外启动 openbox，配置为 `openbox-rc.xml`：
   - 不设快捷键，所有按键都送到浏览器。
   - 不强制窗口尺寸，窗口仍由浏览器决定，所以指纹里的窗口尺寸不变。
   - 用户可以手动移动或最大化窗口，比如登录弹窗。
@@ -69,21 +73,19 @@ AdsPower SunBrowser 窗口
 
 ## 6. 部署（需要 Jamie 授权）
 
-1. 在 `/home/hermes/.hermes/profiles/jamie/workspace/adspower/` 中，把 `run.sh.candidate` 替换为 `run.sh`，把 `openbox-rc.xml.candidate` 替换为 `openbox-rc.xml`。保留旧的 `run.sh` 作为回滚版本。
-2. 重启 `adspower.service`。**警告：重启会关闭所有正在运行的 AdsPower profile。jamie 和 hermes-app-dev 两个 profile 正在进行的浏览都会中断。**
-3. 检查 Xvnc 和 socket：
-   - socket 的权限是 0600，目录的权限是 0700。
-   - `ss -ltnp` 里没有新的 TCP 端口。
-   - Local API 正常，并且 `adspower_cdp.sh start` 能启动 profile。
-4. 在 hermes-app-dev 的 `.env` 里设置以下两项，然后安装插件：
-   - `HERMES_APP_REMOTE_SCREEN_SOCKET=/run/user/1001/adspower-screen/rfb.sock`
-   - `HERMES_APP_REMOTE_SCREEN_NAME=AdsPower`
-5. Jamie 重启 Gateway。
-6. 发布签名并公证过的桌面版，然后在 Mac 上验收。
+前提：两个 profile 的 AdsPower 容器已经在运行（2026-11-09 已部署，镜像包含 Xvnc 和 openbox）。不需要修改或重启主机上的 `adspower.service`。
+
+1. 合并两个分支并推送。插件升级到 0.2.60，安装到 hermes-app-dev 和 jamie 共用的插件 release 目录。
+2. 在每个需要屏幕的 profile 的 `.env` 中设置以下两项：
+   - jamie：`HERMES_APP_REMOTE_SCREEN_SOCKET=/home/hermes/.hermes/profiles/jamie/workspace/adspower/sidecar/screen/rfb.sock`
+   - hermes-app-dev：`HERMES_APP_REMOTE_SCREEN_SOCKET=/home/hermes/.hermes/profiles/hermes-app-dev/workspace/adspower/sidecar/screen/rfb.sock`
+   - 两个都设置 `HERMES_APP_REMOTE_SCREEN_NAME=AdsPower`。
+3. Jamie 重启 Gateway。然后检查两个连接的 capabilities 中都有 `remote_screen`。
+4. 发布签名并公证过的桌面版，然后在 Mac 上验收。
 
 回滚步骤：
-1. 换回旧的 `run.sh`，然后重启 `adspower.service`。
-2. 删除 `.env` 里的两项设置。删除后，capability 消失，桌面版的入口也会隐藏。
+1. 删除 `.env` 里的两项设置。删除后，capability 消失，桌面版的入口也会隐藏。
+2. 如果要回滚插件，安装上一个插件版本，然后重启 Gateway。容器不需要回滚。
 
 ## 7. 已验证事实（2026-11-09，ovh01）
 
@@ -94,6 +96,7 @@ AdsPower SunBrowser 窗口
 | 插件路由（真实 aiohttp + 真实 Xvnc） | capability 和名称正确；无凭证 401；socket 不存在、权限过宽、不是 socket 时 503；查看者上限 429；令牌轮换后 1008 |
 | 构建出的 `novnc.js` 在 headless Chrome 里 | 画面 1440×900；点击后指针坐标到达 X 服务器；输入框读回 `Hello noVNC 123`；Ctrl+A 加退格清空；Ctrl+L 后输入网址并回车，远程页面变为 `https://example.org/` |
 | Electron（真实 preload、`relayRemoteScreen`、`RemoteScreenPage`，Xvfb 上运行） | MessagePort 转发正常；只看模式下打字不到远程；Use the screen 后打字到达远程；Cmd+A 和 Cmd+V 后远程输入框的值是 Mac 剪贴板的 `pasted from mac`；屏幕停止时显示“not running”；令牌错误时显示重新配对 |
+| 每个 profile 的容器屏幕（2026-11-09，真实插件路由 + hermes-app-dev 容器 socket） | capability `{"protocol": 1, "name": "AdsPower"}`；无凭证 401；RFB 握手 1920×1080、名称 `AdsPower`；通过路由发送的 Ctrl+L、网址和回车让容器中的 SunBrowser 打开 `https://example.org/`（CDP 读回确认） |
 | 指纹尺寸 | 测试 profile 报告的 `screen` 是 1920×1080，等于实际显示。openbox 不强制窗口尺寸 |
 
 ## 8. 待验证项
