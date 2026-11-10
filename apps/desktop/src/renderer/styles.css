@@ -979,7 +979,7 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .markdown-preview .katex-display { margin: 1em 0; }
 .markdown-preview img { max-width: 100%; height: auto; }
 
-/* Remote browser tab (docs/remote-screen.md): the host's screen through noVNC. */
+/* Remote browser window (docs/remote-screen.md): the host's screen through noVNC. */
 .sidebar-remote-screen .search-icon rect, .sidebar-remote-screen .search-icon path { fill: none; }
 .remote-screen-page { position: relative; display: flex; flex-direction: column; height: 100dvh; background: rgb(30, 30, 30); color: var(--app-text); font-size: var(--app-font-size); }
 .remote-screen-header { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 12px; background: var(--app-background); border-bottom: 1px solid var(--app-border); }

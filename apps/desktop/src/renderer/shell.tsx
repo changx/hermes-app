@@ -20,7 +20,6 @@ import { emptySessionQuery, type SessionQuery } from '../../../../packages/clien
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
 import { AutomationListPage, AutomationPage } from './automations';
-import { RemoteScreenPage } from './remote-screen-page';
 import { LabelsEditor } from './session-labels';
 import { hasTodo } from '../../../../packages/client/src/todo';
 import { SessionStatusBar, type StatusAction } from './session-status-bar';
@@ -363,7 +362,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   </footer>;
 };
 
-export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' | 'settings' | 'browser' }) => {
+export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof window !== 'undefined' ? window.hermesDesktop?.getRuntimeInfo?.()?.viewRole ?? 'tab' : 'tab' }: { snapshot: DesktopSnapshot; viewRole?: 'workspace' | 'tab' | 'settings' | 'browser' | 'remote-screen' }) => {
   // The Settings window renders SettingsPage from index.tsx and never mounts this shell.
   const viewRole: 'workspace' | 'tab' = requestedRole === 'workspace' ? 'workspace' : 'tab';
   const [sendVersion, setSendVersion] = useState(0);
@@ -432,7 +431,6 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   // An Automation tab holds no drafts; it lists conversations and opens them in their own tabs.
   if (viewRole === 'tab' && snapshot.tabKind === 'automation') return <AutomationPage key={snapshot.tabId} snapshot={snapshot} />;
   if (viewRole === 'tab' && snapshot.tabKind === 'automations') return <AutomationListPage key={snapshot.tabId} snapshot={snapshot} />;
-  if (viewRole === 'tab' && snapshot.tabKind === 'remote-screen') return <RemoteScreenPage key={snapshot.tabId} snapshot={snapshot} />;
   if (snapshot.draftIdentity && (viewRole === 'workspace' ? draftReady === undefined : draftReady !== snapshot.draftIdentity)) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}</main>;
 
 

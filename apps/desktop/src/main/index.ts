@@ -29,6 +29,7 @@ import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord }
 import { socketsClosed } from "./socket-registry";
 import { newVaultItem, vaultAnswer, vaultItemChange } from "./vault-ipc";
 import { relayRemoteScreen } from "./remote-screen";
+import { RemoteScreenWindows } from "./remote-screen-window";
 
 installHttpKeepAlive();
 
@@ -93,9 +94,12 @@ const appIcon = new DesktopAppIcon<Electron.NativeImage>(join(app.getPath('userD
   { fromBuffer: buffer => nativeImage.createFromBuffer(buffer) }, app.dock);
 // Sidebar Session card: a native popup right of the sidebar. It has no IPC of its own.
 const sessionCard = new SessionCardWindow(() => mainWindow, __dirname, secureSettings);
+// Remote browser: one separate window per connection with a remote screen (docs/remote-screen.md).
+const remoteScreens = new RemoteScreenWindows(__dirname, { snapshot: (...args) => service.snapshot(...args), hasConnection: key => service.hasConnection(key), remoteScreenName: key => service.remoteScreenName(key) }, secureSettings);
 
 const service = new DesktopConnections((snapshot) => {
   settingsWindow.publish();
+  remoteScreens.publish();
   browserControl?.sync();
   if (tabs) { tabs.sync(snapshot); return; }
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -139,6 +143,8 @@ const trustedSender = (event: Electron.IpcMainInvokeEvent): void => {
   if (settingsWindow.owns(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
   // A separate browser window's toolbar; reached only through BROWSER_WINDOW_CHANNELS.
   if (browser?.ownsWindow(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
+  // A Remote browser window; reached only through REMOTE_SCREEN_CHANNELS.
+  if (remoteScreens.owns(event.sender)) { if (event.senderFrame?.url !== event.sender.getURL()) throw new Error("Untrusted desktop request"); return; }
   if (!mainWindow) throw new Error("Untrusted desktop request");
   if (tabs) { tabs.authorize(event.sender, event.senderFrame?.url); return; }
   if (event.sender !== mainWindow.webContents || event.senderFrame?.url !== mainWindow.webContents.getURL()) throw new Error('Untrusted desktop request');
@@ -168,11 +174,14 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
+// A Remote browser window may use only its own screen, its snapshot and the clipboard.
+const REMOTE_SCREEN_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:remote-screen-connect', 'desktop:remote-screen-clipboard', 'desktop:copy-text']);
 const registerDesktopApi = (): void => {
   const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown): void => {
     ipcMain.handle(channel, (event, ...args) => {
       if (settingsWindow.owns(event.sender) && !SETTINGS_CHANNELS.has(channel)) throw new Error('Settings action unavailable');
       if (browser?.ownsWindow(event.sender) && !BROWSER_WINDOW_CHANNELS.has(channel)) throw new Error('Browser window action unavailable');
+      if (remoteScreens.owns(event.sender) && !REMOTE_SCREEN_CHANNELS.has(channel)) throw new Error('Remote browser action unavailable');
       return listener(event, ...args);
     });
   };
@@ -347,22 +356,20 @@ const registerDesktopApi = (): void => {
     return service.automations(cursors);
   });
   handle('desktop:open-automation-list', event => { shellSender(event); tabs?.openAutomationList(); });
-  // Remote browser (docs/remote-screen.md): the sidebar opens a connection's tab; the tab connects only its own screen.
-  handle('desktop:open-remote-screen', (event, connectionKey: unknown) => { shellSender(event); tabs?.openRemoteScreen(text(connectionKey, 200)); });
+  // Remote browser (docs/remote-screen.md): the sidebar opens a connection's window; the window connects only its own screen.
+  handle('desktop:open-remote-screen', (event, connectionKey: unknown) => { shellSender(event); remoteScreens.open(text(connectionKey, 200)); });
   handle('desktop:remote-screen-connect', (event, id: unknown) => {
     trustedSender(event); const request = text(id, 64);
-    if (!tabs) throw new Error('Window unavailable');
-    const endpoint = service.remoteScreenEndpoint(tabs.remoteScreenTarget(event.sender));
+    const endpoint = service.remoteScreenEndpoint(remoteScreens.target(event.sender));
     if (!endpoint) throw new Error('offline');
     const { port1, port2 } = new MessageChannelMain();
     const stop = relayRemoteScreen(port1, endpoint);
     event.sender.once('destroyed', stop);
     event.sender.postMessage('desktop:remote-screen-port', request, [port2]);
   });
-  // Cmd+V on the remote screen: this Mac's clipboard text, for Remote browser tabs only.
+  // Cmd+V on the remote screen: this Mac's clipboard text, for Remote browser windows only.
   handle('desktop:remote-screen-clipboard', async event => {
-    trustedSender(event); if (!tabs) throw new Error('Window unavailable');
-    tabs.remoteScreenTarget(event.sender);
+    trustedSender(event); remoteScreens.target(event.sender);
     const value = await clipboard.readText(); return value.length <= 1_000_000 ? value : '';
   });
   // An Automation tab changes only its own job; the renderer never names another job.
@@ -428,7 +435,7 @@ const registerDesktopApi = (): void => {
     if (!mainWindow || mainWindow.isDestroyed() || !service.snapshot().channels.some(channel => channel.id === id)) return;
     mainWindow.webContents.send("desktop:reveal-project", id);
   });
-  handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
+  handle("desktop:get-snapshot", (event) => { trustedSender(event); if (settingsWindow.owns(event.sender)) return settingsWindow.snapshot(); if (remoteScreens.owns(event.sender)) return remoteScreens.snapshot(event.sender); if (browser?.ownsWindow(event.sender)) return browser.windowSnapshot(event.sender); return tabs?.snapshot(event.sender) ?? service.snapshot(); });
   handle("desktop:pair", async (event, value: unknown) => {
     shellSender(event);
     if (!value || typeof value !== "object") throw new Error("Invalid desktop request");
@@ -629,7 +636,7 @@ const createMainWindow = (): BrowserWindow => {
   window.on("closed", () => {
     if (mainWindow !== window) return;
     mainWindow = null;
-    settingsWindow.close(); sessionCard.dispose();
+    settingsWindow.close(); sessionCard.dispose(); remoteScreens.dispose();
     tabs?.dispose(); tabs = undefined; browser = undefined;
     publishedSnapshot = undefined;
     service.closeSessionPages();

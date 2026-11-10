@@ -108,7 +108,7 @@ export type DesktopSnapshot = Readonly<{
   automationId?: string;
   /** A New chat tab that creates an automation's settings conversation. */
   automationEditor?: boolean;
-  /** Remote browser tab: the screen's name and whether its connection is online. */
+  /** Remote browser window: the screen's name and whether its connection is online. */
   remoteScreen?: Readonly<{ name: string; online: boolean }>;
   initialChannelId?: string;
   connectionName?: string;
@@ -210,7 +210,7 @@ export type ContextMenuItem = Readonly<{ id: string; label: string; enabled?: bo
 export type BranchResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
 export type ExportResult = Readonly<{ ok: true; saved: boolean } | { ok: false }>;
 export type DesktopRuntimeInfo = Readonly<{
-  viewRole?: 'workspace' | 'tab' | 'settings' | 'browser';
+  viewRole?: 'workspace' | 'tab' | 'settings' | 'browser' | 'remote-screen';
   platform: NodeJS.Platform;
   versions: Readonly<{ chrome: string; electron: string }>;
 }>;
@@ -278,11 +278,11 @@ export interface HermesDesktopApi {
   listAutomations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList>;
   /** Main window: opens the single Automations list tab (every job, loaded page by page). */
   openAutomationList(): Promise<void>;
-  /** Main window: opens the connection's Remote browser tab, or activates it. */
+  /** Main window: opens the connection's Remote browser window, or brings it to the front. */
   openRemoteScreen(connectionKey: string): Promise<void>;
-  /** Remote browser tab: connects its own screen. The MessagePort arrives as a window message `{ type: 'hermes-remote-screen-port', id }`. */
+  /** Remote browser window: connects its own screen. The MessagePort arrives as a window message `{ type: 'hermes-remote-screen-port', id }`. */
   connectRemoteScreen(id: string): Promise<void>;
-  /** Remote browser tab, on Cmd+V: this computer's clipboard text. */
+  /** Remote browser window, on Cmd+V: this computer's clipboard text. */
   remoteScreenClipboard(): Promise<string>;
   /** Automation tab: Pause, Resume, Run now or a new schedule for its own job. */
   controlAutomation(control: DesktopAutomationControl, schedule?: string): Promise<DesktopAutomation>;

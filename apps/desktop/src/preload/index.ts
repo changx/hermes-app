@@ -6,7 +6,7 @@ import type { DesktopVaultAnswer, DesktopVaultAnswerResult } from "../shared/des
 import type { NewVaultItem, VaultItemChange } from "@hermes-app/client";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
-  viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
+  viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-remote-screen-view') ? 'remote-screen' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
   platform: process.platform,
   versions: Object.freeze({ chrome: process.versions.chrome, electron: process.versions.electron }),
 });

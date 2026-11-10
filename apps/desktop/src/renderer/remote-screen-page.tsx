@@ -8,12 +8,12 @@ export const ScreenIcon = () => <svg className="search-icon" viewBox="0 0 16 16"
 
 /** Retry delays while the screen is down; the page stays quiet until a retry fails. */
 const RETRY_MS = [2_000, 5_000, 10_000, 30_000];
-/** A hidden tab keeps its screen this long, then disconnects to save bandwidth. */
+/** A hidden or minimized window keeps its screen this long, then disconnects to save bandwidth. */
 const HIDDEN_DISCONNECT_MS = 30_000;
 const PORT_WAIT_MS = 10_000;
 
 let library: Promise<typeof RFB> | undefined;
-/** noVNC is its own script (novnc.js); only this page loads it, once per tab. */
+/** noVNC is its own script (novnc.js); only this page loads it, once per window. */
 function loadNoVNC(): Promise<typeof RFB> {
   const ready = () => (window as unknown as { HermesNoVNC?: typeof RFB }).HermesNoVNC;
   library ??= new Promise<typeof RFB>((resolve, reject) => {
@@ -28,7 +28,7 @@ function loadNoVNC(): Promise<typeof RFB> {
 }
 
 let requests = 0;
-/** Asks the main process for this tab's screen and waits for its MessagePort. */
+/** Asks the main process for this window's screen and waits for its MessagePort. */
 function openPort(): Promise<MessagePort> {
   const id = `rs-${Date.now()}-${++requests}`;
   return new Promise((resolve, reject) => {
@@ -47,7 +47,7 @@ function openPort(): Promise<MessagePort> {
 
 type Phase = 'connecting' | 'connected' | 'down';
 
-/** A Remote browser tab: the host's screen through noVNC (docs/remote-screen.md). */
+/** A Remote browser window: the host's screen through noVNC (docs/remote-screen.md). */
 export function RemoteScreenPage({ snapshot }: { snapshot: DesktopSnapshot }) {
   const name = snapshot.remoteScreen?.name ?? 'Remote browser';
   const online = snapshot.remoteScreen?.online === true;
