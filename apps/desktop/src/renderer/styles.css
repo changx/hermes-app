@@ -703,6 +703,14 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .vault-prompt-fields input { flex: 1 1 200px; min-width: 0; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 8px 10px; color: var(--app-text); background: #fff; font: inherit; }
 .vault-prompt button[type=submit] { color: #fff; background: #2960ad; border-color: #2960ad; }
 .vault-prompt button:disabled { opacity: 0.5; }
+.vault-prompt-matches { display: grid; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+.vault-prompt-matches li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 8px; padding: 4px 4px 4px 10px; background: #fff; }
+.vault-prompt-matches li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-prompt-matches button { color: #fff; background: #2960ad; border-color: #2960ad; }
+.vault-prompt .vault-prompt-link { margin: -4px 0 8px; padding: 0; border: 0; background: none; color: #2960ad; font-weight: 600; }
+.vault-prompt-fields input[aria-invalid=true] { border-color: #b42335; }
+.vault-item-actions { display: flex; gap: 6px; flex: none; }
+.vault-checkbox { display: flex; align-items: center; gap: 8px; }
 .vault-settings { display: grid; gap: 10px; }
 .vault-settings h6 { margin: 6px 0 0; font-size: var(--app-font-size); }
 .vault-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }

@@ -1,31 +1,54 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { Text, TextInput } from './FontSize';
 import { SettingsBlock, SettingsPage, SettingsSection } from './SettingsUI';
-import type { NewVaultItem, VaultItem } from '../../../packages/client/src/index';
+import { VAULT_IMPORT_MAX_BYTES, type NewVaultItem, type VaultImportResult, type VaultItem, type VaultItemChange } from '../../../packages/client/src/index';
+import { VAULT_IMPORT_DELETE_HINT, VAULT_IMPORT_SOURCES, vaultImportSummary } from '../../../packages/client/src/vaultPresentation';
 
 export type VaultApi = {
   vaultItems(signal?: AbortSignal): Promise<VaultItem[]>;
   addVaultItem(item: NewVaultItem): Promise<VaultItem>;
   removeVaultItem(id: string): Promise<boolean>;
+  /** Servers with vault_manage. */
+  supportsVaultManage?: boolean;
+  updateVaultItem?(id: string, change: VaultItemChange): Promise<VaultItem>;
+  importVaultCsv?(csv: string): Promise<VaultImportResult>;
 };
+
+/** One picked CSV export as text, or null when cancelled. The app's cached copy is deleted after reading. */
+async function pickCsvText(): Promise<string | null> {
+  const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: true });
+  if (picked.canceled || !picked.assets?.length) return null;
+  const asset = picked.assets[0];
+  const file = new File(asset.uri);
+  try {
+    if ((asset.size ?? 0) > VAULT_IMPORT_MAX_BYTES) throw new RangeError('too large');
+    return await file.text();
+  } finally { try { file.delete(); } catch { /* the cache is cleared by the system too */ } }
+}
 
 const host = (origin: string | null) => (origin ?? '').replace(/^https?:\/\//, '');
 const EMPTY_LOGIN = { site: '', identifier: '', password: '', otp: '', label: '' };
+const EMPTY_EDIT = { site: '', identifier: '', password: '', otp: '', label: '', clearOtp: false };
 const EMPTY_ADDRESS = { label: '', address_line1: '', address_line2: '', city: '', state: '', postal_code: '', country: '' };
 
 /**
  * Settings > Passwords & Logins of one connection (docs/vault.md). Saved on that
  * Hermes for all devices. Lists metadata only; secrets are sent once when added.
  */
-export function VaultSettings({ client }: { client: VaultApi }) {
+export function VaultSettings({ client, pickCsv = pickCsvText }: { client: VaultApi; pickCsv?: () => Promise<string | null> }) {
   const [items, setItems] = useState<VaultItem[] | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const [adding, setAdding] = useState<'login' | 'address' | null>(null);
+  const [adding, setAdding] = useState<'login' | 'address' | 'import' | null>(null);
+  const [editing, setEditing] = useState<VaultItem | null>(null);
   const [login, setLogin] = useState(EMPTY_LOGIN);
+  const [edit, setEdit] = useState(EMPTY_EDIT);
   const [address, setAddress] = useState(EMPTY_ADDRESS);
+  const manage = client.supportsVaultManage === true && !!client.updateVaultItem && !!client.importVaultCsv;
   const alive = useRef(true);
   const load = useCallback(async () => {
     const controller = new AbortController();
@@ -59,6 +82,39 @@ export function VaultSettings({ client }: { client: VaultApi }) {
         finally { if (alive.current) setBusy(false); }
       } },
     ]);
+  const startEdit = (item: VaultItem) => {
+    setNotice(''); setError(''); setAdding(null); setEditing(item);
+    setEdit({ ...EMPTY_EDIT, site: host(item.origin), identifier: item.identifier ?? '', label: item.label });
+  };
+  const saveEdit = async () => {
+    if (busy || !editing || !client.updateVaultItem) return;
+    setBusy(true); setError(''); setNotice('');
+    const change: VaultItemChange = { label: edit.label.trim(), origin: edit.site.trim(), identifier: edit.identifier.trim(),
+      ...(edit.password ? { password: edit.password } : {}),
+      ...(edit.otp.trim() ? { otp_secret: edit.otp.trim() } : edit.clearOtp ? { clear_otp: true } : {}) };
+    try {
+      await client.updateVaultItem(editing.id, change);
+      if (!alive.current) return;
+      setEditing(null); setEdit(EMPTY_EDIT); setNotice('Saved.'); await load();
+    } catch {
+      if (alive.current) setError('Could not save the change. Check the website and the authenticator key, then try again.');
+    } finally { if (alive.current) setBusy(false); }
+  };
+  const runImport = async () => {
+    if (busy || !client.importVaultCsv) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const text = await pickCsv();
+      if (text === null || !alive.current) return;
+      const result = await client.importVaultCsv(text);
+      if (!alive.current) return;
+      setAdding(null); setNotice(`${vaultImportSummary(result)} ${VAULT_IMPORT_DELETE_HINT}`); await load();
+    } catch (failure) {
+      if (alive.current) setError(failure instanceof RangeError || (failure instanceof Error && /too large|413/.test(failure.message))
+        ? 'This file is larger than 4 MB. Export only your passwords, then try again.'
+        : 'Could not import this file. Pick the CSV file that your password app exported.');
+    } finally { if (alive.current) setBusy(false); }
+  };
 
   const button = (label: string, onPress: () => void, disabled = busy, danger = false) =>
     <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress}
@@ -86,10 +142,29 @@ export function VaultSettings({ client }: { client: VaultApi }) {
             <Text numberOfLines={1} style={styles.hint}>{[item.identifier, host(item.origin)].filter(Boolean).join(' · ')}</Text>
             {item.has_otp && <Text style={styles.badge}>2FA codes automatic</Text>}
           </View>
+          {manage && button('Edit', () => startEdit(item), busy || editing?.id === item.id)}
           {button('Remove', () => remove(item), busy, true)}
         </View>
       </SettingsBlock>)}
     </SettingsSection>
+    {editing && <SettingsSection title={`Edit ${editing.label}`} footer="Leave the password empty to keep the saved one. The authenticator key works the same way.">
+      <SettingsBlock first>
+        {field('Website', edit.site, v => setEdit(o => ({ ...o, site: v })), { keyboardType: 'url', textContentType: 'URL', maxLength: 300 })}
+        {field('Email or username', edit.identifier, v => setEdit(o => ({ ...o, identifier: v })), { textContentType: 'username', autoComplete: 'username', maxLength: 320 })}
+        {field('New password (optional)', edit.password, v => setEdit(o => ({ ...o, password: v })), { secureTextEntry: true, textContentType: 'password', autoComplete: 'current-password', maxLength: 1024 })}
+        {field(editing.has_otp ? 'New authenticator key (optional)' : 'Authenticator key (optional)', edit.otp, v => setEdit(o => ({ ...o, otp: v, clearOtp: false })), { secureTextEntry: true, maxLength: 512 })}
+        {editing.has_otp && !edit.otp && <View style={styles.switchRow}>
+          <Text style={[styles.hint, styles.itemText]}>Remove the authenticator key</Text>
+          <Switch accessibilityLabel="Remove the authenticator key" value={edit.clearOtp} disabled={busy}
+            onValueChange={value => setEdit(o => ({ ...o, clearOtp: value }))} />
+        </View>}
+        {field('Name', edit.label, v => setEdit(o => ({ ...o, label: v })), { autoCapitalize: 'words', maxLength: 120 })}
+        <View style={styles.actions}>
+          {button('Cancel', () => { setEditing(null); setEdit(EMPTY_EDIT); })}
+          {button(busy ? 'Saving…' : 'Save', () => { void saveEdit(); }, busy || !edit.site.trim() || !edit.identifier.trim())}
+        </View>
+      </SettingsBlock>
+    </SettingsSection>}
     <SettingsSection title="Addresses" footer="Hermes fills an address when a form asks for it.">
       {items !== null && !addresses.length && <SettingsBlock first><Text style={styles.hint}>No saved addresses.</Text></SettingsBlock>}
       {addresses.map((item, index) => <SettingsBlock key={item.id} first={index === 0}>
@@ -129,11 +204,20 @@ export function VaultSettings({ client }: { client: VaultApi }) {
           }, busy || !addressReady)}
         </View>
       </SettingsBlock>
+    </SettingsSection> : adding === 'import' ? <SettingsSection title="Import passwords" footer={`Logins already saved for the same website and account are updated. ${VAULT_IMPORT_DELETE_HINT}`}>
+      <SettingsBlock first>
+        <Text style={styles.hint}>{VAULT_IMPORT_SOURCES}</Text>
+        <View style={styles.actions}>
+          {button('Cancel', () => setAdding(null))}
+          {button(busy ? 'Importing…' : 'Choose file', () => { void runImport(); })}
+        </View>
+      </SettingsBlock>
     </SettingsSection> : <SettingsSection>
       <SettingsBlock first>
         <View style={styles.actions}>
-          {button('Add login', () => { setNotice(''); setAdding('login'); }, busy || items === null)}
-          {button('Add address', () => { setNotice(''); setAdding('address'); }, busy || items === null)}
+          {button('Add login', () => { setNotice(''); setEditing(null); setAdding('login'); }, busy || items === null)}
+          {button('Add address', () => { setNotice(''); setEditing(null); setAdding('address'); }, busy || items === null)}
+          {manage && button('Import passwords', () => { setNotice(''); setEditing(null); setAdding('import'); }, busy || items === null)}
         </View>
       </SettingsBlock>
     </SettingsSection>}
@@ -148,6 +232,7 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, minWidth: 0 },
   itemTitle: { fontSize: 16, color: '#172a40' },
   badge: { fontSize: 12, color: '#2b6b3f', marginTop: 2 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   input: { fontSize: 16, minHeight: 44, padding: 12, borderWidth: 1, borderColor: '#cdd7e3', borderRadius: 9, color: '#172a40', backgroundColor: '#fff' },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' },
   button: { minHeight: 40, paddingHorizontal: 14, borderRadius: 9, backgroundColor: '#e6edf7', alignItems: 'center', justifyContent: 'center' },

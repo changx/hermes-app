@@ -1,4 +1,4 @@
-import type { AgentModelSettings, ModelSelectionConfirmation, NewVaultItem, VaultItem, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
+import type { AgentModelSettings, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -63,8 +63,14 @@ export type DesktopInteraction = Readonly<{
   choices: readonly string[];
 }>;
 /** An open in-chat vault prompt (docs/vault.md): a login to save or a one-time code to enter. */
-export type DesktopVaultPrompt = Readonly<{ id: string; kind: "save_login" | "code"; site: string; origin: string; hint: string }>;
-export type DesktopVaultAnswer = Readonly<{ decision: "decline" } | { decision: "submit"; identifier: string; password: string } | { decision: "submit"; code: string }>;
+export type DesktopVaultPrompt = Readonly<{ id: string; kind: "save_login" | "code"; site: string; origin: string; hint: string;
+  /** save_login: the saved password for this address did not work; the new one replaces it. */
+  update?: boolean; identifier?: string;
+  /** save_login: saved logins of the same site on another address. */
+  matches?: readonly Readonly<{ id: string; label: string; identifier: string; origin: string }>[] }>;
+export type DesktopVaultAnswer = Readonly<{ decision: "decline" } | { decision: "submit"; identifier: string; password: string; otp_secret?: string } | { decision: "submit"; code: string } | { decision: "use"; item_id: string }>;
+/** ok: sent; invalid: the server rejected a value and the card stays open; failed: the prompt is gone. */
+export type DesktopVaultAnswerResult = "ok" | "invalid" | "failed";
 export type DesktopMessage = Readonly<{
   id: string;
   role: "user" | "assistant" | "system";
@@ -232,9 +238,13 @@ export interface HermesDesktopApi {
   importClaudeMcp(): Promise<DesktopMcpResult>;
   showMcpFile(): Promise<void>;
   getModelSettings(connectionKey: string): Promise<AgentModelSettings>;
-  getVaultItems(connectionKey: string): Promise<readonly VaultItem[]>;
+  /** manage: the server has vault_manage (edit, import). */
+  getVaultItems(connectionKey: string): Promise<Readonly<{ items: readonly VaultItem[]; manage: boolean }>>;
   addVaultItem(connectionKey: string, item: NewVaultItem): Promise<VaultItem>;
   removeVaultItem(connectionKey: string, id: string): Promise<boolean>;
+  updateVaultItem(connectionKey: string, id: string, change: VaultItemChange): Promise<VaultItem>;
+  /** Opens a file dialog in the main process; null when cancelled. */
+  importVaultCsv(connectionKey: string): Promise<VaultImportResult | null>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */
@@ -351,7 +361,7 @@ export interface HermesDesktopApi {
   stopThread(): Promise<void>;
   cancelQueued(receiptId: string): Promise<void>;
   answerInteraction(interactionId: string, choice: string): Promise<void>;
-  answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer): Promise<void>;
+  answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer): Promise<DesktopVaultAnswerResult>;
   pickAndUploadAttachments(threadId?: string): Promise<readonly DesktopAttachment[]>;
   uploadDroppedFiles(files: readonly File[], threadId?: string): Promise<readonly DesktopAttachment[]>;
   deleteUnattachedAttachment(attachmentId: string): Promise<void>;

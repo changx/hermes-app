@@ -17,8 +17,8 @@ import { OutboxStore, type OutboxRecord } from "./outbox-store";
 import { LocalDraftStore } from './local-draft-store';
 
 import { mainTransport, normalizeBaseUrl } from "./transport";
-import type { DesktopVaultAnswer } from "../shared/desktop-api";
-import type { NewVaultItem } from "@hermes-app/client";
+import type { DesktopVaultAnswer, DesktopVaultAnswerResult } from "../shared/desktop-api";
+import { VAULT_IMPORT_MAX_BYTES, type NewVaultItem, type VaultItemChange } from "@hermes-app/client";
 
 const stateLabel: Record<ConnectionState, string> = {
   connecting: "Connecting",
@@ -379,7 +379,8 @@ export class DesktopConnectionService {
       .map(({ id, kind, prompt, choices }) => ({ id, kind, prompt, choices: [...choices] }));
     const vaultPrompts = [...(this.client?.vaultPrompts?.values() ?? [])]
       .filter((item) => item.thread_id === pageId)
-      .map(({ id, kind, site, origin, hint }) => ({ id, kind, site, origin, hint }));
+      .map(({ id, kind, site, origin, hint, update, identifier, matches }) => ({ id, kind, site, origin, hint,
+        ...(update ? { update } : {}), ...(identifier ? { identifier } : {}), ...(matches?.length ? { matches: matches.map(m => ({ ...m })) } : {}) }));
     return Object.freeze({
       revision: this.revision,
       phase: this.phase,
@@ -905,7 +906,7 @@ export class DesktopConnectionService {
   async getVaultItems(connectionKey: string) {
     const client = this.modelClient(connectionKey);
     if (!client.supportsVault) throw new Error('Passwords & Logins are not available on this Hermes yet. Update its Hermes App plugin.');
-    try { return await client.vaultItems(); }
+    try { return { items: await client.vaultItems(), manage: client.supportsVaultManage === true }; }
     catch { throw new Error('Could not load saved logins. Check the connection and try again.'); }
   }
 
@@ -920,6 +921,25 @@ export class DesktopConnectionService {
     const client = this.modelClient(connectionKey);
     try { return await client.removeVaultItem(id); }
     catch { throw new Error('Could not confirm the removal. Reload the list before trying again.'); }
+  }
+
+  async updateVaultItem(connectionKey: string, id: string, change: VaultItemChange) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsVaultManage) throw new Error('Editing needs a newer Hermes App plugin on this Hermes.');
+    try { return await client.updateVaultItem(id, change); }
+    catch { throw new Error('Could not save the change. Check the website and the authenticator key, then try again.'); }
+  }
+
+  /** Reads the picked export here and sends it once; the text is not kept. */
+  async importVaultCsv(connectionKey: string, path: string) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsVaultManage) throw new Error('Import needs a newer Hermes App plugin on this Hermes.');
+    const { stat, readFile } = await import('node:fs/promises');
+    if ((await stat(path)).size > VAULT_IMPORT_MAX_BYTES) throw new Error('This file is larger than 4 MB. Export only your passwords, then try again.');
+    let text = await readFile(path, 'utf8');
+    try { return await client.importVaultCsv(text); }
+    catch { throw new Error('Could not import this file. Pick the CSV file that your password app exported.'); }
+    finally { text = ''; }
   }
 
   async getModelSettings(connectionKey: string) {
@@ -1321,14 +1341,17 @@ export class DesktopConnectionService {
   }
 
   /** The values go to the server once and are not kept; the server takes the first answer. */
-  async answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer, threadId = this.selectedThreadId): Promise<void> {
+  async answerVaultPrompt(promptId: string, answer: DesktopVaultAnswer, threadId = this.selectedThreadId): Promise<DesktopVaultAnswerResult> {
     const item = this.client?.vaultPrompts.get(promptId);
-    if (!item || item.thread_id !== threadId) return;
-    try { await this.client!.answerVaultPrompt(item, answer); }
-    catch {
+    if (!item || item.thread_id !== threadId) return "failed";
+    try { await this.client!.answerVaultPrompt(item, answer); return "ok"; }
+    catch (error) {
+      // A value the server rejects (a bad authenticator key) keeps the card open with its own message.
+      if (error instanceof HttpError && error.status === 400) return "invalid";
       const message = "That request is no longer open. Hermes will ask again if it still needs it.";
       this.actionError(message);
       const timer: ReturnType<typeof setTimeout> = setTimeout(() => this.clearActionError(message), INTERACTION_NOTICE_MS); (timer as { unref?: () => void }).unref?.();
+      return "failed";
     }
   }
 

@@ -27,8 +27,7 @@ import { isAllowedExternalUrl, isSameDocumentNavigation, isSystemBrowserUrl, ope
 import { installHttpKeepAlive } from "./transport";
 import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord } from "./shutdown";
 import { socketsClosed } from "./socket-registry";
-import type { DesktopVaultAnswer } from "../shared/desktop-api";
-import type { NewVaultItem } from "@hermes-app/client";
+import { newVaultItem, vaultAnswer, vaultItemChange } from "./vault-ipc";
 
 installHttpKeepAlive();
 
@@ -157,27 +156,7 @@ const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid desktop request");
   return value as Record<string, unknown>;
 };
-// Vault payloads (docs/vault.md): checked shapes only; the values are passed on once and not kept.
-const optionalText = (value: unknown, maximum: number): string | undefined => value === undefined || value === '' ? undefined : text(value, maximum);
-const vaultAnswer = (value: unknown): DesktopVaultAnswer => {
-  const body = object(value);
-  if (body.decision === 'decline') return { decision: 'decline' };
-  if (body.decision !== 'submit') throw new Error('Invalid desktop request');
-  if (typeof body.code === 'string') return { decision: 'submit', code: text(body.code, 16) };
-  return { decision: 'submit', identifier: text(body.identifier, 320), password: text(body.password, 1024) };
-};
-const newVaultItem = (value: unknown): NewVaultItem => {
-  const body = object(value), secret = object(body.secret), label = text(body.label, 120);
-  if (body.kind === 'login') {
-    const otp = optionalText(secret.otp_secret, 512);
-    return { kind: 'login', label, origin: text(body.origin, 300), secret: { identifier: text(secret.identifier, 320), password: text(secret.password, 1024), ...(otp ? { otp_secret: otp } : {}) } };
-  }
-  if (body.kind !== 'address') throw new Error('Invalid desktop request');
-  const field = (key: string) => optionalText(secret[key], 200);
-  const address = { address_line1: text(secret.address_line1, 200), city: text(secret.city, 200), postal_code: text(secret.postal_code, 200), country: text(secret.country, 200),
-    ...(field('address_line2') ? { address_line2: field('address_line2') } : {}), ...(field('state') ? { state: field('state') } : {}) };
-  return { kind: 'address', label, ...(optionalText(body.origin, 300) ? { origin: optionalText(body.origin, 300) } : {}), secret: address };
-};
+// Vault payloads: checked in ./vault-ipc (docs/vault.md).
 const texts = (value: unknown, maximumItems: number, maximumLength: number): string[] => {
   if (!Array.isArray(value) || value.length > maximumItems) throw new Error("Invalid desktop request");
   return value.map((item) => text(item, maximumLength));
@@ -185,7 +164,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 const registerDesktopApi = (): void => {
@@ -229,6 +208,16 @@ const registerDesktopApi = (): void => {
   handle('desktop:get-vault-items', (event, key: unknown) => { trustedSender(event); return service.getVaultItems(text(key, 200)); });
   handle('desktop:add-vault-item', (event, key: unknown, item: unknown) => { trustedSender(event); return service.addVaultItem(text(key, 200), newVaultItem(item)); });
   handle('desktop:remove-vault-item', (event, key: unknown, id: unknown) => { trustedSender(event); return service.removeVaultItem(text(key, 200), text(id, 200)); });
+  handle('desktop:update-vault-item', (event, key: unknown, id: unknown, change: unknown) => { trustedSender(event); return service.updateVaultItem(text(key, 200), text(id, 200), vaultItemChange(change)); });
+  // The main process picks and reads the export file; its text never enters a renderer.
+  handle('desktop:import-vault-csv', async (event, key: unknown) => {
+    trustedSender(event);
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const options: Electron.OpenDialogOptions = { title: 'Import passwords', properties: ['openFile'], filters: [{ name: 'CSV export', extensions: ['csv'] }, { name: 'All files', extensions: ['*'] }] };
+    const picked = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    if (picked.canceled || !picked.filePaths[0]) return null;
+    return service.importVaultCsv(text(key, 200), picked.filePaths[0]);
+  });
   handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
   handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
     trustedSender(event);
@@ -502,7 +491,7 @@ const registerDesktopApi = (): void => {
   handle("desktop:retry-latest", async (event) => { await service.retryLatest(target(event)); });
   handle("desktop:stop-thread", async (event) => { await service.stopThread(target(event)); });
   handle("desktop:cancel-queued", async (event, id: unknown) => { await service.cancelQueued(text(id, 200), target(event)); });
-  handle("desktop:answer-vault-prompt", async (event, id: unknown, answer: unknown) => { await service.answerVaultPrompt(text(id, 200), vaultAnswer(answer), target(event)); });
+  handle("desktop:answer-vault-prompt", (event, id: unknown, answer: unknown) => service.answerVaultPrompt(text(id, 200), vaultAnswer(answer), target(event)));
   handle("desktop:answer-interaction", async (event, id: unknown, choice: unknown) => { await service.answerInteraction(text(id, 200), text(choice, 4000), target(event)); });
   handle("desktop:pick-attachments", async (event, threadId: unknown) => { const id = target(event); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); return service.pickAndUploadAttachments(id); });
   handle("desktop:drop-attachments", async (event, paths: unknown, threadId: unknown) => { const id = target(event), tab = tabs?.sender(event.sender); if (threadId !== undefined && text(threadId, 200) !== id) throw new Error('Tab target mismatch'); if (tab?.busy) throw new Error('Action already in progress'); if (tab) tab.busy = true; try { return await service.uploadAttachmentInputs(attachmentInputs(paths), id); } finally { if (tab) tab.busy = false; } });

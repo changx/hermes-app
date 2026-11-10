@@ -6,6 +6,7 @@ import * as Crypto from 'expo-crypto';
 import { LiveSessionClient } from '../../../packages/client/src/liveClient';
 import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
+import type { VaultAnswerResult } from './VaultPromptCard';
 import { HttpError, type Attachment, type Interaction, type Message, type Receipt, type VaultPrompt, type VaultPromptAnswer } from '../../../packages/client/src/index';
 import type { MessageActions } from './MessageToolbar';
 import { newSend } from './send';
@@ -223,10 +224,18 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     if (focusedRef.current) await client.answerInteraction(current, choice);
   });
   // One send per vault prompt; the server takes the first answer. The values never leave this call.
-  const answerVault = (prompt: VaultPrompt, value: VaultPromptAnswer) => run(async () => {
-    if (!client || !focusedRef.current) return;
-    await client.answerVaultPrompt(prompt, value);
-  }, 'That request is no longer open. Hermes will ask again if it still needs it.');
+  // A value the server rejects (400, e.g. a bad authenticator key) keeps the card open with its own
+  // message; any other failure means the prompt is gone.
+  const answerVault = async (prompt: VaultPrompt, value: VaultPromptAnswer): Promise<VaultAnswerResult> => {
+    if (!client || !focusedRef.current) return 'failed';
+    setError('');
+    try { await client.answerVaultPrompt(prompt, value); return 'ok'; }
+    catch (failure) {
+      if (failure instanceof HttpError && failure.status === 400) return 'invalid';
+      setError('That request is no longer open. Hermes will ask again if it still needs it.');
+      return 'failed';
+    }
+  };
 
   const navigation = useSessionNavigation();
   // One request ID per tapped reply until the server gives a definite answer, so a

@@ -62,3 +62,47 @@ test('answerVaultPrompt posts the generation and drops the prompt, also when the
   await assert.rejects(gone.sdk.answerVaultPrompt(prompt, { decision: 'decline' }));
   assert.equal(gone.sdk.vaultPrompts.size, 0);
 });
+
+test('vault_manage needs the vault capability too', async () => {
+  for (const [body, want] of [[{ protocol: 1, vault: true, vault_manage: true }, true], [{ protocol: 1, vault: true }, false], [{ protocol: 1, vault_manage: true }, false]]) {
+    const sdk = client(() => ({ status: 200, body })).sdk;
+    await sdk.capabilities();
+    assert.equal(sdk.supportsVaultManage, want, JSON.stringify(body));
+  }
+});
+
+test('save prompts carry the update flag, the prefill and reuse matches', () => {
+  const { sdk } = client(() => ({ status: 200, body: {} }));
+  const base = { thread_id: 'th_one', active_receipts: [], pending_interactions: [] };
+  const rich = { ...prompt, update: true, identifier: 'octo', matches: [{ id: 'vault_x', label: 'Amazon', identifier: 'me@example.com', origin: 'https://www.amazon.com', password: 'never' }] };
+  const [decoded] = sdk.decodeScopedState({ ...base, vault_prompts: [rich] }, 'th_one').vaultPrompts;
+  assert.deepEqual(decoded, { ...prompt, update: true, identifier: 'octo', matches: [{ id: 'vault_x', label: 'Amazon', identifier: 'me@example.com', origin: 'https://www.amazon.com' }] });
+  const [code] = sdk.decodeScopedState({ ...base, vault_prompts: [{ ...rich, kind: 'code' }] }, 'th_one').vaultPrompts;
+  assert.equal(code.matches, undefined);
+  assert.equal(code.update, undefined);
+});
+
+test('a rejected value keeps the prompt open; reuse and key answers are posted as given', async () => {
+  const bad = client(() => ({ status: 400, body: 'invalid authenticator key' }));
+  bad.sdk.vaultPrompts.set(prompt.id, prompt);
+  await assert.rejects(bad.sdk.answerVaultPrompt(prompt, { decision: 'submit', identifier: 'me', password: 'pw', otp_secret: 'x' }));
+  assert.equal(bad.sdk.vaultPrompts.size, 1);
+  const ok = client(() => ({ status: 200, body: { id: 'vp_1', state: 'settled' } }));
+  ok.sdk.vaultPrompts.set(prompt.id, prompt);
+  await ok.sdk.answerVaultPrompt(prompt, { decision: 'use', item_id: 'vault_x' });
+  assert.deepEqual(ok.calls[0][3], { generation: 'g1', decision: 'use', item_id: 'vault_x' });
+  assert.equal(ok.sdk.vaultPrompts.size, 0);
+});
+
+test('edit and CSV import', async () => {
+  const item = { id: 'vault_new', kind: 'login', label: 'GitHub', origin: 'https://github.com', created_at: 't', identifier: 'octo', identifier_type: 'username', has_otp: false };
+  const { sdk, calls } = client((method, path) => path === '/v1/vault/import'
+    ? { status: 200, body: { added: 2, updated: 1, unchanged: 0, otp_skipped: 0, skipped: { not_login: 1, no_website: 0, no_username: 2, no_password: 0 }, extra: 'x' } }
+    : { status: 200, body: { item } });
+  assert.deepEqual(await sdk.updateVaultItem('vault_old', { password: 'pw', clear_otp: true }), item);
+  assert.deepEqual([calls[0][0], calls[0][1], calls[0][3]], ['PUT', '/v1/vault/items/vault_old', { password: 'pw', clear_otp: true }]);
+  assert.deepEqual(await sdk.importVaultCsv('url,username,password\n'), { added: 2, updated: 1, unchanged: 0, otp_skipped: 0, skipped: { not_login: 1, no_website: 0, no_username: 2, no_password: 0 } });
+  assert.deepEqual([calls[1][0], calls[1][1], calls[1][3]], ['POST', '/v1/vault/import', { csv: 'url,username,password\n' }]);
+  await assert.rejects(sdk.importVaultCsv('x'.repeat(4 * 1024 * 1024 + 1)), /too large/);
+  assert.equal(calls.length, 2);
+});

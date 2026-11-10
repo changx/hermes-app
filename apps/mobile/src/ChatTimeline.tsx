@@ -7,7 +7,7 @@ import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import type { Interaction, Receipt, VaultPrompt, VaultPromptAnswer } from '../../../packages/client/src/index';
-import { VaultPromptCard } from './VaultPromptCard';
+import { VaultPromptCard, type VaultAnswerResult } from './VaultPromptCard';
 import { agentOutputAdded, appendedAtEnd, scrollStateFromEvent, type ScrollGeometry, type TimelinePosition, type TimelineRow } from './timeline';
 
 import { MessageContent, copyMessageText } from './MessageContent';
@@ -109,7 +109,7 @@ interface Props {
   onAnswer(item: Interaction, choice: string): void;
   /** Open vault prompts of this conversation (save a login, enter a one-time code). */
   vaultPrompts?: VaultPrompt[];
-  onVaultAnswer?(prompt: VaultPrompt, answer: VaultPromptAnswer): Promise<void>;
+  onVaultAnswer?(prompt: VaultPrompt, answer: VaultPromptAnswer): Promise<VaultAnswerResult | void>;
   onCancel(receipt: Receipt): void;
   onDeleteFailed?(clientMessageId: string): void;
   onRetryFailed?(clientMessageId: string): void;

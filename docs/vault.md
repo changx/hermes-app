@@ -45,7 +45,7 @@ All server code is in the `hermes_app` plugin (`plugins/hermes_app/vault.py`). N
 1. The plugin registers tool `app_vault` (actions `save_login`, `enter_code`) **in core toolset `browser`**. Core merges plugin tools into a built-in toolset (`toolsets.get_toolset`), so `app_vault` is present exactly when `browser_vault` is.
 2. A `pre_tool_call` hook blocks `browser_vault` `save_login`/`enter_code` in Hermes App sessions, with a message that names `app_vault`. `list` and `fill` stay on `browser_vault`.
 3. `app_vault` sets the three core surface callbacks on its own thread, then runs `registry.dispatch("browser_vault", ...)` on the same thread, then restores the previous callbacks. Core keeps all of its own logic: origin binding, encrypted save, CDP fill, redaction and the Bot Desktop fence. The unlock callback always returns an empty string (decline).
-4. Each callback opens one prompt in the plugin's in-memory broker (`PromptBroker`, one per profile, shared with the adapter) and waits up to 180 s. The wait ends early on an answer, a decline, Stop (core interrupt), a change of the Thread's active receipt, or a Gateway stop.
+4. Each callback opens one prompt in the plugin's in-memory broker (`PromptBroker`, one per profile, shared with the adapter) and waits up to 10 minutes (180 s before 0.2.59). The wait ends early on an answer, a decline, Stop (core interrupt), a change of the Thread's active receipt, or a Gateway stop.
 5. The App reads open prompts from the Thread live state, field `vault_prompts`: `{id, kind: "save_login" | "code", thread_id, receipt_id, generation, site, origin, hint, expires_at}`. An `interaction` sync event wakes live subscribers when a prompt opens or closes.
 6. The App answers with `POST /v1/threads/{id}/vault-prompts/{prompt_id}/answer`: `{generation, decision: "submit" | "decline", identifier?, password?, code?}`. The first answer wins; later answers get 404 or 409.
 
@@ -70,6 +70,21 @@ Secrets: a submitted password or code is held in process memory only until the w
 - The plan depends on three core details: the callback setter names, `can_prompt_here()` checking the unlock callback, and `browser_vault` running on the caller's thread. Plugin tests pin all three against the running core; run them after every core sync.
 - A prompt needs a running Thread and an open App. With all Apps closed, the prompt times out and the agent gets "declined". Cron and other headless sessions never prompt.
 - Headless 2FA works without the App when the login has an authenticator key (`has_otp`).
+
+## Ease of use (plugin 0.2.59, capability `vault_manage`)
+
+Jamie's priority: the vault must be easy to use; security comes second. Everything below is plugin and client code. Hermes core is unchanged: the plugin uses only the public `VaultStore` calls (`list_items`, `get_meta`, `resolve_secret`, `add_item`, `remove_item`). Core has no update call, so every change adds the new item and then removes the old one; the item gets a new ID.
+
+- **Longer wait.** A card waits 10 minutes (was 180 s), the same as `agent.clarify_timeout` on `jamie` and below the Gateway's 15-minute inactivity warning. On desktop the composer status says "Waiting for your response" while a vault card is open.
+- **Stale password.** When a login is already saved for the page's address, the save card says "Update your <site> login" and prefills the account (when only one account is saved there). After the save, the plugin removes older logins for the same address and account. The `app_vault` description tells the Agent to call `save_login` once when a filled password is rejected.
+- **Same site, other address.** Core fills only on the exact saved origin. When nothing is saved for the page's address but logins exist for the same site (`www.amazon.com` vs `amazon.com`, by a registrable-domain guess in `vault.site_key`), the card lists them with **Use**. One tap copies that login to the page's address on the server; no typing. The App can only name logins the card offered.
+- **Authenticator key at save time.** The save card has "Add authenticator key". The server checks the key with core's own parser; a bad key returns 400 and the card stays open with a message. With a key, the Agent's later `enter_code` makes the code itself.
+- **Edit.** Settings > Passwords & Logins has **Edit** for logins: website, account, name, new password (empty keeps the saved one), new authenticator key or remove it. Route `PUT /v1/vault/items/{id}`.
+- **Import.** **Import passwords** takes one CSV export (Passwords app on a Mac: File > Export All Passwords to File; Bitwarden: Tools > Export vault, .csv; Chrome, Firefox, 1Password). Route `POST /v1/vault/import {csv}`, up to 4 MB and 5000 rows. Rows without a website, account or password, non-login rows and app-only addresses are skipped and counted. The same address and account as a saved login is unchanged when password and key match, otherwise replaced; a file without keys keeps the saved key. The reply has counts only. The App tells the user to delete the export file. Mobile deletes its cached copy after reading; desktop reads the file in the main process, so the text never enters a renderer.
+- **Older clients and servers.** Old clients ignore the new prompt fields and keep the old card. New clients show Edit and Import only when the server reports `vault_manage`.
+- **Profiles.** `browser` was added to `platform_toolsets.hermes_app` on `hermes-app-dev` and `sites-dev` (Jamie's choice, through `hermes -p <p> tools enable browser --platform hermes_app`); `jamie` had it already.
+
+Not in this batch: push notifications for a waiting card (separate feature), passkeys and "Sign in with Apple/Google" (core fills passwords only).
 
 ## Release record (2026-11-09)
 

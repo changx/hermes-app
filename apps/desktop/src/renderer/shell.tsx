@@ -340,7 +340,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   };
   const running = snapshot.threads.find(({ id }) => id === threadId)?.running ?? false;
   const online = snapshot.connectionState === "online";
-  const active = online && snapshot.interactions.length === 0;
+  const active = online && snapshot.interactions.length === 0 && !snapshot.vaultPrompts?.length;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
     {error && <p role="alert">{error}</p>}
     {running ? <div className="running-row">

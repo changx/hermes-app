@@ -10,8 +10,8 @@ import { ConnectionIndex, ConnectionNames, normalizeConnectionName, type Connect
 import { LocalDraftStore } from './local-draft-store';
 import { OutboxStore } from './outbox-store';
 import { normalizeBaseUrl } from './transport';
-import type { DesktopVaultAnswer } from "../shared/desktop-api";
-import type { NewVaultItem } from "@hermes-app/client";
+import type { DesktopVaultAnswer, DesktopVaultAnswerResult } from "../shared/desktop-api";
+import type { NewVaultItem, VaultItemChange } from "@hermes-app/client";
 
 type Account = { id: string; server?: string; service: DesktopConnectionService };
 /** Each account owns a live SDK client. UI IDs are qualified, wire IDs remain unchanged. */
@@ -342,6 +342,8 @@ export class DesktopConnections {
   async getVaultItems(key: string) { return this.forIdentity(key).service.getVaultItems(key); }
   async addVaultItem(key: string, item: NewVaultItem) { return this.forIdentity(key).service.addVaultItem(key, item); }
   async removeVaultItem(key: string, id: string) { return this.forIdentity(key).service.removeVaultItem(key, id); }
+  async updateVaultItem(key: string, id: string, change: VaultItemChange) { return this.forIdentity(key).service.updateVaultItem(key, id, change); }
+  async importVaultCsv(key: string, path: string) { return this.forIdentity(key).service.importVaultCsv(key, path); }
   async setModelSettings(key: string, provider: string, model: string, confirm: boolean) { return this.forIdentity(key).service.setModelSettings(key, provider, model, confirm); }
   async loadWorkspaceDrafts(): Promise<Record<string, DesktopLocalDraft>> {
     const all = await Promise.all([...this.accounts.values()].filter(a => a.service.status().connectionKey).map(async a => {
@@ -402,7 +404,7 @@ export class DesktopConnections {
   async retryLatest(id?: string): Promise<void> { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); await r.account.service.retryLatest(r.raw); }
   async stopThread(id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.stopThread(r.raw); }
   async cancelQueued(receipt: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.cancelQueued(receipt, r.raw); }
-  async answerVaultPrompt(prompt: string, answer: DesktopVaultAnswer, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.answerVaultPrompt(prompt, answer, r.raw); }
+  async answerVaultPrompt(prompt: string, answer: DesktopVaultAnswer, id?: string): Promise<DesktopVaultAnswerResult> { if (!id) return 'failed'; const r = this.route(id); return r.account.service.answerVaultPrompt(prompt, answer, r.raw); }
   async answerInteraction(interaction: string, choice: string, id?: string): Promise<void> { if (!id) return; const r = this.route(id); await r.account.service.answerInteraction(interaction, choice, r.raw); }
   async pickAndUploadAttachments(id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.pickAndUploadAttachments(r.raw); }
   async uploadAttachmentInputs(inputs: readonly AttachmentInput[], id?: string) { if (!id) throw new Error('Choose a conversation'); const r = this.route(id); return r.account.service.uploadAttachmentInputs(inputs, r.raw); }
