@@ -1,5 +1,8 @@
 name: Desktop Release (Mac mini)
 
+# DISABLED (gh workflow disable, 2026-11-09): desktop releases run with
+# scripts/macmini-desktop-release.sh on the Mac mini instead (docs/desktop-signing.md).
+#
 # Builds the Apple Silicon desktop package on the project Mac mini
 # (self-hosted runner `macmini-m4`), signs it with Developer ID, notarizes and
 # staples it, wraps it in a signed and notarized DMG, and publishes the DMG

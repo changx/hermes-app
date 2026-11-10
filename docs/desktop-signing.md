@@ -4,10 +4,11 @@ Requested by Jamie (2026-10-27): downloaded Mac builds must open without `xattr 
 
 ## Rule
 
-- Every macOS desktop release (tag `v0.1.N`, workflow `desktop-release.yml`, or the fallback `scripts/macmini-desktop-release.sh`) is signed with the Developer ID Application identity, uses hardened runtime, is notarized, and has the notarization ticket stapled.
+- Build and publish every macOS desktop release on the Mac mini with `scripts/macmini-desktop-release.sh vX.Y.Z` after pushing the tag (Jamie, 2026-11-09). The script copies `git archive` of the tag to the Mac mini over `ssh macmini`, builds, signs, notarizes and checks there, and publishes the Release from this host with `gh`. The GitHub Actions workflow `desktop-release.yml` is disabled (`gh workflow disable`), so a tag push starts no build.
+- Every macOS desktop release (tag `v0.1.N`) is signed with the Developer ID Application identity, uses hardened runtime, is notarized, and has the notarization ticket stapled.
 - The download is one DMG (Jamie, 2026-10-28: "只发 dmg", plain window). The Release has `Hermes-<version>-macOS-arm64.dmg` and its `.sha256`, no zip. The DMG holds `Hermes.app` and an `Applications` shortcut, with no background image.
 - The DMG is signed with the same identity, notarized and stapled too.
-- The workflow publishes only when all checks in "Verify app and build DMG" pass. On the app: `codesign --verify --deep --strict`, the Developer ID authority, the hardened runtime flag, `stapler validate`, and `spctl --type execute` with `source=Notarized Developer ID`. On the DMG: `codesign --verify`, `stapler validate`, and `spctl --type open --context context:primary-signature` with `source=Notarized Developer ID`; then the same app checks again inside a read-only mount. A failed check stops the release; do not publish an unsigned build or a zip instead.
+- A release is published only when all checks pass (the script runs the same checks as the old workflow step "Verify app and build DMG"). On the app: `codesign --verify --deep --strict`, the Developer ID authority, the hardened runtime flag, `stapler validate`, and `spctl --type execute` with `source=Notarized Developer ID`. On the DMG: `codesign --verify`, `stapler validate`, and `spctl --type open --context context:primary-signature` with `source=Notarized Developer ID`; then the same app checks again inside a read-only mount. A failed check stops the release; do not publish an unsigned build or a zip instead.
 - Notarization is Apple's automated security scan. It is not App Store review, and the app is not distributed through the App Store.
 - Local and Linux builds (`npm run package:mac` without `HERMES_MAC_SIGN_IDENTITY`) stay unsigned. They are for tests only.
 

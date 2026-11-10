@@ -320,6 +320,7 @@
 - 实现阶段必须验证历史/压缩、双客户端、断网/重连、进程重启、幂等与审批竞态。
 - 原文消息与模型压缩历史分开；实时展示和重新加载采用同一规则。
 - 交付桌面/手机真实安装包并做真实设备验收。只有网页通过不算完成。
+- macOS 桌面版在 Mac mini 上直接构建和发布：推送 tag 后运行 `scripts/macmini-desktop-release.sh vX.Y.Z`（Jamie，2026-11-09）。GitHub Actions 工作流 `desktop-release.yml` 已停用（`disabled_manually`），推送 tag 不会触发构建。
 - 每个 macOS 桌面版发布都必须用 Developer ID 签名（hardened runtime）、经 Apple 公证并 staple，只以签名并公证的 DMG（App 加「应用程序」快捷方式，无背景图）发布，不发 zip；下载后无需 `xattr` 即可打开。签名、公证或 `spctl` 检查失败时停止发布，不发布未签名的包。签名材料只在 Mac mini 的专用钥匙串中，不复制、不输出、不提交。证书 2027-11-27 到期，需提前续签。详见 docs/desktop-signing.md。
 - 使用 uv 管理 Python；前端沿用选定基线已有包管理器与依赖，不新增无必要框架。
 - 任务完成清理自己创建的临时资源，保留产物、证据与恢复状态。
