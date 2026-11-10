@@ -97,3 +97,15 @@ Authorized by Jamie ("合并发布").
 - Desktop v0.1.127: run 42630716760. Attempts 1 and 2 failed at staple (Error 68, CloudKit `-1005`) after notarization; attempt 3 passed. Checks: tests 269 (208 pass, 0 fail, 61 skipped), audit 0, `valid on disk`, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, `The validate action worked!`, notarytool `"status":"Accepted"`, `source=Notarized Developer ID`. `Hermes-0.1.127-macOS-arm64.dmg` (146981379 bytes) passes `sha256sum -c`; all 9 app code hashes equal a clean `npm ci` build of `v0.1.127`.
 - Rollback: plugin `current` back to `releases/0.2.57` and a Gateway restart; App `git revert 1e2b003`, restart Expo, TestFlight `rollback --to ca8e951d-7ecc-407e-b51d-adc440dbab05`; desktop reinstall v0.1.126.
 - Pending: Jamie restarts the Gateway. The feature needs the `browser` toolset for `hermes_app` (on `jamie` today, not on `hermes-app-dev`). Real model calls and Mac (v0.1.127) and iPhone acceptance are open.
+
+## Release record: ease of use (2026-11-09)
+
+Authorized by Jamie ("合并发布"). Hermes core is unchanged.
+
+- Plugin 0.2.59: `main` `b223417` (feature `aa77616`, test fixes `08d25df` and `7bd4c2f`), tag `v0.2.59`. Installed at `~/.hermes/plugin-releases/hermes-app/releases/0.2.59` (equal to `git archive v0.2.59`); `current` points to it for emma, hermes-app-dev, jamie, nan, sites-dev and wangyu. No schema change. Plugin P1 on the running core: 24 failed, 337 passed, 8 skipped; the 24 failures are the same set as on `main`.
+- App: `main` `97b2c95` (feature), `3ebec88` (v0.1.128), tag `v0.1.128`. Client 127/127, mobile 255/255, desktop 272 (270 pass; the 2 Electron window tests that timed out pass alone 2 of 2 each); type checks and both exports pass.
+- Expo Go: `hermes-app-expo.service` restarted (PID 2369603 → 2600245). The public iOS and Android bundles contain `Update & sign in` (0 → 1), `Import passwords` (0 → 2) and `Add authenticator key` (0 → 2). Gateway PID 2019599 unchanged.
+- TestFlight: no new build; iOS update `79435a90-8511-4fd6-acc5-6cfe91122213`, runtime `b32a4b59…` (unchanged), commit `3ebec88`, bundle 13808908 bytes. The manifest returns 200 with that id, and the bundle URL returns 200.
+- Desktop v0.1.128: run 42753326020, passed on attempt 1. Checks: tests 272 (211 pass, 0 fail, 61 skipped), audit 0, `valid on disk`, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, `The validate action worked!`, notarytool `"status":"Accepted"`, `source=Notarized Developer ID`. `Hermes-0.1.128-macOS-arm64.dmg` (146998492 bytes) passes `sha256sum -c`; all 9 app code hashes equal a clean `npm ci` build of `v0.1.128`.
+- Rollback: plugin `current` back to `releases/0.2.58` and a Gateway restart; App `git revert 97b2c95`, restart Expo, TestFlight `rollback --to a689f45f-76cf-4e49-93a6-9b2ab8ea0ff0`; desktop reinstall v0.1.127.
+- Pending: Jamie restarts the Gateway (activates 0.2.59 and the `browser` toolset on hermes-app-dev and sites-dev). Real model calls and Mac and iPhone acceptance are open.
