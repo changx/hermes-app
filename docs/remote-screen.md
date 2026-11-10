@@ -1,6 +1,6 @@
 # 桌面版 Remote browser：查看和操作服务器上的 AdsPower 屏幕
 
-状态：已实现。本地和服务器上的验证已通过（见第 7 节）。屏幕来自每个 profile 自己的 AdsPower 容器。还没有发布。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
+状态：已发布（插件 0.2.60，桌面版 v0.1.130）。屏幕来自每个 profile 自己的 AdsPower 容器。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
 
 ## 1. 目标
 
@@ -109,3 +109,13 @@ AdsPower SunBrowser 窗口（每个 Hermes profile 一个 AdsPower 容器 adspow
   - 断网后自动恢复。
   - 走 Cloudflare 公网时的流量和延迟。
 - 部署后，用真实的 AdsPower 默认 profile 完成一次登录交接。
+
+## 9. 发布记录（2026-11-09）
+
+- 主机 `adspower.service` 已停止并 disable（Jamie 授权）。两个 profile 的 AdsPower 容器继续运行。
+- 插件 0.2.60：`main` `4637795`，tag `v0.2.60`。安装在 `~/.hermes/plugin-releases/hermes-app/releases/0.2.60`，内容等于 `git archive v0.2.60`。`current` 指向它，emma、hermes-app-dev、jamie、nan、sites-dev、wangyu 都使用它。只有 jamie 和 hermes-app-dev 设置了 `HERMES_APP_REMOTE_SCREEN_SOCKET`。`test_remote_screen.py` 5 个通过。没有 schema 变化。
+- Gateway：Jamie 重启，PID 2619553 → 2756236（22:39:35）。公网验证：jamie（`hermes-jamie.tuly.space`）和 hermes-app-dev（`agent.tuly.space`）未认证 401；capability `{"protocol": 1, "name": "AdsPower"}`；`/v1/remote-screen` RFB 握手 1920×1080、名称 `AdsPower`；`/v1/live` 可连接。
+- App：`main` `6b8aaa6`（v0.1.129），`95df978`（v0.1.130）。v0.1.129 的工作流 42769786073 签名和公证都通过，但三次都在 stapler 连接 Apple CloudKit 时断开（`NSURLErrorDomain -1005`，Error 68），没有发布。v0.1.130 在 `scripts/macos-dmg.sh` 中只对这种网络错误重试 stapler，App 代码与 v0.1.129 相同。
+- 桌面版 v0.1.130：工作流 42772777209 通过（stapler 网络错误重试 1 次后成功）。notarytool `Accepted`，`source=Notarized Developer ID`。`Hermes-0.1.130-macOS-arm64.dmg`（147039506 字节）通过 `shasum -c`；10 个 App 代码文件的哈希等于 v0.1.130 干净 `npm ci` 构建。
+- 手机端：只增加一个可选 capability 字段，没有发 iOS 更新；Expo 已重启。
+- 回滚：插件 `current` 指回 `releases/0.2.59` 并重启 Gateway；或删除 `.env` 中的两项屏幕设置。桌面版重新安装 v0.1.128。主机 AdsPower 可用 `systemctl --user enable --now adspower.service` 恢复（同时要把两个 profile 的 `browser.cdp_url` 改回 9222）。
