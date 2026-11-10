@@ -1,6 +1,6 @@
 # 桌面版 Remote browser：查看和操作服务器上的 AdsPower 屏幕
 
-状态：已发布（插件 0.2.60，桌面版 v0.1.130）。屏幕来自每个 profile 自己的 AdsPower 容器。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
+状态：已发布（插件 0.2.60，桌面版 v0.1.131：独立窗口）。屏幕来自每个 profile 自己的 AdsPower 容器。macOS 真机验收待完成。本文区分**已确认需求**、**已验证事实**和**待验证项**。
 
 ## 1. 目标
 
@@ -121,4 +121,11 @@ AdsPower SunBrowser 窗口（每个 Hermes profile 一个 AdsPower 容器 adspow
 - App：`main` `6b8aaa6`（v0.1.129），`95df978`（v0.1.130）。v0.1.129 的工作流 42769786073 签名和公证都通过，但三次都在 stapler 连接 Apple CloudKit 时断开（`NSURLErrorDomain -1005`，Error 68），没有发布。v0.1.130 在 `scripts/macos-dmg.sh` 中只对这种网络错误重试 stapler，App 代码与 v0.1.129 相同。
 - 桌面版 v0.1.130：工作流 42772777209 通过（stapler 网络错误重试 1 次后成功）。notarytool `Accepted`，`source=Notarized Developer ID`。`Hermes-0.1.130-macOS-arm64.dmg`（147039506 字节）通过 `shasum -c`；10 个 App 代码文件的哈希等于 v0.1.130 干净 `npm ci` 构建。
 - 手机端：只增加一个可选 capability 字段，没有发 iOS 更新；Expo 已重启。
-- 回滚：插件 `current` 指回 `releases/0.2.59` 并重启 Gateway；或删除 `.env` 中的两项屏幕设置。桌面版重新安装 v0.1.128。主机 AdsPower 可用 `systemctl --user enable --now adspower.service` 恢复（同时要把两个 profile 的 `browser.cdp_url` 改回 9222）。
+- 回滚：插件 `current` 指回 `releases/0.2.59` 并重启 Gateway；或删除 `.env` 中的两项屏幕设置。桌面版重新安装 v0.1.130（v0.1.128 的 Release 已按保留规则删除）。主机 AdsPower 可用 `systemctl --user enable --now adspower.service` 恢复（同时要把两个 profile 的 `browser.cdp_url` 改回 9222）。
+
+## 10. 发布记录：独立窗口（2026-11-09）
+
+- Jamie：独立窗口比标签页方便。`main` `c2095aa`（功能），`3ee82d6`（v0.1.131），tag `v0.1.131`。只改桌面端；插件、Gateway 和手机端不变。
+- 候选检查：桌面完整检查 286 个测试（225 通过，0 失败，61 跳过），其中 6 个是新的窗口测试；Electron 在 Xvfb 上用真实窗口类、preload 和 renderer 连接公网 jamie 屏幕（见第 7 节）。
+- 构建：第一次使用 `scripts/macmini-desktop-release.sh`（GitHub 工作流已停用，推送 tag 没有触发运行）。Mac mini 上 286 个测试 0 失败，`npm audit` 0 个漏洞；公证 `Accepted`，`source=Notarized Developer ID`，这次 stapler 没有遇到网络错误。`Hermes-0.1.131-macOS-arm64.dmg`（147036317 字节）通过 `shasum -c`；10 个 App 代码文件的哈希等于 v0.1.131 干净 `npm ci` 构建。脚本按保留规则删除了 v0.1.128 的 Release。
+- 回滚：重新安装 v0.1.130（Remote browser 为标签页）。
