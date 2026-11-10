@@ -207,6 +207,8 @@ export class DesktopConnectionService {
   supportsProjectFiles(): boolean { return this.client?.supportsChannelWorkspace === true; }
   supportsPrimaryPath(): boolean { return this.client?.supportsChannelPrimaryPath === true; }
   supportsChannelArchive(): boolean { return this.client?.supportsChannelArchive === true; }
+  /** The server's remote screen name (capability `remote_screen`), while connected. */
+  remoteScreenName(): string | undefined { return this.phase === 'connected' ? this.client?.remoteScreen?.name : undefined; }
   supportsAutomations(): boolean { return this.client?.supportsAutomations === true; }
   supportsAutomationsPaged(): boolean { return this.client?.supportsAutomationsPaged === true; }
   supportsAutomationEditors(): boolean { return this.client?.supportsAutomationEditors === true; }

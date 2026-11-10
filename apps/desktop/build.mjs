@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,23 @@ import { build } from "esbuild";
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(root, "dist");
 const katexDist = resolve(dirname(createRequire(import.meta.url).resolve("katex/package.json")), "dist");
+
+// noVNC (remote screen viewer) probes H.264 support with one top-level await; its
+// bundle is an iife, which cannot hold one. Run the probe in the background instead: the
+// exported `let` is a live binding and only H.264 sessions read it. Fails the build when
+// a noVNC update changes the line, so the rewrite is checked again.
+const NOVNC_AWAIT = "supportsWebCodecsH264Decode = await _checkWebCodecsH264DecodeSupport();";
+const novncWithoutTopLevelAwait = {
+  name: "novnc-without-top-level-await",
+  setup(build) {
+    build.onLoad({ filter: /[\\/]@novnc[\\/]novnc[\\/]core[\\/]util[\\/]browser\.js$/ }, async args => {
+      const source = await readFile(args.path, "utf8");
+      if (!source.includes(NOVNC_AWAIT)) throw new Error("noVNC browser.js changed: review the top-level await rewrite in build.mjs");
+      return { contents: source.replace(NOVNC_AWAIT,
+        "_checkWebCodecsH264DecodeSupport().then(value => { supportsWebCodecsH264Decode = value; }, () => {});"), loader: "js" };
+    });
+  },
+};
 
 await rm(dist, { recursive: true, force: true });
 await Promise.all([
@@ -77,6 +94,17 @@ await Promise.all([
     format: "iife",
     target: "chrome132",
     sourcemap: true,
+  }),
+  build({
+    // noVNC for Remote browser tabs only (docs/remote-screen.md); other pages never load it.
+    entryPoints: [resolve(root, "src/renderer/novnc-entry.ts")],
+    outfile: resolve(dist, "renderer/novnc.js"),
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "chrome132",
+    minify: true,
+    plugins: [novncWithoutTopLevelAwait],
   }),
 ]);
 

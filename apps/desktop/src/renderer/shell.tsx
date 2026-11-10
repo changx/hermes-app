@@ -20,6 +20,7 @@ import { emptySessionQuery, type SessionQuery } from '../../../../packages/clien
 import { NativeWorkspace } from './native-workspace';
 import { NewSessionPage } from './new-session-page';
 import { AutomationListPage, AutomationPage } from './automations';
+import { RemoteScreenPage } from './remote-screen-page';
 import { LabelsEditor } from './session-labels';
 import { hasTodo } from '../../../../packages/client/src/todo';
 import { SessionStatusBar, type StatusAction } from './session-status-bar';
@@ -431,6 +432,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   // An Automation tab holds no drafts; it lists conversations and opens them in their own tabs.
   if (viewRole === 'tab' && snapshot.tabKind === 'automation') return <AutomationPage key={snapshot.tabId} snapshot={snapshot} />;
   if (viewRole === 'tab' && snapshot.tabKind === 'automations') return <AutomationListPage key={snapshot.tabId} snapshot={snapshot} />;
+  if (viewRole === 'tab' && snapshot.tabKind === 'remote-screen') return <RemoteScreenPage key={snapshot.tabId} snapshot={snapshot} />;
   if (snapshot.draftIdentity && (viewRole === 'workspace' ? draftReady === undefined : draftReady !== snapshot.draftIdentity)) return <main className="loading-screen"><p role={draftError ? 'alert' : 'status'}>{draftError || 'Loading your local drafts…'}</p>{draftError && <button onClick={() => setDraftRetry(value => value + 1)}>Try again</button>}</main>;
 
 

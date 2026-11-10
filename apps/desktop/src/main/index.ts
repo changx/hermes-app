@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, powerMonitor, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
 import { DesktopBrowserControl } from './browser-control';
 import { MacDriver } from './mac-control';
@@ -28,6 +28,7 @@ import { installHttpKeepAlive } from "./transport";
 import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord } from "./shutdown";
 import { socketsClosed } from "./socket-registry";
 import { newVaultItem, vaultAnswer, vaultItemChange } from "./vault-ipc";
+import { relayRemoteScreen } from "./remote-screen";
 
 installHttpKeepAlive();
 
@@ -346,6 +347,24 @@ const registerDesktopApi = (): void => {
     return service.automations(cursors);
   });
   handle('desktop:open-automation-list', event => { shellSender(event); tabs?.openAutomationList(); });
+  // Remote browser (docs/remote-screen.md): the sidebar opens a connection's tab; the tab connects only its own screen.
+  handle('desktop:open-remote-screen', (event, connectionKey: unknown) => { shellSender(event); tabs?.openRemoteScreen(text(connectionKey, 200)); });
+  handle('desktop:remote-screen-connect', (event, id: unknown) => {
+    trustedSender(event); const request = text(id, 64);
+    if (!tabs) throw new Error('Window unavailable');
+    const endpoint = service.remoteScreenEndpoint(tabs.remoteScreenTarget(event.sender));
+    if (!endpoint) throw new Error('offline');
+    const { port1, port2 } = new MessageChannelMain();
+    const stop = relayRemoteScreen(port1, endpoint);
+    event.sender.once('destroyed', stop);
+    event.sender.postMessage('desktop:remote-screen-port', request, [port2]);
+  });
+  // Cmd+V on the remote screen: this Mac's clipboard text, for Remote browser tabs only.
+  handle('desktop:remote-screen-clipboard', async event => {
+    trustedSender(event); if (!tabs) throw new Error('Window unavailable');
+    tabs.remoteScreenTarget(event.sender);
+    const value = await clipboard.readText(); return value.length <= 1_000_000 ? value : '';
+  });
   // An Automation tab changes only its own job; the renderer never names another job.
   handle('desktop:control-automation', async (event, control: unknown, schedule: unknown) => {
     trustedSender(event); const manager = tabs; if (!manager) throw new Error('Window unavailable');

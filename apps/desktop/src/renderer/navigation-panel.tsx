@@ -7,6 +7,7 @@ import { setSessionTodo } from './todo-toggle';
 import { orderProjects, projectUnreadCounts, unreadCountDescription, unreadCountLabel } from '../../../../packages/client/src/projectDirectory';
 import { Icon } from './icons';
 import { SearchIcon } from './session-search';
+import { ScreenIcon } from './remote-screen-page';
 import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 
@@ -127,6 +128,10 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     <nav className="sidebar-actions" aria-label="Create">
       <button type="button" className="sidebar-action" onClick={() => onNewSession(snapshot.selectedChannelId ?? projects[0]?.id ?? '')}><Icon name="compose" /><span>New chat</span></button>
       {onSearch && <button type="button" className="sidebar-action sidebar-search-action" aria-keyshortcuts="Meta+K" onClick={onSearch}><SearchIcon /><span>Search</span><kbd>⌘K</kbd></button>}
+      {/* Remote browser (docs/remote-screen.md): each connection whose server has a remote screen. */}
+      {(snapshot.connections ?? []).filter(c => c.remoteScreen && c.connectionKey && c.state === 'online').map(c =>
+        <button type="button" key={c.id} className="sidebar-action sidebar-search-action sidebar-remote-screen" onClick={() => void window.hermesDesktop.openRemoteScreen(c.connectionKey!).catch(() => {})}>
+          <ScreenIcon /><span>{c.remoteScreen!.name}{multiple ? ` · ${c.name}` : ''}</span></button>)}
     </nav>
     <AutomationsSection connectionStates={connectionStates(snapshot)} threads={snapshot.threads} activeAutomationId={activeAutomation(snapshot)} multiple={multiple} automationsVersion={snapshot.automationsVersion} />
     {todos.rows.length > 0 && <section className="sidebar-todo" aria-labelledby="sidebar-todo-title">

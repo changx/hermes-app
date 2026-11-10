@@ -119,6 +119,7 @@
 - [docs/desktop-browser-control.md](docs/desktop-browser-control.md)
 - [docs/desktop-mac-control.md](docs/desktop-mac-control.md)
 - [docs/desktop-mcp-host.md](docs/desktop-mcp-host.md)（桌面版转发本机 MCP server：`desktop_mcp`）
+- [docs/remote-screen.md](docs/remote-screen.md)（Remote browser 标签页：noVNC 查看和操作服务器上 AdsPower 的 Xvnc 屏幕；插件 `/v1/remote-screen`）
 - [docs/desktop-sidebar-release-0.1.37.md](docs/desktop-sidebar-release-0.1.37.md)
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)

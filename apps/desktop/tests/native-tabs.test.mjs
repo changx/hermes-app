@@ -143,3 +143,24 @@ test('Automations list tab is single and may list jobs; a New automation tab car
   assert.deepEqual(f.manager.snapshot().tabs.map(t=>[t.kind,t.title,t.automationEditor===true]),[['session','a',false],['automations','Automations',false],['new','New automation',true]]);
   f.manager.newTab('p');const plain=[...f.manager.tabs.values()][3];assert.equal(plain.automationEditor,undefined);assert.equal(f.manager.snapshot(plain.view.webContents).automationEditor,undefined);
 });
+
+test('a Remote browser tab per connection; its page reaches only its own screen', () => {
+  const { manager, service, snapshot, views } = fixture();
+  service.remoteScreenName = key => key === snapshot.connectionKey ? 'AdsPower' : undefined;
+  assert.throws(() => manager.openRemoteScreen('other'), /unavailable/);
+  manager.openRemoteScreen('identity');
+  const tab = [...manager.tabs.values()].find(t => t.kind === 'remote-screen');
+  assert.ok(tab); assert.equal(manager.activeTabId, tab.id); assert.equal(tab.connectionKey, 'identity');
+  manager.openRemoteScreen('identity');
+  assert.equal([...manager.tabs.values()].filter(t => t.kind === 'remote-screen').length, 1, 'the tab is reused');
+  assert.equal(manager.remoteScreenTarget(tab.view.webContents), 'identity');
+  const session = [...manager.tabs.values()].find(t => t.kind !== 'remote-screen');
+  if (session) assert.throws(() => manager.remoteScreenTarget(session.view.webContents), /unavailable/);
+  const page = manager.snapshot(tab.view.webContents);
+  assert.equal(page.tabKind, 'remote-screen');
+  assert.equal(page.remoteScreen.name, 'AdsPower');
+  assert.equal(manager.snapshot().tabs.find(t => t.id === tab.id).title, 'AdsPower');
+  snapshot.connectionKey = 'gone'; manager.sync(snapshot);
+  assert.ok(![...manager.tabs.values()].some(t => t.kind === 'remote-screen'), 'the tab closes with its connection');
+  assert.ok(views.length >= 0);
+});

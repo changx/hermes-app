@@ -47,6 +47,10 @@ const api: HermesDesktopApi = Object.freeze({
   completeNewTab: (): Promise<void> => ipcRenderer.invoke('desktop:complete-new-tab'),
   listAutomations: (cursors?: Readonly<Record<string, string>>) => ipcRenderer.invoke('desktop:list-automations', cursors),
   openAutomationList: (): Promise<void> => ipcRenderer.invoke('desktop:open-automation-list'),
+  openRemoteScreen: (connectionKey: string): Promise<void> => ipcRenderer.invoke('desktop:open-remote-screen', connectionKey),
+  // The port arrives as a window message (`hermes-remote-screen-port`, same `id`); see remote-screen-page.tsx.
+  connectRemoteScreen: (id: string): Promise<void> => ipcRenderer.invoke('desktop:remote-screen-connect', id),
+  remoteScreenClipboard: (): Promise<string> => ipcRenderer.invoke('desktop:remote-screen-clipboard'),
   controlAutomation: (control: string, schedule?: string) => ipcRenderer.invoke('desktop:control-automation', control, schedule),
   openAutomationEditor: (): Promise<string> => ipcRenderer.invoke('desktop:open-automation-editor'),
   deleteAutomation: (): Promise<void> => ipcRenderer.invoke('desktop:delete-automation'),
@@ -160,6 +164,11 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:download-progress", receive);
     return () => ipcRenderer.removeListener("desktop:download-progress", receive);
   },
+});
+
+// A MessagePort cannot cross the context bridge; hand it to the page as a window message.
+ipcRenderer.on('desktop:remote-screen-port', (event, id: unknown) => {
+  if (typeof id === 'string' && event.ports[0]) window.postMessage({ type: 'hermes-remote-screen-port', id }, '*', [event.ports[0]]);
 });
 
 contextBridge.exposeInMainWorld("hermesDesktop", api);

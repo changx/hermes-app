@@ -978,3 +978,18 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .markdown-preview .code-block-frame > .code-block { padding-right: 44px; }
 .markdown-preview .katex-display { margin: 1em 0; }
 .markdown-preview img { max-width: 100%; height: auto; }
+
+/* Remote browser tab (docs/remote-screen.md): the host's screen through noVNC. */
+.sidebar-remote-screen .search-icon rect, .sidebar-remote-screen .search-icon path { fill: none; }
+.remote-screen-page { position: relative; display: flex; flex-direction: column; height: 100dvh; background: rgb(30, 30, 30); color: var(--app-text); font-size: var(--app-font-size); }
+.remote-screen-header { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 12px; background: var(--app-background); border-bottom: 1px solid var(--app-border); }
+.remote-screen-header h1 { margin: 0; font-size: 1em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remote-screen-mode { color: var(--app-muted); white-space: nowrap; }
+.remote-screen-spacer { flex: 1; }
+.remote-screen-button { padding: 4px 12px; border: 1px solid var(--app-field-border, var(--app-border)); border-radius: 999px; background: #fff; color: var(--app-text); font: inherit; cursor: pointer; white-space: nowrap; }
+.remote-screen-button[aria-pressed="true"] { border-color: #d64545; color: #b42318; }
+.remote-screen-view { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 2px solid transparent; }
+.remote-screen-control .remote-screen-view { border-color: #d64545; }
+.remote-screen-notice { position: absolute; inset: 40px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: #e8e8e8; text-align: center; pointer-events: none; }
+.remote-screen-notice p { margin: 0; max-width: 480px; }
+.remote-screen-notice button { pointer-events: auto; }

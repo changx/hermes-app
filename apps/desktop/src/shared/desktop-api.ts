@@ -3,7 +3,7 @@ import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
 
-export type DesktopTabKind = 'new' | 'session' | 'automation' | 'automations';
+export type DesktopTabKind = 'new' | 'session' | 'automation' | 'automations' | 'remote-screen';
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
 export type DesktopBrowserMode = 'sidebar' | 'window';
 export type DesktopBrowserState = Readonly<{ open: boolean; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string;
@@ -17,6 +17,7 @@ export type DesktopChannel = Readonly<{ id: string; name: string; description?: 
   /** Server folder bound as the project's primary folder (getChannelInfo only). */ primaryPath?: string; primaryPathSupported?: boolean;
   /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean; supportsChannelArchive?: boolean;
+  /** The server's remote screen (docs/remote-screen.md): the name the sidebar shows. */ remoteScreen?: Readonly<{ name: string }>;
   /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;
@@ -107,6 +108,8 @@ export type DesktopSnapshot = Readonly<{
   automationId?: string;
   /** A New chat tab that creates an automation's settings conversation. */
   automationEditor?: boolean;
+  /** Remote browser tab: the screen's name and whether its connection is online. */
+  remoteScreen?: Readonly<{ name: string; online: boolean }>;
   initialChannelId?: string;
   connectionName?: string;
   draftThreadIds?: readonly string[];
@@ -275,6 +278,12 @@ export interface HermesDesktopApi {
   listAutomations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList>;
   /** Main window: opens the single Automations list tab (every job, loaded page by page). */
   openAutomationList(): Promise<void>;
+  /** Main window: opens the connection's Remote browser tab, or activates it. */
+  openRemoteScreen(connectionKey: string): Promise<void>;
+  /** Remote browser tab: connects its own screen. The MessagePort arrives as a window message `{ type: 'hermes-remote-screen-port', id }`. */
+  connectRemoteScreen(id: string): Promise<void>;
+  /** Remote browser tab, on Cmd+V: this computer's clipboard text. */
+  remoteScreenClipboard(): Promise<string>;
   /** Automation tab: Pause, Resume, Run now or a new schedule for its own job. */
   controlAutomation(control: DesktopAutomationControl, schedule?: string): Promise<DesktopAutomation>;
   /** Automation tab: delete its own job and close its tabs. The job's conversations stay. */

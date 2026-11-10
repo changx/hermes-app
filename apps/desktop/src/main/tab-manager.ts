@@ -113,6 +113,21 @@ export class DesktopTabManager {
     tab.title = 'Automations';
     this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
   }
+  /** One Remote browser tab per connection with a remote screen (docs/remote-screen.md). */
+  openRemoteScreen(connectionKey: string): void {
+    if (this.closed || !this.service.hasConnection(connectionKey)) throw new Error('Remote browser unavailable');
+    const name = this.service.remoteScreenName(connectionKey); if (!name) throw new Error('Remote browser unavailable');
+    let tab = [...this.tabs.values()].find(t => t.kind === 'remote-screen' && t.connectionKey === connectionKey);
+    if (!tab) { tab = this.create('remote-screen'); tab.connectionKey = connectionKey; }
+    tab.title = name;
+    this.activeTabId = tab.id; this.service.deactivateThread(tab.connectionKey); this.publish(); this.focusActive();
+  }
+  /** The connection of a Remote browser tab's own page; the renderer never names another one. */
+  remoteScreenTarget(contents: WebContents): string {
+    const tab = this.sender(contents);
+    if (!tab || tab.kind !== 'remote-screen' || !tab.connectionKey || !this.service.hasConnection(tab.connectionKey)) throw new Error('Remote browser unavailable');
+    return tab.connectionKey;
+  }
   /** The Automations list tab, for requests that only that tab or the main window may make. */
   isAutomationList(contents: WebContents): boolean { return this.sender(contents)?.kind === 'automations'; }
   /** One tab per job: activates the job's tab, or opens it. No Session is selected while it shows. */
@@ -291,13 +306,15 @@ export class DesktopTabManager {
         messages: session ? base.messages : [], interactions: session ? base.interactions : [], vaultPrompts: session ? base.vaultPrompts : [],
         loadingMessages: session && base.loadingMessages, canLoadOlder: session && base.canLoadOlder, focusMessage: session ? base.focusMessage : undefined,
         tabId: tab.id, tabActive: tab.id === this.activeTabId && this.bounds.visible, tabKind: tab.kind, initialChannelId: tab.initialChannelId,
-        ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}) };
+        ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
+        ...(tab.kind === 'remote-screen' ? { remoteScreen: { name: tab.title ?? 'Remote browser',
+          online: base.connections?.find(c => c.connectionKey === tab.connectionKey)?.state === 'online' } } : {}) };
     }
     return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
         title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'
-          : tab.kind === 'automations' ? 'Automations' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
+          : tab.kind === 'automations' ? 'Automations' : tab.kind === 'remote-screen' ? tab.title ?? 'Remote browser' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };
   }
   publish(): void {
     if (this.closed || this.window.isDestroyed()) return;

@@ -66,6 +66,16 @@ export class DesktopConnections {
   hasConnection(key?: string): boolean { return !!key && [...this.accounts.values()].some(a => a.service.status().connectionKey === key); }
   connectionForChannel(id?: string): string | undefined { return (id ? this.route(id).account : this.current()).service.status().connectionKey; }
   threadIdentity(raw: string, channel?: string): string { return this.encode(channel ? this.route(channel).account : this.current(), raw)!; }
+  /** The remote screen name of a connected server, if it has one. */
+  remoteScreenName(connectionKey: string): string | undefined {
+    return [...this.accounts.values()].find(a => a.service.status().connectionKey === connectionKey)?.service.remoteScreenName();
+  }
+  /** Address and credential for a connection's remote screen; stays in the main process. */
+  remoteScreenEndpoint(connectionKey: string): { baseUrl: string; token: string } | undefined {
+    const account = [...this.accounts.values()].find(a => a.service.status().connectionKey === connectionKey);
+    const endpoint = account?.service.remoteScreenName() ? account.service.browserEndpoint() : undefined;
+    return endpoint ? { baseUrl: endpoint.baseUrl, token: endpoint.token } : undefined;
+  }
   /** Paired, connected servers for the App-side browser control connection. */
   browserAccounts() {
     return [...this.accounts.values()].flatMap(account => {
@@ -103,6 +113,7 @@ export class DesktopConnections {
         ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
         ...(a.service.supportsPrimaryPath() ? { supportsPrimaryPath: true } : {}),
         ...(a.service.supportsChannelArchive() ? { supportsChannelArchive: true } : {}),
+        ...(a.service.remoteScreenName() ? { remoteScreen: { name: a.service.remoteScreenName()! } } : {}),
         ...(s.statusMessage || s.errorMessage ? { detail: s.statusMessage ?? s.errorMessage } : {}) }];
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,
