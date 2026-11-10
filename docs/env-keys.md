@@ -1,6 +1,6 @@
 # API keys (profile .env)
 
-Status: candidate. Branch `feat/env-keys` in this repository and in `hermes-app-plugin`. Not released.
+Status: released 2026-11-10. Plugin v0.2.61 (`hermes-app-plugin` `ab83c09`), App v0.1.132 (`011b39e`). See [Release record](#release-record).
 
 ## Requirement
 
@@ -89,3 +89,13 @@ Risk: a fixed key that has no locked prefix and is not in `HERMES_APP_ENV_LOCKED
 - Plugin: `tests/p1/test_env_keys.py` with core at `local/main` (`HERMES_BASELINE=/opt/projects/jamie/_worktrees/hermes-agent/vault-test`): blacklist rules, list without values, set and remove through core writers with mode 0600 kept, next-turn scope rebuild, refusals that leave the file unchanged, a multiplex write that changes only the adapter's profile and not `os.environ`, and passthrough registration that also works after `/new`.
 - Shared client: `packages/client/tests/env-keys.test.mjs`. Desktop: `apps/desktop/tests/env-keys-ipc.test.mjs`. Mobile: `apps/mobile/tests/env-keys-settings.test.mjs` and the route test in `multi-connection.test.mjs`.
 - Real device acceptance on team01 is a separate step.
+
+## Release record
+
+- Plugin v0.2.61: tag `v0.2.61` (`ab83c09`). Installed from `git archive v0.2.61` to `releases/0.2.61`; file hash `e4f94bf9…` on both hosts.
+- This host: `current` points to 0.2.61. The profiles that link to `current` load it at the next Gateway restart (Jamie). Before the switch the Gateway was PID 2756236, started 2026-11-09 22:39:35 PST.
+- team01: `current` points to 0.2.61; Gateway restarted (PID 75462, 2026-11-10 12:16:19 UTC). Loopback check on `jamie`, `wangsheng`, `zhaozhidan`, `guojingyu`: no token gives 401; capability `env_keys` is true; each list has `EXA_API_KEY` and `TYPESAFE_API_KEY` only, with no `.env` value in the response; `TYPESAFE_API_KEY` reaches the sandbox. A test key on `jamie` was saved and removed.
+- Mobile: `hermes-app-expo.service` restarted. Public iOS and Android manifests: HTTP 200, SDK 58.0.0; both launch bundles contain the API keys page.
+- Desktop v0.1.132: built on the Mac mini (third attempt; the first two lost the connection to Apple's ticket and timestamp services). Developer ID signed, notarized (`Accepted`), stapled; `spctl` accepted for the DMG and the app. DMG SHA-256 `95e05b55a4ec992df29ee98f93adb74dd0e6fead51f80e5cf678ee793c149795`. GitHub Release `v0.1.132`.
+- Rollback: point `current` back to `releases/0.2.60` and restart the Gateway; install desktop v0.1.131. Clients hide the page when the capability is absent.
+- Open: real device check on a member's phone and Mac.
