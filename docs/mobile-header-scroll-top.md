@@ -22,3 +22,13 @@
 - 自动：`tests/session-header-items.test.mjs`、移动端 TypeScript 检查、iOS 和 Android 导出。
 - 真机（iPhone）：在长 Session 中上翻离开底部，点击旗标和「…」按钮。列表位置不变；旗标切换 todo；「…」打开 Session options。
 - 原生按钮外观由 iOS 绘制，可能与原来的自定义图标略有不同，真机确认。
+
+## 发布记录（2026-11-09）
+
+Jamie 授权（「合并发布」）。纯客户端改动：不安装插件，不重启 Gateway。
+
+- `main` `f030fa6`，已推送到 `origin/main`。移动端测试 245 个：242 通过，2 个失败与发布前的 `main` 相同（`attachment-size`、`local-draft-storage`）；TypeScript 检查通过；iOS 和 Android 导出通过。
+- Expo Go：重启 `hermes-app-expo.service`（PID 1991113 → 2369603）。公网 manifest 返回 SDK 58.0.0，launchAsset 返回 HTTP 200。iOS bundle 中 `unstable_headerRightItems` 2 → 3；Android bundle 不含 iOS 分支（1 → 1），新模块文字 `Mark as todo` 2 → 3、`Session options` 3 → 5。
+- TestFlight：iOS update `a689f45f-76cf-4e49-93a6-9b2ab8ea0ff0`，runtime `b32a4b59…`（未变），commit `f030fa6`，bundle 13790483 字节，HTTP 200，含 `unstable_headerRightItems`；公网 manifest 返回该 update。
+- 回滚：`git revert f030fa6`，重启 Expo；TestFlight `publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to 222a0899-d4e6-48e9-9898-c5f22cf3425e`。
+- 待验收：iPhone 真机（见上方「验收」）。TestFlight 包在下次冷启动后运行新 update。
