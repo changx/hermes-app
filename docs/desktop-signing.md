@@ -34,6 +34,7 @@ Never print, copy off the Mac mini, or commit the key, the keychain password or 
 - `@electron/notarize` (3.1.1) zips the app, runs `notarytool submit --wait`, and staples the ticket.
 - The workflow then checks the app and runs `scripts/macos-dmg.sh <app> <dmg>`: `hdiutil create` (HFS+, UDZO, volume name Hermes), `codesign` the image, `notarytool submit --wait` (the script reads the JSON status, because notarytool exits 0 for a rejected submission, and prints `notarytool log` on failure), `stapler staple`, the DMG checks, and the checks inside a read-only mount. It ends by printing the SHA-256 of every `.js`/`.cjs`/`.css` file under `dist/` in the app's ASAR.
 - `scripts/macos-dmg.sh` comes from the tagged source, so a rerun of a tag older than the DMG change fails at that step.
+- `stapler staple` / `stapler validate` in `scripts/macos-dmg.sh` retry up to 5 times, 15 s apart, but only when the output has `NSURLErrorDomain`: the Mac mini's connection to Apple's CloudKit ticket service sometimes drops (`-1005`, `Error 68`; v0.1.129 failed three runs in a row at random stapler steps). Any other stapler failure stops the release at once. A tag older than this change has no retry.
 
 ## Timing
 

@@ -13,6 +13,21 @@ dmg="${2:?usage: scripts/macos-dmg.sh <Hermes.app> <out.dmg>}"
 : "${HERMES_MAC_SIGN_IDENTITY:?}" "${HERMES_MAC_SIGN_KEYCHAIN:?}" "${HERMES_MAC_NOTARY_PROFILE:?}"
 test -d "$app"
 
+# stapler talks to Apple's CloudKit ticket service. From the Mac mini that connection sometimes
+# drops (NSURLErrorDomain -1005, "Error 68"). Retry only that network error; any other failure
+# (no ticket, bad signature) still stops the release at once.
+stapler() {
+  local action="$1" target="$2" out rc attempt
+  for attempt in 1 2 3 4 5; do
+    rc=0; out="$(/usr/bin/xcrun stapler "$action" "$target" 2>&1)" || rc=$?
+    printf '%s\n' "$out"
+    [[ $rc -eq 0 ]] && return 0
+    if [[ "$out" != *NSURLErrorDomain* ]] || [[ $attempt -eq 5 ]]; then return "$rc"; fi
+    echo "stapler $action: network error from Apple's ticket service, retry $attempt of 4 in 15 s" >&2
+    sleep 15
+  done
+}
+
 work="$(mktemp -d)"
 mnt="$work/mnt"
 mounted=false
@@ -47,12 +62,12 @@ if [[ "$status" != "Accepted" ]]; then
   [[ -n "$id" ]] && /usr/bin/xcrun notarytool log "$id" --keychain-profile "$HERMES_MAC_NOTARY_PROFILE" --keychain "$HERMES_MAC_SIGN_KEYCHAIN" >&2 || true
   exit 1
 fi
-/usr/bin/xcrun stapler staple "$dmg"
+stapler staple "$dmg"
 
 # 4. Checks on the image.
 /usr/bin/codesign --verify --strict --verbose=2 "$dmg"
 /usr/bin/codesign -dvv "$dmg" 2>&1 | /usr/bin/grep -F "Authority=$HERMES_MAC_SIGN_IDENTITY"
-/usr/bin/xcrun stapler validate "$dmg"
+stapler validate "$dmg"
 /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg" 2>&1 | tee /dev/stderr \
   | /usr/bin/grep -q 'source=Notarized Developer ID'
 
@@ -62,7 +77,7 @@ mkdir "$mnt"
 mounted=true
 test -L "$mnt/Applications"
 /usr/bin/codesign --verify --deep --strict "$mnt/Hermes.app"
-/usr/bin/xcrun stapler validate "$mnt/Hermes.app"
+stapler validate "$mnt/Hermes.app"
 /usr/sbin/spctl --assess --type execute --verbose=2 "$mnt/Hermes.app" 2>&1 | tee /dev/stderr \
   | /usr/bin/grep -q 'source=Notarized Developer ID'
 asar_tool="$(cd "$(dirname "$0")/.." && pwd)/node_modules/@electron/asar/bin/asar.mjs"
