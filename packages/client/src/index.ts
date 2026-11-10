@@ -47,6 +47,17 @@ export type VaultItemChange =
 export interface VaultImportResult { added: number; updated: number; unchanged: number; otp_skipped: number; skipped: { not_login: number; no_website: number; no_username: number; no_password: number } }
 /** Largest password-manager CSV export the server takes (plugin vault.IMPORT_MAX_BYTES). */
 export const VAULT_IMPORT_MAX_BYTES = 4 * 1024 * 1024;
+/** One API key in the connected profile's .env (plugin capability `env_keys`). The value never comes back. */
+export interface EnvKey { name: string; set: boolean;
+  /** The last four characters of a long value, else empty. */
+  preview: string;
+  /** Commands that Hermes runs for you can read this key. */
+  sandbox: boolean; description?: string; url?: string }
+/** A Hermes tool key that is not set yet. */
+export interface EnvKeySuggestion { name: string; description: string; url?: string }
+export interface EnvKeys { keys: EnvKey[]; suggestions: EnvKeySuggestion[] }
+import { ENV_KEY_NAME } from './envKeys';
+export { ENV_KEY_MAX_VALUE, ENV_KEY_NAME } from './envKeys';
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
@@ -117,6 +128,9 @@ const timestamp = (v: unknown): number => { if (typeof v !== 'number' || !Number
 const arr = (v: unknown): unknown[] => { if (!Array.isArray(v)) throw new ProtocolError('invalid array'); return v };
 const optionalCursor = (v: unknown): string | null => v === null ? null : str(v);
 const idPath = (id: string): string => encodeURIComponent(id);
+const optionalText = (v: unknown, max: number): string | undefined => typeof v === 'string' && v ? v.slice(0, max) : undefined;
+const validEnvKey = (v: unknown): EnvKey => { const x=obj(v), name=str(x.name); if(!ENV_KEY_NAME.test(name)) throw new ProtocolError('invalid key name'); const key:EnvKey={name,set:x.set===true,preview:typeof x.preview==='string'?x.preview.slice(0,8):'',sandbox:x.sandbox===true}; const d=optionalText(x.description,300), u=optionalText(x.url,300); if(d)key.description=d; if(u&&/^https:\/\//.test(u))key.url=u; return key };
+const validEnvKeySuggestion = (v: unknown): EnvKeySuggestion => { const x=obj(v), name=str(x.name); if(!ENV_KEY_NAME.test(name)) throw new ProtocolError('invalid key name'); const row:EnvKeySuggestion={name,description:optionalText(x.description,300)??''}; const u=optionalText(x.url,300); if(u&&/^https:\/\//.test(u))row.url=u; return row };
 const query = (items: Record<string, string | number | null | undefined>): string => {
   const values = Object.entries(items).filter(([,v]) => v !== null && v !== undefined).map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)));
   return values.length ? '?' + values.join('&') : '';
@@ -273,6 +287,8 @@ export class HermesClient {
   supportsVault = false;
   /** Edit, CSV import, save prompts that update or reuse a saved login (plugin 0.2.59+). */
   supportsVaultManage = false;
+  /** Settings > API Keys: the profile .env without its locked keys (plugin 0.2.61+). */
+  supportsEnvKeys = false;
   /** The host's remote screen (plugin capability `remote_screen`): its display name. */
   remoteScreen: { name: string } | undefined = undefined;
   /** Read-only Automations directory and Thread origin (plugin 0.2.22+). */
@@ -409,7 +425,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; this.supportsEnvKeys=x.env_keys===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   /** Developer crash report for this server's client log; never shown to the user. */
   async reportClientLog(report: ClientLogReport, signal?: AbortSignal): Promise<void> { await this.call('POST','/v1/client-logs',report,signal,undefined,10000) }
   protected adoptCapabilities(owner: HermesClient): void {
@@ -434,6 +450,7 @@ export class HermesClient {
     this.supportsThreadUsage = owner.supportsThreadUsage;
     this.supportsVault = owner.supportsVault;
     this.supportsVaultManage = owner.supportsVaultManage;
+    this.supportsEnvKeys = owner.supportsEnvKeys;
     this.remoteScreen = owner.remoteScreen;
     this.supportsAutomations = owner.supportsAutomations;
     this.supportsAutomationsPaged = owner.supportsAutomationsPaged;
@@ -582,6 +599,10 @@ export class HermesClient {
   async vaultItems(signal?:AbortSignal):Promise<VaultItem[]> {const x=await this.call('GET','/v1/vault/items',undefined,signal);return arr(x.items).map(validVaultItem)}
   async addVaultItem(item:NewVaultItem):Promise<VaultItem> {const x=await this.call('POST','/v1/vault/items',item);return validVaultItem(x.item)}
   async removeVaultItem(id:string):Promise<boolean> {const x=await this.call('DELETE','/v1/vault/items/'+idPath(id));return x.removed===true}
+  async envKeys(signal?:AbortSignal):Promise<EnvKeys> {const x=await this.call('GET','/v1/env-keys',undefined,signal);return {keys:arr(x.keys).map(validEnvKey),suggestions:x.suggestions===undefined?[]:arr(x.suggestions).map(validEnvKeySuggestion)}}
+  /** Sends the value once; the server answers with the key's metadata only. */
+  async setEnvKey(name:string,value:string):Promise<EnvKey> {if(!ENV_KEY_NAME.test(name))throw new Error('invalid key name');const x=await this.call('PUT','/v1/env-keys/'+idPath(name),{value});return validEnvKey(x.key)}
+  async removeEnvKey(name:string):Promise<boolean> {if(!ENV_KEY_NAME.test(name))throw new Error('invalid key name');const x=await this.call('DELETE','/v1/env-keys/'+idPath(name));return x.removed===true}
   /** Servers with vault_manage. The item gets a new ID; the old one is gone. */
   async updateVaultItem(id:string,change:VaultItemChange):Promise<VaultItem> {const x=await this.call('PUT','/v1/vault/items/'+idPath(id),change);return validVaultItem(x.item)}
   /** Servers with vault_manage: one CSV export (iCloud Passwords, Bitwarden, Chrome, Firefox, 1Password) as text. */

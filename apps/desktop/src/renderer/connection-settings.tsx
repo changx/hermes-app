@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DesktopConnection, DesktopSnapshot } from '../shared/desktop-api';
 import { ModelSettings } from './model-settings';
 import { VaultSettings } from './vault-settings';
+import { EnvKeysSettings } from './env-keys-settings';
 
 export const CONNECTION_LIMIT = 8;
 export const connectionStateLabels = { online: 'Online', connecting: 'Connecting', syncing: 'Syncing', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention', pairing: 'Pairing' } as const;
@@ -111,6 +112,8 @@ export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disa
       <ModelSettings key={row.connectionKey ?? 'unpaired'} connectionKey={row.connectionKey} />
       <h5>Passwords &amp; Logins</h5>
       <VaultSettings key={`vault:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
+      <h5>API keys</h5>
+      <EnvKeysSettings key={`env-keys:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
     </section>
     <section className="settings-group" aria-labelledby="settings-group-device">
       <h4 id="settings-group-device">On this device</h4>

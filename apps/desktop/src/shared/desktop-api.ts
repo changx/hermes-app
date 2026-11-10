@@ -1,4 +1,4 @@
-import type { AgentModelSettings, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
+import type { AgentModelSettings, EnvKey, EnvKeys, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -248,6 +248,10 @@ export interface HermesDesktopApi {
   updateVaultItem(connectionKey: string, id: string, change: VaultItemChange): Promise<VaultItem>;
   /** Opens a file dialog in the main process; null when cancelled. */
   importVaultCsv(connectionKey: string): Promise<VaultImportResult | null>;
+  /** API keys of the connection's profile .env (docs/env-keys.md). Values never come back. */
+  getEnvKeys(connectionKey: string): Promise<EnvKeys>;
+  setEnvKey(connectionKey: string, name: string, value: string): Promise<EnvKey>;
+  removeEnvKey(connectionKey: string, name: string): Promise<boolean>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */

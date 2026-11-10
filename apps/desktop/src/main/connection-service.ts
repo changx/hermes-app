@@ -944,6 +944,25 @@ export class DesktopConnectionService {
     finally { text = ''; }
   }
 
+  async getEnvKeys(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsEnvKeys) throw new Error('API keys are not available on this Hermes yet. Update its Hermes App plugin.');
+    try { return await client.envKeys(); }
+    catch { throw new Error('Could not load API keys. Check the connection and try again.'); }
+  }
+
+  async setEnvKey(connectionKey: string, name: string, value: string) {
+    const client = this.modelClient(connectionKey);
+    try { return await client.setEnvKey(name, value); }
+    catch (error) { throw new Error(error instanceof HttpError && error.status === 403 ? 'Your administrator manages this key.' : 'Could not save this key. Check the connection and try again.'); }
+  }
+
+  async removeEnvKey(connectionKey: string, name: string) {
+    const client = this.modelClient(connectionKey);
+    try { return await client.removeEnvKey(name); }
+    catch (error) { throw new Error(error instanceof HttpError && error.status === 404 ? 'This key is already removed.' : 'Could not confirm the removal. Reload the list before trying again.'); }
+  }
+
   async getModelSettings(connectionKey: string) {
     const client = this.modelClient(connectionKey);
     try {

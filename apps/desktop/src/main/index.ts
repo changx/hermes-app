@@ -28,6 +28,7 @@ import { installHttpKeepAlive } from "./transport";
 import { allowUnloadDuringQuit, closeWindows, runShutdown, type ShutdownRecord } from "./shutdown";
 import { socketsClosed } from "./socket-registry";
 import { newVaultItem, vaultAnswer, vaultItemChange } from "./vault-ipc";
+import { envKeyName, envKeyValue } from "./env-keys-ipc";
 import { relayRemoteScreen } from "./remote-screen";
 import { RemoteScreenWindows } from "./remote-screen-window";
 
@@ -171,7 +172,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:get-env-keys', 'desktop:set-env-key', 'desktop:remove-env-key', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 // A Remote browser window may use only its own screen, its snapshot and the clipboard.
@@ -228,6 +229,10 @@ const registerDesktopApi = (): void => {
     if (picked.canceled || !picked.filePaths[0]) return null;
     return service.importVaultCsv(text(key, 200), picked.filePaths[0]);
   });
+  // API keys of the profile .env (docs/env-keys.md): a value goes to the server once.
+  handle('desktop:get-env-keys', (event, key: unknown) => { trustedSender(event); return service.getEnvKeys(text(key, 200)); });
+  handle('desktop:set-env-key', (event, key: unknown, name: unknown, value: unknown) => { trustedSender(event); return service.setEnvKey(text(key, 200), envKeyName(name), envKeyValue(value)); });
+  handle('desktop:remove-env-key', (event, key: unknown, name: unknown) => { trustedSender(event); return service.removeEnvKey(text(key, 200), envKeyName(name)); });
   handle('desktop:get-model-settings', (event, key: unknown) => { trustedSender(event); return service.getModelSettings(text(key, 200)); });
   handle('desktop:set-model-settings', (event, key: unknown, provider: unknown, model: unknown, confirm: unknown) => {
     trustedSender(event);
