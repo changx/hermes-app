@@ -124,7 +124,7 @@
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
 - [docs/desktop-signing.md](docs/desktop-signing.md)（macOS 发布必须 Developer ID 签名并公证：签名材料位置、workflow 检查、证书到期续签）
-- [docs/desktop-auto-update.md](docs/desktop-auto-update.md)（macOS 自动更新：Electron autoUpdater（Squirrel.Mac）、`hermes-app-api.tuly.space/desktop-updates` feed、发布脚本发布更新 zip、App 菜单「Restart to Update」）
+- [docs/desktop-auto-update.md](docs/desktop-auto-update.md)（macOS 自动更新：App 自己下载（进度、60 秒无数据判定失败、断点续传、SHA-256），Squirrel.Mac 只验签并安装；`hermes-app-api.tuly.space/desktop-updates` feed；Dock 进度、菜单百分比、就绪/失败通知、`update.log`；发布脚本发布更新 zip）
 - [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
 - [docs/desktop-browser-resize-release-0.1.40.md](docs/desktop-browser-resize-release-0.1.40.md)
 - [docs/desktop-file-preview-release-0.1.41.md](docs/desktop-file-preview-release-0.1.41.md)
