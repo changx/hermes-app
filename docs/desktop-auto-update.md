@@ -1,6 +1,6 @@
 # macOS desktop automatic updates
 
-Status: released in desktop v0.1.133 (2026-11-10). The download with progress (branch `fix/desktop-update-progress`) is tested on the Mac mini and not released yet (see Problem: no progress, stuck in Downloading).
+Status: released in desktop v0.1.133 (2026-11-10). Download with progress and visible result released in v0.1.135 (2026-11-11). Open: Jamie's Mac (see Release: desktop v0.1.135).
 
 Jamie (2026-11-10): "macos app 做成支持自动更新的。"
 
@@ -115,7 +115,7 @@ Jamie: "自动更新功能不太对，一直在 downloading ，也没有进度�
 - Server log: Jamie's Mac (v0.1.133) received the v0.1.134 offer at 00:32 PST and requested the zip once. Later checks at 00:34–00:41 got the offer again, but there was no new zip request.
 - On the Mac mini the same released v0.1.133 downloaded v0.1.134 in 17 s and reached `update-downloaded`. The server, the package and the signature are good; the download on Jamie's network did not finish or did not report.
 - Cause in the design: Squirrel.Mac gives no progress events and no limit for a stalled connection. v0.1.133 waited for its events; with no event the state stayed "Downloading" without any end, and the menu gave no way to see or retry.
-- Fix (`fix/desktop-update-progress`): the app downloads itself (see Mechanism), with progress in the Dock icon and the menu, a 60 s stall limit, resume, notifications for ready and failure, failure-specific dialogs, and `update.log`.
+- Fix (`fix/desktop-update-progress`, released in v0.1.135): the app downloads itself (see Mechanism), with progress in the Dock icon and the menu, a 60 s stall limit, resume, notifications for ready and failure, failure-specific dialogs, and `update.log`.
 - Jamie's v0.1.133 still has the old updater. Install the first release with the fix from the DMG once.
 
 ### Verification of the fix
@@ -130,3 +130,13 @@ Jamie: "自动更新功能不太对，一直在 downloading ，也没有进度�
   6. Staged update and exit by `kill -9`: ShipIt still installed the new version.
   - Logs: `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/desktop-auto-update/20261111-macmini-progress-e2e/`. Test apps, caches, ShipIt job and test folders removed; the Mac mini's earlier Hermes data folder restored.
 - Not checked on a real screen: the Dock progress bar and the notifications (the Mac mini has no foreground session).
+
+## Release: desktop v0.1.135 (download with progress)
+
+- Commits `d8acd2b` (fix), `594dfaf` (docs), release commit `e18cb3e`, tag `v0.1.135`. No server change.
+- Release runs: 1st stopped at `codesign` (Apple timestamp server: "A timestamp was expected but was not found"); 2nd passed signing and notarization, then the DMG `stapler validate` failed 5 times (`NSURLErrorDomain`, Error 68). Both are network failures from the Mac mini to Apple, and nothing was published. 3rd run: all checks passed (one `stapler staple` retry).
+- Checks in the log: app, DMG and unpacked update zip valid, stapled, `source=Notarized Developer ID`. All 10 app-code SHA-256 lines equal a local `npm run build` of `e18cb3e`.
+- GitHub Release v0.1.135: `Hermes-0.1.135-macOS-arm64.dmg` (147,060,386 bytes) and its `.sha256` only. Pruning deleted v0.1.133; v0.1.134 stays for rollback. Update store: the v0.1.133 zip removed, v0.1.134 and v0.1.135 kept.
+- Public feed: 0.1.133 and 0.1.134 get 200 with the v0.1.135 entry (134,259,382 bytes, SHA-256 `899fc98d…a710`); 0.1.135 gets 204. Public download: 200, same SHA-256.
+- v0.1.133 and v0.1.134 still have the old updater and can hang the same way. Install v0.1.135 from the DMG once.
+- Open: Jamie's Mac: install v0.1.135; "Check for Updates…" answers "Hermes is up to date." At the next release: Dock progress, menu percentage, the ready notification and "Restart to Update" on a real screen.
