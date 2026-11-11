@@ -1,34 +1,43 @@
 /**
  * Automatic updates for the packaged macOS app (docs/desktop-auto-update.md).
  *
- * Electron's built-in autoUpdater (Squirrel.Mac) asks the feed for a newer version, downloads the
- * zip in the background and checks that the new app has the same Developer ID signature before it
- * installs anything. A downloaded update is installed when Hermes quits, or at once with
- * "Restart to Update" in the app menu. Normal checks never show a dialog.
+ * Steps: ask the feed for a newer version → download the zip with progress (update-io.ts) →
+ * check size and SHA-256 → hand the file to Squirrel.Mac, which checks the Developer ID signature
+ * and stages the update → "ready". The update installs when Hermes quits, or at once with
+ * "Restart to Update". A failed step is retried later; a partial download resumes.
  */
+import type { FeedEntry, UpdateError, UpdateFailure } from './update-io';
 
 export const UPDATE_FEED_BASE = 'https://hermes-app-api.tuly.space/desktop-updates';
 /** The first check waits until the app has settled after launch. */
 export const FIRST_CHECK_MS = 60_000;
 export const CHECK_INTERVAL_MS = 4 * 60 * 60_000;
+/** After a failed check or download. A partial download resumes. */
+export const RETRY_MS = 15 * 60_000;
 /** After sleep or a network change, check again only if the last check is this old. */
 export const RESUME_CHECK_AFTER_MS = 60 * 60_000;
 
-export type UpdatePhase = 'unsupported' | 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
-export type UpdateState = { phase: UpdatePhase; version: string; available?: string; reason?: 'not-packaged' | 'not-in-applications' };
+export type UpdatePhase = 'unsupported' | 'idle' | 'checking' | 'downloading' | 'preparing' | 'ready' | 'error';
+export type UpdateState = {
+  phase: UpdatePhase; version: string;
+  /** The newer version, from the moment the feed names it. */
+  available?: string;
+  /** Download progress in bytes. */
+  received?: number; total?: number;
+  failure?: UpdateFailure;
+  reason?: 'not-packaged' | 'not-in-applications';
+};
 
-/** The part of Electron's autoUpdater that this module uses. */
-export interface AutoUpdaterLike {
-  setFeedURL(options: { url: string }): void;
-  checkForUpdates(): void;
+/** The input and output steps: update-io.ts and Electron in the app, fakes in tests. */
+export interface UpdateSteps {
+  fetchFeed(url: string): Promise<FeedEntry | null>;
+  download(entry: FeedEntry, onProgress: (received: number, total: number) => void): Promise<string>;
+  stage(file: string, entry: FeedEntry): Promise<void>;
   quitAndInstall(): void;
-  on(event: 'error', listener: (error: Error) => void): unknown;
-  on(event: 'checking-for-update' | 'update-available' | 'update-not-available', listener: () => void): unknown;
-  on(event: 'update-downloaded', listener: (event: unknown, notes: string, name: string) => void): unknown;
 }
 
 export type UpdaterOptions = {
-  updater: AutoUpdaterLike;
+  steps: UpdateSteps;
   version: string;
   platform: string;
   arch: string;
@@ -38,22 +47,21 @@ export type UpdaterOptions = {
   now?: () => number;
   setTimer?: (run: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
-  /** Developer log only (main-process stdout). */
+  /** Developer log (update.log in userData). No user content. */
   log?: (line: string) => void;
 };
-
-export type CheckResult = UpdateState;
 
 export const feedUrl = (base: string, arch: string, version: string): string =>
   `${base.replace(/\/+$/, '')}/darwin-${encodeURIComponent(arch)}/${encodeURIComponent(version)}`;
 
-/** "Hermes 0.1.134" → "0.1.134". */
-const versionFromName = (name: string | undefined): string | undefined => /(\d+\.\d+\.\d+)/.exec(name ?? '')?.[1];
+/** Progress changes the state at most once per whole percent. */
+const percent = (received: number, total: number): number => total > 0 ? Math.floor(received * 100 / total) : 0;
 
 export class DesktopUpdater {
   private current: UpdateState;
   private lastCheck = 0;
   private timer: unknown;
+  private running?: Promise<void>;
   private waiters: Array<(state: UpdateState) => void> = [];
   private listeners = new Set<(state: UpdateState) => void>();
   private started = false;
@@ -75,68 +83,96 @@ export class DesktopUpdater {
   get state(): UpdateState { return { ...this.current }; }
   onChange(listener: (state: UpdateState) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 
-  /** Sets the feed and plans the first check. Does nothing when updates are not supported. */
+  /** Plans the first check. Does nothing when updates are not supported. */
   start(): void {
     if (this.started || this.current.phase === 'unsupported') return;
     this.started = true;
-    const { updater } = this.options;
-    updater.on('checking-for-update', () => this.set({ phase: 'checking' }));
-    // A manual check reports a found update at once; the download goes on in the background.
-    updater.on('update-available', () => { this.set({ phase: 'downloading' }); this.answer(); });
-    updater.on('update-not-available', () => this.finish({ phase: 'idle', available: undefined }));
-    updater.on('update-downloaded', (_event, _notes, name) => this.finish({ phase: 'ready', available: versionFromName(name) }));
-    updater.on('error', error => {
-      this.log(`[update] ${error?.message ?? String(error)}`);
-      // A failed check or download is retried at the next planned check.
-      this.finish({ phase: 'error' });
-    });
-    updater.setFeedURL({ url: feedUrl(this.options.feedBase ?? UPDATE_FEED_BASE, this.options.arch, this.options.version) });
+    this.log(`start ${this.options.version}, feed ${this.url}`);
     this.plan(FIRST_CHECK_MS);
   }
 
   /** Called after wake from sleep: a check if the last one is old. */
   resumed(): void {
-    if (!this.started || this.busy || this.current.phase === 'ready') return;
+    if (!this.started || this.running || this.current.phase === 'ready') return;
     if (this.now() - this.lastCheck >= RESUME_CHECK_AFTER_MS) this.plan(10_000);
   }
 
-  /** Checks now and resolves with the state after the check (for "Check for Updates…"). */
-  check(): Promise<CheckResult> {
-    if (!this.started || this.current.phase === 'ready' || this.current.phase === 'downloading') return Promise.resolve(this.state);
-    const result = new Promise<CheckResult>(resolve => this.waiters.push(resolve));
-    // A running check or download is not started a second time: Squirrel.Mac would download twice.
-    if (!this.busy) this.run();
-    return result;
+  /**
+   * "Check for Updates…": resolves when the answer is known (no update; a newer version found, while
+   * its download goes on; ready; failed). A check or download in progress is not started again.
+   */
+  check(): Promise<UpdateState> {
+    if (!this.started || this.current.phase === 'ready' || this.current.phase === 'downloading' || this.current.phase === 'preparing') {
+      return Promise.resolve(this.state);
+    }
+    const answer = new Promise<UpdateState>(resolve => this.waiters.push(resolve));
+    if (!this.running) void this.run();
+    return answer;
   }
 
-  /** Installs the downloaded update and opens the new version. Only after "ready". */
+  /** Installs the staged update and opens the new version. Only after "ready". */
   quitAndInstall(): boolean {
     if (this.current.phase !== 'ready') return false;
-    this.options.updater.quitAndInstall();
+    this.log(`install ${this.current.available}`);
+    this.options.steps.quitAndInstall();
     return true;
   }
 
   dispose(): void { if (this.timer !== undefined) this.clearTimer(this.timer); this.timer = undefined; }
 
-  private get busy(): boolean { return this.current.phase === 'checking' || this.current.phase === 'downloading'; }
+  private get url(): string { return feedUrl(this.options.feedBase ?? UPDATE_FEED_BASE, this.options.arch, this.options.version); }
 
   private plan(ms: number): void {
     if (this.timer !== undefined) this.clearTimer(this.timer);
-    this.timer = this.setTimer(() => { this.timer = undefined; if (!this.busy && this.current.phase !== 'ready') this.run(); else if (this.current.phase !== 'ready') this.plan(CHECK_INTERVAL_MS); }, ms);
+    this.timer = this.setTimer(() => { this.timer = undefined; if (!this.running && this.current.phase !== 'ready') void this.run(); }, ms);
   }
 
-  private run(): void {
+  private run(): Promise<void> {
+    this.running = this.cycle().finally(() => { this.running = undefined; });
+    return this.running;
+  }
+
+  private async cycle(): Promise<void> {
+    const { steps } = this.options;
     this.lastCheck = this.now();
-    this.set({ phase: 'checking' });
-    try { this.options.updater.checkForUpdates(); }
-    catch (error) { this.log(`[update] ${error instanceof Error ? error.message : String(error)}`); this.finish({ phase: 'error' }); }
+    this.set({ phase: 'checking', failure: undefined, received: undefined, total: undefined });
+    let entry: FeedEntry | null;
+    try { entry = await steps.fetchFeed(this.url); } catch (error) { return this.fail(error); }
+    if (!entry) {
+      this.log('no update');
+      this.set({ phase: 'idle', available: undefined });
+      this.answer(); this.plan(CHECK_INTERVAL_MS); return;
+    }
+    this.log(`found ${entry.version} (${entry.size} bytes)`);
+    this.set({ phase: 'downloading', available: entry.version, received: 0, total: entry.size });
+    this.answer();
+    let file: string;
+    try {
+      let shown = -1;
+      file = await steps.download(entry, (received, total) => {
+        const value = percent(received, total);
+        if (value === shown) return;
+        shown = value;
+        this.set({ received, total });
+      });
+    } catch (error) { return this.fail(error); }
+    this.log(`downloaded ${entry.version}, SHA-256 checked`);
+    this.set({ phase: 'preparing', received: entry.size, total: entry.size });
+    try { await steps.stage(file, entry); } catch (error) { return this.fail(error); }
+    this.log(`ready ${entry.version}`);
+    this.set({ phase: 'ready' });
+    this.dispose();
+    this.answer();
   }
 
-  private finish(change: Partial<UpdateState>): void {
-    this.set(change);
-    if (this.current.phase !== 'ready') this.plan(CHECK_INTERVAL_MS);
-    else this.dispose();
+  private fail(error: unknown): void {
+    // By its kind field: an UpdateError from update-io.ts, any other error counts as a network failure.
+    const kind = (error as Partial<UpdateError> | undefined)?.kind;
+    const failure: UpdateFailure = kind === 'damaged' || kind === 'verify' ? kind : 'network';
+    this.log(`failed (${failure}) while ${this.current.phase}: ${error instanceof Error ? error.message : String(error)}`);
+    this.set({ phase: 'error', failure });
     this.answer();
+    this.plan(RETRY_MS);
   }
 
   private answer(): void {
@@ -146,7 +182,8 @@ export class DesktopUpdater {
 
   private set(change: Partial<UpdateState>): void {
     const next = { ...this.current, ...change };
-    if (next.phase === this.current.phase && next.available === this.current.available) return;
+    const keys = new Set([...Object.keys(next), ...Object.keys(this.current)]) as Set<keyof UpdateState>;
+    if ([...keys].every(key => next[key] === this.current[key])) return;
     this.current = next;
     for (const listener of this.listeners) listener(this.state);
   }

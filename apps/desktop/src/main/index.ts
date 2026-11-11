@@ -1,4 +1,4 @@
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, powerMonitor, protocol, shell } from "electron";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, net, Notification, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
 import { DesktopBrowserControl } from './browser-control';
 import { MacDriver } from './mac-control';
@@ -33,7 +33,9 @@ import { profileFileContent, profileFileKind, profileFileVersion } from "./profi
 import { relayRemoteScreen } from "./remote-screen";
 import { RemoteScreenWindows } from "./remote-screen-window";
 import { DesktopUpdater, UPDATE_FEED_BASE } from "./updater";
-import { updateCheckDialog, updateMenuItem } from "./app-menu";
+import { downloadPercent, updateCheckDialog, updateMenuItem, updateNotice } from "./app-menu";
+import { downloadUpdate, fetchFeed, stageWithSquirrel, type FetchLike } from "./update-io";
+import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 
 installHttpKeepAlive();
 
@@ -661,12 +663,30 @@ const createMainWindow = (): BrowserWindow => {
 };
 
 // Automatic updates of the installed app (docs/desktop-auto-update.md).
+// Developer log of every update step and failure (no user content): <userData>/logs/update.log, at most about 2 MB.
+const updateLogFile = join(app.getPath("userData"), "logs", "update.log");
+const updateLog = (line: string): void => {
+  console.log(`[update] ${line}`);
+  try {
+    mkdirSync(join(app.getPath("userData"), "logs"), { recursive: true });
+    try { if (statSync(updateLogFile).size > 1_048_576) renameSync(updateLogFile, `${updateLogFile}.1`); } catch { /* No log yet. */ }
+    appendFileSync(updateLogFile, `${new Date().toISOString()} ${line}\n`);
+  } catch { /* The log must never stop an update. */ }
+};
+// Chromium's network stack: the same proxy settings as the rest of the app; no HTTP cache for the large zip.
+const updateFetch: FetchLike = (url, init) => net.fetch(url, { headers: init?.headers, signal: init?.signal, cache: "no-store" }) as unknown as ReturnType<FetchLike>;
 const updater = new DesktopUpdater({
-  updater: autoUpdater, version: app.getVersion(), platform: process.platform, arch: process.arch,
+  steps: {
+    fetchFeed: url => fetchFeed(updateFetch, url, app.getVersion()),
+    download: (entry, onProgress) => downloadUpdate({ fetchImpl: updateFetch, entry, dir: join(app.getPath("userData"), "updates"), onProgress }),
+    stage: (file, entry) => stageWithSquirrel(autoUpdater, file, entry),
+    quitAndInstall: () => autoUpdater.quitAndInstall(),
+  },
+  version: app.getVersion(), platform: process.platform, arch: process.arch,
   isPackaged: app.isPackaged, inApplications: process.platform === "darwin" && app.isPackaged && app.isInApplicationsFolder(),
   // Test builds only: HERMES_UPDATE_FEED points the check to another feed. The new app must still carry the same signature.
   feedBase: process.env.HERMES_UPDATE_FEED || UPDATE_FEED_BASE,
-  log: line => console.log(line),
+  log: updateLog,
 });
 /** "Restart to Update": the normal quit sequence runs first, then Squirrel.Mac installs and opens the new version. */
 let installUpdateOnQuit = false;
@@ -696,10 +716,31 @@ const installAppMenu = (): void => {
     { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
   ]));
 };
+// The install could not start: quit normally. The staged update installs at the next quit.
+autoUpdater.on("error", error => {
+  if (!installUpdateOnQuit || shutdownPhase !== "done") return;
+  updateLog(`install failed: ${error?.message ?? String(error)}`);
+  app.quit();
+});
+/** Notices already shown in this run, by version and kind: each shows once. */
+const shownUpdateNotices = new Set<string>();
+// Keep the last notification referenced: an unreferenced one can be collected and lose its click handler.
+let updateNotification: Notification | undefined;
 updater.onChange(state => {
-  // The install could not start: quit normally; the downloaded update installs at the next launch.
-  if (installUpdateOnQuit && shutdownPhase === "done" && state.phase === "error") { app.quit(); return; }
-  if (app.isReady()) installAppMenu();
+  if (!app.isReady()) return;
+  installAppMenu();
+  // Dock icon progress bar while the update downloads.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const value = downloadPercent(state);
+    mainWindow.setProgressBar(state.phase === "downloading" ? (value ?? 0) / 100 : state.phase === "preparing" ? 1 : -1);
+  }
+  const notice = updateNotice(state);
+  if (notice && !shownUpdateNotices.has(notice.key) && Notification.isSupported()) {
+    shownUpdateNotices.add(notice.key);
+    updateNotification = new Notification({ title: notice.title, body: notice.body, silent: !notice.restart });
+    if (notice.restart) updateNotification.on("click", restartToUpdate);
+    updateNotification.show();
+  }
 });
 
 const focusSessionLink = (url: string): void => {
