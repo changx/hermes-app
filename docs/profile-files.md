@@ -1,6 +1,6 @@
 # Persona & memory (SOUL.md, USER.md, MEMORY.md)
 
-Status: candidate on `feat/profile-files`. Plugin capability `profile_files` (plugin 0.2.62).
+Status: released 2026-11-10. Plugin v0.2.62 (`hermes-app-plugin` `858fea3`), App v0.1.134 (`f757452`). The plugin loads at the next Gateway restart; see [Release record](#release-record).
 
 ## Requirement
 
@@ -42,3 +42,13 @@ Server: `plugins/hermes_app/profile_files.py` in `hermes-app-plugin`. No core ch
 
 - Plugin: `tests/p1/test_profile_files.py` with core at `local/main`: list with versions and config limits, core-seeded SOUL.md, entry normalization read back by core `load_on_disk_store`, stale version after a real core memory add (409, file unchanged), limit, threat scan and input refusals, shrink of an over-limit file, symlink, multiplex scope that writes only the adapter's profile, capability.
 - Shared client: `packages/client/tests/profile-files.test.mjs`. Desktop: `tests/profile-files-ipc.test.mjs`, the Chromium Settings test (`tests/settings-layout.test.mjs`: connection tabs, file sub-tabs, live count, over-limit block, draft kept across tabs, versioned save), and the Electron Settings tests. Mobile: `tests/profile-files-settings.test.mjs` and the route test in `tests/multi-connection.test.mjs`.
+
+## Release record
+
+- Candidate checks: plugin `tests/p1/test_profile_files.py` 10/10 (with `test_env_keys`, `test_workspace`, `test_model_settings`: 46/46). The full plugin suite has the same 39 failures on unchanged `main` (core `tui_gateway/server.py` `NameError: _flush_sessions_before_exit` at exit, and tests after that crash); this branch adds no other failure. Shared client 134/134. Desktop with Chrome and Electron: 299 tests, 296 pass; the 3 failures are timing checks outside Settings (`native view tracks drag 380`, `Cmd+G wraps`) that pass when run alone. Mobile `tsc` OK, `npm test` 262 pass, 0 fail; iOS and Android `expo export` OK.
+- Plugin v0.2.62: `main` and tag `v0.2.62` (`858fea3`) pushed. Installed from `git archive v0.2.62` (plus the release `README.txt`) to `releases/0.2.62` on this host and team01; tree hash `479bc683…` on both. `current` points to 0.2.62 on both hosts. Neither Gateway was restarted: this host's `hermes-gateway.service` is PID 3136091 (started 2026-11-10 04:52:42 PST) and still runs 0.2.61. Clients hide Persona & memory until the capability appears.
+- Mobile: `hermes-app-expo.service` restarted (PID 3111269 → 3914592, 22:54:48 PST). Public iOS and Android manifests: HTTP 200, SDK 58.0.0; both launch bundles (HTTP 200) contain the Persona & memory page and `/v1/profile-files`.
+- iOS TestFlight app: update `6994d1e0` (commit `f757452`, runtime `b32a4b59…`) published and signed; the public manifest serves it (HTTP 200), bundle HTTP 200, 13.8 MB.
+- Desktop v0.1.134: built on the Mac mini (second attempt; the first lost the connection to Apple after notarization). Developer ID signed, notarized (`Accepted`), stapled; `spctl` accepted for the DMG and the app. DMG SHA-256 `12b6313b92d154840eac15509b8e50257f010494143568365fa55c0360c4704c`. GitHub Release `v0.1.134`. Update feed: 0.1.133 gets 0.1.134 (update zip SHA-256 `ccd9d737…`); 0.1.134 gets 204.
+- Rollback: plugin `current` back to `releases/0.2.61` and a Gateway restart; mobile `git revert` and Expo restart, iOS `publish.mjs rollback`; desktop: publish a higher version.
+- Open: Gateway restart on this host and team01; real device check on iPhone and Mac.
