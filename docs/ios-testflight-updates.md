@@ -23,6 +23,7 @@ Status: on `main`. The update service is deployed. Build 1 (0.1.0) is installed 
 | Update server | `services/mobile-updates/server.mjs` | Expo Updates protocol v1, Node built-ins only, read-only. It serves signed records and holds no key. |
 | Publish tool | `services/mobile-updates/publish.mjs` | `expo export`, builds the manifest, signs it, checks the signature against the app certificate, writes the record |
 | Service | user systemd `hermes-app-mobile-updates.service` (127.0.0.1:8090, MemoryMax 256M) + `hermes-app-mobile-updates-bridge.socket` (172.31.0.1:18090) | unit files in `services/mobile-updates/systemd/` |
+| Desktop updates | `services/mobile-updates/desktop.mjs` in the same process | `/desktop-updates`: macOS feed and update zips, see [desktop-auto-update.md](desktop-auto-update.md) |
 | Ingress | `/opt/projects/jamie/ovh01-ingress/dynamic/hermes-app-api.yaml` | copy of `services/mobile-updates/traefik/hermes-app-api.yaml`. DNS `*.tuly.space` and the `tuly.space` certificate already cover the host. |
 | Private data | `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/mobile-updates/` | `keys/private-key.pem` (mode 600, never commit), `store/`, `service/` (deploy copy of `server.mjs` and `lib.mjs`) |
 

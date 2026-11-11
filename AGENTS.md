@@ -124,6 +124,7 @@
 - [docs/desktop-tab-composer-release-0.1.38.md](docs/desktop-tab-composer-release-0.1.38.md)
 - [docs/desktop-release-retention.md](docs/desktop-release-retention.md)
 - [docs/desktop-signing.md](docs/desktop-signing.md)（macOS 发布必须 Developer ID 签名并公证：签名材料位置、workflow 检查、证书到期续签）
+- [docs/desktop-auto-update.md](docs/desktop-auto-update.md)（macOS 自动更新：Electron autoUpdater（Squirrel.Mac）、`hermes-app-api.tuly.space/desktop-updates` feed、发布脚本发布更新 zip、App 菜单「Restart to Update」）
 - [docs/desktop-chatgpt-composer-release-0.1.39.md](docs/desktop-chatgpt-composer-release-0.1.39.md)
 - [docs/desktop-browser-resize-release-0.1.40.md](docs/desktop-browser-resize-release-0.1.40.md)
 - [docs/desktop-file-preview-release-0.1.41.md](docs/desktop-file-preview-release-0.1.41.md)
@@ -323,5 +324,6 @@
 - 交付桌面/手机真实安装包并做真实设备验收。只有网页通过不算完成。
 - macOS 桌面版在 Mac mini 上直接构建和发布：推送 tag 后运行 `scripts/macmini-desktop-release.sh vX.Y.Z`（Jamie，2026-11-09）。GitHub Actions 工作流 `desktop-release.yml` 已停用（`disabled_manually`），推送 tag 不会触发构建。
 - 每个 macOS 桌面版发布都必须用 Developer ID 签名（hardened runtime）、经 Apple 公证并 staple，只以签名并公证的 DMG（App 加「应用程序」快捷方式，无背景图）发布，不发 zip；下载后无需 `xattr` 即可打开。签名、公证或 `spctl` 检查失败时停止发布，不发布未签名的包。签名材料只在 Mac mini 的专用钥匙串中，不复制、不输出、不提交。证书 2027-11-27 到期，需提前续签。详见 docs/desktop-signing.md。
+- 发布脚本在 GitHub Release 发布后，把同一签名并公证的 App 的更新 zip 发布到 `hermes-app-api.tuly.space/desktop-updates`，已安装的 App 自动下载，退出或点「Restart to Update」时安装。更新 zip 只给自动更新使用，不作为 Release 下载。客户端不降级：回滚发布更高版本。详见 docs/desktop-auto-update.md。
 - 使用 uv 管理 Python；前端沿用选定基线已有包管理器与依赖，不新增无必要框架。
 - 任务完成清理自己创建的临时资源，保留产物、证据与恢复状态。

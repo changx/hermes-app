@@ -1,5 +1,5 @@
 [Unit]
-Description=Hermes App mobile updates (Expo Updates v1, read-only, signed records)
+Description=Hermes App updates (mobile: Expo Updates v1, signed records; desktop: macOS update feed), read-only
 After=network-online.target
 
 [Service]

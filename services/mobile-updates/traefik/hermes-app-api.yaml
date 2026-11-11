@@ -7,6 +7,12 @@ http:
       entryPoints: [websecure]
       tls: {}
       service: hermes-app-mobile-updates
+    # macOS desktop update feed and packages (docs/desktop-auto-update.md); same process.
+    hermes-app-desktop-updates:
+      rule: "Host(`hermes-app-api.tuly.space`) && PathPrefix(`/desktop-updates/`)"
+      entryPoints: [websecure]
+      tls: {}
+      service: hermes-app-mobile-updates
   services:
     hermes-app-mobile-updates:
       loadBalancer:

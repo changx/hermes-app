@@ -21,6 +21,7 @@ Jamie authorized this policy on 2026-10-06: old desktop builds have no value at 
 
 - After a successful publication, `scripts/prune-releases.sh` keeps the newest **2** published Releases: the new one and the one before it, for rollback. It deletes older Releases and their files. The just-published tag is always protected. Drafts are not counted or deleted.
 - Git tags stay. To rebuild an old version, run the workflow manually for that tag.
+- Update zips in the update store: `desktop-publish.mjs prune --keep 2` after each publication keeps the two newest and always the current one ([desktop-auto-update.md](desktop-auto-update.md)).
 
 Manual check: `bash scripts/prune-releases.sh changx/hermes-app 2 --dry-run`.
 
