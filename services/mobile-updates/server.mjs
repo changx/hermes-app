@@ -10,6 +10,8 @@
 //   GET /mobile-updates/manifest        expo-updates manifest/directive request
 //   GET /mobile-updates/assets/<name>   asset download
 //   GET /mobile-updates/health          liveness
+//
+// The same process serves the macOS desktop update feed under /desktop-updates (desktop.mjs).
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -17,6 +19,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { handleDesktop } from './desktop.mjs';
 import { ASSET_NAME_RE, PLATFORMS, RUNTIME_RE, contentTypeFor, readRecord, storePaths } from './lib.mjs';
 
 export const PREFIX = '/mobile-updates';
@@ -137,7 +140,9 @@ function handleAsset(req, res, paths, name) {
   fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
 }
 
-export function createUpdatesServer({ storeDir, log = () => {} }) {
+export const DEFAULT_DESKTOP_BASE_URL = 'https://hermes-app-api.tuly.space/desktop-updates';
+
+export function createUpdatesServer({ storeDir, desktopBaseUrl = DEFAULT_DESKTOP_BASE_URL, log = () => {} }) {
   const paths = storePaths(storeDir);
   return http.createServer((req, res) => {
     const started = Date.now();
@@ -150,6 +155,7 @@ export function createUpdatesServer({ storeDir, log = () => {} }) {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendJson(res, 405, { error: 'Method not allowed.' });
       }
+      if (handleDesktop(req, res, url, { storeDir, baseUrl: desktopBaseUrl })) return undefined;
       if (url.pathname === `${PREFIX}/health`) return sendJson(res, 200, { ok: true });
       if (url.pathname === `${PREFIX}/manifest`) return handleManifest(req, res, paths);
       if (url.pathname.startsWith(`${PREFIX}/assets/`)) {
@@ -172,7 +178,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     console.error('MOBILE_UPDATES_STORE is required.');
     process.exit(2);
   }
-  const server = createUpdatesServer({ storeDir, log: (line) => console.log(line) });
+  const desktopBaseUrl = process.env.DESKTOP_UPDATES_BASE_URL ?? DEFAULT_DESKTOP_BASE_URL;
+  const server = createUpdatesServer({ storeDir, desktopBaseUrl, log: (line) => console.log(line) });
   server.listen(port, host, () => console.log(`mobile-updates listening on ${host}:${port}, store ${storeDir}`));
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => server.close(() => process.exit(0)));

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, powerMonitor, protocol, shell } from "electron";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, powerMonitor, protocol, shell } from "electron";
 import { DesktopBrowserSidebar, browserPartition } from './browser-sidebar';
 import { DesktopBrowserControl } from './browser-control';
 import { MacDriver } from './mac-control';
@@ -31,6 +31,8 @@ import { newVaultItem, vaultAnswer, vaultItemChange } from "./vault-ipc";
 import { envKeyName, envKeyValue } from "./env-keys-ipc";
 import { relayRemoteScreen } from "./remote-screen";
 import { RemoteScreenWindows } from "./remote-screen-window";
+import { DesktopUpdater, UPDATE_FEED_BASE } from "./updater";
+import { updateCheckDialog, updateMenuItem } from "./app-menu";
 
 installHttpKeepAlive();
 
@@ -650,6 +652,48 @@ const createMainWindow = (): BrowserWindow => {
   return window;
 };
 
+// Automatic updates of the installed app (docs/desktop-auto-update.md).
+const updater = new DesktopUpdater({
+  updater: autoUpdater, version: app.getVersion(), platform: process.platform, arch: process.arch,
+  isPackaged: app.isPackaged, inApplications: process.platform === "darwin" && app.isPackaged && app.isInApplicationsFolder(),
+  // Test builds only: HERMES_UPDATE_FEED points the check to another feed. The new app must still carry the same signature.
+  feedBase: process.env.HERMES_UPDATE_FEED || UPDATE_FEED_BASE,
+  log: line => console.log(line),
+});
+/** "Restart to Update": the normal quit sequence runs first, then Squirrel.Mac installs and opens the new version. */
+let installUpdateOnQuit = false;
+const restartToUpdate = (): void => {
+  if (updater.state.phase !== "ready") return;
+  installUpdateOnQuit = true; app.quit();
+};
+const checkForUpdatesFromMenu = async (): Promise<void> => {
+  const answer = updateCheckDialog(await updater.check());
+  const options: Electron.MessageBoxOptions = { type: "info", title: "Hermes", message: answer.message, detail: answer.detail, buttons: answer.buttons, defaultId: 0, cancelId: answer.buttons.length - 1, noLink: true };
+  const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
+  const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+  if (answer.restartButton !== undefined && response === answer.restartButton) restartToUpdate();
+};
+/** macOS app menu: Electron's default menus, with the update item under "About Hermes". */
+const installAppMenu = (): void => {
+  if (process.platform !== "darwin") return;
+  const item = updateMenuItem(updater.state);
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: app.name, submenu: [
+      { role: "about" },
+      { label: item.label, enabled: item.enabled, click: () => { if (item.action === "restart") restartToUpdate(); else void checkForUpdatesFromMenu(); } },
+      { type: "separator" }, { role: "services" },
+      { type: "separator" }, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" },
+      { type: "separator" }, { role: "quit" },
+    ] },
+    { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
+  ]));
+};
+updater.onChange(state => {
+  // The install could not start: quit normally; the downloaded update installs at the next launch.
+  if (installUpdateOnQuit && shutdownPhase === "done" && state.phase === "error") { app.quit(); return; }
+  if (app.isReady()) installAppMenu();
+});
+
 const focusSessionLink = (url: string): void => {
   if (!url.startsWith("hermesapp:") || shutdownPhase !== "running") return;
   service.openSessionLink(url);
@@ -665,9 +709,11 @@ app.whenReady().then(async () => {
   // Installed applications only; do not change OS associations in development.
   if (app.isPackaged) app.setAsDefaultProtocolClient("hermesapp");
   registerDesktopApi();
+  installAppMenu();
+  updater.start();
   void appIcon.load();
   mcpHost.start();
-  powerMonitor.on("resume", () => { void service.resumeConnection(); });
+  powerMonitor.on("resume", () => { void service.resumeConnection(); updater.resumed(); });
   createMainWindow();
   browserControl = new DesktopBrowserControl({
     accounts: () => service.browserAccounts(),
@@ -727,9 +773,12 @@ app.on("before-quit", event => {
   void gracefulShutdown().finally(() => {
     // Developer log only (main-process stdout): step, time and outcome; no user content.
     console.log("[shutdown] " + JSON.stringify(lastShutdown));
-    shutdownPhase = "done"; app.quit();
+    shutdownPhase = "done";
+    // Squirrel.Mac closes what is left, installs the new version and opens it.
+    if (installUpdateOnQuit && updater.quitAndInstall()) return;
+    app.quit();
   });
 });
 // Safety net only: the sequence above has already closed these.
-app.on("will-quit", () => { browserControl?.close(); macDriver.close(); mcpHost.close(); service.close(); });
+app.on("will-quit", () => { updater.dispose(); browserControl?.close(); macDriver.close(); mcpHost.close(); service.close(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin" && shutdownPhase === "running") app.quit(); });

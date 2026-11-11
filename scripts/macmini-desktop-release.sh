@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the signed and notarized Apple Silicon desktop package for a pushed tag on the Mac mini,
-# then publish it as a GitHub Release from this host.
+# then publish it as a GitHub Release from this host, and as the automatic update of installed
+# apps (docs/desktop-auto-update.md).
 #
 # Usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish | --publish-built]
 #
@@ -11,12 +12,16 @@
 # This is the release path for every desktop version (Jamie, 2026-11-09). The GitHub Actions
 # workflow .github/workflows/desktop-release.yml is disabled. The package crosses the slow
 # Cloudflare Access SSH link (~9 min).
-# Steps: npm ci, desktop:check, npm audit, desktop:package:mac, signed and notarized DMG (scripts/macos-dmg.sh), SHA-256.
+# Steps: npm ci, desktop:check, npm audit, desktop:package:mac, signed and notarized DMG (scripts/macos-dmg.sh),
+# update zip of the same app (checked after unpacking), SHA-256 of both.
+# Publication: the GitHub Release has only the DMG and its .sha256. The update zip goes to the update
+# store of this host (DESKTOP_UPDATES_STORE) after the Release is published; installed apps download it.
 # The source is `git archive` of the tag commit, so the Mac mini needs no GitHub login.
 # Prerequisites:
 # - `ssh macmini` works (override with MACMINI_HOST).
 # - Node v24.14.1 is in ~/.local/node-v24.14.1 on the Mac mini (official tarball).
 # - `gh` on this host can write Releases to the repository.
+# - The update service (hermes-app-mobile-updates.service) serves DESKTOP_UPDATES_STORE.
 set -euo pipefail
 
 tag="${1:?usage: scripts/macmini-desktop-release.sh vX.Y.Z [--no-publish | --publish-built]}"
@@ -49,6 +54,9 @@ if $publish && gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
 fi
 
 archive="Hermes-$version-macOS-arm64.dmg"
+update_zip="Hermes-$version-macOS-arm64.zip"
+store="${DESKTOP_UPDATES_STORE:-$HOME/.hermes/profiles/jamie/workspace/hermes-app/mobile-updates/store}"
+node_bin="${NODE_BIN:-/home/hermes/.asdf/installs/nodejs/24.14.1/bin/node}"
 remote_dir="hermes-desktop-build/$tag"
 out="$root/tmp/release/$tag"
 
@@ -58,7 +66,7 @@ echo "Building $tag ($sha) on $host in ~/$remote_dir"
 
 ssh "$host" "rm -rf ~/$remote_dir && mkdir -p ~/$remote_dir"
 git archive --format=tar "$sha" | ssh "$host" "tar -x -C ~/$remote_dir"
-ssh "$host" bash -s -- "$remote_dir" "$node_version" "$archive" <<'REMOTE'
+ssh "$host" bash -s -- "$remote_dir" "$node_version" "$archive" "$update_zip" <<'REMOTE'
 set -euo pipefail
 cd ~/"$1"
 export PATH="$HOME/.local/node-$2/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -83,16 +91,28 @@ test -f "$app/Contents/Resources/app.asar"
 /usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
 mkdir -p release
 bash scripts/macos-dmg.sh "$app" "release/$3"
+# Update zip for Squirrel.Mac: the same signed, notarized and stapled app. Unpack it and check it again.
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "release/$4"
+check="$(mktemp -d)"
+/usr/bin/ditto -x -k "release/$4" "$check"
+/usr/bin/codesign --verify --deep --strict "$check/Hermes.app"
+/usr/bin/xcrun stapler validate "$check/Hermes.app"
+/usr/sbin/spctl --assess --type execute --verbose=2 "$check/Hermes.app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
+rm -rf "$check"
 cd release
-/usr/bin/shasum -a 256 "$3" > "$3.sha256"
-/usr/bin/shasum -a 256 -c "$3.sha256"
+for file in "$3" "$4"; do
+  /usr/bin/shasum -a 256 "$file" > "$file.sha256"
+  /usr/bin/shasum -a 256 -c "$file.sha256"
+done
 REMOTE
 
 rm -rf "$out"; mkdir -p "$out"
-scp -q "$host:$remote_dir/release/$archive" "$host:$remote_dir/release/$archive.sha256" "$out/"
+scp -q "$host:$remote_dir/release/$archive" "$host:$remote_dir/release/$archive.sha256" \
+  "$host:$remote_dir/release/$update_zip" "$host:$remote_dir/release/$update_zip.sha256" "$out/"
 fi
-(cd "$out" && sha256sum -c "$archive.sha256")
+(cd "$out" && sha256sum -c "$archive.sha256" && sha256sum -c "$update_zip.sha256")
 echo "Package: $out/$archive"
+echo "Update:  $out/$update_zip"
 
 if $publish; then
   gh release create "$tag" "$out/$archive" "$out/$archive.sha256" \
@@ -101,4 +121,10 @@ if $publish; then
     --notes "Apple Silicon macOS build, signed with Developer ID and notarized by Apple, packaged on the project Mac mini. Open the DMG and drag Hermes to Applications; it opens without removing the quarantine flag. It is not an App Store distribution."
   gh release edit "$tag" --repo "$repo" --draft=false
   bash scripts/prune-releases.sh "$repo" 2 --protect "$tag"
+  # Installed apps see the new version only after the Release exists. Keep the two newest update zips.
+  "$node_bin" services/mobile-updates/desktop-publish.mjs publish --store "$store" \
+    --zip "$out/$update_zip" --sha256-file "$out/$update_zip.sha256" --notes "Hermes Desktop $tag"
+  "$node_bin" services/mobile-updates/desktop-publish.mjs prune --store "$store" --keep 2
+  status="$(curl -s -o /dev/null -w '%{http_code}' "https://hermes-app-api.tuly.space/desktop-updates/darwin-arm64/0.0.0")"
+  [[ "$status" == 200 ]] || { echo "Update feed answered $status instead of 200." >&2; exit 1; }
 fi
