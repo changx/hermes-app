@@ -1,6 +1,6 @@
 # Persona & memory (SOUL.md, USER.md, MEMORY.md)
 
-Status: released 2026-11-10. Plugin v0.2.62 (`hermes-app-plugin` `858fea3`), App v0.1.134 (`f757452`). The plugin loads at the next Gateway restart; see [Release record](#release-record).
+Status: released 2026-11-10. Plugin v0.2.62 (`hermes-app-plugin` `858fea3`), App v0.1.134 (`f757452`). Live on this host and team01 after the Gateway restarts; see [Release record](#release-record).
 
 ## Requirement
 
@@ -51,4 +51,5 @@ Server: `plugins/hermes_app/profile_files.py` in `hermes-app-plugin`. No core ch
 - iOS TestFlight app: update `6994d1e0` (commit `f757452`, runtime `b32a4b59…`) published and signed; the public manifest serves it (HTTP 200), bundle HTTP 200, 13.8 MB.
 - Desktop v0.1.134: built on the Mac mini (second attempt; the first lost the connection to Apple after notarization). Developer ID signed, notarized (`Accepted`), stapled; `spctl` accepted for the DMG and the app. DMG SHA-256 `12b6313b92d154840eac15509b8e50257f010494143568365fa55c0360c4704c`. GitHub Release `v0.1.134`. Update feed: 0.1.133 gets 0.1.134 (update zip SHA-256 `ccd9d737…`); 0.1.134 gets 204.
 - Rollback: plugin `current` back to `releases/0.2.61` and a Gateway restart; mobile `git revert` and Expo restart, iOS `publish.mjs rollback`; desktop: publish a higher version.
-- Open: Gateway restart on this host and team01; real device check on iPhone and Mac.
+- Gateway restarts (Jamie, 2026-11-11): team01 PID 101464 → 340654 (08:32:32 UTC); this host PID 3136091 → 3977638 (00:35:13 PST). Loopback check on both hosts: no token gives 401, `profile_files` is true, and `GET /v1/profile-files` lists the three files for every Hermes App profile (team01: `jamie`, `wangsheng`, `zhaozhidan`, `guojingyu`; this host: `emma`, `hermes-app-dev`, `jamie`, `nan`, `sites-dev`, `wangyu`). On `hermes-app-dev`, saving SOUL.md with its own text and version gave 200 with the same file hash and mode 644; a stale version gave 409 `version_conflict`.
+- Open: real device check on iPhone and Mac.
