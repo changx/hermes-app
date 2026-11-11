@@ -82,12 +82,25 @@ export HERMES_MAC_SIGN_IDENTITY="Developer ID Application: Nan Zhang (4R5932XFRV
 export HERMES_MAC_SIGN_KEYCHAIN="$HOME/Library/Keychains/hermes-signing.keychain-db"
 export HERMES_MAC_NOTARY_PROFILE=hermes-notary
 security unlock-keychain -p "$(cat "$HOME/.hermes-signing/keychain-password")" "$HERMES_MAC_SIGN_KEYCHAIN"
+# stapler talks to Apple's CloudKit ticket service, which sometimes drops the connection from the
+# Mac mini (NSURLErrorDomain -1005, "Error 68"). Retry only that error, as scripts/macos-dmg.sh does.
+validate() {
+  local out rc attempt
+  for attempt in 1 2 3 4 5; do
+    rc=0; out="$(/usr/bin/xcrun stapler validate "$1" 2>&1)" || rc=$?
+    printf '%s\n' "$out"
+    [[ $rc -eq 0 ]] && return 0
+    if [[ "$out" != *NSURLErrorDomain* ]] || [[ $attempt -eq 5 ]]; then return "$rc"; fi
+    echo "stapler validate: network error from Apple's ticket service, retry $attempt of 4 in 15 s" >&2
+    sleep 15
+  done
+}
 npm run desktop:package:mac
 app="apps/desktop/artifacts/Hermes-darwin-arm64/Hermes.app"
 test -f "$app/Contents/Resources/app.asar"
 /usr/bin/file "$app/Contents/MacOS/Hermes" | /usr/bin/grep -q arm64
 /usr/bin/codesign --verify --deep --strict "$app"
-/usr/bin/xcrun stapler validate "$app"
+validate "$app"
 /usr/sbin/spctl --assess --type execute --verbose=2 "$app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
 mkdir -p release
 bash scripts/macos-dmg.sh "$app" "release/$3"
@@ -96,7 +109,7 @@ bash scripts/macos-dmg.sh "$app" "release/$3"
 check="$(mktemp -d)"
 /usr/bin/ditto -x -k "release/$4" "$check"
 /usr/bin/codesign --verify --deep --strict "$check/Hermes.app"
-/usr/bin/xcrun stapler validate "$check/Hermes.app"
+validate "$check/Hermes.app"
 /usr/sbin/spctl --assess --type execute --verbose=2 "$check/Hermes.app" 2>&1 | /usr/bin/grep -q 'source=Notarized Developer ID'
 rm -rf "$check"
 cd release
