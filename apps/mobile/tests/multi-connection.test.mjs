@@ -90,12 +90,16 @@ test('an online connection whose first directory walk is still running shows loa
   assert.deepEqual(pending.map(p => [p.connectionName, p.text]), [['walking.example', 'Loading projects…'], ['stopped.example', 'Projects unavailable']]);
 });
 
-test('removing a connection also pops its Passwords & Logins and API keys pages', () => {
+test('removing a connection also pops its Passwords & Logins, API keys and Persona & memory pages', () => {
   const b = 'b'.repeat(24);
-  const state = { index: 4, routes: [{ key: 'home', name: '(tabs)' }, { key: 'settings', name: 'settings/index' },
+  const state = { index: 6, routes: [{ key: 'home', name: '(tabs)' }, { key: 'settings', name: 'settings/index' },
     { key: 'conn', name: 'settings/connection', params: { connection: b } }, { key: 'vault', name: 'settings/vault', params: { connection: b } },
-    { key: 'keys', name: 'settings/env-keys', params: { connection: b } }] };
+    { key: 'keys', name: 'settings/env-keys', params: { connection: b } },
+    { key: 'files', name: 'settings/profile-files', params: { connection: b } },
+    { key: 'file', name: 'settings/profile-file', params: { connection: b, file: 'soul' } }] };
   assert.equal(routeSlot(state.routes[4]), b);
+  assert.equal(routeSlot(state.routes[5]), b);
+  assert.equal(routeSlot(state.routes[6]), b);
   assert.equal(routeSlot(state.routes[3]), b);
   const next = removedConnectionRoutes(state, new Set([b]));
   assert.deepEqual(next.routes.map(route => route.key), ['home', 'settings']);

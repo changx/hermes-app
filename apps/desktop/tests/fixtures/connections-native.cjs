@@ -124,6 +124,7 @@ async function field(contents, label, value) {
   // Model target is the opened connection page, not inferred from the active tab.
   await evaluate(sw,`document.querySelector('[data-connection-id="${peerRow.id}"] .settings-connection-open').click()`);
   await until(()=>evaluate(sw,`document.querySelector('[role=tab][aria-selected=true]')?.textContent.startsWith(${JSON.stringify(peerRow.name)})`),'peer connection page selected');
+  await evaluate(sw,`document.getElementById(${JSON.stringify('connection-' + peerRow.id + '-tab-model')}).click()`);
   await until(()=>evaluate(sw,"[...document.querySelectorAll('[aria-label=Model]')].find(e=>!e.closest('[hidden]'))?.value==='second.example.test'"),'model read reaches second connection');
   BrowserWindow.fromWebContents(sw).close(); await until(()=>!settingsForTest().isOpen,'Settings window closed');
   await until(()=>evaluate(shell,'document.querySelectorAll(".channel-tree .tree-thread").length===2'),'both connections sessions directly in sidebar');

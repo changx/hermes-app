@@ -169,6 +169,7 @@
 - [docs/session-token-usage.md](docs/session-token-usage.md)（Session 当前 context 与累计 tokens：桌面侧边栏卡片与状态栏、手机 Session options；插件 `thread_usage`）
 - [docs/vault.md](docs/vault.md)（Passwords & Logins：Hermes vault 的设置页与对话内「保存登录 / 验证码」卡片；插件 `vault.py`，不改核心；不含支付卡和密码管理器）
 - [docs/env-keys.md](docs/env-keys.md)（API keys：成员在 App 中改自己 profile 的 `.env`；黑名单隐藏沙箱、App 认证、LCM 等管理员设置，其余 key 可改；插件 `env_keys.py`，不改核心）
+- [docs/profile-files.md](docs/profile-files.md)（Persona & memory：在 App 中查看和编辑每个连接 profile 的 `SOUL.md`、`USER.md`、`MEMORY.md`；带版本号的保存，不覆盖 Agent 的新写入；插件 `profile_files.py`，不改核心；桌面连接页改为 tab 页）
 - [docs/todo-flag.md](docs/todo-flag.md)
 - [docs/archive.md](docs/archive.md)
 - [docs/live-session-pages.md](docs/live-session-pages.md)

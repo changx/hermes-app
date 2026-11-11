@@ -1,4 +1,4 @@
-import type { AgentModelSettings, EnvKey, EnvKeys, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
+import type { AgentModelSettings, EnvKey, EnvKeys, ProfileFile, ProfileFileKind, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -252,6 +252,10 @@ export interface HermesDesktopApi {
   getEnvKeys(connectionKey: string): Promise<EnvKeys>;
   setEnvKey(connectionKey: string, name: string, value: string): Promise<EnvKey>;
   removeEnvKey(connectionKey: string, name: string): Promise<boolean>;
+  /** SOUL.md, USER.md and MEMORY.md of the connection's profile (docs/profile-files.md). */
+  getProfileFiles(connectionKey: string): Promise<ProfileFile[]>;
+  /** Saves when the server file still has `version`; `limit` only shapes the error message. */
+  saveProfileFile(connectionKey: string, kind: ProfileFileKind, content: string, version: string, limit?: number): Promise<ProfileFile>;
   setModelSettings(connectionKey: string, provider: string, model: string, confirmSelection: boolean): Promise<AgentModelSettings | ModelSelectionConfirmation>;
   openBrowser(url?: string): Promise<void>;
   /** `sequence`: the Session's attachment IDs in message order; the preview then moves between them. */

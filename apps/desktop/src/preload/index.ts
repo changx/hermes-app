@@ -3,7 +3,7 @@ import { filesForUpload } from './attachment-files';
 import type { DesktopUpdate } from "../shared/snapshot-delta";
 import type { ChannelInput, ContextMenuItem, ProjectCreationInput, DesktopAttachment, DesktopRuntimeInfo, DesktopSnapshot, HermesDesktopApi, PairingRequest, SendMessageInput, SessionCardRequest, DesktopThreadUsage, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { DesktopVaultAnswer, DesktopVaultAnswerResult } from "../shared/desktop-api";
-import type { NewVaultItem, VaultItemChange } from "@hermes-app/client";
+import type { NewVaultItem, ProfileFileKind, VaultItemChange } from "@hermes-app/client";
 
 const runtimeInfo: DesktopRuntimeInfo = Object.freeze({
   viewRole: process.argv.includes('--hermes-settings-view') ? 'settings' : process.argv.includes('--hermes-remote-screen-view') ? 'remote-screen' : process.argv.includes('--hermes-browser-view') ? 'browser' : process.argv.includes('--hermes-tab-view') ? 'tab' : 'workspace',
@@ -31,6 +31,8 @@ const api: HermesDesktopApi = Object.freeze({
   getEnvKeys: (connectionKey: string) => ipcRenderer.invoke('desktop:get-env-keys', connectionKey),
   setEnvKey: (connectionKey: string, name: string, value: string) => ipcRenderer.invoke('desktop:set-env-key', connectionKey, name, value),
   removeEnvKey: (connectionKey: string, name: string) => ipcRenderer.invoke('desktop:remove-env-key', connectionKey, name),
+  getProfileFiles: (connectionKey: string) => ipcRenderer.invoke('desktop:get-profile-files', connectionKey),
+  saveProfileFile: (connectionKey: string, kind: ProfileFileKind, content: string, version: string, limit?: number) => ipcRenderer.invoke('desktop:save-profile-file', connectionKey, kind, content, version, limit),
   setModelSettings: (connectionKey: string, provider: string, model: string, confirmSelection: boolean) => ipcRenderer.invoke('desktop:set-model-settings', connectionKey, provider, model, confirmSelection),
   openBrowser: (url?: string): Promise<void> => ipcRenderer.invoke('desktop:open-browser', url),
   previewAttachment: (id: string, sequence?: readonly string[]): Promise<void> => ipcRenderer.invoke('desktop:preview-attachment', id, sequence),

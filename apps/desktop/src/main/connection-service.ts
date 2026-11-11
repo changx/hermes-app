@@ -3,7 +3,7 @@ import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_
 import { open, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join } from "node:path";
 import { app, dialog, shell } from "electron";
-import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
+import { HttpError, ModelConfirmationRequired, ProtocolError, isRetryableError, profileFileSaveError, type ProfileFileKind, type Attachment, type ConnectionState, type Thread } from "@hermes-app/client";
 import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
@@ -961,6 +961,20 @@ export class DesktopConnectionService {
     const client = this.modelClient(connectionKey);
     try { return await client.removeEnvKey(name); }
     catch (error) { throw new Error(error instanceof HttpError && error.status === 404 ? 'This key is already removed.' : 'Could not confirm the removal. Reload the list before trying again.'); }
+  }
+
+  async getProfileFiles(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsProfileFiles) throw new Error('Persona and memory are not available on this Hermes yet. Update its Hermes App plugin.');
+    try { return await client.profileFiles(); }
+    catch { throw new Error('Could not load these files. Check the connection and try again.'); }
+  }
+
+  async saveProfileFile(connectionKey: string, kind: ProfileFileKind, content: string, version: string, limit?: number) {
+    const client = this.modelClient(connectionKey);
+    const name = kind === 'soul' ? 'SOUL.md' : kind === 'user' ? 'USER.md' : 'MEMORY.md';
+    try { return await client.saveProfileFile(kind, content, version); }
+    catch (error) { throw new Error(error instanceof HttpError ? profileFileSaveError(error.code, error.status, name, limit) : profileFileSaveError(undefined, undefined, name)); }
   }
 
   async getModelSettings(connectionKey: string) {

@@ -717,6 +717,16 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .vault-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 10px; }
 .vault-item-info { display: grid; gap: 2px; min-width: 0; }
 .vault-item-info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-connection-tabs { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; border-bottom: 1px solid var(--app-border); margin-bottom: 18px; }
+.settings-connection-tabs button { margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 10px; background: transparent; color: var(--app-label); font: inherit; font-weight: 600; cursor: pointer; }
+.settings-connection-tabs button[aria-selected="true"] { border-bottom-color: var(--app-accent); color: var(--app-text); }
+.settings-connection-panel { display: grid; gap: 22px; width: 100%; }
+.profile-file-tabs { margin-bottom: 0; }
+.profile-files-settings { width: 100%; }
+.profile-file-editor { display: grid; gap: 8px; }
+.profile-file-status { display: flex; justify-content: space-between; gap: 12px; margin: 0; }
+.profile-file-count { flex: none; font-variant-numeric: tabular-nums; }
+.profile-file-text { min-height: max(320px, calc(100vh - 360px)); white-space: pre-wrap; }
 .vault-badge { color: #2b6b3f; font-size: 12px; }
 .resource-actions button { border: 0; color: var(--app-link); background: transparent; font-size: var(--app-font-size); }
 .channel-description { max-width: 190px; overflow: hidden; color: var(--app-muted); font-size: var(--app-font-size); text-overflow: ellipsis; white-space: nowrap; }

@@ -22,6 +22,8 @@ Not in Settings: Channel description, AGENTS.md, files and topic labels. They be
 
 1. **Connections:** list of saved connections with state, and Add connection.
 2. **One connection page:** *Status* → *On this Hermes · all your devices* (Default model) → *On this device* (Agent display name on mobile; Remove connection).
+   - Desktop shows the connection page as tabs (Jamie, 2026-11-10: the page had too much content, and Persona & memory adds large text editors): **General** (Status, then *On this device*: name and Remove connection), then the *On this Hermes · all your devices* settings, one tab each: **Model**, **Passwords & Logins**, **API keys**, **Persona & memory**. Each of these tabs says that it applies to this Hermes on every device. A tab is mounted when first opened and stays mounted while Settings is open, so drafts survive a tab change. Arrow keys move between tabs. See [profile-files.md](profile-files.md).
+   - Mobile already opens Passwords & Logins, API keys and Persona & memory as their own pages from the connection page, so its structure stays the same.
 3. **This device:** Font size; App icon (see [app-icon.md](app-icon.md); mobile shows it only in builds with the native module, not in Expo Go); Shortcuts on desktop only.
 
 Labels and order are the same on both apps. Desktop has no Agent display name because the desktop interface does not show a custom Agent name; the setting is added only when desktop uses it.

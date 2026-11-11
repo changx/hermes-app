@@ -10,7 +10,7 @@ import { SettingsBlock, SettingsPage, SettingsRow, SettingsSection } from './Set
 import { MAX_CONNECTIONS, serverName } from './connectionSlots';
 import { useApp, useConnections } from './connections';
 
-import { connectionSettingsRoute, envKeysSettingsRoute, vaultSettingsRoute } from './settingsRoutes';
+import { connectionSettingsRoute, envKeysSettingsRoute, profileFilesSettingsRoute, vaultSettingsRoute } from './settingsRoutes';
 import { AppIconSettings, useAppIcon } from './AppIcon';
 import { appIconLabel } from './appIconChoices';
 
@@ -78,6 +78,7 @@ export function ConnectionSettings() {
       </SettingsBlock>
       {client.supportsVault && <SettingsRow title="Passwords & Logins" onPress={() => router.push(vaultSettingsRoute(slot))} />}
       {client.supportsEnvKeys && <SettingsRow title="API keys" onPress={() => router.push(envKeysSettingsRoute(slot))} />}
+      {client.supportsProfileFiles && <SettingsRow title="Persona & memory" detail="SOUL.md, USER.md, MEMORY.md" onPress={() => router.push(profileFilesSettingsRoute(slot))} />}
     </SettingsSection>}
     {/* Connection name works in every state, including pairing; Agent name needs a paired identity. */}
     <SettingsSection title="On this device">

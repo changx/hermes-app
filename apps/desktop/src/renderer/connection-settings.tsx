@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import type React from 'react';
 import type { DesktopConnection, DesktopSnapshot } from '../shared/desktop-api';
 import { ModelSettings } from './model-settings';
 import { VaultSettings } from './vault-settings';
 import { EnvKeysSettings } from './env-keys-settings';
+import { ProfileFilesSettings } from './profile-files-settings';
 
 export const CONNECTION_LIMIT = 8;
 export const connectionStateLabels = { online: 'Online', connecting: 'Connecting', syncing: 'Syncing', retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention', pairing: 'Pairing' } as const;
@@ -77,11 +79,20 @@ function ConnectionName({ row, disabled }: { row: DesktopConnection; disabled?: 
   </form>;
 }
 
+export type ConnectionTab = 'general' | 'model' | 'vault' | 'keys' | 'files';
+/** Tabs of one connection: General is this device; the other tabs apply to its Hermes on every device. */
+export const CONNECTION_TABS: readonly { id: ConnectionTab; label: string }[] = [
+  { id: 'general', label: 'General' }, { id: 'model', label: 'Model' }, { id: 'vault', label: 'Passwords & Logins' },
+  { id: 'keys', label: 'API keys' }, { id: 'files', label: 'Persona & memory' },
+];
+
 /**
- * One connection, grouped by where each setting takes effect:
- * its status, its Hermes server (every device), and this device only.
+ * One connection as tabs (docs/profile-files.md): General (status, name, removal on this device),
+ * then the settings of its Hermes server, which apply on every device.
  */
 export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disabled?: boolean }) {
+  const [tab, setTab] = useState<ConnectionTab>('general');
+  const [visited, setVisited] = useState<ReadonlySet<ConnectionTab>>(() => new Set(['general']));
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -98,30 +109,58 @@ export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disa
     } catch (failure) { setError(failure instanceof Error && failure.message.includes('Wait for the current action') ? 'Wait for the current action before removing this connection.' : 'Could not confirm removal. Check the connection list before trying again.'); }
     finally { working.current = false; setBusy(false); }
   };
+  const tabs = CONNECTION_TABS;
+  const select = (id: ConnectionTab) => { setTab(id); setVisited(seen => seen.has(id) ? seen : new Set(seen).add(id)); };
+  const moveTab = (event: KeyboardEvent<HTMLDivElement>) => {
+    const { key } = event;
+    if (key !== 'ArrowLeft' && key !== 'ArrowRight') return;
+    event.preventDefault();
+    const index = tabs.findIndex(item => item.id === tab);
+    const next = tabs[(index + (key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length].id;
+    select(next); event.currentTarget.querySelector<HTMLElement>(`#${tabId(next)}`)?.focus();
+  };
+  const tabId = (id: ConnectionTab) => `connection-${row.id}-tab-${id}`;
+  const panelId = (id: ConnectionTab) => `connection-${row.id}-panel-${id}`;
+  const server = 'Applies to this Hermes on every device.';
+  // Each tab is mounted when first opened and stays mounted, so drafts survive a tab change.
+  const panel = (id: ConnectionTab, children: React.ReactNode) => (visited.has(id) || tab === id) &&
+    <div key={id} className="settings-connection-panel" role="tabpanel" id={panelId(id)} aria-labelledby={tabId(id)} hidden={tab !== id}>{children}</div>;
   return <div className="settings-section settings-connection-page" data-connection-id={row.id}>
-    <section className="settings-group" aria-labelledby="settings-group-status">
-      <h4 id="settings-group-status">Status</h4>
-      <p className="settings-connection-address">{row.server || 'Saved server address unavailable'}</p>
-      <span className={`settings-connection-state state-${row.state}`} role="status">{connectionStateLabels[row.state]}</span>
-      {row.detail && <p className="settings-description">{row.detail}</p>}
-    </section>
-    <section className="settings-group" aria-labelledby="settings-group-server">
-      <h4 id="settings-group-server">On this Hermes · all your devices</h4>
-      <p className="settings-description">Applies to this Hermes on every device. Conversations with their own model selection keep it. Running replies are not interrupted.</p>
+    <div className="settings-connection-tabs" role="tablist" aria-label={`${row.name} settings`} onKeyDown={moveTab}>
+      {tabs.map(item => <button key={item.id} type="button" role="tab" id={tabId(item.id)} aria-controls={panelId(item.id)} aria-selected={tab === item.id}
+        tabIndex={tab === item.id ? 0 : -1} onClick={() => select(item.id)}>{item.label}</button>)}
+    </div>
+    {panel('general', <>
+      <section className="settings-group" aria-labelledby={`settings-group-status-${row.id}`}>
+        <h4 id={`settings-group-status-${row.id}`}>Status</h4>
+        <p className="settings-connection-address">{row.server || 'Saved server address unavailable'}</p>
+        <span className={`settings-connection-state state-${row.state}`} role="status">{connectionStateLabels[row.state]}</span>
+        {row.detail && <p className="settings-description">{row.detail}</p>}
+      </section>
+      <section className="settings-group" aria-labelledby={`settings-group-device-${row.id}`}>
+        <h4 id={`settings-group-device-${row.id}`}>On this device</h4>
+        <ConnectionName key={row.id} row={row} disabled={disabled} />
+        <p className="settings-description">Removing does not delete conversations on the server or stop running tasks.</p>
+        {confirming ? <div className="settings-danger" role="alert"><h4>Remove {row.name}?</h4><p>This removes this connection, its open tabs, local drafts and queued messages from this device. Other connections and server conversations are unchanged.</p><div className="settings-actions"><button type="button" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Remove connection'}</button><button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep connection</button></div></div>
+          : <button type="button" className="secondary settings-remove" aria-label={`${pairing ? 'Cancel pairing' : 'Remove connection'} ${row.server || row.name}`} disabled={busy || disabled} onClick={() => { setConfirming(true); setError(''); }}>{pairing ? 'Cancel pairing' : 'Remove connection'}</button>}
+        {error && <p role="alert">{error}</p>}
+      </section>
+    </>)}
+    {panel('model', <section className="settings-group">
+      <p className="settings-description">{server} Conversations with their own model selection keep it. Running replies are not interrupted.</p>
       <h5>Default model</h5>
       <ModelSettings key={row.connectionKey ?? 'unpaired'} connectionKey={row.connectionKey} />
-      <h5>Passwords &amp; Logins</h5>
+    </section>)}
+    {panel('vault', <section className="settings-group">
+      <p className="settings-description">{server}</p>
       <VaultSettings key={`vault:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
-      <h5>API keys</h5>
+    </section>)}
+    {panel('keys', <section className="settings-group">
+      <p className="settings-description">{server}</p>
       <EnvKeysSettings key={`env-keys:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
-    </section>
-    <section className="settings-group" aria-labelledby="settings-group-device">
-      <h4 id="settings-group-device">On this device</h4>
-      <ConnectionName key={row.id} row={row} disabled={disabled} />
-      <p className="settings-description">Removing does not delete conversations on the server or stop running tasks.</p>
-      {confirming ? <div className="settings-danger" role="alert"><h4>Remove {row.name}?</h4><p>This removes this connection, its open tabs, local drafts and queued messages from this device. Other connections and server conversations are unchanged.</p><div className="settings-actions"><button type="button" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Remove connection'}</button><button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep connection</button></div></div>
-        : <button type="button" className="secondary settings-remove" aria-label={`${pairing ? 'Cancel pairing' : 'Remove connection'} ${row.server || row.name}`} disabled={busy || disabled} onClick={() => { setConfirming(true); setError(''); }}>{pairing ? 'Cancel pairing' : 'Remove connection'}</button>}
-      {error && <p role="alert">{error}</p>}
-    </section>
+    </section>)}
+    {panel('files', <section className="settings-group">
+      <ProfileFilesSettings key={`profile-files:${row.connectionKey ?? 'unpaired'}`} connectionKey={row.connectionKey} />
+    </section>)}
   </div>;
 }

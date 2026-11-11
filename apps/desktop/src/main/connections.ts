@@ -11,7 +11,7 @@ import { LocalDraftStore } from './local-draft-store';
 import { OutboxStore } from './outbox-store';
 import { normalizeBaseUrl } from './transport';
 import type { DesktopVaultAnswer, DesktopVaultAnswerResult } from "../shared/desktop-api";
-import type { NewVaultItem, VaultItemChange } from "@hermes-app/client";
+import type { NewVaultItem, ProfileFileKind, VaultItemChange } from "@hermes-app/client";
 
 type Account = { id: string; server?: string; service: DesktopConnectionService };
 /** Each account owns a live SDK client. UI IDs are qualified, wire IDs remain unchanged. */
@@ -358,6 +358,8 @@ export class DesktopConnections {
   async getEnvKeys(key: string) { return this.forIdentity(key).service.getEnvKeys(key); }
   async setEnvKey(key: string, name: string, value: string) { return this.forIdentity(key).service.setEnvKey(key, name, value); }
   async removeEnvKey(key: string, name: string) { return this.forIdentity(key).service.removeEnvKey(key, name); }
+  async getProfileFiles(key: string) { return this.forIdentity(key).service.getProfileFiles(key); }
+  async saveProfileFile(key: string, kind: ProfileFileKind, content: string, version: string, limit?: number) { return this.forIdentity(key).service.saveProfileFile(key, kind, content, version, limit); }
   async setModelSettings(key: string, provider: string, model: string, confirm: boolean) { return this.forIdentity(key).service.setModelSettings(key, provider, model, confirm); }
   async loadWorkspaceDrafts(): Promise<Record<string, DesktopLocalDraft>> {
     const all = await Promise.all([...this.accounts.values()].filter(a => a.service.status().connectionKey).map(async a => {
