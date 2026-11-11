@@ -1,6 +1,6 @@
 # macOS desktop automatic updates
 
-Status: implemented on branch `feat/desktop-auto-update`; tested end to end on the Mac mini with signed test builds (see Verification). Not released yet.
+Status: released in desktop v0.1.133 (2026-11-10). The public feed serves v0.1.133. Open: Jamie's Mac (see Release: desktop v0.1.133).
 
 Jamie (2026-11-10): "macos app 做成支持自动更新的。"
 
@@ -85,4 +85,14 @@ node services/mobile-updates/desktop-publish.mjs publish --store $S --zip tmp/re
   3. 0.1.135 against the same feed: one request, 204; the menu shows `Check for Updates…`.
   4. 0.1.133 opened from a folder outside Applications: no feed request in 70 s.
   - Logs: `/home/hermes/.hermes/profiles/jamie/workspace/hermes-app/desktop-auto-update/20261110-macmini-e2e/`. The test app, caches, ShipIt job and the test build folder were removed; the Mac mini's earlier `~/Library/Application Support/Hermes` folder was moved aside for the test and restored.
-- Open: the public feed after the server deployment; Jamie's Mac: install the first version with updates from the DMG, then receive the next release by itself.
+
+## Release: desktop v0.1.133 (first version with automatic updates)
+
+- Commits `637ff67` (feature), `1be0df5` (docs), release commit `a8d71a3`, tag `v0.1.133`. Later on main: `5589d6f` (release script: `stapler validate` retry).
+- Server deployment (2026-11-10 18:50 PST): `server.mjs`, `lib.mjs`, `desktop.mjs` copied to the service folder (old copy: `mobile-updates/service.pre-v0.1.133/`); `hermes-app-mobile-updates.service` restarted (PID 1132486 → 3679600). The iOS manifest answered 200 before and after. Traefik router `hermes-app-desktop-updates` added (old file: `mobile-updates/hermes-app-api.yaml.pre-v0.1.133`). Public `/desktop-updates/health` 200, feed 204 before publication.
+- First release run: the app passed notarization, then `stapler validate` failed with Apple's ticket-service network error (`NSURLErrorDomain`, Error 68). The step had no retry, and the script stopped before anything was published. `5589d6f` adds the same retry rule as `scripts/macos-dmg.sh` (5 tries, only for `NSURLErrorDomain`) to the app check and to the zip check. Second run of the same tag: all checks passed.
+- Checks in the log: app, DMG and unpacked update zip all valid, stapled, and `source=Notarized Developer ID`. All 10 app-code SHA-256 lines equal a local `npm run build` of `a8d71a3`.
+- GitHub Release v0.1.133: only `Hermes-0.1.133-macOS-arm64.dmg` (147,054,469 bytes) and its `.sha256`. Pruning deleted v0.1.131; v0.1.132 stays for rollback.
+- Update store: `Hermes-0.1.133-macOS-arm64.zip`, 134,252,115 bytes, SHA-256 `0075dffc…a26c`. Public feed: version 0.1.132 gets 200 with this entry, and 0.1.133 gets 204. Public download: 200 with the same SHA-256; `Range: bytes=0-99` returns 206.
+- v0.1.132 and older apps have no updater. Install v0.1.133 from the DMG once.
+- Open: Jamie's Mac: install v0.1.133 from the DMG into Applications and check that the app menu has "Check for Updates…" ("Hermes is up to date."). After the next release, Hermes downloads it by itself and the menu shows "Restart to Update to 0.1.134".
