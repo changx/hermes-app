@@ -721,6 +721,7 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .settings-connection-tabs button { margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 10px; background: transparent; color: var(--app-label); font: inherit; font-weight: 600; cursor: pointer; }
 .settings-connection-tabs button[aria-selected="true"] { border-bottom-color: var(--app-accent); color: var(--app-text); }
 .settings-connection-panel { display: grid; gap: 22px; width: 100%; }
+.settings-connection-panel[hidden] { display: none; }
 .profile-file-tabs { margin-bottom: 0; }
 .profile-files-settings { width: 100%; }
 .profile-file-editor { display: grid; gap: 8px; }
