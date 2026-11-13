@@ -19,6 +19,12 @@ export function safeFilename(name: string, mime?: string | null): string {
   const value = (name || fallback).replace(/[\\/\r\n\0]/g, '_').trim();
   return value && value !== '.' && value !== '..' ? value.slice(0, 180) : fallback;
 }
+/** Name for a picked photo/video. The adapter infers MIME from the extension, so it must match the type. */
+export function pickedMediaName(fileName: string | null | undefined, mime: string | null | undefined, kind: 'image' | 'photo' | 'video'): string {
+  if (fileName) return fileName;
+  if (mime?.startsWith('video/') || kind === 'video') return `video.${mime === 'video/quicktime' ? 'mov' : 'mp4'}`;
+  return `${kind}.${mime === 'image/png' ? 'png' : 'jpg'}`;
+}
 /**
  * Files above the upload limit are too large to download into the app (Agent files have no
  * size limit). The browser downloads them from their public link instead; undefined = no link.
