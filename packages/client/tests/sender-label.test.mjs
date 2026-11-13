@@ -37,6 +37,7 @@ test('display, copy and edit text remove only the exact leading member prefix on
     [{ role: 'user', sender: 'bob', text: '[bob] hello' }, 'hello'],
     [{ role: 'user', sender: 'bob', text: '[bob] [bob] hello' }, '[bob] hello'],
     [{ role: 'user', sender: 'bob', text: '[bob] ' }, ''],
+    [{ role: 'user', sender: 'bob', text: '[bob]' }, ''],
     [{ role: 'user', sender: 'bob', text: '[bob]  hello\n中文  ' }, ' hello\n中文  '],
     [{ role: 'user', text: '[bob] hello' }, '[bob] hello'],
     [{ role: 'user', sender: 'bob', text: '[Bob] hello' }, '[Bob] hello'],

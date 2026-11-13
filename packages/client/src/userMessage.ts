@@ -6,6 +6,9 @@ export function userMessageSender(value: unknown): string | undefined {
 /** Display/copy/edit text only. Keep the server's original body and send identity intact. */
 export function userMessageText(message: { role: string; text: string; sender?: string }): string {
   const sender = message.role === 'user' ? userMessageSender(message.sender) : undefined;
-  const prefix = sender ? `[${sender}] ` : undefined;
-  return prefix && message.text.startsWith(prefix) ? message.text.slice(prefix.length) : message.text;
+  if (!sender) return message.text;
+  // Attachment-only input carries the bare marker without a trailing space.
+  if (message.text === `[${sender}]`) return '';
+  const prefix = `[${sender}] `;
+  return message.text.startsWith(prefix) ? message.text.slice(prefix.length) : message.text;
 }
