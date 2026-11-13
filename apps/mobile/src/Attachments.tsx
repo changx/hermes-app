@@ -34,9 +34,9 @@ export type ComposerDraft = { items: DraftAttachment[]; files: Array<[number, Fi
 export function releaseComposerDraft(draft: ComposerDraft) { draft.files.forEach(([, file]) => forgetFile(file)); }
 
 /** Ready server metadata reaches onChange. With no threadId, files stay local until uploadTo(). */
-export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, send, expanded = false, onPressField, onComposerHeight, onSelectionChange, handleRef, initialDraft, onDraftChange, disabled = false }: {
+export function AttachmentComposer({ client, threadId, onChange, onPasteText, clearKey, children, send, expanded = false, onPressField, onComposerHeight, onSelectionChange, handleRef, initialDraft, restoredAttachments, onDraftChange, disabled = false }: {
   client: HermesClient; threadId: string | null; onChange: (attachments: Attachment[], busy: boolean) => void; onPasteText: (text: string) => void; clearKey: number; children?: React.ReactNode; send?: React.ReactNode; expanded?: boolean; onPressField?: () => void; onComposerHeight?: (height: number) => void; onSelectionChange?: (count: number) => void; handleRef?: React.MutableRefObject<AttachmentComposerHandle | null>; disabled?: boolean;
-  initialDraft?: ComposerDraft; onDraftChange?: (draft: ComposerDraft) => void;
+  restoredAttachments?: Attachment[]; initialDraft?: ComposerDraft; onDraftChange?: (draft: ComposerDraft) => void;
 }) {
   const [items, setItems] = useState<DraftAttachment[]>(() => initialDraft?.items ?? []);
   const [notice, setNotice] = useState('');
@@ -72,6 +72,11 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     } else identity.current = { client, threadId, clearKey };
   }, [client, threadId, clearKey]);
   useEffect(() => { callbacks.current(uploadedInOrder(itemsRef.current), threadId ? draftBusy(itemsRef.current) : false); }, []);
+  useEffect(() => {
+    if (restoredAttachments?.length && !itemsRef.current.length) update(restoredAttachments.map(attachment => ({
+      key: ++nextKey.current, source: { name: attachment.name ?? 'Attachment', mime: attachment.mime, size: attachment.size }, status: 'ready', attachment
+    })));
+  }, [restoredAttachments]);
   useEffect(() => () => {
     if (!draftCallback.current) { cleanup(); return; }
     ++epoch.current; controllers.current.forEach(controller => controller.abort()); controllers.current.clear();

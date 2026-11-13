@@ -1,4 +1,5 @@
 import type { HermesClient, Message, Receipt } from '../../../packages/client/src/index';
+import { isDeviceNotBoundError } from '../../../packages/client/src/sendErrors.ts';
 import { accepted, restoreSend, validSendContent, type Connection, type SendRecord } from './send.ts';
 import { validTimestampSeconds } from './messageTime.ts';
 
@@ -107,7 +108,7 @@ export class OutboxStore {
         }
         const restored = restoreSend(JSON.stringify({
           connectionId: meta.connectionId, threadId: meta.threadId, clientMessageId: meta.clientMessageId,
-          status: meta.status, createdAt: meta.createdAt, create: meta.create, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptRefSeq: meta.receiptRefSeq, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
+          status: meta.status, blockedReason: meta.blockedReason, createdAt: meta.createdAt, create: meta.create, receiptId: meta.receiptId, receiptState: meta.receiptState, receiptRefSeq: meta.receiptRefSeq, receiptAdmission: meta.receiptAdmission, receiptHandedOff: meta.receiptHandedOff, receiptProcessing: meta.receiptProcessing, receiptFeedback: meta.receiptFeedback, text, attachments
         }), this.config);
         if (!restored || this.entries.has(restored.clientMessageId)) throw new Error('Saved message identity conflict.');
         this.entries.set(restored.clientMessageId, { slot, order: meta.order, version: meta.version, record: restored, attempts: meta.attempts || 0, nextAttemptAt: meta.nextAttemptAt || 0 });
@@ -142,7 +143,7 @@ export class OutboxStore {
     await this.store.setItemAsync(key, JSON.stringify({ version, status: 'preparing', chunks: parts.length }));
     for (let i = 0; i < parts.length; i++) await this.store.setItemAsync(`${key}.part.${i}`, parts[i]);
     const meta: Stored = { connectionId: saved.connectionId, threadId: saved.threadId, clientMessageId: saved.clientMessageId,
-      status: saved.status, createdAt: saved.createdAt, create: saved.create, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptRefSeq: saved.receiptRefSeq, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
+      status: saved.status, blockedReason: saved.blockedReason, createdAt: saved.createdAt, create: saved.create, receiptId: saved.receiptId, receiptState: saved.receiptState, receiptRefSeq: saved.receiptRefSeq, receiptAdmission: saved.receiptAdmission, receiptHandedOff: saved.receiptHandedOff, receiptProcessing: saved.receiptProcessing, receiptFeedback: saved.receiptFeedback,
       version, chunks: parts.length, hash: hash(data), order, attempts: 0, nextAttemptAt: 0 };
     await this.store.setItemAsync(key, JSON.stringify(meta));
     this.entries.set(record.clientMessageId, { slot, order, version, record: saved, attempts: 0, nextAttemptAt: 0 });
@@ -157,7 +158,7 @@ export class OutboxStore {
         throw new Error('The saved message identity or text has changed.');
       const data = entry.version === 2 ? entry.record.text : payload(entry.record);
       const meta: Stored = { connectionId: record.connectionId, threadId: record.threadId, clientMessageId: record.clientMessageId,
-        status: record.status, createdAt: record.createdAt, create: record.create, receiptId: record.receiptId, receiptState: record.receiptState, receiptRefSeq: record.receiptRefSeq, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
+        status: record.status, blockedReason: record.blockedReason, createdAt: record.createdAt, create: record.create, receiptId: record.receiptId, receiptState: record.receiptState, receiptRefSeq: record.receiptRefSeq, receiptAdmission: record.receiptAdmission, receiptHandedOff: record.receiptHandedOff, receiptProcessing: record.receiptProcessing, receiptFeedback: record.receiptFeedback,
         version: entry.version, chunks: pieces(data).length, hash: hash(data), order: entry.order,
         attempts: attempts ?? entry.attempts, nextAttemptAt: nextAttemptAt ?? entry.nextAttemptAt };
       await this.store.setItemAsync(prefix(this.config.id, entry.slot), JSON.stringify(meta));
@@ -209,8 +210,8 @@ export class OutboxStore {
       if (!meta || meta.status !== 'blocked' || meta.clientMessageId !== id ||
           meta.connectionId !== this.config.id || meta.threadId !== threadId)
         throw new Error('This saved message cannot be retried right now.');
-      await this.store.setItemAsync(key, JSON.stringify({ ...meta, status: 'queued', attempts: 0, nextAttemptAt: 0 }));
-      this.entries.set(id, { ...entry, record: { ...entry.record, status: 'queued' }, attempts: 0, nextAttemptAt: 0 });
+      await this.store.setItemAsync(key, JSON.stringify({ ...meta, status: 'queued', blockedReason: undefined, attempts: 0, nextAttemptAt: 0 }));
+      this.entries.set(id, { ...entry, record: { ...entry.record, status: 'queued', blockedReason: undefined }, attempts: 0, nextAttemptAt: 0 });
     });
   }
   async clear(): Promise<void> {
@@ -517,7 +518,12 @@ export class MobileOutbox {
         try { await this.storage.update({ ...record, status: 'ambiguous' }, attempts, this.clock() + delayFor(attempts, e, this.random)); this.emit(); }
         catch { this.storageFault = true; this.emit('Your message is saved, but its status could not be updated. Keep your app data.'); }
       } else {
-        try { await this.storage.update({ ...record, status: 'blocked' }); this.emit(creating ? 'This conversation could not be started. Your message is still saved.' : 'Sending could not be confirmed. Check your connection permissions or message.'); }
+        try {
+          const unbound = isDeviceNotBoundError(e);
+          await this.storage.update({ ...record, status: 'blocked', blockedReason: unbound ? 'device_not_bound' : undefined });
+          // The saved reason supplies the Session's inline composer error, including after restart.
+          this.emit(unbound ? undefined : creating ? 'This conversation could not be started. Your message is still saved.' : 'Sending could not be confirmed. Check your connection permissions or message.');
+        }
         catch { this.storageFault = true; this.emit('Your message is saved, but its status could not be updated. Do not clear your app data.'); }
       }
     } finally { this.controllers.delete(record.clientMessageId); }

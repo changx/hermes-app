@@ -5,6 +5,10 @@ import { createSessionTextApi, type SessionTextApi } from './sessionText';
 import { parseAutomationDetail, parseAutomationPage, parseAutomationUpdate, parseAutomations, type Automation, type AutomationDetail, type AutomationPage } from './automations';
 export { utf8Size, workspacePath } from './workspace';
 import { validSitePath } from './attachmentPages';
+import { userMessageSender } from './userMessage';
+import { DEVICE_NOT_BOUND_CODE } from './sendErrors';
+export { userMessageText } from './userMessage';
+export { DEVICE_NOT_BOUND_CODE, DEVICE_NOT_BOUND_MESSAGE, isDeviceNotBoundError } from './sendErrors';
 export { attachmentPageUrl, validSitePath } from './attachmentPages';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
@@ -63,7 +67,7 @@ export { PROFILE_FILE_KINDS, PROFILE_FILE_MAX_CHARS, memoryEntries, memoryUsed, 
 export interface Interaction { id: string; kind: 'approval' | 'clarify'; thread_id: string; receipt_id: string; generation: string; prompt: string; choices: string[]; state: 'pending' | 'settled' | 'expired' }
 /** Display-only summaries from the authenticated server, never raw tool arguments/results. */
 export interface ToolCall { id: string; name: string; label: string; detail?: string; caption?: string; icon?: string }
-export interface Message { id: string; ref_seq: number; role: string; text: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; notice_kind?: 'review' | 'compression' | 'branch'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string; model?: string }
+export interface Message { id: string; ref_seq: number; role: string; text: string; sender?: string; created_at?: number; display_kind?: 'direct' | 'final' | 'system_notice'; notice_kind?: 'review' | 'compression' | 'branch'; tool_calls?: ToolCall[]; attachments?: Attachment[]; receipt_id?: string; client_message_id?: string; model?: string }
 /** A page the agent opened while answering ('read') or a link its reply cites ('cited'). */
 export interface MessageSource { url: string; kind: 'read' | 'cited' }
 
@@ -196,6 +200,7 @@ const validMessage = (v: unknown): Message => {
   return { id: str(x.id), ref_seq: num(x.ref_seq), role, text: str(x.text),
     ...(role === 'assistant' && (x.display_kind === 'direct' || x.display_kind === 'final') ? {display_kind: x.display_kind} : {}),
     ...(role === 'system' ? {display_kind: 'system_notice' as const} : {}),
+    ...(role === 'user' && userMessageSender(x.sender) ? {sender: userMessageSender(x.sender)} : {}),
     ...(role === 'assistant' && x.display_kind === 'final' && replyModel(x.model) ? {model: replyModel(x.model)} : {}),
     ...(role === 'system' && (x.notice_kind === 'review' || x.notice_kind === 'compression' || x.notice_kind === 'branch') ? {notice_kind: x.notice_kind} : {}),
     ...(x.created_at === undefined ? {} : {created_at:timestamp(x.created_at)}),
@@ -426,7 +431,8 @@ export class HermesClient {
 
     if (response.status < 200 || response.status >= 300) {
       const body = response.body && typeof response.body === 'object' ? (response.body as Record<string, unknown>) : {};
-      const code = typeof body.error === 'string' && /^[a-z_]{1,64}$/.test(body.error) ? body.error : undefined;
+      const unbound = method === 'POST' && /^\/v1\/threads\/[^/]+\/messages$/.test(path) && response.status === 403 && response.body === 'device not bound to a member';
+      const code = unbound ? DEVICE_NOT_BOUND_CODE : typeof body.error === 'string' && /^[a-z_]{1,64}$/.test(body.error) ? body.error : undefined;
       throw new HttpError(response.status,response.retryAfterMs,path.split('?')[0],code);
     }
     return obj(response.body);

@@ -19,6 +19,14 @@ const conn = 'a'.repeat(24), file = join(dir, 'outbox.secure.json');
 const base = { version: 1, id: 'desktop:00000000-0000-4000-8000-000000000001', threadId: 'th_0123456789abcdef', text: 'hello', attachmentIds: [], createdAt: 1, state: 'pending' };
 test.after(() => rm(dir, { recursive: true, force: true }));
 
+test('a rejected member send keeps its reason, exact original and attachment IDs across cold reads', async () => {
+  const store = new OutboxStore();
+  const original = { ...base, text: '  keep\n中文  ', attachmentIds: ['att_member'], state: 'blocked', blockedReason: 'device_not_bound' };
+  await store.put(conn, original);
+  assert.deepEqual(await new OutboxStore().list(conn), [original]);
+  await store.clear(conn);
+});
+
 test('a create request is saved and read back exactly', async () => {
   const store = new OutboxStore();
   await store.put(conn, { ...base, create: { channelId: 'p', title: 'New automation', automationEditor: true } });

@@ -41,6 +41,24 @@ function fixture(multi=true){
   return {sdk,sockets,paths,rows,gates,statusGates,watch,hint,holdWatch:value=>{holdWatch=value;},onChange:fn=>{onChange=fn;},remove:id=>{available=available.filter(value=>value!==id);for(const s of sockets.filter(s=>!s.closed))s.emit({type:'directory_changed'});}};
 }
 
+test('sender labels survive initial history, live refresh and reconnect; invalid metadata drops only itself', async () => {
+  const f = fixture();
+  try {
+    f.rows.A = [{ id: 'a1', ref_seq: 1, role: 'user', text: '[Alice] one', sender: 'Alice' }];
+    await f.sdk.connect(); await until(() => f.sdk.isCatalogueReady);
+    const page = f.sdk.acquirePage('A'); await page.openConversation('A');
+    assert.equal(page.messages.get('A')[0].sender, 'Alice');
+    f.rows.A.push({ id: 'a2', ref_seq: 2, role: 'user', text: '[bad name] two', sender: 'bad name' },
+      { id: 'a3', ref_seq: 3, role: 'user', text: '[Bob] three', sender: 'Bob' });
+    f.hint('A'); await until(() => page.messages.get('A')?.length === 3);
+    assert.deepEqual(page.messages.get('A').map(m => m.sender), ['Alice', undefined, 'Bob']);
+    f.sdk.suspendConnection();
+    f.rows.A.push({ id: 'a4', ref_seq: 4, role: 'user', text: '[legacy] four' });
+    await f.sdk.connect(); await until(() => page.messages.get('A')?.length === 4);
+    assert.deepEqual(page.messages.get('A').map(m => m.sender), ['Alice', undefined, 'Bob', undefined]);
+  } finally { f.sdk.close(); }
+});
+
 test('A and B live simultaneously; covered A updates, B release keeps A exact objects and boundaries',async()=>{
   const f=fixture();try{
     await f.sdk.connect();await until(()=>f.sdk.isCatalogueReady);

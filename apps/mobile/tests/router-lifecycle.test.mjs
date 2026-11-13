@@ -10,6 +10,7 @@ import { loadRenderResources } from './render-resource-fixture.mjs';
 import { build } from 'esbuild';
 import * as timeline from '../src/timeline.ts';
 import * as sendNotice from '../src/sendNotice.ts';
+import * as sendErrors from '../../../packages/client/src/sendErrors.ts';
 import * as sessionHeaderItems from '../src/sessionHeaderItems.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
 import * as todo from '../../../packages/client/src/todo.ts';
@@ -167,6 +168,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     './SessionLabels': { LabelPills: 'LabelPills', LabelsEditorPage: 'LabelsEditorPage' }, './ChannelScreens': { ChannelScreens: 'ChannelScreens' },
     './timeline': timeline,
     './sendNotice': sendNotice,
+    '../../../packages/client/src/sendErrors': sendErrors,
     './pageUpdates': pageUpdatesModule,
     './receiptHydration': { VisibleReceiptHydrator: class { cancel() {} update() {} } },
     './Attachments': { AttachmentComposer: 'AttachmentComposer', MessageAttachments: 'MessageAttachments', releaseComposerDraft() {} },
@@ -213,6 +215,37 @@ async function harness({ multiple = false, list = false, strict = false, product
     async outbox(items, notice) { await act(async () => outboxChanged(items, notice)); },
     async finishSend() { await act(async () => sendFinish()); }, async close() { await act(async () => root.unmount()); } };
 }
+
+test('member rejection restores the composer draft, keeps its inline error across reopening, and isolates Threads', async () => {
+  const h = await harness();
+  const record = { connectionId: 'connection-a', threadId: 't_one', clientMessageId: 'member-rejection', text: '  saved draft\n中文  ', status: 'blocked', blockedReason: 'device_not_bound' };
+  try {
+    await act(async () => h.timelines.get('t_one').onText(record.text));
+    await act(async () => { void h.timelines.get('t_one').onSend(); });
+    await h.finishSend();
+    assert.equal(h.timelines.get('t_one').text, '');
+    await h.outbox([record]);
+    assert.equal(h.timelines.get('t_one').text, record.text);
+    assert.equal(h.timelines.get('t_one').composerError, sendErrors.DEVICE_NOT_BOUND_MESSAGE);
+    assert.equal(h.api.textDrafts.current.get('connection-a:t_one'), record.text);
+    await h.render('t_two');
+    assert.equal(h.timelines.get('t_two').composerError, undefined);
+    assert.equal(h.timelines.get('t_two').text, '');
+    await h.render('t_one');
+    assert.equal(h.timelines.get('t_one').text, record.text);
+    assert.equal(h.timelines.get('t_one').composerError, sendErrors.DEVICE_NOT_BOUND_MESSAGE);
+  } finally { await h.close(); }
+});
+
+test('late member rejection never overwrites a newer composer draft', async () => {
+  const h = await harness();
+  try {
+    await act(async () => h.timelines.get('t_one').onText('a newer draft'));
+    await h.outbox([{ connectionId: 'connection-a', threadId: 't_one', clientMessageId: 'old-rejection', text: 'older text', status: 'blocked', blockedReason: 'device_not_bound' }]);
+    assert.equal(h.timelines.get('t_one').text, 'a newer draft');
+    assert.equal(h.timelines.get('t_one').composerError, sendErrors.DEVICE_NOT_BOUND_MESSAGE);
+  } finally { await h.close(); }
+});
 
 const runtime = (h, slot = 'primary') => h.shared.connections.find(c => c.slot === slot);
 test('account retry schedule stays on its connection across list, chat and covered routes', async () => {

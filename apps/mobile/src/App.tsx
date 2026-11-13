@@ -10,6 +10,7 @@ import type { VaultAnswerResult } from './VaultPromptCard';
 import { HttpError, type Attachment, type Interaction, type Message, type Receipt, type VaultPrompt, type VaultPromptAnswer } from '../../../packages/client/src/index';
 import type { MessageActions } from './MessageToolbar';
 import { newSend } from './send';
+import { DEVICE_NOT_BOUND_MESSAGE } from '../../../packages/client/src/sendErrors';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
 import { ChannelScreens } from './ChannelScreens';
 import { LabelPills } from './SessionLabels';
@@ -105,6 +106,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   }, [text, draftKey, textDrafts]);
   const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
   const [attachmentClearKey, setAttachmentClearKey] = useState(0);
+  const [restoredAttachments, setRestoredAttachments] = useState<Attachment[]>();
   const composerScope = `${config?.id || ''}:${threadId}`;
   const currentComposer = useRef(composerScope);
   currentComposer.current = composerScope;
@@ -139,6 +141,17 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   if (!receiptHydrator.current) receiptHydrator.current = new VisibleReceiptHydrator();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const lastSend = records.filter(record => record.threadId === threadId).at(-1);
+  const rejectedSend = lastSend?.status === 'blocked' && lastSend.blockedReason === 'device_not_bound' ? lastSend : undefined;
+  const recoveredSends = useRef(new Set<string>());
+  useEffect(() => {
+    if (busy || !rejectedSend || recoveredSends.current.has(rejectedSend.clientMessageId)) return;
+    recoveredSends.current.add(rejectedSend.clientMessageId);
+    // A rejection may arrive after enqueue cleared the composer. Keep any newer draft untouched.
+    if (textDrafts.current.get(draftKey) || composerDrafts.current.get(draftKey)?.items.length) return;
+    setText(rejectedSend.text);
+    setRestoredAttachments(rejectedSend.attachments);
+  }, [busy, rejectedSend, draftKey, textDrafts, composerDrafts]);
   // The flag saves on its own; the composer stays usable meanwhile.
   const [todoBusy, setTodoBusy] = useState(false);
   const busyRef = useRef(false);
@@ -374,7 +387,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     <Stack.Screen options={{ title: starting.title, ...headerTitle(starting.title, starting.channelId), headerRight: undefined }} />
     {!!(error || connectionError) && <Text style={styles.error}>{error || connectionError}</Text>}
     <ChatTimeline key="timeline" ref={timelineRef} active={focusedRef.current} threadId={threadId} rows={rows} position={entryPosition} onVisibleRefs={onVisibleRefs}
-      text={text} onText={setText} onSend={send} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
+      text={text} onText={setText} onSend={send} composerError={rejectedSend ? DEVICE_NOT_BOUND_MESSAGE : undefined} attachmentCount={0} attachmentsBusy={false} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={false} name={agentName.name} />}
       receipts={receipts} interactions={interactions} answers={answers}
       onAnswerText={onAnswerText} onAnswer={answer} vaultPrompts={vaultPrompts} onVaultAnswer={answerVault}
@@ -404,10 +417,10 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       onLocateNext={!located ? () => { setError(''); void openThread(threadId, anchor); } : undefined} locatingBusy={historyBusy || awaitingOpen}
       position={entryPosition}
       onVisibleRefs={onVisibleRefs}
-      text={text} onText={setText} onSend={send}
+      text={text} onText={setText} onSend={send} composerError={rejectedSend ? DEVICE_NOT_BOUND_MESSAGE : undefined}
       attachmentCount={draftAttachments.length} attachmentsBusy={attachmentsBusy} renderAttachments={renderAttachments}
       typingIndicator={<TypingIndicator active={focused && isAgentTyping(threadId, receipts, interactions, status === 'online')} name={agentName.name} />}
-      composerAccessory={(parts, onHeight) => <AttachmentComposer key={composerScope} send={parts.send} expanded={parts.expanded} onPressField={parts.onPressField} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{parts.input}</AttachmentComposer>}
+      composerAccessory={(parts, onHeight) => <AttachmentComposer key={composerScope} send={parts.send} expanded={parts.expanded} onPressField={parts.onPressField} client={client} threadId={threadId} initialDraft={composerDrafts.current.get(draftKey)} restoredAttachments={restoredAttachments} onDraftChange={draft => { if (config && forgottenConnections.current.has(config.id)) { releaseComposerDraft(draft); return; } if (draft.items.length) composerDrafts.current.set(draftKey, draft); else composerDrafts.current.delete(draftKey); }} onChange={onAttachmentsChange} onPasteText={value => { if (focusedRef.current && currentComposer.current === composerScope) timelineRef.current?.pasteText(value); }} clearKey={attachmentClearKey} disabled={busy} onComposerHeight={onHeight}>{parts.input}</AttachmentComposer>}
       receipts={receipts} interactions={interactions} answers={answers}
       onAnswerText={onAnswerText} onAnswer={answer} vaultPrompts={vaultPrompts} onVaultAnswer={answerVault}
       onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}

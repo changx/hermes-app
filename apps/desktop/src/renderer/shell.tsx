@@ -96,7 +96,7 @@ const MessageRow = memo(({ message, continuation, hidden = false, focused = fals
   const hasTime = timestamp && Number.isFinite(timestamp.getTime());
   const timeLabel = hasTime && timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const warning = processingWarning(message.receiptState, message.processing);
-  return <article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}${focused ? " message-focused" : ""}`}>
+  return <>{message.role === "user" && message.sender && !hidden && <p className="user-message-sender">{message.sender}</p>}<article hidden={hidden} data-result-ref={message.refSeq} className={`message message-${message.role}${continuation ? " message-continuation" : ""}${toolsOnly ? " message-tools-only" : ""}${finalReply ? " message-final" : ""}${message.optimistic ? " optimistic" : ""}${focused ? " message-focused" : ""}`}>
     {message.role !== "assistant" && message.role !== "user" && !continuation && hasTime && <p className="message-role"><time className="message-time" dateTime={timestamp.toISOString()}>{timeLabel}</time></p>}
     <MessageContent text={message.text} lines={message.displayKind === "direct"} />
     <div className="tool-records">{message.toolCalls.map((tool) => {
@@ -109,11 +109,12 @@ const MessageRow = memo(({ message, continuation, hidden = false, focused = fals
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
     {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} />}
     {message.feedback && <div className="receipt">{message.feedback}</div>}
+    {message.sendError && <div className="message-warning">{message.sendError}</div>}
     {warning ? <div className="receipt message-warning">{warning}{message.clientMessageId ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}</div> : null}
     {/* Cancel sits in the time line. Its space is always reserved (an invisible placeholder when not queued),
         so the bubble keeps the same width and height when Cancel appears or disappears, even for short text. */}
     {message.role === "user" && <div className="user-message-time">{message.receiptId && message.receiptState === "queued" ? <button type="button" className="user-message-cancel" aria-label="Cancel queued message" onClick={() => safely(window.hermesDesktop.cancelQueued(message.receiptId!))}>Cancel</button> : <span className="user-message-cancel user-message-cancel-slot" aria-hidden="true">Cancel</span>}{message.text && <UserMessageCopy text={message.text} />}<time className="message-time" dateTime={hasTime ? timestamp.toISOString() : undefined} title={hasTime ? timestamp.toLocaleString() : "Time unavailable"}>{chatClock(message.createdAt)}</time></div>}
-  </article>;
+  </article></>;
 });
 
 const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot: DesktopSnapshot; active?: boolean; sendVersion?: number }) => {
@@ -263,6 +264,17 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const [attachments, setAttachments] = useState<readonly DesktopAttachment[]>(threadId ? draftAttachments.get(threadId) ?? [] : []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const lastInput = [...snapshot.messages].reverse().find(message => message.role === "user");
+  const rejected = lastInput?.sendError ? lastInput : undefined;
+  const recovered = useRef(new Set<string>());
+  useEffect(() => {
+    if (busy || !threadId || !rejected || recovered.current.has(rejected.id)) return;
+    recovered.current.add(rejected.id);
+    // Rejections can arrive after durable enqueue, or after reopening. Never replace a newer draft.
+    if (drafts.get(threadId) || draftAttachments.get(threadId)?.length) return;
+    drafts.set(threadId, rejected.text); draftAttachments.set(threadId, rejected.attachments);
+    setText(rejected.text); setAttachments(rejected.attachments);
+  }, [busy, threadId, rejected]);
   const input = useRef<HTMLTextAreaElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const working = useRef(false);
@@ -342,7 +354,7 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
   const online = snapshot.connectionState === "online";
   const active = online && snapshot.interactions.length === 0 && !snapshot.vaultPrompts?.length;
   return <footer className="composer" aria-label="Message composer" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (event.dataTransfer.files.length) safely(attach([...event.dataTransfer.files])); }}>
-    {error && <p role="alert">{error}</p>}
+    {(error || rejected?.sendError) && <p role="alert">{error || rejected?.sendError}</p>}
     {running ? <div className="running-row">
       <div className="agent-running" role="status" aria-live="polite">
         {active ? <span className="running-dots" aria-hidden="true"><span /><span /><span /></span> : null}

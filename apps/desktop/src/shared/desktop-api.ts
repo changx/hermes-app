@@ -78,6 +78,9 @@ export type DesktopMessage = Readonly<{
   displayKind?: "direct" | "final" | "system_notice";
   noticeKind?: "review" | "compression" | "branch";
   text: string;
+  sender?: string;
+  /** A saved, rejected send; also shown inline in this Session's composer. */
+  sendError?: string;
   /** Model that produced a final reply, when the server reports it. */
   model?: string;
   refSeq?: number;

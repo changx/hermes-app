@@ -1,3 +1,5 @@
+import { userMessageText } from '../../../../packages/client/src/userMessage';
+import { DEVICE_NOT_BOUND_MESSAGE, isDeviceNotBoundError } from '../../../../packages/client/src/sendErrors';
 import { randomBytes, randomUUID } from "node:crypto";
 import { attachmentInputs, MAX_ATTACHMENT_BYTES, MAX_FILE_ATTACHMENT_BYTES, MAX_PREVIEW_BYTES, type AttachmentInput } from '../shared/attachment-input';
 import { open, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
@@ -175,7 +177,7 @@ export class DesktopConnectionService {
   }
 
   private stopIfUnauthorized(error: unknown): void {
-    if (!(error instanceof HttpError) || (error.status !== 401 && error.status !== 403)) return;
+    if (isDeviceNotBoundError(error) || !(error instanceof HttpError) || (error.status !== 401 && error.status !== 403)) return;
     this.client?.close();
     this.connectionState = "blocked";
     this.cancelRecovery();
@@ -332,7 +334,7 @@ export class DesktopConnectionService {
       : [];
     const durableClientIds = new Set(durable.flatMap(({ client_message_id }) => client_message_id ? [client_message_id] : []));
     const messages: Array<DesktopSnapshot["messages"][number]> = durable.map((raw) => {
-      const { id, ref_seq, role, text, display_kind, notice_kind, model, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] } = raw;
+      const { id, ref_seq, role, sender, display_kind, notice_kind, model, created_at, client_message_id, receipt_id, tool_calls = [], attachments = [] } = raw;
       const receipt = receipt_id ? this.client?.receipts.get(receipt_id) : client_message_id ? receiptByClient.get(client_message_id) : undefined;
       // The client keeps unchanged rows and receipts as the same objects. Reusing their projection keeps
       // the row identical, so each tab's snapshot delta skips it without serializing it.
@@ -341,7 +343,8 @@ export class DesktopConnectionService {
       const message = {
         id: client_message_id ? `client:${client_message_id}` : `message:${id}`,
         role: role === "assistant" || role === "commentary" ? "assistant" as const : role === "user" ? "user" as const : "system" as const,
-        text,
+        text: userMessageText(raw),
+        ...(role === "user" && sender ? { sender } : {}),
         ...(display_kind ? { displayKind: display_kind } : {}),
         ...(notice_kind ? { noticeKind: notice_kind } : {}),
         ...(model ? { model } : {}),
@@ -371,6 +374,7 @@ export class DesktopConnectionService {
           processing: receipt?.processing,
           ...(receipt?.feedback ? { feedback: receipt.feedback } : {}),
           optimistic: true,
+          ...(pending.state === "blocked" && pending.blockedReason === "device_not_bound" ? { sendError: DEVICE_NOT_BOUND_MESSAGE } : {}),
           toolCalls: [],
           attachments: pending.attachmentIds.map((id) => this.client?.attachments.get(id)).filter((item): item is Attachment => Boolean(item)).map((item) => this.projectAttachment(item)),
         });
@@ -1192,7 +1196,7 @@ export class DesktopConnectionService {
     // A durable ACK can already have retired the outbox. The page still owns its accepted echo.
     const acknowledged = client.messages.get(threadId)?.find(message => message.client_message_id === id);
     if (acknowledged) {
-      if (acknowledged.text !== text || JSON.stringify((acknowledged.attachments ?? []).map(attachment => attachment.id)) !== JSON.stringify(attachmentIds)) throw new Error('Message identity changed');
+      if (userMessageText(acknowledged) !== text || JSON.stringify((acknowledged.attachments ?? []).map(attachment => attachment.id)) !== JSON.stringify(attachmentIds)) throw new Error('Message identity changed');
       return;
     }
     for (const attachmentId of attachmentIds) {
@@ -1214,7 +1218,7 @@ export class DesktopConnectionService {
 
   async retryMessage(clientMessageId: string, threadId = this.selectedThreadId): Promise<void> {
     const pending = this.outbox.find(item => item.id === clientMessageId && item.threadId === threadId);
-    if (pending) { this.checkedReceipts.delete(pending.id); await this.deliver(pending.state === "blocked" && !pending.receiptId ? { ...pending, state: "pending" } : pending); }
+    if (pending) { this.checkedReceipts.delete(pending.id); await this.deliver(pending.state === "blocked" && !pending.receiptId ? { ...pending, state: "pending", blockedReason: undefined } : pending); }
   }
 
   // One request ID per tapped reply until the server answers definitely, so a lost
@@ -1338,7 +1342,8 @@ export class DesktopConnectionService {
       if (this.closed || this.client !== client || this.connection !== connection || !this.outbox.some(item => item.id === value.id)) return;
       this.stopIfUnauthorized(error);
       if (error instanceof HttpError && error.retryAfterMs) this.sendRetryAfter.set(value.id, Date.now() + error.retryAfterMs);
-      if (!value.receiptId) await this.persistOutbox({ ...value, state: isRetryableError(error) ? "pending" : "blocked" });
+      if (!value.receiptId) await this.persistOutbox({ ...value, state: isRetryableError(error) ? "pending" : "blocked", blockedReason: isDeviceNotBoundError(error) ? "device_not_bound" : undefined });
+      if (isDeviceNotBoundError(error)) return; // Keep read access; the saved send supplies an inline composer error.
       if (error instanceof HttpError && (error.status === 401 || error.status === 403)) this.actionError("This device is no longer authorized. Pair it again before sending. Your message is still saved.");
       else if (!isRetryableError(error)) this.actionError(creating ? "This conversation could not be started. Your message is still saved on this device." : "This message could not be sent. Your message is still saved on this device.");
     } finally {

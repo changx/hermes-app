@@ -30,6 +30,36 @@ const make = (store = new Store(), client = sdk(), conn = config, clock = () => 
   return { box, updates, notices, store, client };
 };
 
+test('unbound member rejection saves text and attachments, stops retries, and survives cold load', async () => {
+  const failure = Object.assign(new Error('HTTP 403'), { status: 403, code: 'device_not_bound' });
+  assert.equal(retryable(failure), false);
+  const client = sdk(async () => { throw failure; }), store = new Store();
+  const { box } = make(store, client);
+  const attachment = { id: 'att_member', thread_id: 'thread', name: 'note.txt', mime: 'text/plain', size: 4, state: 'available', receipt_id: null };
+  const original = { ...draft(90, '  keep my draft\n中文  '), attachments: [attachment] };
+  try {
+    await box.start(); box.setConnection('online'); await box.enqueue(original); await flush();
+    assert.equal(box.records[0].status, 'blocked');
+    assert.equal(box.records[0].blockedReason, 'device_not_bound');
+    assert.equal(box.records[0].text, original.text);
+    assert.deepEqual(box.records[0].attachments, [attachment]);
+    box.setConnection('retrying'); box.setConnection('online'); box.reconcile(); await flush();
+    assert.equal(client.sends.length, 1, 'reconnect and reconciliation must not repeat a definite rejection');
+  } finally { await box.stop(); }
+  const resumed = make(store, client);
+  try {
+    await resumed.box.start(); resumed.box.setConnection('online'); await flush();
+    assert.equal(resumed.box.records[0].blockedReason, 'device_not_bound');
+    assert.equal(resumed.box.records[0].text, original.text);
+    assert.deepEqual(resumed.box.records[0].attachments, [attachment]);
+    assert.equal(client.sends.length, 1, 'cold load does not retry');
+    // Only an explicit Retry (after the administrator links the device) may try again.
+    await resumed.box.retryFailed('thread', original.clientMessageId); await flush();
+    assert.equal(client.sends.length, 2);
+    assert.deepEqual(client.sends[1].slice(0, 4), client.sends[0].slice(0, 4));
+  } finally { await resumed.box.stop(); }
+});
+
 test('offline multiple records durable before network, exact UTF-8 chunks and migration', async () => {
   const store = new Store();
   const original = draft(1, '✨汉字'.repeat(900));

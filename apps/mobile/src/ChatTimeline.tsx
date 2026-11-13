@@ -75,8 +75,8 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       ? <Pressable testID="user-message-cancel" accessibilityRole="button" accessibilityLabel="Cancel queued message" disabled={busy} hitSlop={8} onPress={() => onCancel(row.receipt!)} style={styles.inlineCancel}><Text style={styles.cancelText}>Cancel</Text></Pressable>
       : <View testID="user-message-cancel-slot" pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.inlineCancel, styles.cancelSlot]}><Text style={styles.cancelText}>Cancel</Text></View>}{!!row.text && !failedId && <MessageCopyButton text={row.text} />}<MessageTime seconds={row.timestamp} clockOnly /></View>}
   </View>;
-  return <>{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <View style={styles.userMessageRow}>{content}</View> : content}</>;
-}, (prev, next) => prev.actions === next.actions && prev.canRetry === next.canRetry && prev.running === next.running && prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.displayKind === next.row.displayKind && prev.row.model === next.row.model && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+  return <>{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <View style={styles.userMessageRow}>{!!row.sender && <Text testID="user-message-sender" style={styles.senderLabel}>{row.sender}</Text>}{content}</View> : content}</>;
+}, (prev, next) => prev.actions === next.actions && prev.canRetry === next.canRetry && prev.running === next.running && prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.sender === next.row.sender && prev.row.displayKind === next.row.displayKind && prev.row.model === next.row.model && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; pasteText(text: string): void }
 type ScrollTarget = { scrollToEnd(options: { animated: boolean }): void; scrollTo(options: { y: number; animated: boolean }): void };
@@ -96,6 +96,7 @@ interface Props {
   text: string;
   onText(value: string): void;
   onSend(): void;
+  composerError?: string;
   composerAccessory?: (parts: ComposerParts, onHeight: (height: number) => void) => React.ReactNode;
   typingIndicator?: React.ReactNode;
   attachmentCount?: number;
@@ -440,6 +441,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
           native effect as a fallback; Android retains its existing blur. */}
       {Platform.OS === 'android' && <BlurView pointerEvents="none" blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={72} tint="systemMaterialLight" style={styles.composerBackdrop} />}
       <View collapsable={false} style={styles.composerForeground}>
+      {!!props.composerError && <Text accessibilityLiveRegion="polite" style={styles.composerError}>{props.composerError}</Text>}
       {hasRunningReceipt(props.threadId, props.receipts) && <View style={styles.runningRow}>
         <View style={styles.runningIndicator}>{props.typingIndicator}</View>
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" hitSlop={8} disabled={props.busy} onPress={props.onStop}
@@ -488,6 +490,8 @@ const styles = StyleSheet.create({
   systemNoticeText: { color: '#50647b', fontSize: 12, lineHeight: 17, flexShrink: 1 },
   noticeLink: { color: '#215ca7', textDecorationLine: 'underline' },
   userMessageRow: { alignSelf: 'stretch', minWidth: 0, marginHorizontal: 14 },
+  senderLabel: { alignSelf: 'flex-end', color: '#6b7280', fontSize: 12, marginTop: 5, marginRight: 14 },
+  composerError: { color: '#9d1b32', fontSize: 12, marginHorizontal: 14, marginTop: 8 },
   bubble: { backgroundColor: '#fff', padding: 13, marginHorizontal: 14, marginVertical: 5, borderRadius: 16, borderTopLeftRadius: 4, maxWidth: '90%', alignSelf: 'flex-start', borderWidth: 1, borderColor: '#e3e9f0' },
   // Shrink-wrap short content; longer messages wrap within the same 80% cap.
   // MessageContent list bodies retain an auto flex basis for intrinsic sizing.

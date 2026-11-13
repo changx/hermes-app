@@ -582,6 +582,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (prefers-reduced-motion: reduce) { .message.message-focused { animation: none; box-shadow: 0 0 0 2px var(--app-accent); } }
 /* Match mobile's 80% cap after deducting the two 14px timeline gutters. */
 .message-user { width: fit-content; min-width: 0; max-width: calc(80% - 22.4px); margin-left: auto; margin-right: 14px; padding: 13px 14px; border: 0; border-radius: 22px; background: #f3f3f3; color: #000000; text-align: left; }
+.user-message-sender { margin: 0 28px 4px 14px; color: var(--app-muted); font-size: calc(var(--app-font-size) * .75); text-align: right; overflow-wrap: anywhere; }
 .message[hidden] { display: none; }
 .work-heading { margin: 12px 14px 8px; padding-bottom: 10px; border-bottom: 1px solid #dedede; }
 .work-toggle { display: inline-flex; align-items: center; gap: 10px; padding: 6px 0; border: 0; background: transparent; color: #727272; font: inherit; cursor: pointer; }

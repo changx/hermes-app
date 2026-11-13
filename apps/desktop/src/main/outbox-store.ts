@@ -15,6 +15,7 @@ export type OutboxRecord = Readonly<{
   attachmentIds: readonly string[];
   createdAt: number;
   state: OutboxState;
+  blockedReason?: 'device_not_bound';
   receiptId?: string;
   receiptRefSeq?: number;
   create?: OutboxCreate;
@@ -52,6 +53,7 @@ const record = (value: unknown): OutboxRecord => {
     attachmentIds: Object.freeze([...item.attachmentIds]),
     createdAt: item.createdAt,
     state: item.state,
+    ...(item.state === 'blocked' && item.blockedReason === 'device_not_bound' ? { blockedReason: item.blockedReason } : {}),
     ...(item.receiptId ? { receiptId: item.receiptId } : {}),
     ...(item.receiptRefSeq !== undefined ? { receiptRefSeq: item.receiptRefSeq } : {}),
     ...(item.create ? { create: Object.freeze({ channelId: item.create.channelId, title: item.create.title, ...(item.create.automationEditor ? { automationEditor: true as const } : {}) }) } : {}),

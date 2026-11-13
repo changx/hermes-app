@@ -16,6 +16,7 @@ export interface SendRecord {
   attachments?: Attachment[];
   createdAt?: number;
   status: SendState;
+  blockedReason?: 'device_not_bound';
   create?: ThreadCreate;
   receiptId?: string;
   receiptState?: Receipt['state'];
@@ -109,7 +110,7 @@ export function restoreSend(raw: string | null, config: Connection): SendRecord 
   if (r.status === 'accepted' && typeof r.receiptId !== 'string') throw new Error('The saved message status is damaged.');
   if (r.create !== undefined && (!validCreate(r.create) || attachments.length)) throw new Error('The saved message is damaged.');
   // A process may have died after dispatch but before storing the response.
-  return { ...r, ...(attachments.length ? { attachments } : { attachments: undefined }), status: r.status === 'sending' ? 'ambiguous' : r.status } as SendRecord;
+  return { ...r, ...(attachments.length ? { attachments } : { attachments: undefined }), status: r.status === 'sending' ? 'ambiguous' : r.status, blockedReason: r.status === 'blocked' && r.blockedReason === 'device_not_bound' ? r.blockedReason : undefined } as SendRecord;
 }
 export function sendDescription(record: SendRecord): string {
   const states: Record<Receipt['state'], string> = { queued: 'Queued', running: 'Working', received: 'Received', completed: 'Completed', failed: 'Failed', interrupted: 'Stopped', unknown: 'Outcome unknown (will not run again automatically)' };
