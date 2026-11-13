@@ -9,7 +9,7 @@ import { toByteArray } from 'base64-js';
 import { useIsFocused } from 'expo-router';
 import type { Attachment, HermesClient } from '../../../packages/client/src/index';
 import { attachmentPageUrl } from '../../../packages/client/src/attachmentPages';
-import { appDownloadLimit, browserDownloadUrl, chooseAttachments, draftBusy, isImage, tooLargeForApp, MAX_CLIPBOARD_IMAGE_BYTES, MAX_THUMBNAIL_BYTES, uploadedInOrder } from './attachmentHelpers';
+import { appDownloadLimit, browserDownloadUrl, chooseAttachments, draftBusy, isImage, pickedMediaName, tooLargeForApp, MAX_CLIPBOARD_IMAGE_BYTES, MAX_THUMBNAIL_BYTES, uploadedInOrder } from './attachmentHelpers';
 import type { DraftAttachment, PickedAttachment } from './attachmentHelpers';
 import { useViewer } from './Viewers';
 import { ComposerCard } from './ComposerCard';
@@ -116,11 +116,11 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     if (disabled) return;
     const generation = epoch.current;
     try {
-      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: Math.max(1, 8 - itemsRef.current.length), quality: 1 });
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsMultipleSelection: true, selectionLimit: Math.max(1, 8 - itemsRef.current.length), quality: 1, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current });
       if (picked.canceled || epoch.current !== generation) return;
-      const sources = picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `image.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) }));
+      const sources = picked.assets.map(asset => ({ uri: asset.uri, name: pickedMediaName(asset.fileName, asset.mimeType, asset.type === 'video' ? 'video' : 'image'), mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) }));
       add(sources);
-    } catch { if (epoch.current === generation) setNotice('Could not select images. Please try again.'); }
+    } catch { if (epoch.current === generation) setNotice('Could not select photos or videos. Please try again.'); }
   };
   const files = async () => {
     if (disabled) return;
@@ -132,17 +132,19 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
     } catch { if (epoch.current === generation) setNotice('Could not select files. Please try again.'); }
   };
 
-  const camera = async () => {
+  // Android's system camera only takes photos when images and videos are mixed, so video is its own action.
+  const camera = async (video = false) => {
     if (disabled || itemsRef.current.length >= 8) return;
     const generation = epoch.current;
+    const what = video ? 'a video' : 'a photo';
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (epoch.current !== generation) return;
-      if (!permission.granted) { setNotice('Allow camera access to take a photo, or choose one from your library.'); return; }
-      const picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+      if (!permission.granted) { setNotice(`Allow camera access to take ${what}, or choose one from your library.`); return; }
+      const picked = await ImagePicker.launchCameraAsync({ mediaTypes: [video ? 'videos' : 'images'], quality: 1 });
       if (picked.canceled || epoch.current !== generation) return;
-      add(picked.assets.map(asset => ({ uri: asset.uri, name: asset.fileName || `photo.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`, mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) })));
-    } catch { if (epoch.current === generation) setNotice('Could not open the camera. Try again or choose a photo from your library.'); }
+      add(picked.assets.map(asset => ({ uri: asset.uri, name: pickedMediaName(asset.fileName, asset.mimeType, video || asset.type === 'video' ? 'video' : 'photo'), mime: asset.mimeType, size: asset.fileSize ?? fileSize(new File(asset.uri)) })));
+    } catch { if (epoch.current === generation) setNotice(`Could not open the camera. Try again or choose ${what} from your library.`); }
   };
 
   const paste = (data: { type: string; data?: string }) => {
@@ -265,6 +267,7 @@ export function AttachmentComposer({ client, threadId, onChange, onPasteText, cl
         <Action label="Choose file" onPress={() => { setMenuOpen(false); void files(); }} disabled={disabled || items.length >= 8} />
         <Action label="Photo library" onPress={() => { setMenuOpen(false); void images(); }} disabled={disabled || items.length >= 8} />
         <Action label="Take photo" onPress={() => { setMenuOpen(false); void camera(); }} disabled={disabled || items.length >= 8} />
+        <Action label="Record video" onPress={() => { setMenuOpen(false); void camera(true); }} disabled={disabled || items.length >= 8} />
         <Action label="Paste" onPress={() => { setMenuOpen(false); void pasteOnDemand(); }} disabled={disabled} />
       </View>}
     {!!notice && <Text accessibilityRole="alert" style={styles.error}>{notice}</Text>}

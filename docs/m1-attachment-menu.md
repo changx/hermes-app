@@ -8,6 +8,14 @@
 - 保留数量、大小、持久队列与鉴权边界。不改变发送、停止或后端。
 - 验证生产菜单回调、多选/取消、相机拒绝/成功/失效、显式粘贴、移动全测/TS/双平台导出。按既有授权仅更新隔离 Expo。iPhone 拍照、菜单和焦点需实机确认。
 
+## 视频附件（issue #5）
+
+- 菜单顺序：File、Photo library、Take photo、Record video、Paste。「Photo library」可多选图片与视频；「Record video」单独调用相机录像。Android 的系统相机在图片与视频混合时只拍照，所以录像使用独立入口。
+- iOS 相册选择使用 `preferredAssetRepresentationMode: Current`，取原始文件，避免选择时转码等待。
+- 适配器按文件名推断 MIME。选择器没有文件名时，默认名按 MIME 生成：`video/quicktime` 用 `.mov`，其他视频用 `.mp4`，PNG 用 `.png`，其他图片用 `.jpg`。
+- 视频沿用文件附件的大小上限与分块上传（最大 2 GB）。草稿预览显示文件行，不生成视频缩略图。
+- 只改手机客户端。插件已按 MIME 把视频路径交给 Agent；iOS 构建已含相机、相册和麦克风用途说明，不需要新的原生构建。录像与相册视频需 iPhone 实机确认。
+
 ## 本地验证
 
 移动端 169/169 测试与 TypeScript 通过；干净离线 npm ci、iOS/Android Expo 导出通过。覆盖菜单开关、相册/文件多选、权限拒绝/拍照取消/成功/异步过期、文字/URL/图片粘贴、正文选区替换及既有网络/滚动/附件回归。首次完整测试因隔离工作树缺少 SDK dist 失败，按现有构建脚本生成后全过。证据在私有 workspace/hermes-app/m1-attachment-menu/；不把回调测试等同 iPhone 原生交互验收。
