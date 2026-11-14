@@ -112,6 +112,7 @@
 - [docs/desktop-release-0.1.32.md](docs/desktop-release-0.1.32.md)
 - [docs/desktop-settings.md](docs/desktop-settings.md)
 - [docs/desktop-connections.md](docs/desktop-connections.md)
+- [docs/member-identity.md](docs/member-identity.md)（团队成员身份：发送者标签；连接设置只读显示“Speaking as”，来自插件 `GET /v1/me`）
 - [docs/desktop-session-composer.md](docs/desktop-session-composer.md)
 - [docs/desktop-silent-recovery.md](docs/desktop-silent-recovery.md)
 - [docs/desktop-error-banner.md](docs/desktop-error-banner.md)

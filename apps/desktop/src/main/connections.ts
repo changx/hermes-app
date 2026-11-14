@@ -355,6 +355,7 @@ export class DesktopConnections {
   async removeVaultItem(key: string, id: string) { return this.forIdentity(key).service.removeVaultItem(key, id); }
   async updateVaultItem(key: string, id: string, change: VaultItemChange) { return this.forIdentity(key).service.updateVaultItem(key, id, change); }
   async importVaultCsv(key: string, path: string) { return this.forIdentity(key).service.importVaultCsv(key, path); }
+  async getMemberIdentity(key: string) { return this.forIdentity(key).service.getMemberIdentity(key); }
   async getEnvKeys(key: string) { return this.forIdentity(key).service.getEnvKeys(key); }
   async setEnvKey(key: string, name: string, value: string) { return this.forIdentity(key).service.setEnvKey(key, name, value); }
   async removeEnvKey(key: string, name: string) { return this.forIdentity(key).service.removeEnvKey(key, name); }

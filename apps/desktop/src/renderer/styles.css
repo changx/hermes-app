@@ -50,6 +50,10 @@
 .settings-connection-list > li + li { border-top: 1px solid var(--app-border); }
 .settings-connection-info { display: grid; gap: 6px; min-width: 0; }
 .settings-connection-address { overflow-wrap: anywhere; color: var(--app-muted); font-size: 0.85em; }
+.settings-connection-identity { margin-top: 12px; }
+.settings-connection-identity h5 { margin: 0 0 2px; }
+.settings-connection-member { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.settings-connection-member.issue { color: #9d1b32; }
 .settings-connection-state { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: var(--app-muted); }
 .settings-connection-state::before { content: ''; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #9ca3af; }
 .settings-connection-state.state-online::before { background: #16a34a; }

@@ -155,3 +155,27 @@ test('Add connection pairs and opens the new connection page', async () => {
   assert.deepEqual(state.replaced.at(-1), { pathname: '/settings/connection', params: { connection: 'c'.repeat(24) } });
   root.unmount();
 });
+
+test('connection status shows the read-only member identity from GET /v1/me', async () => {
+  const agentName = { name: 'Agent', ready: true, error: '', saving: false, save: async () => true, reload() {} };
+  const show = async (client, status = 'online') => {
+    reset();
+    state.connections = [runtime('primary', 'personal.example', { status })];
+    state.app = { slot: 'primary', config: { id: 'primary-id' }, client, agentName };
+    let root; await act(async () => { root = create(React.createElement(ConnectionSettings)); });
+    await act(async () => {});
+    const all = texts(root); root.unmount(); return all;
+  };
+  const identity = value => ({ connectionState: 'online', supportsMemberIdentity: true, memberIdentity: async () => value });
+  const bound = await show(identity({ auth: 'device', deviceId: 'a', member: 'wangsheng' }));
+  assert.ok(bound.indexOf('Speaking as') > bound.indexOf('State') && bound[bound.indexOf('Speaking as') + 1] === 'wangsheng', bound.join('|'));
+  assert.ok(bound.some(t => /Only an administrator can change it/.test(t)));
+  assert.ok((await show(identity({ auth: 'device', deviceId: 'a', member: null }))).includes('Not linked to a team member'));
+  assert.ok((await show(identity({ auth: 'admin', deviceId: null, member: null }))).includes('Administrator token'));
+  // No capability (older Hermes), a failed read, or offline: no identity row and no request.
+  assert.ok(!(await show({ connectionState: 'online' })).includes('Speaking as'));
+  assert.ok(!(await show({ connectionState: 'online', supportsMemberIdentity: true, memberIdentity: async () => { throw Error('down'); } })).includes('Speaking as'));
+  let asked = 0;
+  assert.ok(!(await show({ connectionState: 'retrying', supportsMemberIdentity: true, memberIdentity: async () => { asked++; return { auth: 'admin', deviceId: null, member: null }; } }, 'retrying')).includes('Speaking as'));
+  assert.equal(asked, 0);
+});

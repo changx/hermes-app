@@ -948,6 +948,13 @@ export class DesktopConnectionService {
     finally { text = ''; }
   }
 
+  /** Who this connection speaks as (`GET /v1/me`); null when the server does not report it. */
+  async getMemberIdentity(connectionKey: string) {
+    const client = this.modelClient(connectionKey);
+    if (!client.supportsMemberIdentity) return null;
+    return await client.memberIdentity();
+  }
+
   async getEnvKeys(connectionKey: string) {
     const client = this.modelClient(connectionKey);
     if (!client.supportsEnvKeys) throw new Error('API keys are not available on this Hermes yet. Update its Hermes App plugin.');
