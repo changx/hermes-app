@@ -4,6 +4,7 @@ import { NavigationPanel, type ProjectReveal } from './navigation-panel';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
 import { ErrorBanner } from './error-banner';
+import { UpdateReadyButton } from './update-ready';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
 import { automaticBrowserWidth, browserMaximum, clampBrowserWidth, loadBrowserWidth, MIN_BROWSER_WIDTH, saveBrowserWidth } from './browser-width';
 
@@ -149,7 +150,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
       }} />}
     <section className="native-workspace-main">
       {/* Tabs scroll under the opaque action panel; the panel never scrolls. */}
-      <div className="desktop-tabbar">
+      <div className={`desktop-tabbar${snapshot.updateReady !== undefined ? ' update-ready' : ''}`}>
       <div ref={strip} className="desktop-tabs" role="tablist" aria-label="Session tabs">{tabs.map(tab => {
         const thread = tab.kind === 'session' && tab.threadId ? threadsById.get(tab.threadId) : undefined;
         const running = thread?.running === true;
@@ -171,6 +172,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
         </div>;
       })}</div>
       <div className="desktop-tab-actions">
+        <UpdateReadyButton version={snapshot.updateReady} onRestart={() => invoke(window.hermesDesktop.restartToUpdate())} />
         <button type="button" className="desktop-tab-add desktop-tab-action" aria-label="New chat tab" title="New tab (⌘T)" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}><Icon name="plus" /></button>
         {/* Settings stays usable while unpaired or offline, so the button is never disabled. */}
         <button type="button" className="desktop-tab-settings desktop-tab-action" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /></button>

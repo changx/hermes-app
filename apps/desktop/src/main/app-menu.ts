@@ -61,6 +61,10 @@ export const updateCheckDialog = (state: UpdateState): UpdateDialog => {
   }
 };
 
+/** The version for the title-bar "Update ready · Restart" button: only while an update is ready. */
+export const updateReadyVersion = (state: UpdateState): string | undefined =>
+  state.phase === 'ready' ? state.available ?? '' : undefined;
+
 export type UpdateNotice = { key: string; title: string; body: string; restart: boolean };
 
 /**

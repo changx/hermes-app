@@ -16,6 +16,8 @@ type Tab = { id: string; view: WebContentsView; connectionKey?: string; threadId
 export class DesktopTabManager {
   readonly tabs = new Map<string, Tab>();
   activeTabId?: string;
+  /** The downloaded update version while it waits for a restart (title-bar button); else undefined. */
+  updateReady?: string;
   readonly draftThreads = new Set<string>();
   private revision = 0;
   /** Changes after a job is deleted, so the Automations lists reload. */
@@ -294,7 +296,7 @@ export class DesktopTabManager {
         ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
  };
     }
-    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, updateReady: this.updateReady, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
       tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
         title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'
