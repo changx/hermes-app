@@ -10,7 +10,7 @@
   - 发布（Jamie「合并发布」）：插件 `main` `a2760d6`（修复 `6d01600`），tag `v0.2.66`；包 `hermes-app-plugin-0.2.66-6f9b912b….tar.gz`；安装到 `~/.hermes/plugin-releases/hermes-app/releases/0.2.66`（与 `git archive v0.2.66` 相同），`current` 从 `releases/0.2.65` 切到 `releases/0.2.66`，emma、hermes-app-dev、jamie、nan、space、wangyu 都已指向它。无数据库结构变化。测试在运行中的核心 `272c0ccea4` 上：P1 371 passed、49 failed；未改的 `main` 是 368 passed，49 个失败相同（测试环境问题，包括 `test_branch_thread_runner` 的 `AF_UNIX path too long`）。用 space 话题 3 次失败的真实副本只读重放：旧代码映射 0 行，新代码全部映射，截断点正常。
   - team01：`releases/0.2.66` 哈希与本机一致，`current` 从 0.2.65 切到 0.2.66；重启前确认没有运行中的 turn（最近一次 turn 09:26:39 UTC 结束），Gateway 重启（PID 1070151 → 1640224，2026-11-14 09:30:45 UTC）。`branching`、`storage`、`adapter` 在 09:30:46 由 `releases/0.2.66` 导入。guojingyu、jamie、sites、wangsheng、zhaozhidan 回环检查：无 token 401，有 token 200，`thread_branch` capability 存在。
   - 回滚：`current` 切回 `releases/0.2.65`，再重启 Gateway。
-  - 待办：Jamie 重启 `hermes-gateway.service`（当前 PID 2831098，2026-11-14 00:34:51 PST 启动，仍运行 0.2.65）；重启后在压缩过的 Thread 上实测 branch。
+  - 本机：Gateway 已重启（PID 2831098 → 2898973，2026-11-14 01:28:21 PST），01:28:28 由 `releases/0.2.66` 导入 `branching`、`storage`。待办：在压缩过的 Thread 上实测 branch。
 
 ## 已确认的产品决定（Jamie）
 
