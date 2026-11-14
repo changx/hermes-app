@@ -1,4 +1,4 @@
-import type { AgentModelSettings, EnvKey, EnvKeys, ProfileFile, ProfileFileKind, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
+import type { AgentModelSettings, EnvKey, EnvKeys, MemberIdentity, ProfileFile, ProfileFileKind, ModelSelectionConfirmation, NewVaultItem, VaultImportResult, VaultItem, VaultItemChange, ConnectionState, ReceiptProcessing, ReceiptState, ThreadModelChoice } from "@hermes-app/client";
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
@@ -251,6 +251,8 @@ export interface HermesDesktopApi {
   updateVaultItem(connectionKey: string, id: string, change: VaultItemChange): Promise<VaultItem>;
   /** Opens a file dialog in the main process; null when cancelled. */
   importVaultCsv(connectionKey: string): Promise<VaultImportResult | null>;
+  /** Who this connection speaks as (`GET /v1/me`); null when its Hermes does not report it. */
+  getMemberIdentity(connectionKey: string): Promise<MemberIdentity | null>;
   /** API keys of the connection's profile .env (docs/env-keys.md). Values never come back. */
   getEnvKeys(connectionKey: string): Promise<EnvKeys>;
   setEnvKey(connectionKey: string, name: string, value: string): Promise<EnvKey>;

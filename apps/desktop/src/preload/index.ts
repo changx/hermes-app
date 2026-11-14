@@ -28,6 +28,7 @@ const api: HermesDesktopApi = Object.freeze({
   removeVaultItem: (connectionKey: string, id: string) => ipcRenderer.invoke('desktop:remove-vault-item', connectionKey, id),
   updateVaultItem: (connectionKey: string, id: string, change: VaultItemChange) => ipcRenderer.invoke('desktop:update-vault-item', connectionKey, id, change),
   importVaultCsv: (connectionKey: string) => ipcRenderer.invoke('desktop:import-vault-csv', connectionKey),
+  getMemberIdentity: (connectionKey: string) => ipcRenderer.invoke('desktop:get-member-identity', connectionKey),
   getEnvKeys: (connectionKey: string) => ipcRenderer.invoke('desktop:get-env-keys', connectionKey),
   setEnvKey: (connectionKey: string, name: string, value: string) => ipcRenderer.invoke('desktop:set-env-key', connectionKey, name, value),
   removeEnvKey: (connectionKey: string, name: string) => ipcRenderer.invoke('desktop:remove-env-key', connectionKey, name),

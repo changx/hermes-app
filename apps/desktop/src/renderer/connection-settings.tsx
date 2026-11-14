@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type React from 'react';
+import { memberIdentityText, type MemberIdentity } from '@hermes-app/client';
 import type { DesktopConnection, DesktopSnapshot } from '../shared/desktop-api';
 import { ModelSettings } from './model-settings';
 import { VaultSettings } from './vault-settings';
@@ -46,6 +47,27 @@ export function ConnectionSettings({ snapshot, onOpen }: { snapshot: DesktopSnap
     </form> : <button type="button" disabled={busy || !!snapshot.connectionsError || rows.length >= CONNECTION_LIMIT} onClick={() => { setAdding(true); setError(''); }}>Add connection</button>}
     {rows.length >= CONNECTION_LIMIT && <p className="settings-description">This version supports eight connections. Remove one before adding another.</p>}
     {error && <p role="alert">{error}</p>}
+  </div>;
+}
+
+/**
+ * Read-only: the team member this connection speaks as. The server decides it from the device
+ * pairing; only an administrator can change it. Hidden when the server does not report it.
+ */
+export function ConnectionIdentity({ connectionKey, online }: { connectionKey?: string; online: boolean }) {
+  const [identity, setIdentity] = useState<MemberIdentity | null>(null);
+  useEffect(() => {
+    if (!connectionKey || !online) return;
+    let alive = true;
+    window.hermesDesktop.getMemberIdentity(connectionKey).then(value => { if (alive) setIdentity(value); }, () => { if (alive) setIdentity(null); });
+    return () => { alive = false; };
+  }, [connectionKey, online]);
+  if (!identity) return null;
+  const text = memberIdentityText(identity);
+  return <div className="settings-connection-identity">
+    <h5>Speaking as</h5>
+    <p className={text.bound ? 'settings-connection-member' : 'settings-connection-member issue'} role="status">{text.value}</p>
+    <p className="settings-description">{text.hint}</p>
   </div>;
 }
 
@@ -136,6 +158,7 @@ export function ConnectionPage({ row, disabled }: { row: DesktopConnection; disa
         <p className="settings-connection-address">{row.server || 'Saved server address unavailable'}</p>
         <span className={`settings-connection-state state-${row.state}`} role="status">{connectionStateLabels[row.state]}</span>
         {row.detail && <p className="settings-description">{row.detail}</p>}
+        <ConnectionIdentity key={row.connectionKey ?? 'unpaired'} connectionKey={row.connectionKey} online={row.state === 'online'} />
       </section>
       <section className="settings-group" aria-labelledby={`settings-group-device-${row.id}`}>
         <h4 id={`settings-group-device-${row.id}`}>On this device</h4>

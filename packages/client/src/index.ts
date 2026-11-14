@@ -7,8 +7,10 @@ export { utf8Size, workspacePath } from './workspace';
 import { validSitePath } from './attachmentPages';
 import { userMessageSender } from './userMessage';
 import { DEVICE_NOT_BOUND_CODE } from './sendErrors';
+import { parseMemberIdentity, type MemberIdentity } from './memberIdentity';
 export { userMessageText } from './userMessage';
 export { DEVICE_NOT_BOUND_CODE, DEVICE_NOT_BOUND_MESSAGE, isDeviceNotBoundError } from './sendErrors';
+export { memberIdentityText, parseMemberIdentity, type MemberIdentity } from './memberIdentity';
 export { attachmentPageUrl, validSitePath } from './attachmentPages';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
@@ -298,6 +300,8 @@ export class HermesClient {
   supportsVaultManage = false;
   /** Settings > API Keys: the profile .env without its locked keys (plugin 0.2.61+). */
   supportsEnvKeys = false;
+  /** `GET /v1/me`: this credential's device and bound member (docs/sender-identity.md in the plugin). */
+  supportsMemberIdentity = false;
   /** Settings > Persona & memory: SOUL.md, USER.md and MEMORY.md of the profile (plugin 0.2.62+). */
   supportsProfileFiles = false;
   /** The host's remote screen (plugin capability `remote_screen`): its display name. */
@@ -437,7 +441,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; this.supportsEnvKeys=x.env_keys===true; this.supportsProfileFiles=x.profile_files===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; this.supportsEnvKeys=x.env_keys===true; this.supportsMemberIdentity=x.member_identity===true; this.supportsProfileFiles=x.profile_files===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   /** Developer crash report for this server's client log; never shown to the user. */
   async reportClientLog(report: ClientLogReport, signal?: AbortSignal): Promise<void> { await this.call('POST','/v1/client-logs',report,signal,undefined,10000) }
   protected adoptCapabilities(owner: HermesClient): void {
@@ -463,6 +467,7 @@ export class HermesClient {
     this.supportsVault = owner.supportsVault;
     this.supportsVaultManage = owner.supportsVaultManage;
     this.supportsEnvKeys = owner.supportsEnvKeys;
+    this.supportsMemberIdentity = owner.supportsMemberIdentity;
     this.supportsProfileFiles = owner.supportsProfileFiles;
     this.remoteScreen = owner.remoteScreen;
     this.supportsAutomations = owner.supportsAutomations;
@@ -612,6 +617,7 @@ export class HermesClient {
   async vaultItems(signal?:AbortSignal):Promise<VaultItem[]> {const x=await this.call('GET','/v1/vault/items',undefined,signal);return arr(x.items).map(validVaultItem)}
   async addVaultItem(item:NewVaultItem):Promise<VaultItem> {const x=await this.call('POST','/v1/vault/items',item);return validVaultItem(x.item)}
   async removeVaultItem(id:string):Promise<boolean> {const x=await this.call('DELETE','/v1/vault/items/'+idPath(id));return x.removed===true}
+  async memberIdentity(signal?:AbortSignal):Promise<MemberIdentity> {const identity=parseMemberIdentity(await this.call('GET','/v1/me',undefined,signal));if(!identity)throw new ProtocolError('invalid identity');return identity}
   async envKeys(signal?:AbortSignal):Promise<EnvKeys> {const x=await this.call('GET','/v1/env-keys',undefined,signal);return {keys:arr(x.keys).map(validEnvKey),suggestions:x.suggestions===undefined?[]:arr(x.suggestions).map(validEnvKeySuggestion)}}
   /** Sends the value once; the server answers with the key's metadata only. */
   async setEnvKey(name:string,value:string):Promise<EnvKey> {if(!ENV_KEY_NAME.test(name))throw new Error('invalid key name');const x=await this.call('PUT','/v1/env-keys/'+idPath(name),{value});return validEnvKey(x.key)}

@@ -235,6 +235,7 @@ const registerDesktopApi = (): void => {
     return service.importVaultCsv(text(key, 200), picked.filePaths[0]);
   });
   // API keys of the profile .env (docs/env-keys.md): a value goes to the server once.
+  handle('desktop:get-member-identity', (event, key: unknown) => { trustedSender(event); return service.getMemberIdentity(text(key, 200)); });
   handle('desktop:get-env-keys', (event, key: unknown) => { trustedSender(event); return service.getEnvKeys(text(key, 200)); });
   handle('desktop:set-env-key', (event, key: unknown, name: unknown, value: unknown) => { trustedSender(event); return service.setEnvKey(text(key, 200), envKeyName(name), envKeyValue(value)); });
   handle('desktop:remove-env-key', (event, key: unknown, name: unknown) => { trustedSender(event); return service.removeEnvKey(text(key, 200), envKeyName(name)); });

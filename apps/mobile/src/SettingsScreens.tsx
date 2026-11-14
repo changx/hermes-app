@@ -9,6 +9,7 @@ import { AddConnectionForm, connectionDetail, connectionNeedsAttention, connecti
 import { SettingsBlock, SettingsPage, SettingsRow, SettingsSection } from './SettingsUI';
 import { MAX_CONNECTIONS, serverName } from './connectionSlots';
 import { useApp, useConnections } from './connections';
+import { memberIdentityText, type MemberIdentity } from '../../../packages/client/src/memberIdentity.ts';
 
 import { connectionSettingsRoute, envKeysSettingsRoute, profileFilesSettingsRoute, vaultSettingsRoute } from './settingsRoutes';
 import { AppIconSettings, useAppIcon } from './AppIcon';
@@ -68,6 +69,7 @@ export function ConnectionSettings() {
         <Text accessibilityLiveRegion="polite" style={[styles.value, connectionNeedsAttention(row) && styles.issue]}>{connectionStateLabel(row)}</Text>
         {!!detail && <Text style={styles.hint}>{detail}</Text>}
       </SettingsBlock>
+      {client && <ConnectionIdentity key={config?.id ?? slot} client={client} online={row.status === 'online' || client.connectionState === 'online'} />}
     </SettingsSection>
     {config && client && <SettingsSection title="On this Hermes · all your devices"
       footer="Conversations with their own model selection keep it. Running replies are not interrupted.">
@@ -97,6 +99,27 @@ export function ConnectionSettings() {
       </Pressable>
     </SettingsSection>
   </SettingsPage>;
+}
+
+/**
+ * Read-only: the team member this connection speaks as (`GET /v1/me`). The server decides it
+ * from the device pairing; only an administrator can change it. Hidden on older Hermes.
+ */
+function ConnectionIdentity({ client, online }: { client: { supportsMemberIdentity?: boolean; memberIdentity?: () => Promise<MemberIdentity> }; online: boolean }) {
+  const [identity, setIdentity] = React.useState<MemberIdentity | null>(null);
+  React.useEffect(() => {
+    if (!client.supportsMemberIdentity || !client.memberIdentity || !online) return;
+    let alive = true;
+    client.memberIdentity().then(value => { if (alive) setIdentity(value); }, () => { if (alive) setIdentity(null); });
+    return () => { alive = false; };
+  }, [client, online]);
+  if (!identity) return null;
+  const text = memberIdentityText(identity);
+  return <SettingsBlock>
+    <Text style={styles.key}>Speaking as</Text>
+    <Text selectable accessibilityLiveRegion="polite" style={[styles.value, !text.bound && styles.issue]}>{text.value}</Text>
+    <Text style={styles.hint}>{text.hint}</Text>
+  </SettingsBlock>;
 }
 
 /** Level 2: pair one more Hermes. */
