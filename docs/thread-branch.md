@@ -6,6 +6,10 @@
 - 插件 0.2.9 已在 hermes-app-dev 生效（2026-10-07 18:22 重启；迁移与线上验收通过，见发布记录）。
 - 真机验收（iPhone、Android、macOS）尚未进行。
 - 修复（插件 v0.2.35，2026-10-14）：核心读取 transcript 时会清理并去掉 user/assistant 文本前后的空白，`/branch` 复制的是处理后的文本。原消息带前后空白（例如末尾空格）时无法对应到副本，之后的锚点都返回 `history_mismatch`。插件现在也用核心的 `SessionDB._loaded_view_content` 比较；其他差异仍拒绝。已安装到共享 `current`，等待 Gateway 重启后生效。
+- 修复（插件 v0.2.66，2026-11-14）：压缩过的 Thread 无法 branch，都返回 `history_mismatch`。原因：压缩后 session 开头是两条连续的 user 行（压缩摘要、召回的记忆）；核心序列修复 `_merge_consecutive_users` 用 `"\n\n"` 把连续的纯文本 user 行合并为一行，`/branch` 复制的是合并结果，插件逐行比对在第一行就停止。插件现在把这一段连续 user 行都对应到合并后的副本行（角色 user、时间戳等于第一行、`"\n\n"` 连接，或经核心加载视图后相等）；其他差异仍拒绝。合并的副本行在新 Thread 中只发布一次，每条被合并输入的附件授权都保留。新 Thread 的内容不变：只复制当前 session 中锚点及之前的原文；最后一次压缩之前的原文留在原 Thread，模型只得到摘要。
+  - 发布（Jamie「合并发布」）：插件 `main` `a2760d6`（修复 `6d01600`），tag `v0.2.66`；包 `hermes-app-plugin-0.2.66-6f9b912b….tar.gz`；安装到 `~/.hermes/plugin-releases/hermes-app/releases/0.2.66`（与 `git archive v0.2.66` 相同），`current` 从 `releases/0.2.65` 切到 `releases/0.2.66`，emma、hermes-app-dev、jamie、nan、space、wangyu 都已指向它。无数据库结构变化。测试在运行中的核心 `272c0ccea4` 上：P1 371 passed、49 failed；未改的 `main` 是 368 passed，49 个失败相同（测试环境问题，包括 `test_branch_thread_runner` 的 `AF_UNIX path too long`）。用 space 话题 3 次失败的真实副本只读重放：旧代码映射 0 行，新代码全部映射，截断点正常。
+  - 回滚：`current` 切回 `releases/0.2.65`，再重启 Gateway。
+  - 待办：Jamie 重启 `hermes-gateway.service`（当前 PID 2831098，2026-11-14 00:34:51 PST 启动，仍运行 0.2.65）；重启后在压缩过的 Thread 上实测 branch。
 
 ## 已确认的产品决定（Jamie）
 
