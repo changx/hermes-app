@@ -102,6 +102,8 @@ export type DesktopSnapshot = Readonly<{
   browser?: DesktopBrowserState;
   /** Built-in sidebar or one separate window per Session. */
   browserMode?: DesktopBrowserMode;
+  /** Main window: a downloaded update waits for a restart; the version (may be empty). */
+  updateReady?: string;
   tabs?: readonly Readonly<{ id: string; title: string; threadId?: string; initialChannelId?: string; automationId?: string; automationEditor?: boolean; kind: DesktopTabKind }>[];
   activeTabId?: string;
   tabId?: string;
@@ -251,6 +253,8 @@ export interface HermesDesktopApi {
   updateVaultItem(connectionKey: string, id: string, change: VaultItemChange): Promise<VaultItem>;
   /** Opens a file dialog in the main process; null when cancelled. */
   importVaultCsv(connectionKey: string): Promise<VaultImportResult | null>;
+  /** Title-bar button: the normal quit sequence, then the downloaded update installs and opens. */
+  restartToUpdate(): Promise<void>;
   /** Who this connection speaks as (`GET /v1/me`); null when its Hermes does not report it. */
   getMemberIdentity(connectionKey: string): Promise<MemberIdentity | null>;
   /** API keys of the connection's profile .env (docs/env-keys.md). Values never come back. */

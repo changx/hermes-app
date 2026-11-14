@@ -1,6 +1,6 @@
 # macOS desktop automatic updates
 
-Status: released in desktop v0.1.133 (2026-11-10). Download with progress and visible result released in v0.1.135 (2026-11-11). Open: Jamie's Mac (see Release: desktop v0.1.135).
+Status: released in desktop v0.1.133 (2026-11-10). Download with progress and visible result released in v0.1.135 (2026-11-11). Title-bar restart button: issue #8. Open: Jamie's Mac (see Release: desktop v0.1.135).
 
 Jamie (2026-11-10): "macos app 做成支持自动更新的。"
 
@@ -10,6 +10,7 @@ Jamie (2026-11-10): "macos app 做成支持自动更新的。"
 - A new version downloads in the background. A normal check shows no dialog. During the download the Dock icon shows a progress bar and the app menu item under **About Hermes** reads **Downloading Update 0.1.N… 42%**. Then **Preparing Update…** while macOS checks the signature.
 - When the update is ready, a system notification says so (a click restarts Hermes into the new version). When a download fails, a notification names the problem; the menu item reads **Update Failed – Try Again**. Each notice shows once per version and app run.
 - A download that receives no data for 60 seconds stops with a failure. The next try (in 15 minutes, or at once with **Update Failed – Try Again**) continues from the received bytes.
+- When the update is ready, the right side of the main window's title bar (the tab bar, left of the New tab, Settings and Browser buttons) shows **Update ready · Restart**. It is not shown while checking, downloading or after a failure. A click does the same as the menu item below. Jamie (2026-11-14): "更新就绪时在标题栏右侧显示，点击后重启更新"; the 4-hour check interval stays.
 - When the download is complete, the app menu shows **Restart to Update to 0.1.N** under **About Hermes**. That item runs the normal quit sequence (sends settle, drafts and outbox saved, windows and connections close), installs the new version and opens it.
 - If the user does not restart, the new version installs when Hermes quits, and the next launch opens it.
 - **Check for Updates…** in the app menu checks at once and answers with a dialog: up to date, downloading (with the percentage), preparing, ready (with **Restart Now**), not in the Applications folder, could not check, could not download, damaged download, or could not install.
@@ -31,7 +32,8 @@ The app downloads and checks the update itself; Electron's built-in `autoUpdater
 |---|---|
 | Update state and timers | `apps/desktop/src/main/updater.ts` |
 | Feed request, download, Squirrel.Mac handoff | `apps/desktop/src/main/update-io.ts` |
-| Menu text, dialogs, notifications | `apps/desktop/src/main/app-menu.ts` |
+| Menu text, dialogs, notifications, title-bar version (`updateReadyVersion`) | `apps/desktop/src/main/app-menu.ts` |
+| Title-bar button (`UpdateReadyButton`, snapshot field `updateReady`, IPC `desktop:restart-to-update`) | `apps/desktop/src/renderer/update-ready.tsx`, `native-workspace.tsx`, `main/tab-manager.ts` |
 | App menu (Electron's default menus plus the update item) and quit integration | `apps/desktop/src/main/index.ts` |
 | Feed and package routes | `services/mobile-updates/desktop.mjs`, served by the same process as the iOS updates (`server.mjs`, `hermes-app-mobile-updates.service`) |
 | Publish tool | `services/mobile-updates/desktop-publish.mjs` |
