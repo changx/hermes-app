@@ -83,7 +83,7 @@ Toolchain on the Mac mini: Xcode 27.1, Node `~/.local/node-v24.14.1`, CocoaPods 
 6. `xcodebuild -exportArchive` with `method app-store-connect` and the API key signs with a cloud-managed Apple Distribution certificate and an App Store profile (`iOS Team Store Provisioning Profile: space.tuly.hermesapp`). No device is needed.
 7. `xcrun altool --validate-app` and `--upload-app` with `--apiKey`/`--apiIssuer` and `API_PRIVATE_KEYS_DIR=~/.hermes-signing/asc-api`.
 
-Run the build inside the logged-in GUI session (a temporary LaunchAgent `space.tuly.hermes-ios-build`, `launchctl bootstrap gui/$(id -u)`); the GitHub runner also runs there. `SKIP_PREP=1` reuses an existing `ios/` folder.
+Start the build over SSH with `SKIP_PREP=0 nohup /bin/bash ~/hermes-ios-build/build.sh <n> <runtime> </dev/null >/dev/null 2>&1 &` and poll `build.log` for `exit=`. Build 3 proved that the unsigned archive and the API-key export work without a GUI session. Builds 1 and 2 ran in a temporary LaunchAgent (`space.tuly.hermes-ios-build`, `build.plist`); the Hermes terminal guard now blocks `launchctl bootstrap`. `SKIP_PREP=1` reuses an existing `ios/` folder.
 
 Signing: xcodebuild cannot use the Xcode account on the Mac mini ("No Accounts" in the GUI session, "User interaction is not allowed" over SSH, also after Jamie signed in to Xcode). The build uses an App Store Connect team API key with the Admin role (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`). With that key, Xcode creates the Apple Distribution certificate and the App Store profile, and the same key uploads the build. The `.p8` stays on the Mac mini in a mode-700 folder. It is never printed, copied or committed.
 
@@ -110,6 +110,7 @@ Generated Info.plist (build 1, checked): `CFBundleShortVersionString` 0.1.0, `CF
 - Update round trip on the iPhone (build 1, runtime `b32a4b59…`): update `e8c438a2` (same code as build 1), then update `47636b98` (commit `d34f0a7`, cold launch opens the home page instead of `session-unavailable`). The server log showed `current=47636b98` after the second cold start, and Jamie confirmed the fix on the device.
 - A build with a newer embedded update ignores older published updates for the same runtime: the client takes an update only when it is newer than the running one.
 - Build 2 (source `93b3233`, full prebuild and pod install): runtime `b32a4b59…` (same as build 1), `CFBundleVersion` 2, Apple Distribution signature, App Store profile. `altool --validate-app` and `--upload-app` succeeded (30.5 MB, delivery `f635ff93-83e5-412b-a9c3-b849cd9f0e56`).
+- Build 3 (source `f8e5d84`, 2026-11-14, full prebuild and pod install, `node_modules` reused from build 2 because `apps/mobile/package.json` and the lockfile did not change): runtime `b32a4b59…` (same as builds 1 and 2), `CFBundleVersion` 3, Apple Distribution signature, App Store profile. `altool --validate-app` and `--upload-app` succeeded (delivery `1312cf1d-7c71-435d-964d-75821352d521`). App Store Connect: `processingState VALID`, `internalBuildState IN_BETA_TESTING` about 1 min after the upload. The build ran with `nohup` over plain SSH (no LaunchAgent), and the API-key export signed it without a GUI session.
 
 ## Open
 
