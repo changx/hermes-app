@@ -39,3 +39,13 @@ When the keyboard hides (or the App leaves foreground) after typing, the buffer 
 - `tests/keyboard-trace.test.mjs`: no upload without typing or without a reporter; the text is not recorded; throttle; buffer limit.
 - Full mobile suite with `ESBUILD_BINARY_PATH` and `HERMES_TEST_CHROME`: 276 tests, 276 pass, 0 fail, 0 skipped. TypeScript passes.
 - These are JS tests with native substitutes. iPhone acceptance: type until the composer wraps to 2, 3 and more lines, with the system keyboard and the third-party keyboard. The composer must stay directly above the keyboard.
+
+## Development release
+
+Released `1f78042` (merge `52f1b37`) on 2026-11-14. The lockfile did not change. Before restart, the release directory passed the targeted tests (28/28) and TypeScript.
+
+- Expo Go: only `hermes-app-expo.service` was restarted (PID 1950126 → 3832490, 22:07:11 PST). The public iOS and Android manifests return HTTP 200 with SDK 58.0.0. Each exact launchAsset returns HTTP 200. The `transform.bytecode=0` bundles contain the `keyboard-trace` marker once.
+- TestFlight: iOS update `c7f3bc35-8da2-48da-b05e-1671a55d044c` for runtime `b32a4b59…`, git commit `52f1b37`, bundle `aa30c90d…` (13,861,004 bytes, 27 assets). The public signed manifest returns HTTP 200 with this id, and the bundle returns HTTP 200 with the same SHA-256 and the `keyboard-trace` marker. It runs after the next two cold starts (download, then launch).
+- `hermes-gateway.service` PID 2898973, `hermes-app-mobile-updates.service` PID 3679600 and the hermes-app-dev plugin (0.2.66) did not change.
+- Evidence: private `workspace/hermes-app/2026-11-14-composer-dock-typing/`. Rollback baseline: `7a4d3ad` (branch `rollback/composer-dock-typing-before-release`). Roll back Expo Go with `git revert -m 1 52f1b37` and an Expo restart only. Roll back TestFlight with `publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to 4f9c58b7-1c95-4fa2-8507-2b30efeb66d4`.
+- iPhone acceptance is pending.
