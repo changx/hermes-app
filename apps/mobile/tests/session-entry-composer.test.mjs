@@ -12,9 +12,9 @@ globalThis.requestAnimationFrame = fn => { const id = ++state.next; state.frames
 globalThis.cancelAnimationFrame = id => state.frames.delete(id);
 const flush = () => { const jobs = [...state.frames.values()]; state.frames.clear(); jobs.forEach(fn => fn()); };
 const mocks = {
-  'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:(e,f)=>{s.appState=f;return {remove(){if(s.appState===f)s.appState=undefined;}}}}; export const Keyboard={addListener:(e,f)=>{(s.keyboardEvents||(s.keyboardEvents={}))[e]=f;return {remove(){if(s.keyboardEvents[e]===f)delete s.keyboardEvents[e];}}}}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
+  'react-native': `const s=globalThis.__entryTest; export const Platform={get OS(){return s.os}}; export const useWindowDimensions=()=>({fontScale:s.fontScale}); export const AccessibilityInfo={isReduceMotionEnabled:async()=>false,addEventListener:()=>({remove(){}})}; export const AppState={currentState:'active',addEventListener:(e,f)=>{s.appState=f;return {remove(){if(s.appState===f)s.appState=undefined;}}}}; export const Keyboard={isVisible:()=>false,metrics:()=>undefined,addListener:(e,f)=>{(s.keyboardEvents||(s.keyboardEvents={}))[e]=f;return {remove(){if(s.keyboardEvents[e]===f)delete s.keyboardEvents[e];}}}}; export const Alert={alert(){}}; export const ActivityIndicator='ActivityIndicator',Pressable='Pressable',RefreshControl='RefreshControl',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1};`,
   './FontSize': `export const Text='Text',TextInput='TextInput'; export const useFontSize=()=>({scale:globalThis.__entryTest.scale});`,
-  'react-native-keyboard-controller': `import React from 'react'; export const KeyboardChatScrollView=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o),scrollTo:o=>globalThis.__entryTest.commands.push({to:o.y,animated:o.animated})}));return React.createElement('ChatScroll',p,p.children);}); export const KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
+  'react-native-keyboard-controller': `import React from 'react'; export const KeyboardChatScrollView=React.forwardRef((p,r)=>{React.useImperativeHandle(r,()=>({scrollToEnd:o=>globalThis.__entryTest.commands.push(o),scrollTo:o=>globalThis.__entryTest.commands.push({to:o.y,animated:o.animated})}));return React.createElement('ChatScroll',p,p.children);}); export const KeyboardGestureArea='KeyboardGestureArea',KeyboardStickyView='KeyboardStickyView'; export const useReanimatedKeyboardAnimation=()=>({height:{value:0},progress:{value:0}}); export const useKeyboardHandler=handlers=>{globalThis.__entryTest.keyboard=handlers;};`,
   'react-native-reanimated': `const fade={duration:()=>fade,reduceMotion:()=>fade,easing:()=>fade}; export const FadeIn=fade,LinearTransition=fade,Easing={out:x=>x,cubic:'cubic'},withTiming=x=>x,ReduceMotion={System:'System'},runOnJS=x=>x,useSharedValue=x=>({value:x}); export default {View:'AnimatedView'};`,
   'react-native-safe-area-context': `export const useSafeAreaInsets=()=>({bottom:0});`,
   'expo-blur': `export const BlurTargetView='BlurTargetView',BlurView='BlurView';`,
@@ -352,5 +352,26 @@ test('a focused answer field holds the dock; a removed request releases it', asy
     await act(async () => root.update(React.createElement(ChatTimeline, {...defaults, rows, interactions:[]})));
     await act(async () => state.keyboard.onEnd({height:0}));
     assert.equal(dock(), false);
+  } finally { await act(async () => root.unmount()); }
+});
+
+test('a composer line wrap with the keyboard open does not resize the keyboard accessory offset', async () => {
+  const root = await mount({rows});
+  const offset = () => root.root.findByType('KeyboardGestureArea').props.offset;
+  const card = () => root.root.findAll(node => typeof node.type === 'function' && node.type.name === 'ComposerCard')[0];
+  const layout = async height => act(async () => card().props.onLayout({nativeEvent:{layout:{x:0,y:0,width:390,height}}}));
+  try {
+    await layout(44);
+    assert.equal(offset(), 58, 'keyboard closed: offset follows the composer');
+    await act(async () => state.keyboard.onEnd({height:336}));
+    await layout(66);
+    await layout(88);
+    assert.equal(offset(), 58, 'keyboard open: a line wrap keeps the offset');
+    await act(async () => state.keyboard.onEnd({height:0}));
+    assert.equal(offset(), 102, 'keyboard closed: the offset takes the current composer height');
+    await act(async () => state.keyboard.onEnd({height:336}));
+    await layout(44);
+    await act(async () => state.keyboardEvents.keyboardDidHide());
+    assert.equal(offset(), 58, 'RN hide alone also releases the offset');
   } finally { await act(async () => root.unmount()); }
 });

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { File, Paths } from 'expo-file-system';
 import type { ClientLogReport, HermesClient } from '../../../packages/client/src/index';
+import { setKeyboardTraceReporter } from './keyboardTrace';
 
 /**
  * Developer diagnostics: the app reports its own crashes to the connected
@@ -64,6 +65,14 @@ export function reportClientError(kind: ClientLogReport['kind'], error: unknown,
   void flush();
 }
 
+/** A developer diagnostic (`console` kind). `detail` goes in the stack field (24000 characters on the server). */
+export function reportClientDiagnostic(message: string, detail: string) {
+  const report: ClientLogReport = { kind: 'console', message, stack: detail, route: currentRoute, ...base() };
+  pending = [...pending, report].slice(-MAX_PENDING);
+  save();
+  void flush();
+}
+
 async function flush() {
   if (sending || !sinks.length || !pending.length) return;
   sending = true;
@@ -94,6 +103,7 @@ export function installClientLogs() {
   if (installed) return;
   installed = true;
   load();
+  setKeyboardTraceReporter(reportClientDiagnostic);
   const errorUtils = (globalThis as { ErrorUtils?: ErrorUtilsShape }).ErrorUtils;
   if (errorUtils) {
     const previous = errorUtils.getGlobalHandler();

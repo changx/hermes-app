@@ -2,7 +2,8 @@ import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, u
 import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Keyboard, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ViewInstance } from 'react-native';
 import { Text, TextInput, useFontSize } from './FontSize';
 import type { LayoutChangeEvent } from 'react-native';
-import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler } from 'react-native-keyboard-controller';
+import { KeyboardChatScrollView, KeyboardGestureArea, KeyboardStickyView, useKeyboardHandler, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { keyboardTrace, uploadKeyboardTrace } from './keyboardTrace';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurTargetView, BlurView } from 'expo-blur';
@@ -157,6 +158,20 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
 
   const dockHeight = useRef(0);
   const [composerHeight, setComposerHeight] = useState(0);
+  // KeyboardGestureArea `offset` becomes an invisible input accessory view on
+  // the iOS keyboard (keyboard-controller KeyboardAreaExtender). Changing it
+  // while the keyboard is open resizes the keyboard, and a line wrap in the
+  // composer did exactly that: the dock then dropped to the bottom behind the
+  // keyboard. The offset follows the composer only while no keyboard is shown.
+  const [gestureOffset, setGestureOffset] = useState(0);
+  const keyboardShown = useRef(false);
+  const composerHeightRef = useRef(0);
+  composerHeightRef.current = composerHeight;
+  useEffect(() => { if (!keyboardShown.current) setGestureOffset(composerHeight); }, [composerHeight]);
+  const markKeyboardShown = useCallback((shown: boolean) => {
+    keyboardShown.current = shown;
+    if (!shown) setGestureOffset(composerHeightRef.current);
+  }, []);
   const [latestRowHeight, setLatestRowHeight] = useState(0);
   const composerID = `composer-${props.threadId}`;
   const composerInput = useRef<React.ElementRef<typeof TextInput>>(null);
@@ -181,6 +196,19 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
   }, [props.interactions]);
   const textSelection = useRef<{ start: number; end: number } | null>(null);
   const reportedInset = useRef(0);
+  // Temporary diagnostic (keyboardTrace.ts): library keyboard values and the dock's window position.
+  const libraryKeyboard = useReanimatedKeyboardAnimation();
+  const dockView = useRef<ViewInstance | null>(null);
+  const dockFollowsRef = useRef(true);
+  const traceSample = useCallback((kind: string, extra?: Record<string, unknown>) => {
+    if (!active.current) return;
+    const metrics = Keyboard.isVisible() ? Keyboard.metrics() : undefined;
+    const values = { ...extra, libH: libraryKeyboard.height.value, libP: libraryKeyboard.progress.value, follow: dockFollowsRef.current ? 1 : 0,
+      focus: focusedDockInputs.current.size, rnVisible: Keyboard.isVisible() ? 1 : 0, rnY: metrics?.screenY, rnH: metrics?.height, app: AppState.currentState };
+    const view = dockView.current;
+    if (!view) { keyboardTrace(kind, values); return; }
+    requestAnimationFrame(() => view.measureInWindow((_x: number, y: number, _width: number, height: number) => keyboardTrace(kind, { ...values, dockY: y, dockBottom: y + height })));
+  }, [libraryKeyboard]);
 
   // One plain native ScrollView renders the complete transcript. No list
   // virtualization: every row stays mounted, so positions are real layout.
@@ -265,13 +293,29 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     reportedInset.current = insets.bottom;
     if (following.current) scheduleFollow();
   }, [scheduleFollow]);
+  const traceController = useCallback((kind: string, height: number, progress: number, duration: number, target: number) => traceSample(kind, { h: height, p: progress, d: duration, t: target }), [traceSample]);
   useKeyboardHandler({
-    onStart: e => { 'worklet'; if (e.height > 0) runOnJS(holdDock)(); if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
+    onStart: e => { 'worklet'; runOnJS(traceController)('kcStart', e.height, e.progress, e.duration, e.target); if (e.height > 0) runOnJS(holdDock)(); if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
     onInteractive: () => { 'worklet'; if (!nativeMoving.value) { nativeMoving.value = true; runOnJS(setKeyboardMoving)(true); } },
-    onEnd: e => { 'worklet'; nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); if (e.height <= 0) runOnJS(releaseDock)(); }
-  }, [setKeyboardMoving, holdDock, releaseDock]);
+    onEnd: e => { 'worklet'; runOnJS(traceController)('kcEnd', e.height, e.progress, e.duration, e.target); runOnJS(markKeyboardShown)(e.height > 0); nativeMoving.value = false; runOnJS(setKeyboardMoving)(false); if (e.height <= 0) runOnJS(releaseDock)(); }
+  }, [setKeyboardMoving, holdDock, releaseDock, traceController, markKeyboardShown]);
+  // Diagnostic: every RN keyboard notification with its end frame. A hide after typing uploads the trace.
+  useEffect(() => {
+    const names = ['keyboardWillShow', 'keyboardDidShow', 'keyboardWillChangeFrame', 'keyboardDidChangeFrame', 'keyboardWillHide'] as const;
+    const subs = names.map(name => Keyboard.addListener(name, e => {
+      const end = e?.endCoordinates;
+      traceSample(name, { y: end?.screenY, h: end?.height, w: end?.width, d: e?.duration });
+    }));
+    return () => subs.forEach(sub => sub.remove());
+  }, [traceSample]);
+  useEffect(() => { dockFollowsRef.current = dockFollowsKeyboard; traceSample('follow', { value: dockFollowsKeyboard ? 1 : 0 }); }, [dockFollowsKeyboard, traceSample]);
   // RN's own hide event is a second, independent signal for the same release.
-  useEffect(() => { const sub = Keyboard.addListener('keyboardDidHide', releaseDock); return () => sub.remove(); }, [releaseDock]);
+  useEffect(() => { const sub = Keyboard.addListener('keyboardDidHide', e => {
+    releaseDock();
+    markKeyboardShown(false);
+    traceSample('keyboardDidHide', { y: e?.endCoordinates?.screenY, h: e?.endCoordinates?.height, d: e?.duration });
+    setTimeout(() => uploadKeyboardTrace('hide'), 200);
+  }); return () => sub.remove(); }, [releaseDock, traceSample, markKeyboardShown]);
   useEffect(() => {
     let mounted = true;
     active.current = props.active;
@@ -279,6 +323,8 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
     const app = AppState.addEventListener('change', state => {
       motionForeground.current = state === 'active';
+      keyboardTrace('app', { state });
+      if (state !== 'active') uploadKeyboardTrace('background');
       // A keyboard hide while the App is away can be lost.
       if (state === 'active') releaseDock();
       else {
@@ -344,11 +390,11 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
     // Fabric iOS: reset empty measurement without fixing font height.
     // Android setLines also fixes the widget's height, so leave it unset there.
     numberOfLines={Platform.OS === 'ios' && props.text.length === 0 ? 1 : undefined}
-    onFocus={() => { dockInputFocus('composer', true); setInputFocused(true); }} onBlur={() => { dockInputFocus('composer', false); setInputFocused(false); }}
-    style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={props.onText} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />;
+    onFocus={() => { dockInputFocus('composer', true); setInputFocused(true); traceSample('focus'); }} onBlur={() => { dockInputFocus('composer', false); setInputFocused(false); traceSample('blur'); }}
+    style={[styles.composeInput, { lineHeight: composerLineHeight, maxHeight: composerMaxHeight }]} scrollEnabled underlineColorAndroid="transparent" placeholder="Message…" value={props.text} onChangeText={value => { traceSample('text', { len: value.length, lines: value.split('\n').length }); props.onText(value); }} onSelectionChange={e => { textSelection.current = e.nativeEvent.selection; }} />;
   const composerParts: ComposerParts = { input: composerInputNode, expanded: inputFocused, onPressField: () => composerInput.current?.focus(),
     send: <ComposerSendButton onPress={props.onSend} disabled={props.busy || !!props.attachmentsBusy || (!props.text.trim() && !props.attachmentCount)} busy={props.busy} /> };
-  return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={composerHeight}>
+  return <KeyboardGestureArea style={styles.flex} interpolator="ios" textInputNativeID={composerID} offset={gestureOffset}>
     <BlurTargetView ref={blurTarget} collapsable={false} style={styles.flex}>
       <KeyboardChatScrollView ref={list as never} testID="chat-history" style={[styles.flex, !positioned && rows.length > 0 && styles.unpositioned]}
         automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
@@ -409,9 +455,10 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
       </KeyboardChatScrollView>
 
     </BlurTargetView>
-    <KeyboardStickyView testID="composer-dock" enabled={dockFollowsKeyboard} pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
+    <KeyboardStickyView ref={dockView as never} testID="composer-dock" enabled={dockFollowsKeyboard} pointerEvents="box-none" style={{ marginTop: showLatest ? -latestRowHeight : 0, zIndex: 1 }} offset={{ opened: bottom }} onLayout={e => {
       if (!active.current) return;
       const height = e.nativeEvent.layout.height;
+      if (dockHeight.current !== height) traceSample('dockLayout', { layoutH: height, layoutY: e.nativeEvent.layout.y, gestureOffset: keyboardShown.current ? 1 : 0 });
       if (dockHeight.current !== height) {
         const hadDock = dockHeight.current > 0;
         dockHeight.current = height;
