@@ -1,6 +1,14 @@
 # Connection groups
 
-Branch `feat/connection-groups` in `/opt/projects/jamie/_worktrees/hermes-app/connection-groups`, based on main `bde13c1`. Not merged, not published.
+Branch `feat/connection-groups`, merged to main as `c4092d1` on 2026-11-16 (Jamie: "合并发布").
+
+## Release
+
+- Desktop v0.1.140: release commit `b5ccdf3`, tag `v0.1.140`, built on the Mac mini. Mac mini check: 257 pass, 0 fail, 62 skipped (Chromium/Electron tests that need test variables). `npm audit`: 0 vulnerabilities. App and DMG are signed with Developer ID, notarized and stapled (`spctl`: `source=Notarized Developer ID`). GitHub Release v0.1.140 has the DMG and its `.sha256`; v0.1.138 was pruned. The update feed for 0.1.139 offers 0.1.140 (`sha256 30cf1805…`, 134,268,677 bytes); the zip returns HTTP 206 for a range request.
+- Build note: the first two runs of `scripts/macmini-desktop-release.sh` lost the SSH link during codesign ("Connection closed by UNKNOWN port 65535"). A third run, started detached on the Mac mini, failed once with "A timestamp was expected but was not found" (Apple's timestamp server was briefly unreachable). The fourth detached run passed. Its packages were copied back and published with `--publish-built`.
+- Expo Go: `hermes-app-expo.service` restarted (PID 3832490 → 1054361, 06:25:22 PST). The mobile lockfile did not change. Public iOS and Android manifests return HTTP 200 with SDK 58.0.0; each launchAsset returns HTTP 200 and contains the group storage key and the switcher text.
+- TestFlight: iOS update `06db025b-2ef2-4bc6-8e0c-f1eb263ae8b3` for runtime `b32a4b59…`, git commit `b5ccdf3`, bundle `8c3c1f75…` (13,891,949 bytes, 27 assets). The public signed manifest returns HTTP 200 with this id; the bundle returns HTTP 200 with the same SHA-256 and the group storage key.
+- No plugin install and no Gateway restart.
 
 ## Requirement (Jamie, 2026-11-16)
 
