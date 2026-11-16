@@ -6,7 +6,8 @@ import type { AttachmentInput } from '../shared/attachment-input';
 import { buildSessionLink, parseSessionLink, relativeSessionThread, sessionServer } from '../../../../packages/client/src/sessionLinks';
 import { DesktopConnectionService, deviceName, normalizeCode } from './connection-service';
 import { CredentialStore } from './credential-store';
-import { ConnectionIndex, ConnectionNames, normalizeConnectionName, type ConnectionEntry } from './connection-index';
+import { ConnectionGroupStore, ConnectionIndex, ConnectionNames, normalizeConnectionName, type ConnectionEntry } from './connection-index';
+import { NO_GROUPS, addGroup, assignConnection, forgetConnection, groupOf, pruneMembers, removeGroup, renameGroup, setActiveGroup, showsConnection, type ConnectionGroups } from '../../../../packages/client/src/connectionGroups';
 import { LocalDraftStore } from './local-draft-store';
 import { OutboxStore } from './outbox-store';
 import { normalizeBaseUrl } from './transport';
@@ -26,6 +27,10 @@ export class DesktopConnections {
   /** Names chosen on this device by slot ID; a missing entry uses the host name. */
   private names: Record<string, string> = {};
   private namesError = false;
+  private readonly groupStore = new ConnectionGroupStore();
+  /** Groups of this device; the active group decides what the main window lists (docs/connection-groups.md). */
+  private groups: ConnectionGroups = NO_GROUPS;
+  private groupsError = false;
   private active = 'primary';
   private revision = 0;
   private listError?: string;
@@ -54,11 +59,21 @@ export class DesktopConnections {
     return { account: this.accounts.get('primary')!, raw: id };
   }
   private current(): Account {
-    const account = this.accounts.get(this.active);
+    const account = this.accounts.get(this.active), shown = (a?: Account) => !!a && showsConnection(this.groups, a.id);
+    if (account?.service.status().phase === 'connected' && shown(account)) return account;
+    // New chats and Projects start on a connection of the active group.
+    const visible = [...this.accounts.values()].find(a => a.service.status().phase === 'connected' && shown(a));
+    if (visible) return visible;
     if (account?.service.status().phase === 'connected') return account;
     const available = [...this.accounts.values()].find(a => a.service.status().phase === 'connected');
     return available ?? account ?? this.accounts.get('primary')!;
   }
+  /** Connection identities that the active group shows. All groups: every connection. */
+  visibleConnectionKeys(): Set<string> {
+    return new Set([...this.accounts.values()].filter(a => showsConnection(this.groups, a.id)).flatMap(a => a.service.status().connectionKey ?? []));
+  }
+  activeGroupId(): string | null { return this.groups.active; }
+  private inGroup(account: Account): boolean { return showsConnection(this.groups, account.id); }
   private forIdentity(key: string): Account {
     const account = [...this.accounts.values()].find(a => a.service.status().connectionKey === key);
     if (!account) throw new Error('Connection unavailable'); return account;
@@ -104,11 +119,14 @@ export class DesktopConnections {
     const selected = this.projected(account, route?.raw, pages);
     // Only catalogue fields are read from these; `null` skips each account's selected Session messages.
     const all = [...this.accounts.values()].map(a => this.projected(a, null, pages));
+    // Connections with a completed, unread result: the group switcher marks their group.
+    const unread = new Set([...this.accounts.values()].filter((_, index) => all[index].threads.some(t => t.completedUnread)).map(a => a.id));
     const connections: DesktopConnection[] = [...this.accounts.values()].flatMap(a => {
       const s = a.service.status();
       if (a.id === 'primary' && !s.connectionKey && s.phase !== 'pairing' && !s.errorMessage) return [];
       return [{ id: a.id, connectionKey: s.connectionKey, server: a.server ?? a.service.serverAddress() ?? '', name: this.nameOf(a, s) ?? 'Saved connection',
         defaultName: this.hostName(a, s) ?? 'Saved connection', ...(this.names[a.id] ? { customName: true } : {}),
+        ...(groupOf(this.groups, a.id) ? { groupId: groupOf(this.groups, a.id)!.id } : {}),
         state: s.phase === 'pairing' ? 'pairing' as const : s.errorMessage && !s.connectionKey ? 'blocked' as const : s.connectionState,
         ...(a.service.supportsProjectFiles() ? { supportsProjectFiles: true } : {}),
         ...(a.service.supportsPrimaryPath() ? { supportsPrimaryPath: true } : {}),
@@ -117,6 +135,7 @@ export class DesktopConnections {
         ...(s.statusMessage || s.errorMessage ? { detail: s.statusMessage ?? s.errorMessage } : {}) }];
     });
     return { ...selected, revision: this.revision, connections, connectionsError: this.listError,
+      connectionGroups: { ...this.groups, unread: [...unread], ...(this.groupsError ? { unavailable: true } : {}) },
       supportsSessionLabels: connectionKey || thread ? selected.supportsSessionLabels : all.some(s => s.supportsSessionLabels),
       // File search covers every connection, also from a Session tab.
       supportsFileSearch: all.some(s => s.supportsFileSearch),
@@ -135,6 +154,8 @@ export class DesktopConnections {
     for (const entry of this.entries) this.make(entry.id, entry.server);
     // A damaged name file falls back to host names and blocks renaming, so it is never overwritten.
     try { this.names = Object.fromEntries(Object.entries(await this.nameStore.load()).filter(([id]) => this.accounts.has(id))); } catch { this.names = {}; this.namesError = true; }
+    // A damaged group file shows every connection and blocks group changes, so it is never overwritten.
+    try { this.groups = pruneMembers(await this.groupStore.load(), this.accounts.keys()); } catch { this.groups = NO_GROUPS; this.groupsError = true; }
     this.ready = true; this.changed();
     await Promise.all(this.entries.map(e => this.accounts.get(e.id)!.service.initialize()));
   }
@@ -174,6 +195,11 @@ export class DesktopConnections {
         const { [id]: _removed, ...rest } = this.names;
         await this.nameStore.save(rest); this.names = rest;
       }
+      if (this.groups.members[id] && !this.groupsError) {
+        // A later pairing in this slot starts without a group.
+        const next = forgetConnection(this.groups, id);
+        await this.groupStore.save(next); this.groups = next;
+      }
       if (id !== 'primary') {
         const next = this.entries.filter(e => e.id !== id);
         await this.index.save(next); this.entries = next; account.service.close(); this.accounts.delete(id);
@@ -195,6 +221,30 @@ export class DesktopConnections {
       await this.nameStore.save(next); this.names = next;
       this.changed();
     });
+  }
+  /** Applies one change to this device's groups, saves it, then publishes. */
+  private changeGroups(update: (state: ConnectionGroups) => ConnectionGroups): Promise<void> {
+    return this.change(async () => {
+      if (!this.ready || this.closed) throw new Error('The saved connection list is unavailable. Reopen Hermes.');
+      if (this.groupsError) throw new Error('Saved groups could not be read. Reopen Hermes to try again.');
+      const next = update(this.groups);
+      if (next === this.groups) return;
+      await this.groupStore.save(next); this.groups = next;
+      this.changed();
+    });
+  }
+  addGroup(name: string): Promise<void> { return this.changeGroups(state => addGroup(state, name, `g${randomBytes(8).toString('hex')}`)); }
+  renameGroup(id: string, name: string): Promise<void> { return this.changeGroups(state => renameGroup(state, id, name)); }
+  removeGroup(id: string): Promise<void> { return this.changeGroups(state => removeGroup(state, id)); }
+  assignConnection(id: string, group: string | null): Promise<void> {
+    return this.changeGroups(state => { if (!this.accounts.has(id)) throw new Error('Connection unavailable'); return assignConnection(state, id, group); });
+  }
+  setActiveGroup(id: string | null): Promise<void> { return this.changeGroups(state => setActiveGroup(state, id)); }
+  /** Shows the group of a connection, so a link or notification never opens a hidden Session. */
+  revealConnection(connectionKey: string): Promise<void> {
+    const account = [...this.accounts.values()].find(a => a.service.status().connectionKey === connectionKey);
+    if (!account || this.inGroup(account)) return Promise.resolve();
+    return this.changeGroups(state => setActiveGroup(state, groupOf(state, account.id)?.id ?? null));
   }
   async pair(request: PairingRequest): Promise<void> {
     if (this.snapshot().connections!.length) throw new Error('Use Settings to add another connection.');
@@ -234,7 +284,7 @@ export class DesktopConnections {
    * those connections for their next page. Older servers return every job at once.
    */
   async automations(cursors?: Readonly<Record<string, string>>): Promise<DesktopAutomationList> {
-    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsAutomations());
+    const connected = [...this.accounts.values()].filter(a => this.inGroup(a) && a.service.status().phase === 'connected' && a.service.supportsAutomations());
     const accounts = cursors ? connected.filter(a => cursors[a.id] !== undefined && a.service.supportsAutomationsPaged()) : connected;
     const failed: string[] = [], next: Record<string, string> = {};
     const rows = (await Promise.all(accounts.map(async account => {
@@ -270,7 +320,7 @@ export class DesktopConnections {
    * connection) asks only those connections for their next page.
    */
   async searchFiles(query: string, labels: readonly string[], cursors?: Readonly<Record<string, string>>): Promise<DesktopFileSearch> {
-    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsFileSearch());
+    const connected = [...this.accounts.values()].filter(a => this.inGroup(a) && a.service.status().phase === 'connected' && a.service.supportsFileSearch());
     const accounts = cursors ? connected.filter(a => cursors[a.id] !== undefined) : connected;
     const failed: string[] = [], next: Record<string, string> = {};
     const rows = (await Promise.all(accounts.map(async account => {
@@ -293,7 +343,7 @@ export class DesktopConnections {
    * their keyword-and-meaning order. `none` only when every refined server found no fit.
    */
   async searchMessages(query: string, labels: readonly string[], refine = false): Promise<DesktopMessageSearch> {
-    const connected = [...this.accounts.values()].filter(a => a.service.status().phase === 'connected' && a.service.supportsSessionSearch());
+    const connected = [...this.accounts.values()].filter(a => this.inGroup(a) && a.service.status().phase === 'connected' && a.service.supportsSessionSearch());
     const failed: string[] = [];
     let indexing = false, refined = false, none = connected.length > 0;
     const pages = await Promise.all(connected.map(async account => {
@@ -396,6 +446,8 @@ export class DesktopConnections {
     const target = parseSessionLink(value);
     const owner = target && [...this.accounts.values()].find(a => { const server = a.server ?? a.service.serverAddress(); return server && sessionServer(server) === target.server; });
     if (owner) this.active = owner.id;
+    // A link to a connection of another group shows that group first (docs/connection-groups.md).
+    if (owner && !this.inGroup(owner)) void this.revealConnection(owner.service.status().connectionKey ?? '').catch(() => {});
     (owner ?? this.current()).service.openSessionLink(value);
   }
   async renameThread(id: string, title: string): Promise<void> { const r = this.route(id); await r.account.service.renameThread(r.raw, title); }

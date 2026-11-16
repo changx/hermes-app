@@ -10,6 +10,7 @@ import { SearchIcon } from './session-search';
 import { ScreenIcon } from './remote-screen-page';
 import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
+import { activeGroupName, otherGroupUnread } from '../../../../packages/client/src/connectionGroups';
 
 // Only states that need the user's attention are shown in the tree.
 export const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
@@ -185,3 +186,21 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     </div>
   </div>;
 }, (before,after) => before.draftThreads === after.draftThreads && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.onSearch === after.onSearch && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal);
+
+/**
+ * Connection group switcher (docs/connection-groups.md): the footer of the sidebar, below the
+ * scrolling lists. Shown only when this device has groups. The sidebar, tabs, search and
+ * Automations list only the active group's connections. A dot marks an unread result in another group.
+ */
+export function GroupSwitch({ snapshot }: { snapshot: DesktopSnapshot }) {
+  const state = snapshot.connectionGroups;
+  if (!state || !state.groups.length) return null;
+  // The main window lists only the active group's connections; other groups' unread marks come from the group state.
+  const unread = new Set(state.unread ?? []);
+  const name = activeGroupName(state), dot = otherGroupUnread(state, unread);
+  return <div className="sidebar-group-footer"><button type="button" className="sidebar-action sidebar-group-switch" aria-haspopup="menu" aria-label={`Group: ${name}${dot ? ', another group has unread results' : ''}`}
+    onClick={event => { const box = event.currentTarget.getBoundingClientRect(); void window.hermesDesktop.showGroupMenu(box.left, box.top).catch(() => {}); }}>
+    <span className="sidebar-group-name">{name}</span><Icon name="chevronDown" className="sidebar-group-chevron" />
+    {dot && <span className="sidebar-group-unread" role="img" aria-hidden="true" />}
+  </button></div>;
+}

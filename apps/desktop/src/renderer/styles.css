@@ -556,6 +556,16 @@ dialog.labels-editor::backdrop { background: #0005; }
 .tree-thread.selected { color: #2b4e81; background: var(--app-selected); }
 .thread-status { color: #237a35; font-size: var(--app-font-size); flex-shrink: 0; }
 .thread-draft { color: #dc2626; font-size: var(--app-font-size); font-weight: 600; flex-shrink: 0; }
+/* Settings > Groups: one row per group (name, Rename, Delete) and the add row. */
+.settings-group-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.settings-group-row input { flex: 1; min-width: 0; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 10px 12px; color: var(--app-text); background: #fff; }
+.settings-group-connection select { margin-top: 4px; }
+/* Connection group switcher (docs/connection-groups.md): the active group's name, a chevron, and a dot for another group's unread result. */
+.sidebar-group-footer { flex: none; padding: 6px 8px 8px; border-top: 1px solid var(--app-border); }
+.sidebar-group-switch { font-weight: 600; }
+.sidebar-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-group-chevron { flex: none; width: 12px; font-size: 11px; color: var(--app-label); }
+.sidebar-group-unread { flex: 0 0 7px; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: #4DA3FF; }
 .thread-result-unread { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #4DA3FF; }
 .tree-more { width: 100%; padding: 9px 10px; border: 0; background: transparent; color: var(--app-link); text-align: left; font-size: var(--app-font-size); }
 .thread-switcher { max-width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; }

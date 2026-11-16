@@ -7,9 +7,10 @@ import { Text } from '../../FontSize';
 import { ProjectList } from '../../ProjectList';
 import { TabHeader } from '../../TabHeader';
 
-/** Channels tab: channels from every saved connection in one flat list. */
+/** Channels tab: channels from every connection of the active group in one flat list. */
 export default function Channels() {
-  const { ready, connections, revision, listError } = useConnections();
+  // The active group's connections only (docs/connection-groups.md).
+  const { ready, shownConnections: connections, revision, listError } = useConnections();
   const router = useRouter();
   if (!ready) return <Notice text="" />;
   return <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>

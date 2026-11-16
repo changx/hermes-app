@@ -18,7 +18,7 @@ const mocks = {
   './AgentSettings': `export const AgentNameSettings='AgentNameSettings';`,
   './ModelSettings': `export const ModelSettings='ModelSettings';`,
   './AppIcon': `const s=globalThis.__settingsTest; export const useAppIcon=()=>({available:!!s.iconAvailable,current:s.icon??'mochi'}); export const AppIconSettings='AppIconSettings';`,
-  './connections': `const s=globalThis.__settingsTest; export const useConnections=()=>({connections:s.connections,listError:'',removeConnection:async slot=>{s.removed.push(slot)},renameConnection:async (slot,name)=>{if(s.failRename)throw Error('private detail');s.renamed.push([slot,name])},addConnection:async (server,code)=>{s.added.push([server,code]);return 'c'.repeat(24)}}); export const useApp=()=>s.app;`,
+  './connections': `const s=globalThis.__settingsTest; export const useConnections=()=>({connections:s.connections,groups:s.groups??{groups:[],members:{},active:null},listError:'',removeConnection:async slot=>{s.removed.push(slot)},renameConnection:async (slot,name)=>{if(s.failRename)throw Error('private detail');s.renamed.push([slot,name])},addConnection:async (server,code)=>{s.added.push([server,code]);return 'c'.repeat(24)}}); export const useApp=()=>s.app;`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SettingsScreens.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
   b.onResolve({ filter: /.*/ }, args => mocks[args.path] ? { path: args.path, namespace: 'mock' } : undefined);
@@ -31,6 +31,8 @@ const runtime = (slot, name, extra = {}) => ({ slot, name, server: `https://${na
 const texts = root => root.root.findAllByType('Text').map(node => [].concat(node.props.children).filter(v => typeof v === 'string').join('')).filter(Boolean);
 const buttons = root => root.root.findAll(node => node.type === 'Pressable');
 const press = async (root, label) => { const node = buttons(root).find(b => b.props.accessibilityLabel === label); assert.ok(node, 'missing ' + label + ' in ' + buttons(root).map(b => b.props.accessibilityLabel)); await act(async () => node.props.onPress()); };
+// Element props (a SymbolView fallback) refer back to React internals; the text order is what the tests read.
+const treeText = root => JSON.stringify(root.toJSON(), (key, value) => key === '_owner' || key === 'fallback' ? undefined : value);
 const reset = () => Object.assign(state, { pushed: [], replaced: [], back: 0, alerts: [], removed: [], added: [], renamed: [], failRename: false });
 
 test('Settings level 1 groups connections, then This device', async () => {
@@ -73,7 +75,7 @@ test('Connection level 2 groups status, this Hermes (model), this device (name) 
   const order = ['Status', 'On this Hermes · all your devices', 'Default model', 'On this device'].map(heading => all.indexOf(heading));
   assert.ok(order.every(i => i >= 0) && order.every((v, i) => !i || v > order[i - 1]), 'scope groups in order: ' + order);
   // Server-wide model sits above the device-only name; each control sits inside its own scope.
-  const tree = JSON.stringify(root.toJSON());
+  const tree = treeText(root);
   assert.ok(tree.indexOf('"Default model"') < tree.indexOf('ModelSettings') && tree.indexOf('ModelSettings') < tree.indexOf('"On this device"'));
   assert.ok(tree.indexOf('"On this device"') < tree.indexOf('AgentNameSettings'));
   assert.equal(root.root.findAllByType('AgentNameSettings').length, 1);
@@ -123,7 +125,7 @@ test('connection name: host name as default, save, safe failure, and available w
   let root; await act(async () => { root = create(React.createElement(ConnectionSettings)); });
   const field = () => root.root.findAll(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Connection name')[0];
   assert.equal(field().props.placeholder, 'personal.example'); assert.equal(field().props.value, '');
-  const tree = JSON.stringify(root.toJSON());
+  const tree = treeText(root);
   assert.ok(tree.indexOf('"On this device"') < tree.indexOf('Connection name') && tree.indexOf('Connection name') < tree.indexOf('AgentNameSettings'), 'name sits in device scope, above Agent name');
   assert.equal(buttons(root).find(b => b.props.accessibilityLabel === 'Save connection name').props.disabled, true, 'unchanged name cannot be saved');
   await act(async () => field().props.onChangeText('Home'));

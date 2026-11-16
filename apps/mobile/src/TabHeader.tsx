@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { HeaderActions } from './App';
 import { Text } from './FontSize';
+import { GroupSwitch } from './GroupSwitch';
 
 /**
  * Header row of one bottom tab. NativeTabs draws no header, so each tab owns
@@ -13,6 +14,7 @@ export function TabHeader({ title, children }: { title: string; children?: React
   return <View style={s.header}>
     <Text accessibilityRole="header" numberOfLines={1} style={s.title}>{title}</Text>
     <View style={s.actions}>
+      <GroupSwitch />
       {children}
       <HeaderActions onSettings={() => router.push('/settings')} />
     </View>

@@ -65,6 +65,8 @@ function NativeRoutes() {
         <Stack.Screen name="settings/profile-files" options={{ title: 'Persona & memory' }} />
         <Stack.Screen name="settings/profile-file" options={{ title: '' }} />
         <Stack.Screen name="settings/add-connection" options={{ title: 'Add connection' }} />
+        <Stack.Screen name="settings/groups" options={{ title: 'Groups' }} />
+        <Stack.Screen name="settings/group" options={{ title: 'Group' }} />
         <Stack.Screen name="settings/font-size" options={{ title: 'Font size' }} />
         <Stack.Screen name="settings/app-icon" options={{ title: 'App icon' }} />
         <Stack.Screen name="viewer/[id]" options={{ title: 'View' }} />

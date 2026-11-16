@@ -5,7 +5,7 @@ Branch `feat/multi-connection` in `/opt/projects/jamie/_worktrees/hermes-app/mul
 ## Confirmed design (Jamie, 2026-10-05)
 
 - All paired Hermes connections connect at the same time. A failure on one connection never affects another.
-- Navigation is centered on Projects, not connections. Desktop and mobile show one flat Project list. The Hermes name is secondary text under the Project name. There is no Hermes grouping level and no connection switcher.
+- Navigation is centered on Projects, not connections. Desktop and mobile show one flat Project list. The Hermes name is secondary text under the Project name. There is no Hermes grouping level and no connection switcher. *(Changed 2026-11-16: a device can define connection groups; the lists show the active group's connections. See [Connection groups](connection-groups.md).)*
 - A Project shows a **number**: the count of its sessions that have an unread completed result. One session counts once. Archived sessions do not count.
 - Reading rules do not change: only a result that is visible in the foreground is acknowledged. Opening a Project or a list does not clear the count. Other devices clear through the shared directory state.
 - Remove + pair again is a new connection. Local drafts and queued messages of the removed connection are deleted. There is no in-place re-pair and no server instance ID.

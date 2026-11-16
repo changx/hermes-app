@@ -2,6 +2,7 @@ import type { AgentModelSettings, EnvKey, EnvKeys, MemberIdentity, ProfileFile, 
 import type { DesktopUpdate } from "./snapshot-delta";
 import type { LabelDetail } from '../../../../packages/client/src/sessionLabels';
 import type { Automation, AutomationThread } from '../../../../packages/client/src/automations';
+import type { ConnectionGroups } from '../../../../packages/client/src/connectionGroups';
 
 export type DesktopTabKind = 'new' | 'session' | 'automation' | 'automations' | 'remote-screen';
 export type DesktopPhase = "restoring" | "unpaired" | "pairing" | "connected";
@@ -18,7 +19,11 @@ export type DesktopChannel = Readonly<{ id: string; name: string; description?: 
   /** The server archives projects (getChannelInfo only). */ archiveSupported?: boolean }>;
 export type DesktopConnection = Readonly<{ id: string; name: string; server: string; state: ConnectionState | 'pairing'; detail?: string; connectionKey?: string; supportsProjectFiles?: boolean; supportsPrimaryPath?: boolean; supportsChannelArchive?: boolean;
   /** The server's remote screen (docs/remote-screen.md): the name the sidebar shows. */ remoteScreen?: Readonly<{ name: string }>;
-  /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean }>;
+  /** Name used when this device has no name of its own: the server's host name. */ defaultName?: string; /** True when `name` was chosen on this device. */ customName?: boolean;
+  /** This device's group of the connection (docs/connection-groups.md). */ groupId?: string }>;
+/** Groups of this device. `unavailable`: the saved groups could not be read; every connection shows and groups cannot change. */
+export type DesktopConnectionGroups = ConnectionGroups & Readonly<{ unavailable?: boolean;
+  /** Connections (slot IDs) with a completed, unread result, in every group: the switcher marks other groups. */ unread?: readonly string[] }>;
 export type DesktopThread = Readonly<{
   supportsSessionLabels?: boolean;
   id: string;
@@ -95,7 +100,9 @@ export type DesktopMessage = Readonly<{
   attachments: readonly DesktopAttachment[];
 }>;
 export type DesktopSnapshot = Readonly<{
+  /** The main window lists only the connections of the active group; Settings lists every connection. */
   connections?: readonly DesktopConnection[];
+  connectionGroups?: DesktopConnectionGroups;
   connectionsError?: string;
   /** Settings window only: the page a Session page asked for. A new nonce is a new request. */
   settingsRequest?: Readonly<{ page: string; nonce: number }>;
@@ -236,6 +243,15 @@ export interface HermesDesktopApi {
   removeConnection(connectionId: string): Promise<void>;
   /** Saves this device's name for a connection; an empty name restores the host name. */
   renameConnection(connectionId: string, name: string): Promise<void>;
+  /** Connection groups of this device (docs/connection-groups.md). Settings window only. */
+  addGroup(name: string): Promise<void>;
+  renameGroup(groupId: string, name: string): Promise<void>;
+  /** The group's connections become ungrouped. */
+  removeGroup(groupId: string): Promise<void>;
+  /** `null` removes the connection from its group. */
+  assignGroup(connectionId: string, groupId: string | null): Promise<void>;
+  /** The group switcher at the sidebar's bottom: a native menu whose checked group opens at window position (x, y). */
+  showGroupMenu(x: number, y: number): Promise<void>;
   getAppIcon(): Promise<DesktopAppIconState>;
   setAppIcon(icon: DesktopAppIconId): Promise<DesktopAppIconState>;
   getMcp(): Promise<DesktopMcpState>;

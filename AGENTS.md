@@ -160,6 +160,7 @@
 - [docs/multi-connection.md](docs/multi-connection.md)
 - [docs/multi-connection-release-0.1.36.md](docs/multi-connection-release-0.1.36.md)
 - [docs/connection-names.md](docs/connection-names.md)
+- [docs/connection-groups.md](docs/connection-groups.md)（连接分组：Work / Home 等，侧边栏与手机 tab 只显示当前分组的连接；本机偏好，桌面和手机）
 - [docs/full-history-loading.md](docs/full-history-loading.md)
 - [docs/generated-titles-search.md](docs/generated-titles-search.md)
 - [docs/unified-settings.md](docs/unified-settings.md)

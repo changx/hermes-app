@@ -18,6 +18,8 @@ import { releaseComposerDraft, type ComposerDraft } from './Attachments';
 import { useAgentName } from './AgentSettings';
 import { ConnectionListError, MAX_CONNECTIONS, loadSlots, removeSlot, reserveSlot, saveSlotName, serverName, slotKeys, slotServer, type SavedSlot } from './connectionSlots';
 import { ConnectionScope as NavigationScope, SessionNavigationProvider } from './sessionNavigation';
+import { loadGroups, saveGroups } from './connectionGroupStore';
+import { NO_GROUPS, addGroup as addGroupTo, assignConnection, forgetConnection, pruneMembers, removeGroup as removeGroupFrom, renameGroup as renameGroupIn, setActiveGroup as setActiveGroupIn, showsConnection, type ConnectionGroups } from '../../../packages/client/src/connectionGroups';
 import { ActivityWindow, IDLE_LIVENESS_MS, LIVENESS_MS, LIVE_BACKOFF_JITTER, LIVE_BACKOFF_MS, needsFastLiveness } from './liveness';
 
 /**
@@ -47,6 +49,15 @@ type Shared = {
   cancelPairing(slot: string): Promise<void>;
   /** Marks recent use; keeps the faster connection check for a short time. */
   noteActivity(): void;
+  /** Connection groups of this device (docs/connection-groups.md). `groupsError`: saved groups could not be read; every connection shows. */
+  groups: ConnectionGroups; groupsError: boolean;
+  /** The connections that the active group shows: the tabs, new conversation and new channel list only these. */
+  shownConnections: readonly ConnectionRuntime[];
+  setActiveGroup(id: string | null): Promise<void>;
+  addGroup(name: string): Promise<void>;
+  renameGroup(id: string, name: string): Promise<void>;
+  removeGroup(id: string): Promise<void>;
+  assignGroup(slot: string, id: string | null): Promise<void>;
 };
 const SharedContext = createContext<Shared | null>(null);
 export function useConnections(): Shared {
@@ -102,6 +113,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const textDrafts = useRef(new LocalDraftMap<string>(value => !!value.trim()));
   const composerDrafts = useRef(new LocalDraftMap<ComposerDraft>(value => value.items.length > 0));
   const forgottenConnections = useRef(new Set<string>());
+  const [groups, setGroups] = useState<ConnectionGroups>(NO_GROUPS), [groupsError, setGroupsError] = useState(false);
+  const groupsRef = useRef<ConnectionGroups>(NO_GROUPS);
   const appActive = useRef(AppState.currentState === 'active');
   const pairings = useRef(new Map<string, { controller: AbortController; promise: Promise<unknown> }>());
   const stops = useRef(new Map<string, () => void>());
@@ -186,6 +199,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch { setDraftError("Could not load your local drafts. Don't clear this app's data; reopen the app."); }
       for (const saved of slots) runtimes.current.set(saved.slot, emptyRuntime(saved));
       changed();
+      // A damaged group item shows every connection and blocks group changes, so it is never overwritten.
+      loadGroups(SecureStore).then(state => {
+        if (!mounted) return;
+        groupsRef.current = pruneMembers(state, slots.map(saved => saved.slot)); setGroups(groupsRef.current);
+      }).catch(() => { if (mounted) setGroupsError(true); });
       for (const saved of slots) {
         if (saved.config) start(saved.slot, saved.config);
         else if (saved.pending) pair(saved.slot, saved.pending);
@@ -293,8 +311,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       for (const [key, draft] of [...composerDrafts.current]) if (key.startsWith(prefix)) { composerDrafts.current.delete(key); releaseComposerDraft(draft); }
     }
     runtimes.current.delete(slot);
+    // A later pairing in this slot starts without a group. A failed save is pruned at the next start.
+    const kept = forgetConnection(groupsRef.current, slot);
+    if (kept !== groupsRef.current) {
+      groupsRef.current = kept; setGroups(kept);
+      if (!groupsError) await saveGroups(SecureStore, kept).catch(() => {});
+    }
     changed();
-  }), [serialize, changed, update]);
+  }), [serialize, changed, update, groupsError]);
 
   const cancelPairing = useCallback((slot: string) => removeConnection(slot), [removeConnection]);
 
@@ -307,9 +331,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     update(slot, { customName, name: customName ?? serverName(runtime.server) });
   }), [serialize, update]);
 
+  // Group changes: saved and read back before the lists change. Local display only.
+  const changeGroups = useCallback((change: (state: ConnectionGroups) => ConnectionGroups) => serialize(async () => {
+    if (groupsError) throw new Error('Saved groups could not be read. Reopen Hermes to try again.');
+    const next = change(groupsRef.current);
+    if (next === groupsRef.current) return;
+    await saveGroups(SecureStore, next);
+    groupsRef.current = next; setGroups(next);
+  }), [serialize, groupsError]);
+  const setActiveGroup = useCallback((id: string | null) => changeGroups(state => setActiveGroupIn(state, id)), [changeGroups]);
+  const addGroup = useCallback((name: string) => changeGroups(state =>
+    addGroupTo(state, name, 'g' + Array.from(Crypto.getRandomBytes(8), n => n.toString(16).padStart(2, '0')).join(''))), [changeGroups]);
+  const renameGroup = useCallback((id: string, name: string) => changeGroups(state => renameGroupIn(state, id, name)), [changeGroups]);
+  const removeGroup = useCallback((id: string) => changeGroups(state => removeGroupFrom(state, id)), [changeGroups]);
+  const assignGroup = useCallback((slot: string, id: string | null) => changeGroups(state => {
+    if (!runtimes.current.has(slot)) throw new ConnectionListError('Connection unavailable');
+    return assignConnection(state, slot, id);
+  }), [changeGroups]);
+
   const connections = [...runtimes.current.values()] as readonly ConnectionRuntime[];
+  const shownConnections = groups.active === null ? connections : connections.filter(runtime => showsConnection(groups, runtime.slot));
   const shared: Shared = { ready, listError, revision, connections, textDrafts, composerDrafts, forgottenConnections, draftError,
-    addConnection, removeConnection, renameConnection, cancelPairing, noteActivity };
+    addConnection, removeConnection, renameConnection, cancelPairing, noteActivity,
+    groups, groupsError, shownConnections, setActiveGroup, addGroup, renameGroup, removeGroup, assignGroup };
   const navigation = useMemo(() => ({ connection: null, owner: null,
     hasPage: (slot: string, id: string) => !!runtimes.current.get(slot)?.client?.page(id),
     connectionForServer: (server: string) => {

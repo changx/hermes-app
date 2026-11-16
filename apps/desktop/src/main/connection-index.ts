@@ -2,6 +2,7 @@ import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { normalizeConnectionName } from '../../../../packages/client/src/connectionName';
+import { NO_GROUPS, parseConnectionGroups, type ConnectionGroups } from '../../../../packages/client/src/connectionGroups';
 
 export type ConnectionEntry = { id: string; server: string };
 export function validateEntries(raw: unknown): ConnectionEntry[] {
@@ -44,6 +45,26 @@ export class ConnectionNames {
     await writeFile(this.path + '.new', JSON.stringify({ version: 1, names: verified }), { mode: 0o600 });
     await rename(this.path + '.new', this.path);
     if (JSON.stringify(await this.load()) !== JSON.stringify(verified)) throw new Error('Connection name save was not confirmed');
+  }
+}
+
+/** Connection groups of this device (docs/connection-groups.md): names and slot IDs only, no credentials. */
+export class ConnectionGroupStore {
+  private readonly path = join(app.getPath('userData'), 'connection-groups.json');
+  async load(): Promise<ConnectionGroups> {
+    let text: string;
+    try { text = await readFile(this.path, 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return NO_GROUPS; throw error; }
+    const data = JSON.parse(text);
+    if (data.version !== 1) throw new Error('Invalid connection groups');
+    return parseConnectionGroups(data.state);
+  }
+  async save(state: ConnectionGroups): Promise<void> {
+    const verified = parseConnectionGroups(state);
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    await writeFile(this.path + '.new', JSON.stringify({ version: 1, state: verified }), { mode: 0o600 });
+    await rename(this.path + '.new', this.path);
+    if (JSON.stringify(await this.load()) !== JSON.stringify(verified)) throw new Error('Connection group save was not confirmed');
   }
 }
 

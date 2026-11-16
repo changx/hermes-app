@@ -9,9 +9,10 @@ import { tabListBottomPadding } from '../../tabInsets';
 import { AutomationCard } from '../../AutomationCard';
 import { loadAutomationRows, mergeAutomationRows, type AutomationLoad, type AutomationRow } from '../../automationRows';
 
-/** Automations tab: scheduled jobs of every saved connection; scrolling to the end loads more. */
+/** Automations tab: scheduled jobs of every connection of the active group; scrolling to the end loads more. */
 export default function Automations() {
-  const { ready, connections, revision } = useConnections();
+  // The active group's connections only (docs/connection-groups.md).
+  const { ready, shownConnections: connections, revision } = useConnections();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<AutomationRow[]>([]), [notes, setNotes] = useState<AutomationLoad['notes']>([]);

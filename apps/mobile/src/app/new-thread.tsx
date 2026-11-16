@@ -19,7 +19,8 @@ import { threadRoute } from '../sessionNavigation';
  * attempt; from then on the attempt's IDs belong to that channel.
  */
 export default function NewThread() {
-  const { ready, connections, revision } = useConnections();
+  // Channels of the active group only (docs/connection-groups.md).
+  const { ready, shownConnections: connections, revision } = useConnections();
   const params = useLocalSearchParams<{ automation?: string; channel?: string; connection?: string }>();
   const automation = params.automation === '1';
   const sources = useMemo(() => automation ? connections.filter(c => c.client?.supportsAutomationEditors) : connections, [automation, connections, revision]);
