@@ -14,6 +14,7 @@ import { memberIdentityText, type MemberIdentity } from '../../../packages/clien
 import { connectionSettingsRoute, envKeysSettingsRoute, profileFilesSettingsRoute, vaultSettingsRoute } from './settingsRoutes';
 import { AppIconSettings, useAppIcon } from './AppIcon';
 import { appIconLabel } from './appIconChoices';
+import { groupOf } from '../../../packages/client/src/connectionGroups';
 
 /**
  * Level 1, the single Settings entry. Sections follow where a setting takes effect:
@@ -21,17 +22,18 @@ import { appIconLabel } from './appIconChoices';
  */
 export function SettingsHome() {
   const router = useRouter();
-  const { connections, listError } = useConnections();
+  const { connections, listError, groups } = useConnections();
   const { choice } = useFontSize();
   const appIcon = useAppIcon();
   const full = connections.length >= MAX_CONNECTIONS;
   return <SettingsPage>
     {!!listError && <Text accessibilityRole="alert" style={styles.error}>{listError}</Text>}
-    <SettingsSection title="Connections" footer="Projects from all connections appear together on the home screen. Open a connection for its name, status, Agent, default model and removal.">
+    <SettingsSection title="Connections" footer="The tabs list the connections of the chosen group; with no groups, every connection. Open a connection for its name, status, Agent, default model and removal.">
       {connections.map((row, index) => <SettingsRow key={row.slot} first={index === 0} title={row.name} detail={row.server ?? undefined}
         value={connectionStateLabel(row)} issue={connectionNeedsAttention(row)} onPress={() => router.push(connectionSettingsRoute(row.slot))} />)}
       <SettingsRow first={!connections.length} title="Add connection" value={full ? 'Limit reached' : undefined}
         onPress={() => router.push('/settings/add-connection')} />
+      <SettingsRow title="Groups" value={groups.groups.length ? String(groups.groups.length) : 'None'} onPress={() => router.push('/settings/groups')} />
     </SettingsSection>
     <SettingsSection title="This device" footer="Applies on this device to every connection.">
       <SettingsRow first title="Font size" value={choice} onPress={() => router.push('/settings/font-size')} />
@@ -46,7 +48,7 @@ export function SettingsHome() {
  */
 export function ConnectionSettings() {
   const router = useRouter();
-  const { removeConnection, renameConnection, connections } = useConnections();
+  const { removeConnection, renameConnection, connections, groups } = useConnections();
   const { slot, config, client, agentName } = useApp();
   const row = connections.find(item => item.slot === slot);
   if (!row) return null;
@@ -87,6 +89,7 @@ export function ConnectionSettings() {
       <SettingsBlock first>
         <ConnectionNameSettings key={slot} customName={row.customName} defaultName={serverName(row.server)} onSave={value => renameConnection(slot, value)} />
       </SettingsBlock>
+      <SettingsRow title="Group" value={groupOf(groups, slot)?.name ?? 'None'} onPress={() => router.push('/settings/groups')} />
       {config && <SettingsBlock>
         <AgentNameSettings key={config.id} name={agentName.name} ready={agentName.ready} error={agentName.error}
           saving={agentName.saving} onSave={agentName.save} onRetry={agentName.reload} />

@@ -26,9 +26,26 @@ export class DesktopTabManager {
   private bounds = { x: 280, y: 48, width: 800, height: 600, visible: true };
   private closed = false;
   private connectionKey?: string;
+  /** The active connection group (docs/connection-groups.md) and the last active tab of each group. */
+  private group: string | null = null;
+  private readonly groupTabs = new Map<string | null, string>();
   constructor(private readonly window: BrowserWindow, private readonly service: DesktopConnections,
     private readonly directory: string, private readonly secure: (contents: WebContents) => void, private readonly browser?: DesktopBrowserSidebar,
     private readonly openSettings?: () => void, private readonly published?: () => void) { this.shortcuts(window.webContents); }
+
+  /** A tab belongs to the active group when its connection does. The Automations list is shared by every group. */
+  private shown(tab: Tab, keys = this.service.visibleConnectionKeys()): boolean {
+    return tab.kind === 'automations' || this.service.activeGroupId() === null || !!tab.connectionKey && keys.has(tab.connectionKey);
+  }
+  /** Tabs of the active group, in tab order. Other groups' tabs stay open but hidden. */
+  shownTabIds(): string[] { const keys = this.service.visibleConnectionKeys(); return [...this.tabs.values()].filter(tab => this.shown(tab, keys)).map(tab => tab.id); }
+  /** Lists of a snapshot narrowed to the active group's connections; `own` keeps a tab's own connection. */
+  private scoped(base: DesktopSnapshot, own?: string): DesktopSnapshot {
+    if (this.service.activeGroupId() === null) return base;
+    const keys = this.service.visibleConnectionKeys(); if (own) keys.add(own);
+    const channels = base.channels.filter(channel => !!channel.connectionKey && keys.has(channel.connectionKey)), ids = new Set(channels.map(channel => channel.id));
+    return { ...base, channels, threads: base.threads.filter(thread => ids.has(thread.channelId)) };
+  }
 
   /** The conversation's tab, opened in the background (not activated) when missing. */
   ensureSessionTab(threadId: string): Tab {
@@ -77,8 +94,8 @@ export class DesktopTabManager {
       if (key === 'w' && this.activeTabId) {
         event.preventDefault(); try { this.close(this.activeTabId); } catch { /* Keep a busy tab alive. */ } return;
       }
-      if (key === 'tab' && this.tabs.size > 1) {
-        event.preventDefault(); const ids = [...this.tabs.keys()], index = ids.indexOf(this.activeTabId ?? '');
+      if (key === 'tab' && this.shownTabIds().length > 1) {
+        event.preventDefault(); const ids = this.shownTabIds(), index = ids.indexOf(this.activeTabId ?? '');
         this.activate(ids[(index + (input.shift ? -1 : 1) + ids.length) % ids.length]);
       }
     });
@@ -151,10 +168,36 @@ export class DesktopTabManager {
       if (!this.service.hasConnection(tab.connectionKey) ||
           tab.kind === 'session' && !snapshot.loadingConversations && !snapshot.threads.some(t => t.id === tab.threadId)) this.destroy(tab);
     }
-    if (snapshot.selectedThreadId && snapshot.threads.some(thread => thread.id === snapshot.selectedThreadId)) {
+    const keys = this.service.visibleConnectionKeys(), groupAll = this.service.activeGroupId() === null;
+    const visibleThread = (id?: string) => !!id && (groupAll || this.scoped(snapshot).threads.some(thread => thread.id === id));
+    // Another group became active (sidebar switcher, Settings or a link): its last tab comes back.
+    // A Session that a link just selected in that group wins over the remembered tab.
+    let restored: Tab | null | undefined;
+    if (this.service.activeGroupId() !== this.group) {
+      if (this.activeTabId) this.groupTabs.set(this.group, this.activeTabId);
+      this.group = this.service.activeGroupId();
+      // The Automations lists show the active group's jobs; they reload.
+      this.automationsVersion++;
+      if (!visibleThread(snapshot.selectedThreadId)) {
+        const saved = this.groupTabs.get(this.group), tab = saved ? this.tabs.get(saved) : undefined;
+        restored = tab && this.shown(tab, keys) ? tab : [...this.tabs.values()].find(other => this.shown(other, keys)) ?? null;
+        this.activeTabId = restored?.id;
+      }
+    } else if (this.activeTabId && !this.shown(this.tabs.get(this.activeTabId)!, keys)) {
+      // The active tab's connection moved to another group.
+      restored = [...this.tabs.values()].find(other => this.shown(other, keys)) ?? null;
+      this.activeTabId = restored?.id;
+    }
+    // A selected Session of a hidden group never opens a tab here; a link first shows its group.
+    if (snapshot.selectedThreadId && snapshot.threads.some(thread => thread.id === snapshot.selectedThreadId) && visibleThread(snapshot.selectedThreadId)) {
       let tab = [...this.tabs.values()].find(t => t.threadId === snapshot.selectedThreadId);
       if (!tab) tab = this.create('session', snapshot.selectedThreadId);
-      if (tab.kind === 'session') this.activeTabId = tab.id;
+      if (tab.kind === 'session') { this.activeTabId = tab.id; restored = undefined; }
+    }
+    if (restored !== undefined) {
+      // Select the restored tab's Session (or none) on its own connection, like a tab click.
+      if (restored?.kind === 'session' && restored.threadId) void this.service.selectThread(restored.threadId);
+      else this.service.deactivateThread(restored?.connectionKey && this.service.hasConnection(restored.connectionKey) ? restored.connectionKey : undefined);
     }
     this.publish();
     // Opening a Session from the sidebar moves keyboard focus into its page.
@@ -171,16 +214,18 @@ export class DesktopTabManager {
   close(id: string): void {
     const tab = this.tabs.get(id); if (!tab) return;
     if (tab.busy) throw new Error('Wait for the current action');
-    const ids = [...this.tabs.keys()], index = ids.indexOf(id), active = id === this.activeTabId;
+    const ids = this.shownTabIds(), index = ids.indexOf(id), active = id === this.activeTabId;
     this.destroy(tab);
-    if (active) this.activeTabId = [...this.tabs.keys()][Math.min(index, this.tabs.size - 1)];
+    const rest = this.shownTabIds();
+    if (active) this.activeTabId = rest[Math.min(Math.max(index, 0), rest.length - 1)];
     if (active) this.service.deactivateThread();
     if (tab.threadId) this.service.closeSessionPage(tab.threadId);
     if (this.activeTabId) this.activate(this.activeTabId); else { this.service.deactivateThread(); this.publish(); }
   }
   /** Context-menu entries for one tab, in display order. Tab order is insertion order. */
   menu(id: string): { action: TabMenuAction; label: string; enabled: boolean }[] {
-    const ids = [...this.tabs.keys()], index = ids.indexOf(id);
+    // The tab strip shows only the active group's tabs; the menu acts on those.
+    const ids = this.shownTabIds(), index = ids.indexOf(id);
     if (index < 0) throw new Error('Tab unavailable');
     return [
       { action: 'close', label: 'Close Tab', enabled: true },
@@ -189,7 +234,7 @@ export class DesktopTabManager {
     ];
   }
   menuAction(id: string, action: TabMenuAction): void {
-    const ids = [...this.tabs.keys()], index = ids.indexOf(id);
+    const ids = this.shownTabIds(), index = ids.indexOf(id);
     if (index < 0) throw new Error('Tab unavailable');
     if (action === 'close') { this.close(id); return; }
     this.closeMany(action === 'close-right' ? ids.slice(index + 1) : ids.filter(other => other !== id), id);
@@ -200,7 +245,7 @@ export class DesktopTabManager {
     const targets = requested.filter(tab => !tab.busy);
     const activeClosing = targets.some(tab => tab.id === this.activeTabId);
     for (const tab of targets) this.destroy(tab);
-    if (activeClosing) { this.activeTabId = this.tabs.has(keepId) ? keepId : [...this.tabs.keys()][0]; this.service.deactivateThread(); }
+    if (activeClosing) { this.activeTabId = this.tabs.has(keepId) ? keepId : this.shownTabIds()[0]; this.service.deactivateThread(); }
     for (const tab of targets) if (tab.threadId) this.service.closeSessionPage(tab.threadId);
     if (activeClosing && this.activeTabId) this.activate(this.activeTabId);
     else { if (!this.activeTabId) this.service.deactivateThread(); this.publish(); }
@@ -285,7 +330,9 @@ export class DesktopTabManager {
   }
   snapshot(contents?: WebContents): DesktopSnapshot {
     const tab = contents && this.sender(contents);
-    const base = this.service.snapshot(tab?.threadId, false, tab?.connectionKey);
+    const full = this.service.snapshot(tab?.threadId, false, tab?.connectionKey);
+    // Pages list only the active group's Projects and Sessions (docs/connection-groups.md); a tab keeps its own connection.
+    const base = this.scoped(full, tab?.connectionKey);
     if (tab) {
       const session = tab.kind === 'session';
       return { ...base, revision: this.revision, automationsVersion: this.automationsVersion, selectedThreadId: session ? tab.threadId : undefined,
@@ -296,8 +343,10 @@ export class DesktopTabManager {
         ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
  };
     }
-    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity, revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, updateReady: this.updateReady, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
-      tabs: [...this.tabs.values()].map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
+    const group = this.service.activeGroupId(), keys = this.service.visibleConnectionKeys();
+    return { ...base, draftIdentity: base.connections?.find(c => c.connectionKey)?.connectionKey ?? base.draftIdentity,
+      connections: group === null ? base.connections : base.connections?.filter(row => row.groupId === group), revision: this.revision, automationsVersion: this.automationsVersion, browser: this.browser?.state(this.activeTabId), browserMode: this.browser?.mode, updateReady: this.updateReady, messages: [], interactions: [], vaultPrompts: [], focusMessage: undefined, sessionPages: undefined, draftThreadIds: [...this.draftThreads],
+      tabs: [...this.tabs.values()].filter(tab => this.shown(tab, keys)).map(tab => ({ id: tab.id, kind: tab.kind, threadId: tab.threadId,
         initialChannelId: tab.initialChannelId, ...(tab.automationId ? { automationId: tab.automationId } : {}), ...(tab.automationEditor ? { automationEditor: true } : {}),
         title: tab.kind === 'new' ? (tab.automationEditor ? 'New automation' : 'New chat') : tab.kind === 'automation' ? tab.title ?? 'Automation'
           : tab.kind === 'automations' ? 'Automations' : base.threads.find(t => t.id === tab.threadId)?.title ?? 'Conversation' })), activeTabId: this.activeTabId };

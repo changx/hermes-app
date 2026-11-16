@@ -43,7 +43,8 @@ const fileDate = (seconds: number) => new Date(seconds * 1000).toLocaleDateStrin
  * searches files; a file opens its Thread at the message that carried it.
  */
 export default function Recents() {
-  const { ready, connections, revision, listError } = useConnections();
+  // The active group's connections only (docs/connection-groups.md).
+  const { ready, shownConnections: connections, revision, listError } = useConnections();
   const navigation = useSessionNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();

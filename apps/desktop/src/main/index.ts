@@ -11,6 +11,7 @@ import { localPreview } from './local-preview';
 import { browserUrl } from '../shared/browser-policy';
 import { parseSessionLink } from "../../../../packages/client/src/sessionLinks";
 import { validateLabels, labelTimestamp } from '../../../../packages/client/src/sessionLabels';
+import { groupChoices } from '../../../../packages/client/src/connectionGroups';
 import { join } from "node:path";
 import type { ChannelInput, PairingRequest, SendMessageInput, StartThreadInput, ThreadInput } from "../shared/desktop-api";
 import { DesktopConnections } from "./connections";
@@ -177,7 +178,7 @@ const texts = (value: unknown, maximumItems: number, maximumLength: number): str
 
 // The Settings window may use only these channels. All other workspace,
 // Session, browser and attachment actions reject it before any handler runs.
-const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:get-member-identity', 'desktop:get-env-keys', 'desktop:set-env-key', 'desktop:remove-env-key', 'desktop:get-profile-files', 'desktop:save-profile-file', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
+const SETTINGS_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:get-model-settings', 'desktop:set-model-settings', 'desktop:get-vault-items', 'desktop:add-vault-item', 'desktop:remove-vault-item', 'desktop:update-vault-item', 'desktop:import-vault-csv', 'desktop:get-member-identity', 'desktop:get-env-keys', 'desktop:set-env-key', 'desktop:remove-env-key', 'desktop:get-profile-files', 'desktop:save-profile-file', 'desktop:add-connection', 'desktop:remove-connection', 'desktop:rename-connection', 'desktop:add-group', 'desktop:rename-group', 'desktop:remove-group', 'desktop:assign-group', 'desktop:get-app-icon', 'desktop:set-app-icon', 'desktop:get-mcp', 'desktop:save-mcp', 'desktop:set-mcp-approval', 'desktop:import-claude-mcp', 'desktop:show-mcp-file']);
 // A separate browser window may use only its own browser controls.
 const BROWSER_WINDOW_CHANNELS = new Set(['desktop:get-snapshot', 'desktop:open-browser', 'desktop:browser-bounds', 'desktop:browser-action', 'desktop:browser-control', 'desktop:set-browser-mode']);
 // A Remote browser window may use only its own screen, its snapshot and the clipboard.
@@ -209,6 +210,24 @@ const registerDesktopApi = (): void => {
   });
   handle('desktop:rename-connection', async (event, id: unknown, name: unknown) => {
     settingsSender(event); await service.renameConnection(text(id, 40), text(name, 200));
+  });
+  // Connection groups (docs/connection-groups.md): Settings edits them; the sidebar switches the active group.
+  const groupId = (value: unknown) => value === null ? null : text(value, 40);
+  handle('desktop:add-group', async (event, name: unknown) => { settingsSender(event); await service.addGroup(text(name, 200)); });
+  handle('desktop:rename-group', async (event, id: unknown, name: unknown) => { settingsSender(event); await service.renameGroup(text(id, 40), text(name, 200)); });
+  handle('desktop:remove-group', async (event, id: unknown) => { settingsSender(event); await service.removeGroup(text(id, 40)); });
+  handle('desktop:assign-group', async (event, connectionId: unknown, id: unknown) => { settingsSender(event); await service.assignConnection(text(connectionId, 40), groupId(id)); });
+  handle('desktop:group-menu', (event, x: unknown, y: unknown) => {
+    shellSender(event); const snapshot = service.snapshot(undefined, false), state = snapshot.connectionGroups;
+    if (!state || !mainWindow || mainWindow.isDestroyed()) return;
+    const unread = new Set(state.unread ?? []);
+    const choose = (id: string | null) => void service.setActiveGroup(id).catch(() => {});
+    Menu.buildFromTemplate([
+      ...groupChoices(state, unread).map(choice => ({ label: choice.unread ? `${choice.name}  ●` : choice.name, type: 'radio' as const, checked: choice.active,
+        enabled: !state.unavailable, click: () => choose(choice.id) })),
+      { type: 'separator' as const },
+      { label: 'Edit Groups…', click: () => settingsWindow.open('groups') },
+    ]).popup({ window: mainWindow, ...menuPosition(x, y) });
   });
   handle('desktop:get-app-icon', event => { settingsSender(event); return appIcon.state(); });
   handle('desktop:set-app-icon', (event, icon: unknown) => { settingsSender(event); return appIcon.set(icon); });

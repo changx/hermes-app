@@ -17,7 +17,8 @@ function Editor({ onCreated }: { onCreated: (channelId: string) => void }) {
  * user must choose it; it never follows another page's connection.
  */
 export default function NewChannel() {
-  const { connections } = useConnections();
+  // The active group's connections only (docs/connection-groups.md).
+  const { shownConnections: connections } = useConnections();
   const router = useRouter();
   const usable = connections.filter(c => c.config);
   const [chosen, setChosen] = useState<string | null>(usable.length === 1 ? usable[0].slot : null);

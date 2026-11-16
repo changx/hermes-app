@@ -24,10 +24,56 @@ function fixture() {
     selectThread(id){snapshot.selectedThreadId=id; manager.sync(snapshot); return Promise.resolve();}, deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);},
     closeSessionPage(id){closed.push(id);manager.sync(snapshot);},
     hasConnection(key){return !!key && key===snapshot.connectionKey;}, connectionForChannel(){return snapshot.connectionKey;},
-    connectionForAutomation(id){if(id.startsWith('gone:'))throw new Error('Connection unavailable');return snapshot.connectionKey;} };
+    connectionForAutomation(id){if(id.startsWith('gone:'))throw new Error('Connection unavailable');return snapshot.connectionKey;},
+    activeGroupId(){return null;}, visibleConnectionKeys(){return new Set([snapshot.connectionKey]);} };
   const manager = new DesktopTabManager(window, service, '/app/main', ()=>{});
   return {manager,service,snapshot,views,closed,window};
 }
+/** Two connections: `w` (group Work) and `h` (group Home); Project `pw` with Session `a`, Project `ph` with Session `b`. */
+function groupFixture() {
+  const views = [], groups = { active: null };
+  const keyOf = id => id === 'a' || id === 'pw' ? 'w' : 'h';
+  const snapshot = { revision: 1, phase: 'connected', connectionKey: 'w', messages: [], interactions: [], canLoadOlder: false,
+    channels: [{ id:'pw', name:'Work project', connectionKey:'w' }, { id:'ph', name:'Home project', connectionKey:'h' }],
+    threads: [{ id:'a', channelId:'pw', title:'a', running:false }, { id:'b', channelId:'ph', title:'b', running:false }],
+    connections: [{ id:'cw', name:'Work', server:'', state:'online', connectionKey:'w', groupId:'gw' }, { id:'ch', name:'Home', server:'', state:'online', connectionKey:'h', groupId:'gh' }] };
+  const window = { webContents: new Contents(), contentView: { addChildView(v){views.push(v);}, removeChildView(v){views.splice(views.indexOf(v),1);} }, isDestroyed:()=>false, getContentSize:()=>[1280,820], title:'Hermes', getTitle(){return this.title;}, setTitle(value){this.title=value;} };
+  const selected = [];
+  const service = { snapshot(id){return {...snapshot, selectedThreadId:id ?? snapshot.selectedThreadId, connectionKey: id ? keyOf(id) : snapshot.connectionKey};},
+    selectThread(id){selected.push(id);snapshot.selectedThreadId=id;snapshot.connectionKey=keyOf(id);manager.sync(snapshot);return Promise.resolve();},
+    deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);}, closeSessionPage(){},
+    hasConnection(key){return key==='w'||key==='h';}, connectionForChannel(id){return id?keyOf(id):snapshot.connectionKey;},
+    activeGroupId(){return groups.active;}, visibleConnectionKeys(){return new Set(groups.active===null?['w','h']:groups.active==='gw'?['w']:['h']);},
+    // Switching groups: the service selection moves to a connection of the new group, like DesktopConnections.current().
+    setGroup(id){groups.active=id;if(snapshot.selectedThreadId&&!this.visibleConnectionKeys().has(keyOf(snapshot.selectedThreadId)))snapshot.selectedThreadId=undefined;manager.sync(snapshot);} };
+  const manager = new DesktopTabManager(window, service, '/app/main', ()=>{});
+  return {manager,service,snapshot,selected};
+}
+test('connection groups: the tab strip and lists show the active group; each group gets its last tab back', async()=>{
+  const f=groupFixture();await f.service.selectThread('a');await f.service.selectThread('b');
+  const [a,b]=[...f.manager.tabs.values()];
+  assert.equal(f.manager.activeTabId,b.id);assert.deepEqual(f.manager.snapshot().tabs.map(t=>t.threadId),['a','b']);
+  f.service.setGroup('gw');
+  const work=f.manager.snapshot();
+  assert.deepEqual(work.tabs.map(t=>t.threadId),['a'],'Home tabs are hidden, not closed');
+  assert.equal(f.manager.tabs.size,2);assert.equal(b.view.webContents.destroyed,false);
+  assert.equal(f.manager.activeTabId,a.id);assert.equal(a.view.visible,true);assert.equal(b.view.visible,false);
+  assert.deepEqual(work.channels.map(c=>c.id),['pw']);assert.deepEqual(work.threads.map(t=>t.id),['a']);assert.deepEqual(work.connections.map(c=>c.id),['cw']);
+  // A tab keeps its own connection's Projects; other groups' Projects are not listed.
+  assert.deepEqual(f.manager.snapshot(a.view.webContents).channels.map(c=>c.id),['pw']);
+  // Menus and Cmd+Tab act on the shown tabs only.
+  assert.deepEqual(f.manager.menu(a.id).map(i=>i.enabled),[true,false,false]);
+  f.service.setGroup('gh');assert.equal(f.manager.activeTabId,b.id);assert.deepEqual(f.manager.snapshot().tabs.map(t=>t.threadId),['b']);
+  f.manager.newTab('ph');const draft=[...f.manager.tabs.values()][2];assert.equal(f.manager.activeTabId,draft.id);
+  f.service.setGroup('gw');assert.equal(f.manager.activeTabId,a.id,'Work gets its last tab back');
+  f.service.setGroup('gh');assert.equal(f.manager.activeTabId,draft.id,'Home gets its New chat tab back');
+  assert.deepEqual(f.manager.snapshot().tabs.map(t=>t.kind),['session','new']);
+  // A selection on a hidden connection never activates its tab while another group shows.
+  f.service.setGroup('gw');f.snapshot.selectedThreadId='b';f.manager.sync(f.snapshot);
+  assert.equal(f.manager.activeTabId,a.id);assert.deepEqual(f.manager.snapshot().tabs.map(t=>t.threadId),['a']);
+  // All shows every tab again.
+  f.service.setGroup(null);assert.equal(f.manager.snapshot().tabs.length,3);assert.equal(f.manager.snapshot().channels.length,2);
+});
 test('each session has one secure retained WebContentsView; activation never destroys another tab', async()=>{
   const f=fixture();await f.service.selectThread('a');const a=[...f.manager.tabs.values()][0];await f.service.selectThread('b');const b=[...f.manager.tabs.values()][1];
   assert.equal(a.view.visible,false);assert.equal(b.view.visible,true);

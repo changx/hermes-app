@@ -1,5 +1,6 @@
 import test from 'node:test';
 import * as sessionLinks from '../../../packages/client/src/sessionLinks.ts';
+import * as connectionGroups from '../../../packages/client/src/connectionGroups.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -150,6 +151,8 @@ async function harness({ multiple = false, list = false, strict = false, product
     '../../../packages/client/src/sessionLinks': sessionLinks,
     '../../../packages/client/src/todo': todo, './TodoFlag': { TodoFlag: 'TodoFlag', TODO_COLOR: '#d9480f' }, './todoToggle': { setThreadTodo: async () => '' }, './sessionHeaderItems': sessionHeaderItems,
     '../../../packages/client/src/projectDirectory': {},
+    '../../../packages/client/src/connectionGroups': connectionGroups,
+    './connectionGroupStore': { loadGroups: async () => connectionGroups.NO_GROUPS, saveGroups: async () => {} },
     '../../../packages/client/src/index': { HermesClient: SDK, connectionFailure: String, isRetryableError: () => true },
     './NetworkStatusToast': { NetworkStatusToast: 'NetworkStatusToast' },
     '../../../packages/client/src/liveClient': { LiveSessionClient: SDK },
