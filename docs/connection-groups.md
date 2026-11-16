@@ -50,7 +50,7 @@ Settings always lists every connection.
 
 ### Desktop
 
-- The switcher is the first row of the sidebar, above New chat. It shows the active group's name and a chevron. A click opens a native menu: All, each group (the active one is checked), then **Edit Groups…**, which opens Settings > Groups.
+- The switcher is the footer of the left sidebar (Jamie, 2026-11-16). It stays at the bottom edge and does not scroll with the lists. It shows the active group's name and a chevron. A click opens a native menu: All, each group (the active one is checked), then **Edit Groups…**, which opens Settings > Groups. On macOS the checked group opens over the switcher, like a pop-up button.
 - **Settings > Connections > Groups**: add, rename and delete groups; choose the group of each connection.
 - Tabs: the tab strip, ⌘Tab and the tab menu (Close Tabs to the Right, Close Other Tabs) use only the active group's tabs. Hidden tabs stay open with their page, scroll position and draft.
 - Each group remembers its last active tab. When the user switches back, that tab becomes active again.
@@ -76,7 +76,7 @@ Settings always lists every connection.
   - `connections.ts`: group state and changes. `current()` prefers a connection of the active group. `visibleConnectionKeys()` and `activeGroupId()` for the tab manager. Automations, message search and file search ask only the active group's connections. The snapshot carries `connectionGroups` (with `unread` slot IDs) and each connection's `groupId`.
   - `tab-manager.ts`: narrows `channels`, `threads` and `connections` of the main window, and `channels` and `threads` of tab pages (a tab keeps its own connection). Hides other groups' tabs and restores each group's last tab.
   - `index.ts`: `desktop:add-group`, `desktop:rename-group`, `desktop:remove-group`, `desktop:assign-group` (Settings window only) and `desktop:group-menu` (main window only).
-- Desktop renderer: `GroupSwitch` in `navigation-panel.tsx`; `group-settings.tsx`; Settings page `groups`.
+- Desktop renderer: `GroupSwitch` in `navigation-panel.tsx`, placed by `native-workspace.tsx` below the sidebar's scrolling lists; `group-settings.tsx`; Settings page `groups`.
 - Mobile: `connectionGroupStore.ts`; group state and `shownConnections` in `connections.tsx`; `GroupSwitch.tsx` in `TabHeader`; `GroupSettings.tsx` with routes `/settings/groups` and `/settings/group?group=<id>`.
 
 No plugin, Hermes core or protocol change.
@@ -86,7 +86,7 @@ No plugin, Hermes core or protocol change.
 - Shared rules: `packages/client/tests/connection-groups.test.mjs`, 8/8.
 - Desktop: TypeScript and build pass.
   - `native-tabs.test.mjs`: a new test switches between two groups. It checks hidden tabs, the restored tab of each group, narrowed lists, the tab menu, and that a hidden connection's selection does not activate its tab. 10/10.
-  - `sidebar-groups.test.mjs` (Chromium): no switcher without groups, switcher above New chat, unread dot only for another group, All without a dot, menu position. Pass.
+  - `sidebar-groups.test.mjs` (Chromium): no switcher without groups, switcher in the sidebar footer at the bottom edge and New chat still first in the list, unread dot only for another group, All without a dot, menu position. Pass.
   - Full suite with `HERMES_TEST_CHROME=/usr/bin/google-chrome HERMES_TEST_ELECTRON=1 xvfb-run -a npm test`: 307 pass, 11 fail, 0 skipped. Unchanged `main` on this host: 307 pass, 10 fail. The same 10 tests fail on both. The eleventh ("production right browser previews attachments") passes alone on both trees; it fails only under the load of the full run.
 - Mobile: TypeScript passes. Full suite 281 pass, 0 fail, 1 skipped (the existing skip). New: `connection-groups-store.test.mjs` 3/3, `group-settings.test.mjs` 3/3. Three test harnesses got the new fields and modules.
 - `expo export --platform ios --platform android --no-bytecode` passes. Both bundles contain the group storage key and the switcher text.

@@ -250,7 +250,7 @@ export interface HermesDesktopApi {
   removeGroup(groupId: string): Promise<void>;
   /** `null` removes the connection from its group. */
   assignGroup(connectionId: string, groupId: string | null): Promise<void>;
-  /** The sidebar's group switcher: a native menu at window position (x, y). */
+  /** The group switcher at the sidebar's bottom: a native menu whose checked group opens at window position (x, y). */
   showGroupMenu(x: number, y: number): Promise<void>;
   getAppIcon(): Promise<DesktopAppIconState>;
   setAppIcon(icon: DesktopAppIconId): Promise<DesktopAppIconState>;

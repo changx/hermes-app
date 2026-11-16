@@ -222,12 +222,14 @@ const registerDesktopApi = (): void => {
     if (!state || !mainWindow || mainWindow.isDestroyed()) return;
     const unread = new Set(state.unread ?? []);
     const choose = (id: string | null) => void service.setActiveGroup(id).catch(() => {});
+    const choices = groupChoices(state, unread);
+    // macOS pop-up button style: the checked group opens over the switcher at the sidebar's bottom.
     Menu.buildFromTemplate([
-      ...groupChoices(state, unread).map(choice => ({ label: choice.unread ? `${choice.name}  ●` : choice.name, type: 'radio' as const, checked: choice.active,
+      ...choices.map(choice => ({ label: choice.unread ? `${choice.name}  ●` : choice.name, type: 'radio' as const, checked: choice.active,
         enabled: !state.unavailable, click: () => choose(choice.id) })),
       { type: 'separator' as const },
       { label: 'Edit Groups…', click: () => settingsWindow.open('groups') },
-    ]).popup({ window: mainWindow, ...menuPosition(x, y) });
+    ]).popup({ window: mainWindow, ...menuPosition(x, y), positioningItem: Math.max(0, choices.findIndex(choice => choice.active)) });
   });
   handle('desktop:get-app-icon', event => { settingsSender(event); return appIcon.state(); });
   handle('desktop:set-app-icon', (event, icon: unknown) => { settingsSender(event); return appIcon.set(icon); });

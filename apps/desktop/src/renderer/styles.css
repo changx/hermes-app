@@ -561,6 +561,7 @@ dialog.labels-editor::backdrop { background: #0005; }
 .settings-group-row input { flex: 1; min-width: 0; border: 1px solid var(--app-field-border); border-radius: 8px; padding: 10px 12px; color: var(--app-text); background: #fff; }
 .settings-group-connection select { margin-top: 4px; }
 /* Connection group switcher (docs/connection-groups.md): the active group's name, a chevron, and a dot for another group's unread result. */
+.sidebar-group-footer { flex: none; padding: 6px 8px 8px; border-top: 1px solid var(--app-border); }
 .sidebar-group-switch { font-weight: 600; }
 .sidebar-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-group-chevron { flex: none; width: 12px; font-size: 11px; color: var(--app-label); }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
-import { NavigationPanel, type ProjectReveal } from './navigation-panel';
+import { GroupSwitch, NavigationPanel, type ProjectReveal } from './navigation-panel';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
 import { ErrorBanner } from './error-banner';
@@ -135,6 +135,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
     <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} title={`${sidebarHidden ? 'Expand' : 'Collapse'} sidebar (⌘B)`} onClick={toggleSidebar}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
       <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} onSearch={onSearch} reveal={reveal} />
+      <GroupSwitch snapshot={snapshot} />
     </aside>}
     {!sidebarHidden && <div ref={handle} className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
       onPointerDown={event => {

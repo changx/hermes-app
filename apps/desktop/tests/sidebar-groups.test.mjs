@@ -9,7 +9,7 @@ import { build } from 'esbuild';
 
 /**
  * Connection groups (docs/connection-groups.md): the main process sends the active group's lists;
- * the sidebar shows a switcher above New chat, with a dot for another group's unread result.
+ * the sidebar shows a switcher in its footer, with a dot for another group's unread result.
  * `HERMES_SIDEBAR_EVIDENCE=<folder>` also saves a screenshot.
  */
 test('Chromium: sidebar group switcher names the active group, marks other groups\' unread results and opens the native menu', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
@@ -37,20 +37,23 @@ test('Chromium: sidebar group switcher names the active group, marks other group
         ensure('no groups: no switcher',!document.querySelector('.sidebar-group-switch')&&actions()[0]==='New chat');
         render({...base,connectionGroups:{...groups,unread:['primary']}}); await new Promise(r=>setTimeout(r,20));
         const button=document.querySelector('.sidebar-group-switch');
-        ensure('switcher above New chat names the active group',actions().slice(0,2).join('|')==='Work|New chat');
+        const aside=document.querySelector('aside.native-sidebar'), footer=aside.querySelector('.sidebar-group-footer');
+        ensure('lists keep New chat first; the switcher is not in the scrolling list',actions()[0]==='New chat'&&!aside.querySelector('.sidebar-scroll .sidebar-group-switch'));
+        ensure('switcher is the sidebar footer and names the active group',footer&&footer.parentElement===aside&&aside.lastElementChild===footer&&button.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim()==='Work');
+        const asideBox=aside.getBoundingClientRect(), footerBox=footer.getBoundingClientRect();
+        ensure('footer sits at the bottom edge of the sidebar',Math.abs(footerBox.bottom-asideBox.bottom)<=1&&footerBox.top>aside.querySelector('.sidebar-scroll').getBoundingClientRect().bottom-1);
         ensure('dot for the unread result in Home',!!button.querySelector('.sidebar-group-unread')&&button.getAttribute('aria-label')==='Group: Work, another group has unread results');
         ensure('menu button semantics',button.getAttribute('aria-haspopup')==='menu');
-        const toggle=document.querySelector('.sidebar-edge-toggle').getBoundingClientRect(), box=button.getBoundingClientRect();
-        ensure('collapse button beside, not over, the switcher',toggle.left>=box.right-1);
+        const box=button.getBoundingClientRect();
         ensure('lists come from the main process: one Project and its Session',[...document.querySelectorAll('.channel-tree .thread-title')].map(e=>e.textContent).join('|')==='Release notes');
         button.click(); await new Promise(r=>setTimeout(r,10));
-        ensure('click opens the native menu below the switcher',menus.length===1&&Math.abs(menus[0][0]-box.left)<1&&Math.abs(menus[0][1]-(box.bottom+2))<1);
+        ensure('click opens the native menu at the switcher (the checked group opens over it)',menus.length===1&&Math.abs(menus[0][0]-box.left)<1&&Math.abs(menus[0][1]-box.top)<1);
         render({...base,connectionGroups:{...groups,unread:['w']}}); await new Promise(r=>setTimeout(r,20));
         ensure('no dot for an unread result in the shown group',!document.querySelector('.sidebar-group-unread'));
         render({...base,connectionGroups:{...groups,active:null,unread:['primary']}}); await new Promise(r=>setTimeout(r,20));
-        ensure('All: the switcher says All and has no dot',actions()[0]==='All'&&!document.querySelector('.sidebar-group-unread'));
+        ensure('All: the switcher says All and has no dot',document.querySelector('.sidebar-group-name').textContent==='All'&&!document.querySelector('.sidebar-group-unread'));
         render({...base,connectionGroups:{...groups,unread:['primary']}}); await new Promise(r=>setTimeout(r,20));
-        checks.geometry={switcher:[box.left,box.top,box.right,box.bottom],toggle:[toggle.left,toggle.top]};
+        checks.geometry={switcher:[box.left,box.top,box.right,box.bottom],sidebar:[asideBox.top,asideBox.bottom]};
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' } });
     const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');
