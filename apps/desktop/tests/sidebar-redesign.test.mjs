@@ -28,9 +28,9 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
       (async()=>{try{
         await document.fonts.ready; await new Promise(r=>setTimeout(r,50));
         const aside=document.querySelector('aside.native-sidebar');
-        ensure('sidebar has no footer and no Settings entry',!aside.querySelector('.native-sidebar-footer')&&!aside.querySelector('[aria-label="Settings"]'));
-        const settingsButton=document.querySelector('.desktop-tab-actions .desktop-tab-settings');
-        ensure('Settings sits in the tab bar between New tab and browser',!!settingsButton&&settingsButton.getAttribute('aria-label')==='Settings'&&settingsButton.previousElementSibling?.classList.contains('desktop-tab-add')&&settingsButton.nextElementSibling?.classList.contains('desktop-browser-toggle'));
+        ensure('sidebar has no old footer',!aside.querySelector('.native-sidebar-footer'));
+        const footer=aside.querySelector('.sidebar-group-footer'), settingsButton=footer&&footer.querySelector('.sidebar-settings');
+        ensure('Settings sits at the right of the sidebar footer, not in the tab bar',!!settingsButton&&settingsButton.getAttribute('aria-label')==='Settings'&&aside.lastElementChild===footer&&!document.querySelector('.desktop-tab-settings')&&Math.abs(settingsButton.getBoundingClientRect().right-footer.getBoundingClientRect().right)<=9);
         const gear=settingsButton.querySelector('.app-icon');
         ensure('settings icon uses icon font',getComputedStyle(gear).fontFamily.includes('HermesWorkIcons')&&gear.textContent==='\\ue010'&&gear.getAttribute('aria-hidden')==='true');
         ensure('icon font loaded',document.fonts.check('17px HermesWorkIcons','\\ue010'));
@@ -53,6 +53,11 @@ test('Chromium: multi-connection sidebar has no server footer, icon-font control
         document.documentElement.style.setProperty('--app-font-size','16px');
         const box=aside.getBoundingClientRect();
         checks.geometry={width:box.width,actionRow:aside.querySelector('.sidebar-action').getBoundingClientRect().height,row:row.getBoundingClientRect().height,footerTop:aside.getBoundingClientRect().bottom};
+        document.querySelector('.sidebar-edge-toggle').click(); await new Promise(r=>setTimeout(r,20));
+        const tabSettings=document.querySelector('.desktop-tab-actions .desktop-tab-settings');
+        ensure('collapsed sidebar: Settings moves to the tab bar between New tab and browser',!document.querySelector('aside.native-sidebar')&&!!tabSettings&&tabSettings.previousElementSibling?.classList.contains('desktop-tab-add')&&tabSettings.nextElementSibling?.classList.contains('desktop-browser-toggle'));
+        tabSettings.click(); ensure('tab bar Settings opens',settings===2);
+        document.querySelector('.sidebar-edge-toggle').click(); await new Promise(r=>setTimeout(r,20));
       }catch(error){checks.failure=error.message}finally{document.getElementById('results').textContent=JSON.stringify(checks)}})();
     ` }, bundle: true, minify: true, platform: 'browser', format: 'iife', write: false, define: { 'process.env.NODE_ENV': '"production"' } });
     const css = await readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8');

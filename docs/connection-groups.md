@@ -58,7 +58,7 @@ Settings always lists every connection.
 
 ### Desktop
 
-- The switcher is the footer of the left sidebar (Jamie, 2026-11-16). It stays at the bottom edge and does not scroll with the lists. It shows the active group's name and a chevron. A click opens a native menu: All, each group (the active one is checked), then **Edit Groups…**, which opens Settings > Groups. On macOS the checked group opens over the switcher, like a pop-up button.
+- The switcher is the footer of the left sidebar (Jamie, 2026-11-16). It stays at the bottom edge and does not scroll with the lists. It shows the active group's name and a chevron. It is only as wide as the group name; the Settings gear sits at the right end of the same footer (see [desktop-tabs.md](desktop-tabs.md#settings-in-the-sidebar-footer)). A click opens a native menu: All, each group (the active one is checked), then **Edit Groups…**, which opens Settings > Groups. On macOS the checked group opens over the switcher, like a pop-up button.
 - **Settings > Connections > Groups**: add, rename and delete groups; choose the group of each connection.
 - Tabs: the tab strip, ⌘Tab and the tab menu (Close Tabs to the Right, Close Other Tabs) use only the active group's tabs. Hidden tabs stay open with their page, scroll position and draft.
 - Each group remembers its last active tab. When the user switches back, that tab becomes active again.

@@ -34,14 +34,16 @@ test('Chromium: sidebar group switcher names the active group, marks other group
       const actions=()=>[...document.querySelectorAll('.sidebar-actions button')].map(b=>b.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim());
       (async()=>{try{
         render(base); await document.fonts.ready; await new Promise(r=>setTimeout(r,50));
-        ensure('no groups: no switcher',!document.querySelector('.sidebar-group-switch')&&actions()[0]==='New chat');
+        ensure('no groups: no switcher, footer keeps Settings',!document.querySelector('.sidebar-group-switch')&&!!document.querySelector('.sidebar-group-footer .sidebar-settings')&&actions()[0]==='New chat');
         render({...base,connectionGroups:{...groups,unread:['primary']}}); await new Promise(r=>setTimeout(r,20));
         const button=document.querySelector('.sidebar-group-switch');
         const aside=document.querySelector('aside.native-sidebar'), footer=aside.querySelector('.sidebar-group-footer');
         ensure('lists keep New chat first; the switcher is not in the scrolling list',actions()[0]==='New chat'&&!aside.querySelector('.sidebar-scroll .sidebar-group-switch'));
         ensure('switcher is the sidebar footer and names the active group',footer&&footer.parentElement===aside&&aside.lastElementChild===footer&&button.textContent.replace(/[\\ue000-\\uf8ff]/g,'').trim()==='Work');
-        const asideBox=aside.getBoundingClientRect(), footerBox=footer.getBoundingClientRect();
+        const asideBox=aside.getBoundingClientRect(), footerBox=footer.getBoundingClientRect(), box0=()=>button.getBoundingClientRect();
         ensure('footer sits at the bottom edge of the sidebar',Math.abs(footerBox.bottom-asideBox.bottom)<=1&&footerBox.top>aside.querySelector('.sidebar-scroll').getBoundingClientRect().bottom-1);
+        const gearBox=footer.querySelector('.sidebar-settings').getBoundingClientRect();
+        ensure('switcher fits its name; Settings is on its right in the same row',box0().width<footerBox.width/2&&gearBox.left>=box0().right&&Math.abs(gearBox.right-footerBox.right)<=9&&Math.abs((gearBox.top+gearBox.bottom)/2-(box0().top+box0().bottom)/2)<=1);
         ensure('dot for the unread result in Home',!!button.querySelector('.sidebar-group-unread')&&button.getAttribute('aria-label')==='Group: Work, another group has unread results');
         ensure('menu button semantics',button.getAttribute('aria-haspopup')==='menu');
         const box=button.getBoundingClientRect();
