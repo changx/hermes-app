@@ -176,8 +176,15 @@ export class DesktopConnectionService {
     this.outboxTimer.unref();
   }
 
-  private stopIfUnauthorized(error: unknown): void {
-    if (isDeviceNotBoundError(error) || !(error instanceof HttpError) || (error.status !== 401 && error.status !== 403)) return;
+  /**
+   * Stops the connection when the server rejects this device's credentials.
+   * `resource` calls read or write one Project resource. There a 403 is the server
+   * refusing that resource (for example an unsafe AGENTS.md folder), not this device,
+   * so only 401 stops the connection.
+   */
+  private stopIfUnauthorized(error: unknown, scope: 'connection' | 'resource' = 'connection'): void {
+    if (isDeviceNotBoundError(error) || !(error instanceof HttpError)) return;
+    if (error.status !== 401 && (scope === 'resource' || error.status !== 403)) return;
     this.client?.close();
     this.connectionState = "blocked";
     this.cancelRecovery();
@@ -864,7 +871,10 @@ export class DesktopConnectionService {
       const agents = (state.agentsAvailable ?? state.initialized) ? await this.readAgents(client, channelId) : null;
       if (this.client !== client) throw new Error('Connection changed');
       return { supported: true, agents };
-    } catch (error) { this.stopIfUnauthorized(error); throw new Error("AGENTS.md could not be loaded."); }
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 403 && !isDeviceNotBoundError(error)) return { supported: true, agents: null, refused: true };
+      this.stopIfUnauthorized(error, 'resource'); throw new Error("AGENTS.md could not be loaded.");
+    }
   }
 
   /** Initialize once, only when a write needs it. Initialization is idempotent on the server. */
@@ -882,7 +892,7 @@ export class DesktopConnectionService {
       const saved = await client.workspace.saveAgents(channelId, content, previous);
       return { ok: true, etag: saved.etag };
     } catch (error) {
-      this.stopIfUnauthorized(error);
+      this.stopIfUnauthorized(error, 'resource');
       return { ok: false, reason: error instanceof HttpError && error.status === 412 ? 'conflict' : 'failed' };
     }
   }
@@ -897,7 +907,7 @@ export class DesktopConnectionService {
       if (this.client !== client || (saved.bound_primary_path ?? null) !== path) throw new Error('Folder readback mismatch');
       return { ok: true };
     } catch (error) {
-      this.stopIfUnauthorized(error);
+      this.stopIfUnauthorized(error, 'resource');
       const status = error instanceof HttpError ? error.status : 0;
       return { ok: false, reason: status === 400 ? 'invalid' : status === 409 ? 'taken' : 'failed' };
     }

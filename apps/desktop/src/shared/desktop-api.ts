@@ -175,10 +175,15 @@ export type DesktopSnapshot = Readonly<{
 export type PairingRequest = Readonly<{ baseUrl: string; code: string; deviceName: string }>;
 export type ChannelInput = Readonly<{ name: string; description: string }>;
 export type ProjectCreationInput = ChannelInput & Readonly<{ connectionKey: string }>;
-/** Project AGENTS.md from the plugin workspace API. `supported: false` hides the editor. */
+/**
+ * Project AGENTS.md from the plugin workspace API. `supported: false` hides the editor.
+ * `refused: true` means the server refused this AGENTS.md (HTTP 403, for example a
+ * group-writable primary folder). The editor is then read-only; the connection stays online.
+ */
 export type DesktopProjectWorkspace = Readonly<{
   supported: boolean;
   agents: Readonly<{ content: string; etag: string }> | null;
+  refused?: boolean;
 }>;
 export type DesktopMessageFocus = Readonly<{ refSeq: number; version: number }>;
 /** A file of one Session: delivered by the Agent (MEDIA:) or uploaded by the user. See docs/session-files.md. */

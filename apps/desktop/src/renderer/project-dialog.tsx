@@ -15,6 +15,7 @@ type EditorTab = 'context' | 'agents';
  * Both editors stay mounted, so a tab switch keeps undo history and scroll position. A dot marks a tab with unsaved changes.
  * AGENTS.md follows the primary folder, so a folder change and an AGENTS.md edit are never saved together.
  * Without Project files support, the editor shows the Context tab only.
+ * When the server refuses AGENTS.md (HTTP 403, e.g. a group-writable folder), the AGENTS.md tab shows why and stays read-only.
  * Project files are not managed here: files belong to their Session (docs/session-files.md).
  * Nothing is written before Save. A created Project is never created a second time;
  * a later partial failure keeps the form open in edit mode so Save can finish the rest.
@@ -65,6 +66,8 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
   const online = editing ? (snapshot.connections ? selected?.state === 'online' : snapshot.connectionState === 'online') : selected?.state === 'online';
   // Create mode reads the connection capability; edit mode reads the server answer.
   const filesSupported = channelId ? typeof workspace === 'object' && workspace?.supported === true : selected?.supportsProjectFiles === true;
+  // The server refused this AGENTS.md (HTTP 403). The connection stays online; only this editor is read-only.
+  const agentsRefused = typeof workspace === 'object' && workspace?.refused === true;
   const workspaceReady = !channelId || typeof workspace === 'object' && workspace !== null;
   const locked = busy || creationFailed || details !== 'ready';
   const folderSupported = channelId ? folderSupportedOnServer : selected?.supportsPrimaryPath === true;
@@ -167,7 +170,8 @@ export function ProjectDialog({ snapshot, close, channelId }: { snapshot: Deskto
           </div>
           {showAgents && <div className="project-editor-panel" role="tabpanel" id="project-panel-agents" aria-labelledby="project-tab-agents" hidden={activeTab !== 'agents'}>
             <p className="field-hint project-editor-hint"><span>Working rules for new sessions in this project. Existing sessions keep their rules.</span></p>
-            <textarea className="project-editor-text" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked || folderChanged} onChange={event => setAgents(event.target.value)} />
+            {agentsRefused && <p role="alert">The server refused to read AGENTS.md in this folder. Hermes reads AGENTS.md only from a folder that is not group-writable or world-writable. Ask the server administrator to fix the folder permissions, then reopen this project.</p>}
+            <textarea className="project-editor-text" aria-label="Project AGENTS.md" spellCheck={false} value={agents} disabled={locked || folderChanged || agentsRefused} onChange={event => setAgents(event.target.value)} />
             {folderChanged && <p className="field-hint">Save the primary folder first. Then reopen this project to edit the AGENTS.md from that folder.</p>}
           </div>}
         </div>

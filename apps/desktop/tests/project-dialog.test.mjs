@@ -245,3 +245,16 @@ test('Tabs switch the editor, keep both texts, mark unsaved changes and open the
     assert.deepEqual(tabs(f).map(t => t[1]), [false, true], 'the failed editor is shown');
   } finally { await f.dispose(); }
 });
+
+test('Project settings: a refused AGENTS.md shows why, stays read-only, and the rest still saves', async () => {
+  const f = await fixture({ channelId: 'p1', api: { getProjectWorkspace: { supported: true, agents: null, refused: true } } });
+  try {
+    assert.deepEqual(tabs(f).map(t => t[0]), ['Context', 'AGENTS.md']);
+    assert.match(f.alert(), /refused to read AGENTS.md/);
+    assert.doesNotMatch(f.alert(), /could not be loaded/);
+    assert.equal(f.field('Project AGENTS.md').props.disabled, true);
+    await f.type('Project context', 'New context'); await f.submit();
+    assert.deepEqual(f.calls.filter(c => !['info', 'getProjectWorkspace'].includes(c[0])).map(c => c[0]), ['update']);
+    assert.equal(f.closed(), 1);
+  } finally { await f.dispose(); }
+});
