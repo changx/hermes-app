@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
-import { GroupSwitch, NavigationPanel, type ProjectReveal } from './navigation-panel';
+import { NavigationPanel, SidebarFooter, type ProjectReveal } from './navigation-panel';
 import { BrowserSidebar } from './browser-sidebar';
 import { Icon } from './icons';
 import { ErrorBanner } from './error-banner';
@@ -135,7 +135,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
     <button type="button" className="sidebar-edge-toggle sidebar-icon-button" aria-label={sidebarHidden ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarHidden} title={`${sidebarHidden ? 'Expand' : 'Collapse'} sidebar (⌘B)`} onClick={toggleSidebar}><Icon name={sidebarHidden ? 'chevronRight' : 'chevronLeft'} /></button>
     {!sidebarHidden && <aside className="sidebar native-sidebar">
       <NavigationPanel snapshot={snapshot} draftThreads={draftThreads} onNewSession={id => invoke(window.hermesDesktop.newTab(id || undefined))} onEditLabels={onEditLabels} onRename={onRename} onChannelOptions={onProjectOptions} onCreateProject={onCreateProject} onSearch={onSearch} reveal={reveal} />
-      <GroupSwitch snapshot={snapshot} />
+      <SidebarFooter snapshot={snapshot} onSettings={onSettings} />
     </aside>}
     {!sidebarHidden && <div ref={handle} className="sidebar-resize-handle" role="separator" tabIndex={0} aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={sidebarMaximum(availableWidth - browserWidth)} aria-valuenow={sidebarWidth}
       onPointerDown={event => {
@@ -175,8 +175,8 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
       <div className="desktop-tab-actions">
         <UpdateReadyButton version={snapshot.updateReady} onRestart={() => invoke(window.hermesDesktop.restartToUpdate())} />
         <button type="button" className="desktop-tab-add desktop-tab-action" aria-label="New chat tab" title="New tab (⌘T)" disabled={snapshot.phase !== 'connected'} onClick={() => invoke(window.hermesDesktop.newTab(snapshot.selectedChannelId))}><Icon name="plus" /></button>
-        {/* Settings stays usable while unpaired or offline, so the button is never disabled. */}
-        <button type="button" className="desktop-tab-settings desktop-tab-action" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /></button>
+        {/* Settings lives in the sidebar footer; with the sidebar collapsed it stays reachable here. */}
+        {sidebarHidden && <button type="button" className="desktop-tab-settings desktop-tab-action" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /></button>}
         <button type="button" className="desktop-browser-toggle desktop-tab-action" aria-label={snapshot.browserMode === 'window' ? 'Toggle browser window' : 'Toggle preview sidebar'} title={snapshot.browserMode === 'window' ? 'Browser window' : 'Preview sidebar'} aria-expanded={browserActive} disabled={!snapshot.activeTabId} onClick={() => invoke(browserActive ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.openBrowser())}><Icon name="panelRight" /></button>
       </div>
       </div>

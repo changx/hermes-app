@@ -159,6 +159,16 @@ Jamie (2026-10-13): the Settings entry moves from the sidebar footer to the tab 
 
 Release v0.1.82 (2026-10-13, authorized by Jamie: "合并发布"): released together with the other change in this version. Commits: Session toolbar Settings removal `5596703`, sidebar drag performance `3b49d8a`, merged in `integrate/release-0.1.82`; release commit `f736a66`, tag `v0.1.82`. Linux `desktop:check` on the merged tree with Chromium and Electron/Xvfb: 196 passed, 0 failed. Mac mini workflow run `38504645519`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.82. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build of the merged tree. Releases kept: v0.1.82 and v0.1.81. No mobile, plugin, Expo or Gateway change. Mac check of the toolbar and of the drag feel is open.
 
+### Settings in the sidebar footer
+
+Jamie (2026-11-16): the Settings gear moves from the top-right tab actions to the right end of the sidebar footer, next to the group switcher. The group switcher is shorter.
+
+- The sidebar footer (`.sidebar-group-footer`) is always shown with the sidebar. Left: the group switcher, only when groups exist. Right: Settings (`.sidebar-settings`, `gear`, E010, accessible name `Settings`, tooltip `Settings (⌘,)`, never disabled).
+- The group switcher fits its group name (`width: auto`, at most the footer width minus the gear). A long name is clipped with an ellipsis.
+- When the sidebar is collapsed (by the user, or automatically with the preview sidebar in a narrow window), the gear returns to the tab actions between New tab and Browser, so Settings stays one click away. Cmd/Ctrl+, is unchanged.
+- `--tab-actions-width` is 76px while the sidebar is shown (240px with Restart to Update) and 108px (272px) while it is collapsed.
+- Tests: `sidebar-redesign` checks the footer gear at the right edge, no tab-bar gear, and the tab-bar gear after collapsing; both open Settings. `sidebar-groups` checks the footer gear without groups and that the switcher is narrower than half the footer, with the gear on its right in the same row. `tab-status` checks New tab then Browser with no tab-bar gear.
+
 Release v0.1.80 (2026-10-13, authorized by Jamie: "merge and release"): feature `bb48290`, release commit `91c3cb4`, tag `v0.1.80`. Candidate suite on Linux with Chromium and Electron/Xvfb: 196 tests, 0 fail after a rerun of 3 Electron tests that first failed with "Text file busy" while Electron was still downloading. Mac mini workflow run `38496994324`: 196 tests, 148 pass, 0 fail, 48 skipped; `npm audit` 0 vulnerabilities. The downloaded zip passes its `.sha256` check; Info.plist shows 0.1.80. The ASAR `dist/main/index.cjs`, `dist/preload/index.cjs`, `dist/renderer/index.js` and `dist/renderer/styles.css` are byte-identical to the local build. Releases kept: v0.1.80 and v0.1.79. No mobile, plugin, Expo or Gateway change. Mac visual check is open.
 
 ## Composer focus when the app becomes active

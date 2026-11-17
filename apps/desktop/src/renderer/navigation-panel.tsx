@@ -198,9 +198,18 @@ export function GroupSwitch({ snapshot }: { snapshot: DesktopSnapshot }) {
   // The main window lists only the active group's connections; other groups' unread marks come from the group state.
   const unread = new Set(state.unread ?? []);
   const name = activeGroupName(state), dot = otherGroupUnread(state, unread);
-  return <div className="sidebar-group-footer"><button type="button" className="sidebar-action sidebar-group-switch" aria-haspopup="menu" aria-label={`Group: ${name}${dot ? ', another group has unread results' : ''}`}
+  return <button type="button" className="sidebar-action sidebar-group-switch" aria-haspopup="menu" aria-label={`Group: ${name}${dot ? ', another group has unread results' : ''}`}
     onClick={event => { const box = event.currentTarget.getBoundingClientRect(); void window.hermesDesktop.showGroupMenu(box.left, box.top).catch(() => {}); }}>
     <span className="sidebar-group-name">{name}</span><Icon name="chevronDown" className="sidebar-group-chevron" />
     {dot && <span className="sidebar-group-unread" role="img" aria-hidden="true" />}
-  </button></div>;
+  </button>;
+}
+
+/** Sidebar footer: the group switcher (when groups exist) on the left, Settings on the right. */
+export function SidebarFooter({ snapshot, onSettings }: { snapshot: DesktopSnapshot; onSettings: () => void }) {
+  return <div className="sidebar-group-footer">
+    <GroupSwitch snapshot={snapshot} />
+    {/* Settings stays usable while unpaired or offline, so the button is never disabled. */}
+    <button type="button" className="sidebar-icon-button sidebar-settings" aria-label="Settings" title="Settings (⌘,)" onClick={onSettings}><Icon name="gear" /></button>
+  </div>;
 }
