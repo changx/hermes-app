@@ -24,3 +24,11 @@ GFM 的裸链接规则让链接一直延伸到空白字符。它只去掉结尾�
 ## 手机端
 
 手机端（markdown-it linkify）能处理 `，`，但 `。`、`）` 和直接相连的中文仍被放进链接。本次不改手机端。
+
+## 发布记录（2026-11-18）
+
+- 实现提交 `62d229a`，合并提交 `5b6b5af`；release 提交 `e401b34`，tag `v0.1.145`。只改桌面 workspace，未重启 Expo、Gateway，插件和 core 不变。
+- Mac mini 构建（`scripts/macmini-desktop-release.sh v0.1.145`）：测试 329 项，265 通过、0 失败；audit 0。公证 `529345d7-f088-41ae-a209-9b073e8d4884` `Accepted`，`source=Notarized Developer ID`。
+- Release 资产：`Hermes-0.1.145-macOS-arm64.dmg`（147,063,111 bytes）及 `.sha256`。更新 zip 134,271,400 bytes，SHA-256 `7d04d0a6…37beb4`；feed 对 0.1.144 返回 200 并指向 0.1.145，对 0.1.145 返回 204。
+- 回滚：发布更高版本（客户端不降级）。
+- 待验收：Jamie 在 Mac（v0.1.145）上打开含 `https://my.telegram.org，进入` 的消息，确认链接只到 `.org`。
