@@ -1,6 +1,8 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { withoutTodo } from '../../../../packages/client/src/todo';
 import { threadModelOptions, threadModelSwitchCommand } from '../../../../packages/client/src/threadModel';
+import type { AgentModelSettings, ThreadModelChoice } from '../../../../packages/client/src/index';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { connectionHint } from './navigation-panel';
 import { MessageIcon } from './message-toolbar';
@@ -75,36 +77,58 @@ function StatusLabels({ markers, onSearch }: { markers: readonly string[]; onSea
  * (connection state and name, then Project), every Session tool as its own
  * button, and the labels, which take the rest of the row.
  */
-const MENU_MODELS = 60;
-const menuLabel = (text: string) => text.length > 80 ? `${text.slice(0, 79)}…` : text;
-
 /**
- * Switch model: a menu of this connection's models. A choice sends native `/model … --session`
- * as a normal message; Hermes switches this session only and replies in the timeline.
+ * Switch model: a dialog with every model of this connection and a search field (a server can list
+ * hundreds). A choice sends native `/model … --session` as a normal message; Hermes switches this
+ * session only and replies in the timeline.
  */
+function ModelDialog({ connectionKey, close, onSent }: { connectionKey: string; close: () => void; onSent: () => void }) {
+  const [settings, setSettings] = useState<AgentModelSettings | null>(null), [failed, setFailed] = useState(false), [load, setLoad] = useState(0);
+  const [query, setQuery] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  useEffect(() => {
+    let live = true; setFailed(false);
+    window.hermesDesktop.getModelSettings(connectionKey).then(value => { if (live) setSettings(value); }, () => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [connectionKey, load]);
+  const rows = useMemo(() => settings ? threadModelOptions(settings, query) : [], [settings, query]);
+  const pick = (choice: ThreadModelChoice | null) => {
+    if (!settings || busy) return;
+    setBusy(true); setError('');
+    void window.hermesDesktop.sendMessage({ text: threadModelSwitchCommand(settings, choice), attachmentIds: [] })
+      .then(() => { onSent(); close(); }, () => { setBusy(false); setError('Could not switch the model. Check the connection and try again.'); });
+  };
+  // Enter in the search field picks the first matching model.
+  const enter = (event: KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter' && query.trim() && rows[1]) { event.preventDefault(); pick(rows[1].choice); } };
+  return createPortal(<div className="modal-backdrop" role="presentation" onMouseDown={close}>
+    <div className="editor-dialog model-dialog" role="dialog" aria-modal="true" aria-label="Switch model" onMouseDown={event => event.stopPropagation()}
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); close(); } }}>
+      <h2>Switch model</h2>
+      <p className="model-dialog-hint">Applies to this session only.</p>
+      {!settings && !failed && <p className="model-dialog-hint" aria-live="polite">Loading models…</p>}
+      {!settings && failed && <p role="alert" className="model-dialog-error">Could not load the models. <button type="button" className="model-dialog-retry" onClick={() => setLoad(n => n + 1)}>Try again</button></p>}
+      {settings && <>
+        <input type="search" autoFocus aria-label="Search models" placeholder="Search models" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={enter} />
+        <ul className="model-dialog-list" aria-label="Models">
+          {rows.map(row => <li key={row.key}><button type="button" disabled={busy} onClick={() => pick(row.choice)}>
+            <span className="model-dialog-name">{row.label}</span><span className="model-dialog-detail">{row.detail}</span></button></li>)}
+        </ul>
+        {query.trim() && rows.length === 1 && <p className="model-dialog-hint">No matching models.</p>}
+      </>}
+      {error && <p role="alert" className="model-dialog-error">{error}</p>}
+      <div className="dialog-actions"><button type="button" className="secondary" onClick={close}>Cancel</button></div>
+    </div>
+  </div>, document.body);
+}
+
 function ModelSwitch({ snapshot, thread, onSent }: { snapshot: DesktopSnapshot; thread?: DesktopThread; onSent: () => void }) {
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const key = snapshot.connectionKey;
   if (!snapshot.supportsThreadModel || !key) return null;
-  const open = (event: MouseEvent<HTMLButtonElement>) => {
-    const point = menuPoint(event);
-    setBusy(true);
-    void (async () => {
-      try {
-        const settings = await window.hermesDesktop.getModelSettings(key);
-        const rows = threadModelOptions(settings).slice(0, MENU_MODELS);
-        const id = await window.hermesDesktop.showContextMenu(rows.map((row, index) =>
-          ({ id: `model-${index}`, label: menuLabel(row.choice ? `${row.label} · ${row.detail}` : row.label) })), point.x, point.y);
-        const row = id ? rows[Number(id.slice(6))] : undefined;
-        if (!row) return;
-        await window.hermesDesktop.sendMessage({ text: threadModelSwitchCommand(settings, row.choice), attachmentIds: [] });
-        onSent();
-      } catch { window.alert('Could not switch the model. Check the connection and try again.'); }
-      finally { setBusy(false); }
-    })();
-  };
-  return <button type="button" aria-label="Switch model" data-tooltip="Switch model" aria-haspopup="menu"
-    disabled={busy || !thread || snapshot.connectionState !== 'online'} onClick={open}><ToolIcon name="model" /></button>;
+  return <>
+    <button type="button" aria-label="Switch model" data-tooltip="Switch model" aria-haspopup="dialog"
+      disabled={open || !thread || snapshot.connectionState !== 'online'} onClick={() => setOpen(true)}><ToolIcon name="model" /></button>
+    {open && <ModelDialog connectionKey={key} close={() => setOpen(false)} onSent={onSent} />}
+  </>;
 }
 
 export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip, onToggleTodo, onAction, onModelSent = () => {} }: {
