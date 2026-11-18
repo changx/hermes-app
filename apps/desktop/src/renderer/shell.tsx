@@ -480,7 +480,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
     {snapshot.vaultPrompts?.map(prompt => <VaultPromptCard key={prompt.id} prompt={prompt} />)}
     <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />
-    <SessionStatusBar snapshot={snapshot} thread={currentThread} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} />
+    <SessionStatusBar snapshot={snapshot} thread={currentThread} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} onModelSent={() => setSendVersion(value => value + 1)} />
     {overlays}<TooltipLayer />
   </main>;
 };

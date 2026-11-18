@@ -6,13 +6,14 @@ import { threadModelKey, threadModelOptions, type AgentModelSettings, type Threa
 
 /** Model list for one new conversation. The parent loads `settings` from the Channel's own connection. */
 export function ThreadModelPicker({ visible, settings, failed, selected, onClose, onPick, onRetry }: {
-  visible: boolean; settings: AgentModelSettings | null; failed: boolean; selected: ThreadModelChoice | null;
+  /** `undefined`: no row is marked (an existing session whose current model is not known here). */
+  visible: boolean; settings: AgentModelSettings | null; failed: boolean; selected?: ThreadModelChoice | null;
   onClose: () => void; onPick: (choice: ThreadModelChoice | null) => void; onRetry: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const rows = useMemo(() => settings ? threadModelOptions(settings, query) : [], [settings, query]);
-  const current = threadModelKey(selected);
+  const current = selected === undefined ? undefined : threadModelKey(selected);
   const close = () => { setQuery(''); onClose(); };
   return <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
     <View style={[s.sheet, { paddingBottom: insets.bottom }]}>

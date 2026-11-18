@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { withoutTodo } from '../../../../packages/client/src/todo';
+import { threadModelOptions, threadModelSwitchCommand } from '../../../../packages/client/src/threadModel';
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { connectionHint } from './navigation-panel';
 import { MessageIcon } from './message-toolbar';
@@ -16,6 +17,7 @@ const TOOL_ICONS = {
   rename: 'M4 16h3l8.5-8.5-3-3L4 13zM11 6l3 3',
   archive: 'M3.5 4.5h13v3h-13zM4.5 7.5v8h11v-8M8 10.5h4',
   files: 'M5 3.5h6.5l3.5 3.5v9.5H5zM11.5 3.5V7H15M7.5 10.5h5M7.5 13h5',
+  model: 'M6 6h8v8H6zM8.5 3.5V6M11.5 3.5V6M8.5 14v2.5M11.5 14v2.5M3.5 8.5H6M3.5 11.5H6M14 8.5h2.5M14 11.5h2.5',
 } as const;
 const ToolIcon = ({ name }: { name: keyof typeof TOOL_ICONS }) => <svg viewBox="0 0 20 20" aria-hidden="true"><path d={TOOL_ICONS[name]} /></svg>;
 export type StatusAction = 'copy-link' | 'export' | 'files' | 'labels' | 'rename' | 'archive';
@@ -73,9 +75,41 @@ function StatusLabels({ markers, onSearch }: { markers: readonly string[]; onSea
  * (connection state and name, then Project), every Session tool as its own
  * button, and the labels, which take the rest of the row.
  */
-export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip, onToggleTodo, onAction }: {
+const MENU_MODELS = 60;
+const menuLabel = (text: string) => text.length > 80 ? `${text.slice(0, 79)}…` : text;
+
+/**
+ * Switch model: a menu of this connection's models. A choice sends native `/model … --session`
+ * as a normal message; Hermes switches this session only and replies in the timeline.
+ */
+function ModelSwitch({ snapshot, thread, onSent }: { snapshot: DesktopSnapshot; thread?: DesktopThread; onSent: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const key = snapshot.connectionKey;
+  if (!snapshot.supportsThreadModel || !key) return null;
+  const open = (event: MouseEvent<HTMLButtonElement>) => {
+    const point = menuPoint(event);
+    setBusy(true);
+    void (async () => {
+      try {
+        const settings = await window.hermesDesktop.getModelSettings(key);
+        const rows = threadModelOptions(settings).slice(0, MENU_MODELS);
+        const id = await window.hermesDesktop.showContextMenu(rows.map((row, index) =>
+          ({ id: `model-${index}`, label: menuLabel(row.choice ? `${row.label} · ${row.detail}` : row.label) })), point.x, point.y);
+        const row = id ? rows[Number(id.slice(6))] : undefined;
+        if (!row) return;
+        await window.hermesDesktop.sendMessage({ text: threadModelSwitchCommand(settings, row.choice), attachmentIds: [] });
+        onSent();
+      } catch { window.alert('Could not switch the model. Check the connection and try again.'); }
+      finally { setBusy(false); }
+    })();
+  };
+  return <button type="button" aria-label="Switch model" data-tooltip="Switch model" aria-haspopup="menu"
+    disabled={busy || !thread || snapshot.connectionState !== 'online'} onClick={open}><ToolIcon name="model" /></button>;
+}
+
+export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip, onToggleTodo, onAction, onModelSent = () => {} }: {
   snapshot: DesktopSnapshot; thread?: DesktopThread; todo: boolean; todoBusy: boolean; todoTooltip: string;
-  onToggleTodo: () => void; onAction: (action: StatusAction) => void;
+  onToggleTodo: () => void; onAction: (action: StatusAction) => void; onModelSent?: () => void;
 }) {
   const channel = snapshot.channels.find(c => c.id === (thread?.channelId ?? snapshot.selectedChannelId));
   const connection = snapshot.connections?.find(row => row.connectionKey && row.connectionKey === snapshot.connectionKey);
@@ -101,6 +135,7 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
       {snapshot.supportsThreadExport && <button type="button" aria-label="Export conversation" data-tooltip="Export conversation" onClick={() => onAction('export')}><MessageIcon name="export" /></button>}
       {labels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" disabled={!thread} onClick={() => onAction('labels')}><ToolIcon name="label" /></button>}
       <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!thread} onClick={() => onAction('rename')}><ToolIcon name="rename" /></button>
+      <ModelSwitch snapshot={snapshot} thread={thread} onSent={onModelSent} />
       <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={() => onAction('archive')}><ToolIcon name="archive" /></button>
     </div>
     {labels && <StatusLabels markers={withoutTodo(thread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}

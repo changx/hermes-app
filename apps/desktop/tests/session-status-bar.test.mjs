@@ -23,7 +23,7 @@ async function runPage(name, contents, size = '1100,700') {
   } finally { await rm(folder, { recursive: true, force: true }); }
 }
 
-const page = (body, { labels, state = 'online', exportable = true, connections = true } = {}) => `
+const page = (body, { labels, state = 'online', exportable = true, connections = true, model = false } = {}) => `
   import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
   import {DesktopShellView} from './apps/desktop/src/renderer/shell';
   const checks={}; const ensure=(name,value)=>{checks[name]=!!value;if(!value)throw Error(name)};
@@ -32,10 +32,12 @@ const page = (body, { labels, state = 'online', exportable = true, connections =
     revealProject:async id=>{calls.push('reveal:'+id)},archiveThread:async id=>{calls.push('archive:'+id)},renameThread:async()=>{},markResultRead:async()=>{},
     exportConversation:async()=>{calls.push('export');return {ok:true}},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},
     saveThreadLabels:async(id,markers)=>{calls.push('labels:'+markers.join(','));return {markers}},searchLabel:async label=>{calls.push('search:'+label)},
-    showContextMenu:(items,x,y)=>{menus.push({items,x,y});return new Promise(r=>answer=r)}};
+    showContextMenu:(items,x,y)=>{menus.push({items,x,y});return new Promise(r=>answer=r)},
+    getModelSettings:async key=>{calls.push('models:'+key);return {scope:'connected-default',provider:'anthropic',model:'claude-opus-5-5',providers:[{id:'anthropic',name:'Anthropic',models:['claude-opus-5-5','claude-sonnet-5-5']},{id:'openai-codex',name:'OpenAI Codex',models:['gpt-6-luna']}]}},
+    sendMessage:async input=>{calls.push('send:'+input.text+':'+input.attachmentIds.length)}};
   window.confirm=()=>true;
   const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:i===29?[{id:'a1',name:'REPORT.md',mime:'text/markdown',size:12000,state:'available',publicUrl:'https://example.test/r'}]:[]}));
-  const snapshot={phase:'connected',connectionState:${JSON.stringify(state)},connectionKey:'one',supportsSessionLabels:true,supportsThreadExport:${exportable},tabActive:true,tabKind:'session',
+  const snapshot={phase:'connected',connectionState:${JSON.stringify(state)},connectionKey:'one',supportsSessionLabels:true,supportsThreadModel:${model},supportsThreadExport:${exportable},tabActive:true,tabKind:'session',
     ${connections ? `connections:[{id:'c1',name:'Jamie Mac',server:'https://a.test',connectionKey:'one',state:${JSON.stringify(state)}},{id:'c2',name:'Other',server:'https://b.test',connectionKey:'two',state:'online'}],` : ''}
     channels:[{id:'p',name:'Project Alpha',connectionKey:'one',connectionName:'Jamie Mac'}],threads:[{id:'t',channelId:'p',title:'Session Title Beta',markers:${JSON.stringify(labels)},running:false}],
     selectedChannelId:'p',selectedThreadId:'t',selectedThreadTitle:'Session Title Beta',messages,interactions:[],canLoadOlder:false};
@@ -185,4 +187,32 @@ test('Chromium: without a current context the bar shows only the total; without 
     `, { labels: ['bug'] }));
     assert.equal(none.failure, undefined, JSON.stringify(none));
   }
+});
+
+test('Chromium: Switch model lists the connection models and sends native /model for this session', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const result = await runPage('status-bar-model', page(`
+    const tools=qa('.status-actions button').map(b=>b.getAttribute('aria-label'));
+    ensure('Switch model sits before Archive',tools.join('|')==='Mark as todo|Copy link|Export conversation|Edit labels|Rename|Switch model|Archive');
+    const button=q('[aria-label="Switch model"]');
+    button.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1,clientX:300,clientY:690}));await wait(30);
+    ensure('models come from the Session connection',calls.includes('models:one'));
+    checks.items=menus[0].items.map(i=>i.label);
+    ensure('Default first, then each other model with its provider',checks.items.join('|')==='Default (claude-opus-5-5)|claude-sonnet-5-5 · Anthropic|gpt-6-luna · OpenAI Codex');
+    ensure('button waits while the menu is open',button.disabled);
+    answer('model-2');await wait(30);
+    ensure('choice sends native /model with provider and session scope',calls.at(-1)==='send:/model gpt-6-luna --provider openai-codex --session:0');
+    ensure('button is ready again',!button.disabled);
+    button.click();await wait(30);answer('model-0');await wait(30);
+    ensure('Default switches back to the primary model',calls.at(-1)==='send:/model claude-opus-5-5 --provider anthropic --session:0');
+    button.click();await wait(30);const before=calls.length;answer(null);await wait(30);
+    ensure('closing the menu sends nothing',calls.length===before);
+  `, { labels: [], model: true }));
+  assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
+});
+
+test('Chromium: without server model support there is no Switch model button; offline disables it', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+  const none = await runPage('status-bar-no-model', page(`ensure('no button',!q('[aria-label="Switch model"]'));`, { labels: [] }));
+  assert.equal(none.failure, undefined, JSON.stringify(none));
+  const offline = await runPage('status-bar-model-offline', page(`ensure('disabled offline',q('[aria-label="Switch model"]').disabled);`, { labels: [], model: true, state: 'suspended' }));
+  assert.equal(offline.failure, undefined, JSON.stringify(offline));
 });

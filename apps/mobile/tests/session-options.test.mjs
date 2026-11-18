@@ -12,11 +12,13 @@ const state = { pushed: [], dismissed: [], copied: [], shared: [], alerts: [], a
 globalThis.__sessionOptionsTest = state;
 const mocks = {
   'react-native': `const s=globalThis.__sessionOptionsTest; export const Pressable='Pressable',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1}; export const Share={share:async v=>{s.shared.push(v);return {action:'sharedAction'}}}; export const Alert={alert:(...a)=>s.alerts.push(a)};`,
-  'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r),dismissTo:r=>s.dismissed.push(r)}); export const useIsFocused=()=>s.focused;`,
+  'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r),dismissTo:r=>s.dismissed.push(r),canGoBack:()=>true,back:()=>s.dismissed.push('back')}); export const useIsFocused=()=>s.focused;`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   './FontSize': `export const Text='Text';`,
   './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app; export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}}); export const sessionFilesRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/files',params:{threadId,connection}}); export const channelRoute=(connection,channelId)=>({pathname:'/channels/[channelId]',params:{channelId,connection}});`,
   './CopyToast': `const s=globalThis.__sessionOptionsTest; export const copyWithToast=async v=>{s.copied.push(v);return true};`,
+  'expo-crypto': `export const randomUUID=()=>'00000000-0000-4000-8000-000000000001';`,
+  './ThreadModelPicker': `export const ThreadModelPicker='ThreadModelPicker';`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/SessionOptions.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'boundary', setup(b) {
   b.onResolve({ filter: /.*/ }, args => mocks[args.path] ? { path: args.path, namespace: 'mock' } : undefined);
@@ -145,4 +147,38 @@ test('Usage hides the context without a current value, and the whole section wit
     assert.ok(!root.root.findAll(node => node.type === 'Text').some(node => node.props.children === 'Usage'));
     root.unmount();
   }
+});
+
+test('Switch model lists the connection models and sends native /model for this session through the outbox', async () => {
+  reset(); state.app = app([thread()]);
+  const enqueued = [], loads = [];
+  const settings = { scope: 'connected-default', provider: 'anthropic', model: 'claude-opus-5-5', providers: [{ id: 'openai-codex', name: 'OpenAI Codex', models: ['gpt-6-luna'] }] };
+  Object.assign(state.app.client, { supportsThreadModel: true, getModelSettings: async () => { loads.push(1); return settings; } });
+  state.app.config.token = 't';
+  state.app.outboxRef = { current: { storage: { connectionId: 'primary-id' }, enqueue: async record => { enqueued.push(record); } } };
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(labels(root), ['Edit labels, bug, ios', 'Copy session link', 'Switch model', 'Archive session', 'Settings']);
+  const picker = () => root.root.find(node => node.type === 'ThreadModelPicker');
+  assert.equal(picker().props.visible, false);
+  assert.equal(loads.length, 0, 'the list loads only when the picker opens');
+  await press(root, 'Switch model');
+  assert.equal(picker().props.visible, true);
+  assert.equal(picker().props.selected, undefined, 'no row is marked as current');
+  assert.equal(picker().props.settings, settings);
+  await act(async () => { picker().props.onPick({ provider: 'openai-codex', model: 'gpt-6-luna' }); await Promise.resolve(); await Promise.resolve(); });
+  assert.equal(enqueued.length, 1);
+  assert.equal(enqueued[0].threadId, 'th_1');
+  assert.equal(enqueued[0].text, '/model gpt-6-luna --provider openai-codex --session');
+  assert.match(enqueued[0].clientMessageId, /^mob_/);
+  assert.deepEqual(state.dismissed, ['back'], 'the page returns to the session, where Hermes replies');
+  assert.equal(picker().props.visible, false);
+  root.unmount();
+});
+
+test('Switch model is hidden without server model support', async () => {
+  reset(); state.app = app([thread()]); state.app.client.supportsThreadModel = false;
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.ok(!labels(root).includes('Switch model'));
+  assert.equal(root.root.findAll(node => node.type === 'ThreadModelPicker').length, 0);
+  root.unmount();
 });
