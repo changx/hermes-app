@@ -14,7 +14,7 @@ export { memberIdentityText, parseMemberIdentity, type MemberIdentity } from './
 export { attachmentPageUrl, validSitePath } from './attachmentPages';
 export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, FileSearchPage } from './sessionFiles';
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
-export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, type ThreadModelOption } from './threadModel';
+export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, threadModelSwitchCommand, type ThreadModelOption } from './threadModel';
 import { parseThreadUsage, type ThreadUsage } from './threadUsage';
 export { formatTokens, exactTokens, cacheHitPercent, parseThreadUsage, type ThreadUsage, type ThreadCache } from './threadUsage';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';

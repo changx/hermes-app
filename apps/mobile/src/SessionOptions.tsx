@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Share } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { buildSessionLink } from '../../../packages/client/src/sessionLinks';
+import { threadModelSwitchCommand, type AgentModelSettings, type ThreadModelChoice } from '../../../packages/client/src/index';
 import { cacheHitPercent, exactTokens, formatTokens, type ThreadUsage } from '../../../packages/client/src/threadUsage';
 import { Notice, channelRoute, labelsRoute, sessionFilesRoute, useApp } from './App';
 import { copyWithToast } from './CopyToast';
 import { SettingsPage, SettingsRow, SettingsSection, SettingsValueRow } from './SettingsUI';
+import { ThreadModelPicker } from './ThreadModelPicker';
+import { newSend } from './send';
 
 /**
  * Everything the Session header used to offer, on one native Stack page:
@@ -13,8 +17,19 @@ import { SettingsPage, SettingsRow, SettingsSection, SettingsValueRow } from './
  */
 export function SessionOptionsScreen({ threadId }: { threadId: string }) {
   const router = useRouter();
-  const { client, config, slot } = useApp();
+  const { client, config, slot, outboxRef } = useApp();
   const [exporting, setExporting] = useState(false);
+  // Switch model: the list loads when the picker opens; a choice sends native `/model … --session`.
+  const [picking, setPicking] = useState(false);
+  const [models, setModels] = useState<AgentModelSettings | null>(null), [modelsFailed, setModelsFailed] = useState(false), [modelsLoad, setModelsLoad] = useState(0);
+  useEffect(() => {
+    if (!picking || models || !client) return;
+    const controller = new AbortController();
+    setModelsFailed(false);
+    client.getModelSettings(controller.signal).then(value => { if (!controller.signal.aborted) setModels(value); },
+      () => { if (!controller.signal.aborted) setModelsFailed(true); });
+    return () => controller.abort();
+  }, [client, picking, models, modelsLoad]);
   const [archiving, setArchiving] = useState(false);
   const thread = client?.threads.get(threadId);
   // Token usage is read once when the page opens; the section shows only after a successful read.
@@ -37,6 +52,16 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
       Alert.alert('Could not export this conversation', 'Check the connection and try again.');
     } finally { setExporting(false); }
   };
+  // The command goes through the outbox like a typed message (same ID on every retry).
+  // Hermes switches this session only and answers in the timeline, so the page returns there.
+  const switchModel = (choice: ThreadModelChoice | null) => {
+    const box = outboxRef.current;
+    setPicking(false);
+    if (!models || !box || box.storage.connectionId !== config.id) return;
+    void box.enqueue(newSend(config, threadId, threadModelSwitchCommand(models, choice), 'mob_' + Crypto.randomUUID(), [])).then(
+      () => { if (router.canGoBack()) router.back(); },
+      () => Alert.alert('Could not switch the model', 'Check the connection and try again.'));
+  };
   // Core archive: the session leaves every list; nothing is deleted.
   const archiveSession = () => Alert.alert('Archive this session?', 'It will no longer be shown on any device.', [
     { text: 'Cancel', style: 'cancel' },
@@ -55,6 +80,7 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
         onPress={() => router.push(sessionFilesRoute(slot, threadId))} />}
       <SettingsRow first={!client.supportsSessionLabels && !client.supportsSessionFiles} title="Copy session link" label="Copy session link"
         onPress={() => { void copyWithToast(buildSessionLink(config.baseUrl, threadId)); }} />
+      {client.supportsThreadModel && <SettingsRow title="Switch model" label="Switch model" onPress={() => setPicking(true)} />}
       {client.supportsThreadExport && <SettingsRow title={exporting ? 'Exporting…' : 'Export conversation'} label="Export conversation"
         onPress={() => { if (!exporting) void exportConversation(); }} />}
       <SettingsRow title={archiving ? 'Archiving…' : 'Archive session'} label="Archive session"
@@ -71,5 +97,7 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
     <SettingsSection title="App">
       <SettingsRow first title="Settings" onPress={() => router.push('/settings')} />
     </SettingsSection>
+    {client.supportsThreadModel && <ThreadModelPicker visible={picking} settings={models} failed={modelsFailed} onClose={() => setPicking(false)}
+      onPick={switchModel} onRetry={() => { setModels(null); setModelsLoad(n => n + 1); }} />}
   </SettingsPage>;
 }

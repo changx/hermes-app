@@ -75,3 +75,15 @@ test('the new-Thread model list starts with the primary model and filters the re
   assert.deepEqual(threadModelRequest(settings, rows[1].choice), rows[1].choice);
   assert.equal(threadModelRequest(settings, null), undefined);
 });
+
+test('switching an existing session sends native /model with an explicit provider and session scope', async () => {
+  const { threadModelSwitchCommand } = await import('../dist/index.js');
+  const settings = { scope: 'connected-default', provider: 'anthropic', model: 'claude-opus-5-5', providers: [] };
+  assert.equal(threadModelSwitchCommand(settings, { provider: 'openai-codex', model: 'gpt-6-luna' }), '/model gpt-6-luna --provider openai-codex --session');
+  assert.equal(threadModelSwitchCommand(settings, null), '/model claude-opus-5-5 --provider anthropic --session', 'Default switches back to the primary model');
+  assert.equal(threadModelSwitchCommand(settings, { provider: 'openrouter', model: 'anthropic/claude-sonnet-5-5' }), '/model anthropic/claude-sonnet-5-5 --provider openrouter --session');
+  for (const bad of [{ provider: 'x', model: 'a b' }, { provider: 'x', model: 'a --global' }, { provider: 'x --global', model: 'm' },
+    { provider: 'x', model: 'http://h/m' }, { provider: 'x', model: '--once' }, { provider: '', model: 'm' }])
+    assert.throws(() => threadModelSwitchCommand(settings, bad), /cannot be chosen/);
+  assert.throws(() => threadModelSwitchCommand({ ...settings, model: '' }, null), /cannot be chosen/);
+});

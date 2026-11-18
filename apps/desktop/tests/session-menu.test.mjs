@@ -41,7 +41,7 @@ test('main process accepts only plain items and separators', () => {
   const items = sessionMenuItems({ todo: false, labels: true, online: false });
   assert.deepEqual(contextMenuItems(items), items.map(i => 'separator' in i ? i : { ...i, enabled: i.enabled !== false }));
   for (const bad of [[], 'x', [null], [{ id: 'Bad Id', label: 'x' }], [{ id: 'a', label: '' }], [{ id: 'a', label: 'x'.repeat(81) }],
-    [{ id: 'a', label: 'x' }, { id: 'a', label: 'y' }], [{ id: 'a', label: 'x', enabled: 'yes' }], Array.from({ length: 17 }, (_, n) => ({ id: `a${n}`, label: 'x' }))])
+    [{ id: 'a', label: 'x' }, { id: 'a', label: 'y' }], [{ id: 'a', label: 'x', enabled: 'yes' }], Array.from({ length: 65 }, (_, n) => ({ id: `a${n}`, label: 'x' }))])
     assert.throws(() => contextMenuItems(bad), /Invalid desktop request/);
   // Extra fields (roles, accelerators, submenus) are dropped, not passed to Electron.
   assert.deepEqual(contextMenuItems([{ id: 'a', label: 'x', role: 'quit', submenu: [] }]), [{ id: 'a', label: 'x', enabled: true }]);

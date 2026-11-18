@@ -191,6 +191,7 @@
 - [docs/message-hierarchy.md](docs/message-hierarchy.md)
 - [docs/reply-models.md](docs/reply-models.md)
 - [docs/thread-model.md](docs/thread-model.md)
+- [docs/session-model-switch.md](docs/session-model-switch.md)（已有 session 中切换模型：客户端发送原生 `/model … --provider … --session`；桌面状态栏按钮、手机 Session options）
 - [docs/open-session-live-release-0.1.8.md](docs/open-session-live-release-0.1.8.md)
 - [docs/open-session-live.md](docs/open-session-live.md)
 - [docs/outbound-media-deployment.md](docs/outbound-media-deployment.md)
