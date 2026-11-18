@@ -797,6 +797,18 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 }
 .dialog-actions .danger { margin-right: auto; color: #9d1b32; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.model-dialog { width: min(480px, 100%); max-height: min(640px, calc(100vh - 48px)); grid-template-rows: auto auto auto minmax(0, 1fr) auto auto; }
+.model-dialog h2 { margin: 0; }
+.model-dialog-hint { margin: 0; color: var(--app-muted); font-size: calc(var(--app-font-size) * .9); }
+.model-dialog-error { margin: 0; color: #9d1b32; }
+.model-dialog-retry { border: 0; padding: 0; background: none; color: var(--app-accent); font: inherit; cursor: pointer; }
+.model-dialog-list { min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; border: 1px solid var(--app-border); border-radius: 9px; }
+.model-dialog-list li + li { border-top: 1px solid var(--app-border); }
+.model-dialog-list button { display: flex; width: 100%; align-items: baseline; gap: 10px; border: 0; padding: 8px 10px; background: #fff; color: var(--app-text); font: inherit; text-align: left; cursor: pointer; }
+.model-dialog-list button:hover, .model-dialog-list button:focus-visible { background: #eef3fa; outline: none; }
+.model-dialog-list button:disabled { opacity: .5; cursor: default; }
+.model-dialog-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.model-dialog-detail { flex: none; color: var(--app-muted); font-size: calc(var(--app-font-size) * .85); }
 .dialog-actions button { border: 0; border-radius: 8px; padding: 8px 13px; color: #fff; background: var(--app-accent); }
 .dialog-actions .secondary { border: 1px solid var(--app-field-border); color: var(--app-label); background: #fff; }
 .palette { align-self: start; width: min(640px, 100%); margin-top: 10vh; padding: 12px; }

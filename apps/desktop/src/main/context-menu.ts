@@ -1,7 +1,6 @@
 import type { ContextMenuItem } from '../shared/desktop-api';
 
-// The status bar model menu lists up to 60 models.
-const MAX_ITEMS = 64, MAX_LABEL = 80, ID = /^[a-z][a-z0-9-]{0,39}$/;
+const MAX_ITEMS = 16, MAX_LABEL = 80, ID = /^[a-z][a-z0-9-]{0,39}$/;
 
 /**
  * Validates a renderer-built context menu. Only plain items and separators;

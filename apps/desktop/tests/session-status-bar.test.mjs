@@ -33,8 +33,8 @@ const page = (body, { labels, state = 'online', exportable = true, connections =
     exportConversation:async()=>{calls.push('export');return {ok:true}},loadLocalDrafts:async()=>({}),saveLocalDraft:async()=>{},
     saveThreadLabels:async(id,markers)=>{calls.push('labels:'+markers.join(','));return {markers}},searchLabel:async label=>{calls.push('search:'+label)},
     showContextMenu:(items,x,y)=>{menus.push({items,x,y});return new Promise(r=>answer=r)},
-    getModelSettings:async key=>{calls.push('models:'+key);return {scope:'connected-default',provider:'anthropic',model:'claude-opus-5-5',providers:[{id:'anthropic',name:'Anthropic',models:['claude-opus-5-5','claude-sonnet-5-5']},{id:'openai-codex',name:'OpenAI Codex',models:['gpt-6-luna']}]}},
-    sendMessage:async input=>{calls.push('send:'+input.text+':'+input.attachmentIds.length)}};
+    getModelSettings:async key=>{calls.push('models:'+key);return {scope:'connected-default',provider:'anthropic',model:'claude-opus-5-5',providers:[{id:'anthropic',name:'Anthropic',models:['claude-opus-5-5','claude-sonnet-5-5']},{id:'openai-codex',name:'OpenAI Codex',models:['gpt-6-luna']},{id:'alibaba',name:'Alibaba',models:Array.from({length:300},(_,i)=>'qwen-test-'+i)}]}},
+    sendMessage:async input=>{calls.push('send:'+input.text+':'+input.attachmentIds.length);if(window.failSend)throw Error('x')}};
   window.confirm=()=>true;
   const messages=Array.from({length:30},(_,i)=>({id:'m'+i,role:i%2?'assistant':'user',text:'Message '+i,toolCalls:[],attachments:i===29?[{id:'a1',name:'REPORT.md',mime:'text/markdown',size:12000,state:'available',publicUrl:'https://example.test/r'}]:[]}));
   const snapshot={phase:'connected',connectionState:${JSON.stringify(state)},connectionKey:'one',supportsSessionLabels:true,supportsThreadModel:${model},supportsThreadExport:${exportable},tabActive:true,tabKind:'session',
@@ -189,24 +189,43 @@ test('Chromium: without a current context the bar shows only the total; without 
   }
 });
 
-test('Chromium: Switch model lists the connection models and sends native /model for this session', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
+test('Chromium: Switch model opens a searchable list of every connection model and sends native /model for this session', { skip: !process.env.HERMES_TEST_CHROME }, async () => {
   const result = await runPage('status-bar-model', page(`
     const tools=qa('.status-actions button').map(b=>b.getAttribute('aria-label'));
     ensure('Switch model sits before Archive',tools.join('|')==='Mark as todo|Copy link|Export conversation|Edit labels|Rename|Switch model|Archive');
     const button=q('[aria-label="Switch model"]');
-    button.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1,clientX:300,clientY:690}));await wait(30);
+    const open=async()=>{button.click();await wait(60);return q('[role="dialog"][aria-label="Switch model"]');};
+    const set=(input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};
+    let dialog=await open();
+    ensure('dialog opens over the page',dialog&&dialog.parentElement.classList.contains('modal-backdrop')&&dialog.closest('body')===document.body);
     ensure('models come from the Session connection',calls.includes('models:one'));
-    checks.items=menus[0].items.map(i=>i.label);
-    ensure('Default first, then each other model with its provider',checks.items.join('|')==='Default (claude-opus-5-5)|claude-sonnet-5-5 · Anthropic|gpt-6-luna · OpenAI Codex');
-    ensure('button waits while the menu is open',button.disabled);
-    answer('model-2');await wait(30);
-    ensure('choice sends native /model with provider and session scope',calls.at(-1)==='send:/model gpt-6-luna --provider openai-codex --session:0');
-    ensure('button is ready again',!button.disabled);
-    button.click();await wait(30);answer('model-0');await wait(30);
+    const names=()=>qa('.model-dialog-list button').map(b=>b.querySelector('.model-dialog-name').textContent+'/'+b.querySelector('.model-dialog-detail').textContent);
+    checks.count=names().length;
+    ensure('Default first, then every other model with its provider',names()[0]==='Default (claude-opus-5-5)/Primary model'&&names()[1]==='claude-sonnet-5-5/Anthropic'&&names().length===303);
+    const box=rect(dialog); checks.box=[box.top,box.bottom,innerHeight];
+    ensure('dialog fits in the window; the list scrolls',box.top>=0&&box.bottom<=innerHeight&&q('.model-dialog-list').scrollHeight>q('.model-dialog-list').clientHeight);
+    const search=q('input[aria-label="Search models"]');
+    ensure('search field has focus',document.activeElement===search);
+    set(search,'codex');await wait(30);
+    ensure('search keeps Default and filters by provider',names().join('|')==='Default (claude-opus-5-5)/Primary model|gpt-6-luna/OpenAI Codex');
+    search.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(40);
+    ensure('Enter sends the first match with provider and session scope',calls.at(-1)==='send:/model gpt-6-luna --provider openai-codex --session:0');
+    ensure('dialog closes after the send',!q('.model-dialog'));
+    dialog=await open(); [...qa('.model-dialog-list button')][0].click(); await wait(40);
     ensure('Default switches back to the primary model',calls.at(-1)==='send:/model claude-opus-5-5 --provider anthropic --session:0');
-    button.click();await wait(30);const before=calls.length;answer(null);await wait(30);
-    ensure('closing the menu sends nothing',calls.length===before);
-  `, { labels: [], model: true }));
+    dialog=await open(); set(q('input[aria-label="Search models"]'),'qwen-test-299');await wait(30);
+    ensure('a model deep in a long list is reachable',names().join('|')==='Default (claude-opus-5-5)/Primary model|qwen-test-299/Alibaba');
+    set(q('input[aria-label="Search models"]'),'nothing-like-this');await wait(30);
+    ensure('no match says so',q('.model-dialog').textContent.includes('No matching models.'));
+    const sends=()=>calls.filter(c=>c.startsWith('send:')).length, before=sends();
+    q('.model-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(30);
+    ensure('Escape closes without sending',!q('.model-dialog')&&sends()===before);
+    dialog=await open(); q('.model-dialog .dialog-actions .secondary').click();await wait(30);
+    ensure('Cancel closes without sending',!q('.model-dialog')&&sends()===before);
+    window.failSend=true; dialog=await open(); [...qa('.model-dialog-list button')][1].click(); await wait(40);
+    ensure('a failed send keeps the dialog open and says so',q('.model-dialog')&&q('.model-dialog [role="alert"]').textContent.startsWith('Could not switch the model'));
+    window.failSend=false;
+  `, { labels: [], model: true }), '1100,700');
   assert.ok(result); assert.equal(result.failure, undefined, JSON.stringify(result));
 });
 
