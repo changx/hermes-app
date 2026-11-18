@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkMath from "remark-math";
 import { remarkStrictInlineMath } from "./strict-inline-math";
+import { remarkCjkAutolinks } from "./cjk-autolinks";
 import { remarkLineBlocks, remarkLineBreaks } from "./line-breaks";
 import { isSessionLinkHref, remarkSessionLinks } from "../../../../packages/client/src/sessionLinks";
 import { wrapsCodeLines } from "../../../../packages/client/src/codeBlocks";
@@ -148,7 +149,8 @@ const documentComponents: Components = {
   img: ({ src, alt }) => typeof src === "string" && src ? <img src={src} alt={alt ?? ""} loading="lazy" /> : <span className="blocked-image">[Image: {alt || "attachment"}]</span>,
 };
 // remarkCjkFriendly lets `**…：**` close before CJK text (CommonMark flanking rule).
-const remarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
+// remarkCjkAutolinks ends bare links at CJK punctuation (`https://x.org，进入`).
+const remarkPlugins = [remarkGfm, remarkCjkAutolinks, remarkCjkFriendly, remarkMath, remarkStrictInlineMath, remarkSessionLinks];
 // Chat messages show a single newline as a line break; a Markdown file keeps standard rules.
 const chatRemarkPlugins = [...remarkPlugins, remarkLineBreaks];
 const lineRemarkPlugins = [...chatRemarkPlugins, remarkLineBlocks];
