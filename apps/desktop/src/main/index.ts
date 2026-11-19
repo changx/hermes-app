@@ -119,7 +119,7 @@ const service = new DesktopConnections((snapshot) => {
 const openWebLink = (contents: Electron.WebContents, url: string, disposition = 'foreground-tab') => {
   // Cmd+click: the system browser.
   if (opensInSystemBrowser(disposition)) { if (isSystemBrowserUrl(url)) void shell.openExternal(url); return; }
-  try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.sender(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
+  try { if (!/^https?:/i.test(url)) return; const validated = browserUrl(url), tab = tabs?.browserOwner(contents) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
     if (tab) void browser?.open(tab.id, validated); else if (isAllowedExternalUrl(url)) void shell.openExternal(url);
   } catch { /* Reject unsupported schemes and embedded credentials. */ }
 };
@@ -278,7 +278,8 @@ const registerDesktopApi = (): void => {
     trustedSender(event);
     const owned = browser?.paneForWindow(event.sender);
     if (owned !== undefined) { const tab = tabs?.tabs.get(owned); if (!tab) throw new Error('Open a conversation or new chat first.'); return tab; }
-    const tab = tabs?.sender(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
+    // A side chat panel uses its Session tab's browser.
+    const tab = tabs?.browserOwner(event.sender) ?? (tabs?.activeTabId ? tabs.tabs.get(tabs.activeTabId) : undefined);
     if (!tab) throw new Error('Open a conversation or new chat first.');
     return tab;
   };
@@ -304,13 +305,15 @@ const registerDesktopApi = (): void => {
   });
   handle('desktop:preview-attachment', async (event, id: unknown, sequence: unknown) => {
     const tab = browserTab(event), thread = target(event), key = tab.connectionKey;
+    // The page that asked: the tab itself, or one of its side chat panels.
+    const asker = tabs?.sender(event.sender) ?? tab;
     const attachmentId = text(id, 200);
     if (sequence !== undefined && (!Array.isArray(sequence) || sequence.length > 500)) throw new Error('Invalid desktop request');
     const ids = sequence === undefined ? [] : sequence.map(value => text(value, 200));
     // A published HTML page opens at its own link, where its images and videos load.
     const page = service.attachmentPage(attachmentId, thread);
     if (page) { await browser?.open(tab.id, browserUrl(page)); return; }
-    const current = () => tabs?.tabs.get(tab.id) === tab && tab.threadId === thread && tab.connectionKey === key && service.hasConnection(key);
+    const current = () => tabs?.tabs.get(tab.id) === tab && (asker === tab || tabs?.panels.get(asker.id) === asker) && asker.threadId === thread && tab.connectionKey === key && service.hasConnection(key);
     const sibling = (assets: Array<{ id: string; name: string }>) => async (name: string) => {
       const matches = assets.filter(item => item.name === name);
       if (!current() || matches.length !== 1) return undefined;
@@ -489,7 +492,8 @@ const registerDesktopApi = (): void => {
   handle("desktop:select-channel", async (event, id: unknown) => { shellSender(event); await service.selectChannel(text(id, 200)); });
   handle("desktop:select-thread", async (event, id: unknown) => { trustedSender(event); await service.selectThread(text(id, 200)); });
   handle("desktop:close-session-page", (event, id: unknown) => { shellSender(event); const tab = [...tabs?.tabs.values() ?? []].find(item => item.threadId === text(id, 200)); if (tab) tabs?.close(tab.id); });
-  handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && (tab.id !== tabs?.activeTabId || !tabs?.snapshot(event.sender).tabActive) || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
+  // A visible page only: the active tab, or the front side chat panel of its right column.
+  handle("desktop:result-read", async (event, id: unknown, version: unknown, ref: unknown) => { const threadId = target(event), tab = tabs?.sender(event.sender); if (text(id, 200) !== threadId || tab && !tabs?.snapshot(event.sender).tabActive || !mainWindow?.isFocused() || mainWindow.isMinimized()) return; if (typeof version === "number" && typeof ref === "number") await service.markResultRead(threadId, version, ref); });
   handle("desktop:retry-connection", async (event) => { trustedSender(event); await service.retryConnection(); });
   handle("desktop:dismiss-error", (event, id: unknown) => { trustedSender(event); service.dismissError(typeof id === "string" && id ? text(id, 200) : undefined); });
   handle("desktop:create-channel", async (event, value: unknown) => { shellSender(event); const input = object(value); return service.createChannel(text(input.connectionKey, 24), { name: text(input.name, 120), description: text(input.description, 4000) } satisfies ChannelInput); });
@@ -546,10 +550,28 @@ const registerDesktopApi = (): void => {
   const refSeq = (value: unknown): number => { if (!Number.isSafeInteger(value) || (value as number) <= 0) throw new Error('Invalid desktop request'); return value as number; };
   handle("desktop:branch-message", async (event, ref: unknown) => {
     const threadId = target(event), tab = tabs?.sender(event.sender);
+    if (tab?.parentId) return { ok: false, reason: 'unavailable' };
     if (tab?.busy) return { ok: false, reason: 'busy' };
     if (tab) tab.busy = true;
     try { return await service.branchFromMessage(refSeq(ref), threadId); } finally { if (tab) tab.busy = false; }
   });
+  // Side chats (docs/side-chat.md). Creation can wait up to 10 minutes for a busy Session, so it never
+  // marks the tab busy: the user keeps writing in the Session meanwhile.
+  handle("desktop:side-message", async (event, ref: unknown) => {
+    const threadId = target(event), tab = tabs?.sender(event.sender), manager = tabs;
+    if (!tab || tab.parentId || tab.kind !== 'session') return { ok: false, reason: 'unavailable' };
+    const result = await service.sideFromMessage(refSeq(ref), threadId);
+    if (!result.ok) return result;
+    // The tab may have closed while the server waited; the side chat then opens in a new tab for its Session.
+    if (manager === tabs && manager) { try { manager.openSideChat(result.threadId, manager.tabs.get(tab.id) === tab ? tab.view.webContents : undefined); } catch { return { ok: false, reason: 'failed' }; } }
+    return { ok: true };
+  });
+  handle("desktop:open-side-chat", (event, id: unknown) => { trustedSender(event); tabs?.openSideChat(text(id, 200), event.sender); });
+  handle("desktop:close-side-panel", (event, id: unknown) => { shellSender(event); tabs?.closeSide(text(id, 200)); });
+  handle("desktop:select-right-tab", (event, key: unknown) => { shellSender(event); tabs?.selectRightTab(text(key, 200)); });
+  handle("desktop:side-panel-bounds", (event, value: unknown) => { shellSender(event); const b = object(value); tabs?.setSideBounds({ x: Number(b.x), y: Number(b.y), width: Number(b.width), height: Number(b.height), visible: b.visible === true }); });
+  handle("desktop:focus-side-anchor", async (event, id: unknown) => { shellSender(event); await tabs?.focusSideAnchor(text(id, 200)); });
+  handle("desktop:send-to-main", (event, ref: unknown) => { trustedSender(event); if (!tabs?.panelOf(event.sender)) throw new Error('Side chat required'); tabs.sendToMain(event.sender, refSeq(ref)); });
   handle("desktop:message-sources", async (event, ref: unknown) => service.messageSources(refSeq(ref), target(event)));
   handle("desktop:copy-text", (event, value: unknown) => { trustedSender(event); clipboard.writeText(text(value, 1_000_000)); });
   handle("desktop:export-message", async (event, value: unknown) => service.exportMessage(text(value, 1_000_000), target(event)));

@@ -40,6 +40,8 @@ export type DesktopThread = Readonly<{
   resultRef?: number;
   origin?: "user" | "automation";
   participated?: boolean;
+  /** Side chats only (docs/side-chat.md): the source Session (qualified ID) and its anchor message. */
+  sideOf?: Readonly<{ threadId: string; anchorRefSeq: number }>;
 }>;
 /** A scheduled job. IDs (job, channels, Threads) are qualified like every other desktop ID. */
 export type DesktopAutomation = Automation & Readonly<{ connectionKey?: string; connectionName?: string }>;
@@ -138,6 +140,14 @@ export type DesktopSnapshot = Readonly<{
   supportsSessionLabels?: boolean;
   /** Server reports the branch endpoint, message sources and conversation export. */
   supportsThreadBranch?: boolean;
+  /** Server creates side chats (`thread_side`, docs/side-chat.md). */
+  supportsThreadSide?: boolean;
+  /** This page is a side chat in the right column of its source Session's tab. */
+  sidePanel?: boolean;
+  /** Main window: the side chats open in the active tab's right column, in tab order. */
+  sidePanels?: readonly Readonly<{ id: string; threadId: string; title: string }>[];
+  /** Main window: the right column's front item: `browser` or a side chat panel ID. */
+  rightTab?: string;
   supportsMessageSources?: boolean;
   supportsThreadExport?: boolean;
   /** Server lists each Session's delivered and uploaded files. */
@@ -225,6 +235,8 @@ export type FindAction = 'open' | 'next' | 'previous' | 'selection';
 /** A native context-menu entry. `id` comes back when the user chooses the item. */
 export type ContextMenuItem = Readonly<{ id: string; label: string; enabled?: boolean } | { separator: true }>;
 export type BranchResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
+/** `busy`: the source Session stayed busy for 10 minutes. */
+export type SideResult = Readonly<{ ok: true } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }>;
 export type ExportResult = Readonly<{ ok: true; saved: boolean } | { ok: false }>;
 export type DesktopRuntimeInfo = Readonly<{
   viewRole?: 'workspace' | 'tab' | 'settings' | 'browser' | 'remote-screen';
@@ -398,6 +410,22 @@ export interface HermesDesktopApi {
   retryMessage(clientMessageId: string): Promise<void>;
   /** New Session from this tab's final reply; opens it on success. */
   branchFromMessage(refSeq: number): Promise<BranchResult>;
+  /** Session page: new side chat from one of its messages; it opens in this tab's right column. Waits while the Session runs. */
+  sideFromMessage(refSeq: number): Promise<SideResult>;
+  /** Opens a side chat in its source Session's tab, in the right column. */
+  openSideChat(threadId: string): Promise<void>;
+  /** Main window: close a side chat panel (the side chat stays). */
+  closeSidePanel(panelId: string): Promise<void>;
+  /** Main window: bring `browser` or a side chat panel to the front of the right column. */
+  selectRightTab(key: string): Promise<void>;
+  /** Main window: where the front side chat panel goes (window content pixels). */
+  setSidePanelBounds(bounds: { x: number; y: number; width: number; height: number; visible: boolean }): Promise<void>;
+  /** Main window: scroll the source Session to the panel's anchor message and mark it. */
+  focusSideAnchor(panelId: string): Promise<void>;
+  /** Side chat panel: put this reply, with a link back, into the source Session's composer. */
+  sendToMain(refSeq: number): Promise<void>;
+  /** Session page: text for its composer from a side chat ("Send to main"). */
+  onFillComposer?(listener: (text: string) => void): () => void;
   messageSources(refSeq: number): Promise<readonly DesktopMessageSource[]>;
   copyText(text: string): Promise<void>;
   /** Save dialogs; `saved: false` when the user cancels. */

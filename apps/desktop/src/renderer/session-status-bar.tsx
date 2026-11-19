@@ -6,6 +6,7 @@ import type { AgentModelSettings, ThreadModelChoice } from '../../../../packages
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { connectionHint } from './navigation-panel';
 import { MessageIcon } from './message-toolbar';
+import { openSideChats, SideIcon } from './side-chats';
 import { usageDescription, usageText, useThreadUsage } from './thread-usage';
 
 const safely = (task: Promise<unknown>) => void task.catch(() => {});
@@ -131,8 +132,8 @@ function ModelSwitch({ snapshot, thread, onSent }: { snapshot: DesktopSnapshot; 
   </>;
 }
 
-export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip, onToggleTodo, onAction, onModelSent = () => {} }: {
-  snapshot: DesktopSnapshot; thread?: DesktopThread; todo: boolean; todoBusy: boolean; todoTooltip: string;
+export function SessionStatusBar({ snapshot, thread, sides = [], todo, todoBusy, todoTooltip, onToggleTodo, onAction, onModelSent = () => {} }: {
+  snapshot: DesktopSnapshot; thread?: DesktopThread; /** This Session's side chats (docs/side-chat.md). */ sides?: readonly DesktopThread[]; todo: boolean; todoBusy: boolean; todoTooltip: string;
   onToggleTodo: () => void; onAction: (action: StatusAction) => void; onModelSent?: () => void;
 }) {
   const channel = snapshot.channels.find(c => c.id === (thread?.channelId ?? snapshot.selectedChannelId));
@@ -160,6 +161,8 @@ export function SessionStatusBar({ snapshot, thread, todo, todoBusy, todoTooltip
       {labels && <button type="button" aria-label="Edit labels" data-tooltip="Edit labels" disabled={!thread} onClick={() => onAction('labels')}><ToolIcon name="label" /></button>}
       <button type="button" aria-label="Rename" data-tooltip="Rename session" disabled={!thread} onClick={() => onAction('rename')}><ToolIcon name="rename" /></button>
       <ModelSwitch snapshot={snapshot} thread={thread} onSent={onModelSent} />
+      {sides.length > 0 && !snapshot.sidePanel && <button type="button" className="status-side-chats" aria-haspopup={sides.length > 1 ? 'menu' : undefined} aria-label={`Side chats: ${sides.length}`} data-tooltip="Side chats"
+        onClick={event => openSideChats(sides, event)}><SideIcon /><span className="status-side-count">{sides.length}</span></button>}
       <button type="button" aria-label="Archive" data-tooltip="Archive session" onClick={() => onAction('archive')}><ToolIcon name="archive" /></button>
     </div>
     {labels && <StatusLabels markers={withoutTodo(thread?.markers)} onSearch={label => safely(window.hermesDesktop.searchLabel(label))} />}

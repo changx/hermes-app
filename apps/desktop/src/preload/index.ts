@@ -122,6 +122,11 @@ const api: HermesDesktopApi = Object.freeze({
     ipcRenderer.on("desktop:focus-composer", receive);
     return () => ipcRenderer.removeListener("desktop:focus-composer", receive);
   },
+  onFillComposer(listener: (text: string) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, text: unknown) => { if (typeof text === 'string' && text.length <= 200_000) listener(text); };
+    ipcRenderer.on("desktop:fill-composer", handler);
+    return () => { ipcRenderer.removeListener("desktop:fill-composer", handler); };
+  },
   onToggleTodo(listener: () => void): () => void {
     const receive = () => listener();
     ipcRenderer.on("desktop:toggle-todo", receive);
@@ -147,6 +152,13 @@ const api: HermesDesktopApi = Object.freeze({
   sendMessage: (input: SendMessageInput): Promise<void> => ipcRenderer.invoke("desktop:send-message", input),
   retryMessage: (clientMessageId: string): Promise<void> => ipcRenderer.invoke("desktop:retry-message", clientMessageId),
   branchFromMessage: (refSeq: number) => ipcRenderer.invoke("desktop:branch-message", refSeq),
+  sideFromMessage: (refSeq: number) => ipcRenderer.invoke("desktop:side-message", refSeq),
+  openSideChat: (threadId: string) => ipcRenderer.invoke("desktop:open-side-chat", threadId),
+  closeSidePanel: (panelId: string) => ipcRenderer.invoke("desktop:close-side-panel", panelId),
+  selectRightTab: (key: string) => ipcRenderer.invoke("desktop:select-right-tab", key),
+  setSidePanelBounds: (bounds: { x: number; y: number; width: number; height: number; visible: boolean }) => ipcRenderer.invoke("desktop:side-panel-bounds", bounds),
+  focusSideAnchor: (panelId: string) => ipcRenderer.invoke("desktop:focus-side-anchor", panelId),
+  sendToMain: (refSeq: number) => ipcRenderer.invoke("desktop:send-to-main", refSeq),
   messageSources: (refSeq: number) => ipcRenderer.invoke("desktop:message-sources", refSeq),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke("desktop:copy-text", text),
   exportMessage: (text: string) => ipcRenderer.invoke("desktop:export-message", text),

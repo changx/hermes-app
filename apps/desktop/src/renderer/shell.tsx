@@ -25,7 +25,8 @@ import { hasTodo } from '../../../../packages/client/src/todo';
 import { SessionStatusBar, type StatusAction } from './session-status-bar';
 import { setSessionTodo } from './todo-toggle';
 import { VaultPromptCard } from './vault-prompt-card';
-import type { DesktopAttachment, DesktopMessage, DesktopSnapshot } from "../shared/desktop-api";
+import type { DesktopAttachment, DesktopMessage, DesktopSnapshot, DesktopThread } from "../shared/desktop-api";
+import { SideMark, useSideChats } from './side-chats';
 import { ATTACHMENT_SIZE_RULE } from "../shared/attachment-input";
 import { fileSizeLimit, namePastedFiles } from './pasted-files';
 
@@ -84,7 +85,8 @@ const RenameDialog = ({ thread, close }: { thread: DesktopSnapshot['threads'][nu
   </form></div>;
 };
 
-const MessageRow = memo(({ message, continuation, hidden = false, focused = false, toolbar = false, canRetry = false, running = false, branch = false, sources = false }: { message: DesktopMessage; continuation: boolean; hidden?: boolean; focused?: boolean; toolbar?: boolean; canRetry?: boolean; running?: boolean; branch?: boolean; sources?: boolean }) => {
+const MessageRow = memo(({ message, continuation, hidden = false, focused = false, toolbar = false, canRetry = false, running = false, branch = false, sources = false, side = false, toMain = false, sides }: { message: DesktopMessage; continuation: boolean; hidden?: boolean; focused?: boolean; toolbar?: boolean; canRetry?: boolean; running?: boolean; branch?: boolean; sources?: boolean;
+  /** Side chat button; Send to main (in a side chat panel); this message's side chats (the anchor mark). */ side?: boolean; toMain?: boolean; sides?: readonly DesktopThread[] }) => {
   const revealed = useRef(false);
   if (!hidden) revealed.current = true;
   // A never-opened process does not parse Markdown or initialize attachments.
@@ -107,7 +109,8 @@ const MessageRow = memo(({ message, continuation, hidden = false, focused = fals
       </section>;
     })}</div>
     {message.attachments.map((attachment) => <AttachmentView key={attachment.id} attachment={attachment} />)}
-    {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} />}
+    {finalReply && toolbar && message.refSeq !== undefined && <MessageToolbar message={message} canRetry={canRetry} running={running} branch={branch} sources={sources} side={side} toMain={toMain} />}
+    {sides?.length ? <SideMark sides={sides} /> : null}
     {message.feedback && <div className="receipt">{message.feedback}</div>}
     {message.sendError && <div className="message-warning">{message.sendError}</div>}
     {warning ? <div className="receipt message-warning">{warning}{message.clientMessageId ? <button type="button" onClick={() => safely(window.hermesDesktop.retryMessage(message.clientMessageId!))}>Retry safely</button> : null}</div> : null}
@@ -142,6 +145,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
   const [newCount, setNewCount] = useState(0);
   const first = snapshot.messages[0]?.id ?? "";
   const result = snapshot.threads.find(t => t.id === snapshot.selectedThreadId);
+  // Side chats (docs/side-chat.md): a panel has Send to main and no Branch or Side chat of its own.
+  const sideChats = useSideChats(snapshot), inSide = snapshot.sidePanel === true || !!result?.sideOf;
   useLayoutEffect(() => {
     if (previousSend.current === sendVersion) return;
     previousSend.current = sendVersion;
@@ -243,7 +248,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
           {dates.has(message.id) && <div className="chat-date-separator">{dates.get(message.id)}</div>}
           {group?.key === message.id && <div className="work-heading"><button type="button" className="work-toggle" aria-expanded={expanded} onClick={() => setWorkChoices(old => ({ ...old, [choiceKey(group)]: { completion: group.completion, expanded: !expanded } }))}>{group.label}<span className="work-chevron" aria-hidden="true">{expanded ? '\ue001' : '\ue002'}</span></button></div>}
           <MessageRow message={message} continuation={continuation} hidden={!expanded} focused={focusedRef !== undefined && message.refSeq === focusedRef} toolbar canRetry={message.id === retryId} running={busyTurn}
-            branch={snapshot.supportsThreadBranch === true} sources={snapshot.supportsMessageSources === true} />
+            branch={snapshot.supportsThreadBranch === true && !inSide} sources={snapshot.supportsMessageSources === true}
+            side={snapshot.supportsThreadSide === true && !inSide} toMain={snapshot.sidePanel === true} sides={message.refSeq !== undefined ? sideChats.byAnchor.get(message.refSeq) : undefined} />
         </div>;
       }) : !snapshot.errorMessage ? <div className="conversation-empty"><div className="empty-mark" aria-hidden="true">H</div><h3>No messages yet</h3><p>This conversation is ready when you are.</p></div> : null}
       {awaitingWork && <div className="work-heading awaiting-agent-work" role="status"><span className="work-toggle">Working<span className="work-chevron" aria-hidden="true">{'\ue001'}</span></span></div>}
@@ -252,7 +258,8 @@ const Timeline = memo(({ snapshot, active = true, sendVersion = 0 }: { snapshot:
     {!following && newCount > 0 ? <button className="new-messages" type="button" onClick={latest}>{newCount} new {newCount === 1 ? "message" : "messages"} · Back to latest</button> : null}
   </div></AttachmentSequence.Provider>;
 }, (before,after) => before.active === after.active && before.sendVersion === after.sendVersion && before.snapshot.threads === after.snapshot.threads && before.snapshot.messages === after.snapshot.messages && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.canLoadOlder === after.snapshot.canLoadOlder && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.loadingMessages === after.snapshot.loadingMessages && before.snapshot.loadingHistory === after.snapshot.loadingHistory && before.snapshot.errorMessage === after.snapshot.errorMessage
-  && before.snapshot.interactions.length === after.snapshot.interactions.length && (before.snapshot.vaultPrompts?.length ?? 0) === (after.snapshot.vaultPrompts?.length ?? 0) && before.snapshot.focusMessage?.version === after.snapshot.focusMessage?.version && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources);
+  && before.snapshot.interactions.length === after.snapshot.interactions.length && (before.snapshot.vaultPrompts?.length ?? 0) === (after.snapshot.vaultPrompts?.length ?? 0) && before.snapshot.focusMessage?.version === after.snapshot.focusMessage?.version && before.snapshot.supportsThreadBranch === after.snapshot.supportsThreadBranch && before.snapshot.supportsMessageSources === after.snapshot.supportsMessageSources
+  && before.snapshot.supportsThreadSide === after.snapshot.supportsThreadSide && before.snapshot.sidePanel === after.snapshot.sidePanel);
 
 // Textarea height inside the composer card: one line plus top padding, growing to about eight lines.
 const COMPOSER_INPUT_MIN = 48;
@@ -290,6 +297,12 @@ const Composer = ({ snapshot, onQueued }: { snapshot: DesktopSnapshot; onQueued(
     if (!tabActive || !field || document.querySelector('dialog[open]')) return;
     if (field.disabled) restoreFocus.current = true; else field.focus({ preventScroll: true });
   }), [tabActive]);
+  // "Send to main" from a side chat panel: the reply joins this draft and the cursor goes to its end; nothing is sent.
+  useEffect(() => snapshot.sidePanel || !threadId ? undefined : window.hermesDesktop.onFillComposer?.(value => {
+    const current = drafts.get(threadId) ?? '', next = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${value}` : value;
+    drafts.set(threadId, next); setText(next);
+    requestAnimationFrame(() => { const field = input.current; if (!field) return; field.focus({ preventScroll: true }); field.setSelectionRange(next.length, next.length); field.scrollTop = field.scrollHeight; });
+  }), [threadId, snapshot.sidePanel]);
   // The textarea is disabled while a send/upload runs, which drops focus. Restore it afterwards.
   useEffect(() => {
     if (busy || !restoreFocus.current) return;
@@ -438,6 +451,8 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
   // Shift+Cmd+L arrives from the main process for the active Session page only. It acts like a click on the flag button.
   const todoShortcut = useRef<() => void>(undefined);
   useEffect(() => window.hermesDesktop.onToggleTodo?.(() => { if (!document.querySelector('dialog[open]')) todoShortcut.current?.(); }), []);
+  // This Session's side chats, for the status bar list (docs/side-chat.md).
+  const sides = useSideChats(snapshot);
   if (snapshot.phase === "restoring") return <main className="loading-screen" role="status" aria-live="polite" aria-busy="true">Loading your conversations…</main>;
   if (snapshot.phase === "unpaired" || snapshot.phase === "pairing") return <main className="connection-screen"><PairingPanel busy={snapshot.phase === "pairing"} /><aside className="connection-notice" aria-live="polite">{snapshot.errorMessage ?? snapshot.statusMessage}</aside><SettingsButton className="text-button" /></main>;
   // An Automation tab holds no drafts; it lists conversations and opens them in their own tabs.
@@ -480,7 +495,7 @@ export const DesktopShellView = ({ snapshot, viewRole: requestedRole = typeof wi
     {snapshot.interactions.map(item => <section className="interaction-card" key={item.id}><strong>{item.kind === 'approval' ? 'Approval requested' : 'Hermes needs clarification'}</strong><p>{item.prompt}</p><div>{item.choices.map(choice => <button type="button" key={choice} onClick={() => safely(window.hermesDesktop.answerInteraction(item.id, choice))}>{choice}</button>)}</div></section>)}
     {snapshot.vaultPrompts?.map(prompt => <VaultPromptCard key={prompt.id} prompt={prompt} />)}
     <Composer snapshot={snapshot} onQueued={() => setSendVersion(value => value + 1)} />
-    <SessionStatusBar snapshot={snapshot} thread={currentThread} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} onModelSent={() => setSendVersion(value => value + 1)} />
+    <SessionStatusBar snapshot={snapshot} thread={currentThread} sides={sides.all} todo={todo} todoBusy={todoBusy} todoTooltip={todoTooltip} onToggleTodo={toggleTodo} onAction={sessionAction} onModelSent={() => setSendVersion(value => value + 1)} />
     {overlays}<TooltipLayer />
   </main>;
 };

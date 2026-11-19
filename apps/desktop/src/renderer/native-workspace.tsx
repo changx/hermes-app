@@ -2,11 +2,67 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { DesktopSnapshot, DesktopThread } from '../shared/desktop-api';
 import { NavigationPanel, SidebarFooter, type ProjectReveal } from './navigation-panel';
 import { BrowserSidebar } from './browser-sidebar';
+import { SideIcon } from './side-chats';
 import { Icon } from './icons';
 import { ErrorBanner } from './error-banner';
 import { UpdateReadyButton } from './update-ready';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, loadSidebarWidth, MIN_SIDEBAR_WIDTH, saveSidebarWidth, sidebarMaximum } from './sidebar-width';
 import { automaticBrowserWidth, browserMaximum, clampBrowserWidth, loadBrowserWidth, MIN_BROWSER_WIDTH, saveBrowserWidth } from './browser-width';
+
+/**
+ * The right column: the browser (attachment preview) and the side chats of the active tab, one tab each.
+ * Only the front item shows; the others keep their state (page, reading position, draft).
+ */
+function RightColumn({ snapshot, front, browserInColumn, visible, onError }: { snapshot: DesktopSnapshot; front?: string; browserInColumn: boolean; visible: boolean; onError: (message: string) => void }) {
+  const panels = snapshot.sidePanels ?? [], panel = panels.find(item => item.id === front);
+  const fail = (message: string) => (operation: Promise<void>) => void operation.catch(() => onError(message));
+  const tabs = panels.length > 0 && <div className="right-tabs" role="tablist" aria-label="Side panel tabs">
+    {browserInColumn && <div className={`right-tab${front === 'browser' ? ' active' : ''}`}>
+      <button type="button" role="tab" aria-selected={front === 'browser'} title={snapshot.browser?.title || 'Browser'} onClick={() => fail('The browser could not be shown.')(window.hermesDesktop.selectRightTab('browser'))}>
+        <span className="right-tab-title">{snapshot.browser?.title || 'Browser'}</span></button>
+      <button type="button" className="right-tab-close" aria-label="Close browser" onClick={() => fail('The browser could not be closed.')(window.hermesDesktop.browserAction('close'))}>×</button>
+    </div>}
+    {panels.map(item => {
+      const thread = snapshot.threads.find(row => row.id === item.threadId);
+      return <div key={item.id} className={`right-tab${item.id === front ? ' active' : ''}`}>
+        <button type="button" role="tab" aria-selected={item.id === front} title={item.title} onClick={() => fail('The side chat could not be shown.')(window.hermesDesktop.selectRightTab(item.id))}>
+          <SideIcon /><span className="right-tab-title">{item.title}</span>
+          {thread?.running && <span className="desktop-tab-dot desktop-tab-dot-running" aria-label="Running" />}
+          {thread?.completedUnread && <span className="desktop-tab-dot desktop-tab-dot-unread" aria-label="Completed, unread" />}
+        </button>
+        <button type="button" className="right-tab-close" aria-label={`Close side chat: ${item.title}`} onClick={() => fail('The side chat could not be closed.')(window.hermesDesktop.closeSidePanel(item.id))}>×</button>
+      </div>;
+    })}
+  </div>;
+  return <aside className="right-column" aria-label="Side panel">
+    {tabs}
+    {front === 'browser' && snapshot.browser ? <BrowserSidebar key={snapshot.activeTabId} state={snapshot.browser} visible={visible} />
+      : panel ? <SidePanelFrame key={panel.id} id={panel.id} title={panel.title} visible={visible} onError={onError} /> : null}
+  </aside>;
+}
+
+/** Title row and the slot where the main process places the side chat's page. */
+function SidePanelFrame({ id, title, visible, onError }: { id: string; title: string; visible: boolean; onError: (message: string) => void }) {
+  const slot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = slot.current; if (!element) return;
+    let disposed = false, sent = '';
+    const update = () => {
+      const r = element.getBoundingClientRect(), bounds = { x: r.left, y: r.top, width: r.width, height: r.height, visible };
+      const key = JSON.stringify(bounds); if (disposed || key === sent) return; sent = key;
+      void window.hermesDesktop.setSidePanelBounds(bounds).catch(() => { if (!disposed) { sent = ''; onError('The side chat could not be positioned.'); } });
+    };
+    update(); const observer = new ResizeObserver(update); observer.observe(element); window.addEventListener('resize', update);
+    return () => { disposed = true; observer.disconnect(); window.removeEventListener('resize', update); void window.hermesDesktop.setSidePanelBounds({ x: 0, y: 0, width: 0, height: 0, visible: false }).catch(() => {}); };
+  }, [visible, onError]);
+  return <section className="side-panel" aria-label={`Side chat: ${title}`}>
+    <div className="browser-title side-panel-title"><span title={title}>{title}</span>
+      <button type="button" aria-label="Show the starting message" title="Show the starting message" onClick={() => void window.hermesDesktop.focusSideAnchor(id).catch(() => onError('The starting message could not be shown.'))}><svg viewBox="0 0 20 20" aria-hidden="true" className="side-panel-icon"><path d="M15.5 15.5H9a4.5 4.5 0 01-4.5-4.5V4.5M2 7.5l2.5-3 2.5 3" /></svg></button>
+      <button type="button" aria-label="Close side chat" title="Close side chat" onClick={() => void window.hermesDesktop.closeSidePanel(id).catch(() => onError('The side chat could not be closed.'))}>×</button>
+    </div>
+    <div ref={slot} className="side-panel-slot" aria-label="Side chat page" />
+  </section>;
+}
 
 export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename, onCreateProject, onSearch, onProjectOptions, onSettings, overlayOpen, children }: {
   snapshot: DesktopSnapshot; draftThreads: ReadonlySet<string>; onEditLabels: (thread: DesktopThread) => void; onRename?: (thread: DesktopThread) => void;
@@ -23,7 +79,10 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   const shell = useRef<HTMLDivElement>(null);
   const drag = useRef<{ kind: 'sidebar' | 'browser'; pointerId: number; startX: number; startWidth: number } | null>(null);
   // In separate-window mode the Session's browser has its own window; the main window keeps its full width.
-  const browserActive = !!snapshot.browser?.open, browserOpen = browserActive && snapshot.browserMode !== 'window';
+  const browserActive = !!snapshot.browser?.open, browserInColumn = browserActive && snapshot.browserMode !== 'window';
+  // The right column (docs/side-chat.md) holds the browser and the side chats of the active tab, as tabs.
+  const sidePanels = snapshot.sidePanels ?? [], front = snapshot.rightTab ?? (browserInColumn ? 'browser' : sidePanels[sidePanels.length - 1]?.id);
+  const browserOpen = browserInColumn || sidePanels.length > 0;
   const sidebarHidden = collapsed || browserOpen && availableWidth < 1100;
   // The preview may grow until the conversation keeps its reserve beside a minimum-width left sidebar.
   const browserAvailable = availableWidth - (sidebarHidden ? 0 : MIN_SIDEBAR_WIDTH);
@@ -103,7 +162,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
   const threadsById = new Map(snapshot.threads.map(thread => [thread.id, thread]));
   const invoke = (operation: Promise<void>) => { setError(''); void operation.catch(() => setError('The tab action could not be completed. Try again.')); };
   // The edge button and Cmd+B: a narrow window with an open preview closes the preview to make room for the sidebar.
-  const toggleSidebar = () => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(window.hermesDesktop.browserAction('close')); setCollapsed(!sidebarHidden); };
+  const toggleSidebar = () => { if (sidebarHidden && browserOpen && availableWidth < 1100) invoke(front === 'browser' || !front ? window.hermesDesktop.browserAction('close') : window.hermesDesktop.closeSidePanel(front)); setCollapsed(!sidebarHidden); };
   const latestToggleSidebar = useRef(toggleSidebar); latestToggleSidebar.current = toggleSidebar;
   useEffect(() => window.hermesDesktop.onToggleSidebar?.(() => { if (!document.querySelector('dialog[open]')) latestToggleSidebar.current(); }), []);
   // One IPC per real change: the effect re-runs and the ResizeObserver often report the same rectangle.
@@ -194,7 +253,7 @@ export function NativeWorkspace({ snapshot, draftThreads, onEditLabels, onRename
         const next = event.key === 'ArrowLeft' ? browserWidth + 10 : event.key === 'ArrowRight' ? browserWidth - 10 : event.key === 'Home' ? MIN_BROWSER_WIDTH : event.key === 'End' ? browserMaximum(browserAvailable) : undefined;
         if (next === undefined) return; event.preventDefault(); setBrowserWidth(next);
       }} />}
-    {browserOpen && snapshot.browser && <BrowserSidebar key={snapshot.activeTabId} state={snapshot.browser} visible={!overlayOpen && snapshot.phase === 'connected'} />}
+    {browserOpen && <RightColumn snapshot={snapshot} front={front} browserInColumn={browserInColumn} visible={!overlayOpen && snapshot.phase === 'connected'} onError={setError} />}
     {error && <div className="native-tab-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Dismiss tab error">×</button></div>}
     {children}
   </div>;

@@ -10,6 +10,7 @@ import { LiveSessionClient } from "@hermes-app/client/live";
 import { LivePageClient } from "../../../../packages/client/src/livePages";
 import { buildSessionLink, parseSessionLink, sessionServer } from "../../../../packages/client/src/sessionLinks";
 import { attachmentPageUrl } from "../../../../packages/client/src/attachmentPages";
+import { sendToMainText, sideFailure, type SideFailure } from "../../../../packages/client/src/sideChats";
 import type { ChannelInput, DesktopAttachment, DesktopThreadUsage, DesktopProjectWorkspace, DesktopSnapshot, PairingRequest, ProjectAgentsResult, ProjectFolderResult, SendMessageInput, StartThreadInput, ThreadCreation, ThreadInput } from "../shared/desktop-api";
 import type { Automation, AutomationDetail, AutomationPage } from "../../../../packages/client/src/automations";
 import type { FileSearchPage, SessionFile, SessionFileList } from "../../../../packages/client/src/sessionFiles";
@@ -331,6 +332,7 @@ export class DesktopConnectionService {
         resultRef: thread.result_ref,
         ...(thread.origin === "automation" ? { origin: "automation" as const } : {}),
         ...(thread.participated === true ? { participated: true } : {}),
+        ...(thread.side_of ? { sideOf: { threadId: thread.side_of.thread_id, anchorRefSeq: thread.side_of.anchor_ref_seq } } : {}),
         ...("last_message_at" in thread && typeof thread.last_message_at === "number" ? { lastMessageAt: thread.last_message_at } : {}),
       }))
       .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
@@ -406,6 +408,7 @@ export class DesktopConnectionService {
       supportsThreadModel: this.client?.supportsThreadModel === true,
       supportsAutomationEditors: this.client?.supportsAutomationEditors === true,
       supportsThreadBranch: this.client?.supportsThreadBranch === true,
+      supportsThreadSide: this.client?.supportsThreadSide === true,
       supportsMessageSources: this.client?.supportsMessageSources === true,
       supportsThreadExport: this.client?.supportsThreadExport === true,
       supportsSessionFiles: this.client?.supportsSessionFiles === true,
@@ -724,7 +727,8 @@ export class DesktopConnectionService {
   deactivateThread(): void { this.selectedThreadId = undefined; this.changed(); }
 
   async markResultRead(threadId: string, version: number, ref: number): Promise<void> {
-    if (threadId !== this.selectedThreadId || !Number.isSafeInteger(version) || version <= 0 || !Number.isSafeInteger(ref) || ref <= 0) return;
+    // Any open page: the main process passes only a visible tab or side chat panel.
+    if (!this.openPages.includes(threadId) || !Number.isSafeInteger(version) || version <= 0 || !Number.isSafeInteger(ref) || ref <= 0) return;
     await this.client?.markResultRead(threadId, version, ref);
   }
 
@@ -1257,6 +1261,34 @@ export class DesktopConnectionService {
       if (code) this.branchRequests.delete(key);
       return { ok: false, reason: code === 'busy' || code === 'branch_in_progress' ? 'busy' : code === 'anchor_unavailable' || code === 'anchor_not_final' ? 'unavailable' : 'failed' };
     }
+  }
+
+  // Side chats (docs/side-chat.md): one request ID per message until the server answers
+  // definitely, so a lost reply or a second tap never creates a second side chat.
+  private sideRequests = new Map<string, string>();
+  /** The new side chat's ID, or the reason it was not created. Waits while the source Session runs. */
+  async sideFromMessage(refSeq: number, threadId: string): Promise<{ ok: true; threadId: string } | { ok: false; reason: SideFailure }> {
+    const client = this.requireClient();
+    if (!client.supportsThreadSide || !Number.isSafeInteger(refSeq) || refSeq <= 0) return { ok: false, reason: 'unavailable' };
+    const key = `${threadId}:${refSeq}`;
+    const requestId = this.sideRequests.get(key) ?? `sc_${randomUUID()}`;
+    this.sideRequests.set(key, requestId);
+    try {
+      const created = await client.sideThread(threadId, refSeq, requestId);
+      this.sideRequests.delete(key);
+      // The tab opens the panel; the next tap on the same message creates another side chat.
+      return { ok: true, threadId: created.id };
+    } catch (error) {
+      const code = error instanceof HttpError ? error.code : undefined;
+      if (code) this.sideRequests.delete(key);
+      return { ok: false, reason: sideFailure(code) };
+    }
+  }
+  /** "Send to main" text for one reply of a side chat; undefined when the reply is not loaded. */
+  sideReplyText(threadId: string, refSeq: number): string | undefined {
+    const thread = this.client?.threads.get(threadId), message = this.client?.messages.get(threadId)?.find(row => row.ref_seq === refSeq);
+    if (!thread?.side_of || !message || message.role !== 'assistant' || !message.text.trim()) return undefined;
+    return sendToMainText(thread.title, threadId, message.text);
   }
 
   async messageSources(refSeq: number, threadId = this.selectedThreadId): Promise<readonly { url: string; kind: 'read' | 'cited' }[]> {

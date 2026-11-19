@@ -109,7 +109,8 @@ export class DesktopConnections {
       selectedChannelId: this.encode(account, snap.selectedChannelId), selectedThreadId: this.encode(account, snap.selectedThreadId),
       channels: snap.channels.map(c => ({ ...c, id: this.encode(account, c.id)!, connectionName: name, connectionKey: snap.connectionKey, supportsThreadModel: snap.supportsThreadModel,
         supportsAutomationEditors: snap.supportsAutomationEditors })),
-      threads: snap.threads.map(t => ({ ...t, id: this.encode(account, t.id)!, channelId: this.encode(account, t.channelId)!, supportsSessionLabels: snap.supportsSessionLabels })),
+      threads: snap.threads.map(t => ({ ...t, id: this.encode(account, t.id)!, channelId: this.encode(account, t.channelId)!, supportsSessionLabels: snap.supportsSessionLabels,
+        ...(t.sideOf ? { sideOf: { threadId: this.encode(account, t.sideOf.threadId)!, anchorRefSeq: t.sideOf.anchorRefSeq } } : {}) })),
       ...(snap.sessionPages ? { sessionPages: snap.sessionPages.map(p => ({ ...p, id: this.encode(account, p.id)! })) } : {}),
     };
   }
@@ -467,6 +468,12 @@ export class DesktopConnections {
     r.account.service.openSessionLink(result.link);
     return { ok: true };
   }
+  /** New side chat from a message of Session `id`; resolves with the side chat's qualified ID. */
+  async sideFromMessage(refSeq: number, id: string): Promise<{ ok: true; threadId: string } | { ok: false; reason: 'busy' | 'unavailable' | 'failed' }> {
+    const r = this.route(id), result = await r.account.service.sideFromMessage(refSeq, r.raw);
+    return result.ok ? { ok: true, threadId: this.encode(r.account, result.threadId)! } : result;
+  }
+  sideReplyText(id: string, refSeq: number): string | undefined { const r = this.route(id); return r.account.service.sideReplyText(r.raw, refSeq); }
   async messageSources(refSeq: number, id?: string) { if (!id) return []; const r = this.route(id); return r.account.service.messageSources(refSeq, r.raw); }
   async exportMessage(text: string, id?: string) { if (!id) return { ok: false as const }; const r = this.route(id); return r.account.service.exportMessage(text, r.raw); }
   async exportConversation(id?: string) { if (!id) return { ok: false as const }; const r = this.route(id); return r.account.service.exportConversation(r.raw); }

@@ -1041,3 +1041,37 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .remote-screen-notice { position: absolute; inset: 40px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: #e8e8e8; text-align: center; pointer-events: none; }
 .remote-screen-notice p { margin: 0; max-width: 480px; }
 .remote-screen-notice button { pointer-events: auto; }
+
+/* Side chats (docs/side-chat.md). */
+/* Anchor mark under a message of the source Session: not a message; it opens the side chat(s). */
+.side-mark-row { margin: 6px 0 0 -6px; }
+.side-mark { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--app-border); border-radius: 999px; background: transparent; color: var(--app-label); font-size: calc(var(--app-font-size) - 2px); cursor: pointer; }
+.side-mark:hover { background: var(--app-hover); color: var(--app-text); }
+.side-mark svg, .right-tab svg, .status-side-chats svg, .side-panel-icon { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.side-mark-dot { width: 7px; height: 7px; border-radius: 50%; }
+.side-mark-running { background: #16a34a; }
+.side-mark-unread { background: #4DA3FF; }
+.status-actions button.status-side-chats { width: auto; gap: 3px; padding: 0 5px; }
+.status-side-count { font-size: calc(var(--app-font-size) - 2px); }
+/* Right column: browser and side chats as tabs; only the front item shows. */
+.right-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--app-border); background: var(--app-rail); }
+.right-column > .browser-sidebar { flex: 1; border-left: 0; }
+.right-tabs { display: flex; gap: 4px; flex: none; padding: 6px 8px 0 10px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--app-border); }
+.right-tabs::-webkit-scrollbar { display: none; }
+.right-tab { display: flex; align-items: center; flex: 0 1 180px; min-width: 96px; border-radius: 8px 8px 0 0; color: var(--app-muted); background: var(--app-tab-inactive); }
+.right-tab.active { background: var(--app-background); color: var(--app-text); }
+.right-tab button { border: 0; background: transparent; color: inherit; padding: 6px 7px; cursor: pointer; -webkit-app-region: no-drag; }
+.right-tab [role="tab"] { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; }
+.right-tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.right-tab-close { opacity: 0; }
+.right-tab:hover .right-tab-close, .right-tab:focus-within .right-tab-close, .right-tab.active .right-tab-close { opacity: 1; }
+.side-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.side-panel-title button { display: inline-flex; align-items: center; }
+.side-panel-slot { flex: 1; min-height: 0; margin-left: 5px; background: var(--app-background); }
+/* Sidebar: side chats one level under their source Session, with a fold control. */
+.tree-thread-with-sides { position: relative; }
+.tree-thread-with-sides > .tree-thread { padding-left: 26px; }
+.tree-side-toggle { position: absolute; z-index: 1; left: 6px; top: 10px; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--app-muted); cursor: pointer; font-size: 10px; }
+.tree-side-toggle:hover { background: var(--app-hover); color: var(--app-text); }
+.tree-side-children { margin: 0 0 2px 13px; border-left: 1px solid var(--app-border); }
+.tree-thread.tree-side { padding-top: 6px; padding-bottom: 6px; font-size: calc(var(--app-font-size) - 1px); }

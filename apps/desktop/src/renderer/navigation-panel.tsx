@@ -11,6 +11,7 @@ import { ScreenIcon } from './remote-screen-page';
 import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 import { activeGroupName, otherGroupUnread } from '../../../../packages/client/src/connectionGroups';
+import { sideChatsBySource, sideWindow } from '../../../../packages/client/src/sideChats';
 
 // Only states that need the user's attention are shown in the tree.
 export const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
@@ -23,7 +24,8 @@ const activeAutomation = (snapshot: DesktopSnapshot) => snapshot.tabs?.find(tab 
 // Rows show the todo flag only; other labels stay on the Session page and in search.
 // `menuOpen` marks the row whose native menu is showing, like a Finder row.
 // No native `title`: SessionHoverCard shows the full title and details (found by `data-thread-id`).
-const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen}: {thread:DesktopThread;selected:boolean;draft:boolean;source?:string;menuOpen?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}`} data-thread-id={thread.id} aria-current={selected ? "page" : undefined} aria-haspopup={onMenu ? "menu" : undefined} onClick={() => void window.hermesDesktop.selectThread(thread.id).catch(() => {})}
+// A side chat row (docs/side-chat.md) opens its source Session with the side chat in the right column.
+const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen,side=false}: {thread:DesktopThread;selected:boolean;draft:boolean;source?:string;menuOpen?:boolean;side?:boolean;onMenu?:(thread:DesktopThread,x:number,y:number)=>void}) => <button type="button" className={`tree-thread${side ? " tree-side" : ""}${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}`} data-thread-id={thread.id} aria-current={selected ? "page" : undefined} aria-haspopup={onMenu ? "menu" : undefined} onClick={() => void (side ? window.hermesDesktop.openSideChat(thread.id) : window.hermesDesktop.selectThread(thread.id)).catch(() => {})}
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
@@ -32,6 +34,12 @@ const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen}: {thread:
 </button>);
 
 const RECENTS_KEY = 'hermes.sidebar.recents-collapsed', TODO_KEY = 'hermes.sidebar.todo-collapsed';
+// Source Sessions whose side chats are folded on this device; every other source starts expanded.
+const SIDES_KEY = 'hermes.sidebar.side-chats-collapsed';
+const loadFolded = (): Set<string> => { try { const value = JSON.parse(window.localStorage.getItem(SIDES_KEY) ?? '[]'); return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string').slice(0, 2000) : []); } catch { return new Set(); } };
+const saveFolded = (ids: ReadonlySet<string>) => { try { window.localStorage.setItem(SIDES_KEY, JSON.stringify([...ids].slice(-2000))); } catch { /* Device preference only. */ } };
+// The side chat shown in front of the active tab's right column; its sidebar row is selected.
+const frontSide = (snapshot: DesktopSnapshot) => snapshot.sidePanels?.find(panel => panel.id === snapshot.rightTab)?.threadId;
 const loadCollapsed = (key: string) => () => { try { return window.localStorage.getItem(key) === '1'; } catch { return false; } };
 const saveCollapsed = (key: string, value: boolean) => { try { window.localStorage.setItem(key, value ? '1' : '0'); } catch { /* Device preference only. */ } };
 
@@ -70,10 +78,17 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const [recentBatches, setRecentBatches] = useState(0);
   const [todoCollapsed, setTodoCollapsed] = useState(loadCollapsed(TODO_KEY));
   const [todoBatches, setTodoBatches] = useState(0);
-  const available = snapshot.threads.filter(thread => snapshot.channels.some(channel => channel.id === thread.channelId));
+  const reachable = snapshot.threads.filter(thread => snapshot.channels.some(channel => channel.id === thread.channelId));
+  // Side chats never are first-level rows: they show under their source Session, and hide with it.
+  const reachableIds = new Set(reachable.map(thread => thread.id));
+  const listed = reachable.filter(thread => !thread.sideOf || reachableIds.has(thread.sideOf.threadId));
+  const available = listed.filter(thread => !thread.sideOf);
+  const sideGroups = sideChatsBySource(listed, thread => thread.sideOf?.threadId);
+  const [folded, setFolded] = useState(loadFolded), [sideBatches, setSideBatches] = useState<Record<string, number>>({});
+  const front = frontSide(snapshot);
   // Counts use every listed session, independent of the label filter and the
   // recent-activity window. Directory metadata only; no conversation bodies.
-  const unread = projectUnreadCounts(available.map(thread => ({ projectId: thread.channelId, completedUnread: thread.completedUnread })));
+  const unread = projectUnreadCounts(listed.map(thread => ({ projectId: thread.channelId, completedUnread: thread.completedUnread })));
   const projects = orderProjects(snapshot.channels);
   const multiple = (snapshot.connections?.length ?? 0) > 1;
   const stateFor = (key?: string) => key ? snapshot.connections?.find(row => row.connectionKey === key)?.state : undefined;
@@ -92,7 +107,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   const todos = todoWindow(available, todoBatches);
   const labelsFor = (thread: DesktopThread) => thread.supportsSessionLabels ?? snapshot.supportsSessionLabels === true;
   const connectionOf = (thread: DesktopThread) => snapshot.channels.find(c => c.id === thread.channelId)?.connectionKey ?? snapshot.connectionKey;
-  const menuOnline = (thread: DesktopThread) => (snapshot.connections ? snapshot.connections.find(row => row.connectionKey === connectionOf(thread))?.state : snapshot.connectionState) === 'online' && available.some(item => item.id === thread.id);
+  const menuOnline = (thread: DesktopThread) => (snapshot.connections ? snapshot.connections.find(row => row.connectionKey === connectionOf(thread))?.state : snapshot.connectionState) === 'online' && listed.some(item => item.id === thread.id);
   // A native menu: the Session page is a separate view over the window, so an HTML menu would be cut off at the sidebar edge.
   const openMenu = (thread: DesktopThread, x: number, y: number) => {
     if (menuThread) return;
@@ -110,7 +125,24 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
       else if (window.confirm(`Archive "${thread.title}"?`)) void window.hermesDesktop.archiveThread(thread.id).catch(() => {});
     });
   };
-  const row = (thread: DesktopThread, source?: string) => <ThreadRow key={thread.id} thread={thread} source={source} selected={thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
+  const plainRow = (thread: DesktopThread, source?: string, side = false) => <ThreadRow key={thread.id} thread={thread} source={source} side={side} selected={side ? thread.id === front : thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
+  // A source Session with side chats: a fold control, then its side chats one level lower (running and the newest SIDE_BATCH, Show more).
+  const row = (thread: DesktopThread, source?: string) => {
+    const sides = sideGroups.get(thread.id);
+    if (!sides?.length) return plainRow(thread, source);
+    const open = !folded.has(thread.id), page = sideWindow(sides, sideBatches[thread.id] ?? 0);
+    const fold = () => setFolded(old => { const next = new Set(old); if (open) next.add(thread.id); else next.delete(thread.id); saveFolded(next); return next; });
+    return <div className="tree-thread-group" key={thread.id}>
+      <div className="tree-thread-with-sides">
+        <button type="button" className="tree-side-toggle" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} side chats of ${thread.title}`} onClick={fold}><Icon name={open ? 'chevronDown' : 'chevronRight'} /></button>
+        {plainRow(thread, source)}
+      </div>
+      {open && <div className="tree-side-children" role="group" aria-label={`Side chats of ${thread.title}`}>
+        {page.rows.map(side => plainRow(side, undefined, true))}
+        {page.hasMore && <button className="tree-more tree-side-more" type="button" onClick={() => setSideBatches(old => ({ ...old, [thread.id]: (old[thread.id] ?? 0) + 1 }))}>Show more</button>}
+      </div>}
+    </div>;
+  };
   // Recents mixes every connection; with several, each row names its connection.
   const recentRow = (thread: DesktopThread) => {
     const source = multiple ? connectionName.get(thread.channelId) : undefined;
@@ -118,7 +150,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
   };
   const scroll = useRef<HTMLDivElement>(null);
   const describe = (id: string): SessionCardInfo | undefined => {
-    const thread = available.find(item => item.id === id);
+    const thread = listed.find(item => item.id === id);
     if (!thread) return undefined;
     const statuses = [thread.running && 'Running', draftThreads?.has(id) && 'Draft', thread.completedUnread && 'Completed, unread', hasTodo(thread.markers) && 'Todo'].filter((item): item is string => !!item);
     return { title: thread.title, project: projectName.get(thread.channelId), connection: multiple ? connectionName.get(thread.channelId) : undefined,
@@ -185,7 +217,7 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     {!snapshot.channels.length && !snapshot.loadingConversations ? <p className="empty-state">No projects yet.</p> : null}
     </div>
   </div>;
-}, (before,after) => before.draftThreads === after.draftThreads && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.onSearch === after.onSearch && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal);
+}, (before,after) => before.draftThreads === after.draftThreads && before.onNewSession === after.onNewSession && before.onEditLabels === after.onEditLabels && before.onRename === after.onRename && before.onCreateProject === after.onCreateProject && before.onSearch === after.onSearch && before.snapshot.channels === after.snapshot.channels && before.snapshot.threads === after.snapshot.threads && before.snapshot.selectedChannelId === after.snapshot.selectedChannelId && before.snapshot.selectedThreadId === after.snapshot.selectedThreadId && before.snapshot.loadingConversations === after.snapshot.loadingConversations && before.snapshot.connectionKey === after.snapshot.connectionKey && before.snapshot.supportsSessionLabels === after.snapshot.supportsSessionLabels && before.snapshot.connectionState === after.snapshot.connectionState && before.snapshot.phase === after.snapshot.phase && connectionStates(before.snapshot) === connectionStates(after.snapshot) && activeAutomation(before.snapshot) === activeAutomation(after.snapshot) && before.snapshot.automationsVersion === after.snapshot.automationsVersion && before.reveal === after.reveal && frontSide(before.snapshot) === frontSide(after.snapshot));
 
 /**
  * Connection group switcher (docs/connection-groups.md): the footer of the sidebar, below the

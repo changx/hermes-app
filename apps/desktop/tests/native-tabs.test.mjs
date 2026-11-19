@@ -10,7 +10,7 @@ class Contents extends EventEmitter {
   id = ++counter; sent = []; destroyed = false; focused = false;
   loadFile() { return Promise.resolve(); } getURL() { return 'file:///app/index.html'; } send(name, value) { this.sent.push(value); (this.channels ??= []).push(name); }
   isDestroyed() { return this.destroyed; } close() { this.destroyed = true; } setAudioMuted(value) { this.muted = value; }
-  focus() { this.focused = true; } isCrashed() { return false; }
+  focus() { this.focused = true; } isCrashed() { return false; } isLoading() { return false; }
 }
 class View { webContents = new Contents(); constructor(options) { this.options = options; } setVisible(v) { this.visible = v; } setBounds(v) { this.bounds = v; } }
 const mod = { exports: {} };
@@ -188,4 +188,89 @@ test('Automations list tab is single and may list jobs; a New automation tab car
   assert.equal(draft.kind,'new');assert.equal(draft.automationEditor,true);assert.equal(f.manager.snapshot(draft.view.webContents).automationEditor,true);
   assert.deepEqual(f.manager.snapshot().tabs.map(t=>[t.kind,t.title,t.automationEditor===true]),[['session','a',false],['automations','Automations',false],['new','New automation',true]]);
   f.manager.newTab('p');const plain=[...f.manager.tabs.values()][3];assert.equal(plain.automationEditor,undefined);assert.equal(f.manager.snapshot(plain.view.webContents).automationEditor,undefined);
+});
+
+/** Side chats (docs/side-chat.md): Session `a` has side chats `s1` (anchor 4) and `s2` (anchor 6); `b` is another Session. */
+function sideFixture() {
+  const views = [], closed = [], opened = [], focus = [];
+  const snapshot = { revision: 1, phase: 'connected', connectionKey: 'identity', channels: [{ id:'p', name:'Project' }], messages: [], interactions: [], canLoadOlder: false,
+    threads: [{id:'a',channelId:'p',title:'a',running:false},{id:'b',channelId:'p',title:'b',running:false},
+      {id:'s1',channelId:'p',title:'Side: one',running:false,sideOf:{threadId:'a',anchorRefSeq:4}},{id:'s2',channelId:'p',title:'Side: two',running:false,sideOf:{threadId:'a',anchorRefSeq:6}}] };
+  const window = { webContents: new Contents(), contentView: { addChildView(v){views.push(v);}, removeChildView(v){views.splice(views.indexOf(v),1);} }, isDestroyed:()=>false, getContentSize:()=>[1280,820], title:'Hermes', getTitle(){return this.title;}, setTitle(value){this.title=value;} };
+  const browser = { mode: 'sidebar', states: {}, state(id){return this.states[id];}, layout(active, visible){this.last={active,visible};}, remove(id){delete this.states[id];} };
+  const service = { snapshot(id){return {...snapshot, selectedThreadId:id ?? snapshot.selectedThreadId, messages:id ? [{id:`${id}-message`,role:'assistant',text:id,toolCalls:[],attachments:[]}] : []};},
+    selectThread(id, activate = true){ if (!activate) { opened.push(id); return Promise.resolve(); } snapshot.selectedThreadId=id; manager.sync(snapshot); return Promise.resolve(); },
+    deactivateThread(){snapshot.selectedThreadId=undefined;manager.sync(snapshot);}, closeSessionPage(id){closed.push(id);},
+    openMessage(id, ref){focus.push([id,ref]);return Promise.resolve();}, sideReplyText(id, ref){return id==='s1'&&ref===9?'From side chat [Side: one](hermesapp://session/s1):\n\nResult':undefined;},
+    hasConnection(key){return !!key && key===snapshot.connectionKey;}, connectionForChannel(){return snapshot.connectionKey;}, connectionForAutomation(){return snapshot.connectionKey;},
+    activeGroupId(){return null;}, visibleConnectionKeys(){return new Set([snapshot.connectionKey]);} };
+  const manager = new DesktopTabManager(window, service, '/app/main', ()=>{}, browser);
+  manager.setBounds({x:280,y:48,width:600,height:772,visible:true});
+  return {manager,service,snapshot,views,closed,opened,focus,browser,window};
+}
+test('side chat: opens in the source Session tab\'s right column, not as a tab; its page stays while hidden', async()=>{
+  const f=sideFixture();
+  f.manager.openSideChat('s1');
+  assert.equal(f.manager.tabs.size,1,'the side chat gets no tab of its own');
+  const [a]=[...f.manager.tabs.values()], [panel]=[...f.manager.panels.values()];
+  assert.equal(a.threadId,'a');assert.equal(f.manager.activeTabId,a.id);assert.equal(f.snapshot.selectedThreadId,'a');
+  assert.deepEqual(f.opened,['s1'],'the side chat page opens without becoming the selected Session');
+  const shell=f.manager.snapshot();
+  assert.deepEqual(shell.sidePanels,[{id:panel.id,threadId:'s1',title:'Side: one'}]);assert.equal(shell.rightTab,panel.id);
+  assert.deepEqual(shell.tabs.map(t=>t.threadId),['a']);
+  // The panel shows only after the main window reports its slot.
+  assert.equal(panel.view.visible,false);assert.equal(f.manager.snapshot(panel.view.webContents).tabActive,false);
+  f.manager.setSideBounds({x:900,y:90,width:380,height:730,visible:true});
+  assert.equal(panel.view.visible,true);assert.deepEqual(panel.view.bounds,{x:900,y:90,width:380,height:730,visible:true});assert.equal(a.view.visible,true);
+  const page=f.manager.snapshot(panel.view.webContents);
+  assert.equal(page.sidePanel,true);assert.equal(page.selectedThreadId,'s1');assert.equal(page.tabActive,true);assert.equal(page.messages[0].text,'s1');
+  assert.equal(f.manager.target(panel.view.webContents),'s1','panel actions go to the side chat');
+  assert.equal(f.manager.browserOwner(panel.view.webContents),a,'the panel uses its tab\'s browser');
+  // Another tab hides the panel; coming back shows the same page (reading position and draft stay in it).
+  await f.service.selectThread('b');const b=[...f.manager.tabs.values()][1];
+  assert.equal(panel.view.visible,false);assert.equal(f.manager.snapshot().sidePanels,undefined);
+  f.manager.activate(a.id);assert.equal(panel.view.visible,true);assert.equal(panel.view.webContents.destroyed,false);
+  assert.equal(f.manager.panels.size,1);assert.equal(b.view.visible,false);
+});
+test('side chat: several panels are tabs; the browser hides them while in front; closing shows a neighbour', async()=>{
+  const f=sideFixture();f.manager.openSideChat('s1');f.manager.openSideChat('s2');
+  f.manager.setSideBounds({x:900,y:90,width:380,height:730,visible:true});
+  const [p1,p2]=[...f.manager.panels.values()], a=[...f.manager.tabs.values()][0];
+  assert.equal(f.manager.tabs.size,1);assert.equal(f.manager.snapshot().rightTab,p2.id);
+  assert.equal(p1.view.visible,false);assert.equal(p2.view.visible,true);assert.equal(f.browser.last.visible,false,'a panel in front hides the browser page');
+  f.manager.openSideChat('s1');assert.equal(f.manager.panels.size,2,'an open side chat is brought to the front, not opened twice');assert.equal(p1.view.visible,true);
+  // The browser opens: it comes to the front; the panels stay.
+  f.browser.states[a.id]={open:true};f.manager.publish();
+  assert.equal(f.manager.snapshot().rightTab,'browser');assert.equal(p1.view.visible,false);assert.equal(f.browser.last.visible,true);
+  f.manager.selectRightTab(p2.id);assert.equal(p2.view.visible,true);assert.equal(f.browser.last.visible,false);
+  assert.throws(()=>f.manager.selectRightTab('missing'),/unavailable/);
+  f.manager.closeSide(p2.id);assert.equal(f.manager.snapshot().rightTab,'browser','closing the front panel shows the browser when it is open');
+  assert.equal(p2.view.webContents.destroyed,true);assert.deepEqual(f.closed,['s2']);
+  delete f.browser.states[a.id];f.manager.publish();assert.equal(f.manager.snapshot().rightTab,p1.id,'the browser closed: the side chat comes back');
+  f.manager.closeSide(p1.id);assert.equal(f.manager.snapshot().sidePanels,undefined);assert.equal(f.manager.snapshot().rightTab,undefined);
+});
+test('side chat: a link or search selection opens the panel; archive and tab close remove it', async()=>{
+  const f=sideFixture();
+  await f.service.selectThread('s2');
+  assert.deepEqual([...f.manager.tabs.values()].map(t=>t.threadId),['a'],'a selected side chat opens in its source tab');
+  assert.equal(f.snapshot.selectedThreadId,'a');assert.deepEqual([...f.manager.panels.values()].map(p=>p.threadId),['s2']);
+  // Archived (gone from the catalogue): its panel closes.
+  f.snapshot.threads=f.snapshot.threads.filter(t=>t.id!=='s2');f.manager.sync(f.snapshot);
+  assert.equal(f.manager.panels.size,0);assert.ok(f.closed.includes('s2'));
+  f.manager.openSideChat('s1');const panel=[...f.manager.panels.values()][0], a=[...f.manager.tabs.values()][0];
+  f.manager.close(a.id);assert.equal(f.manager.panels.size,0);assert.equal(panel.view.webContents.destroyed,true);assert.ok(f.closed.includes('s1'));
+  assert.throws(()=>f.manager.openSideChat('b'),/unavailable/,'a plain Session is not a side chat');
+});
+test('side chat: Send to main fills the source composer; the anchor button scrolls the source Session', async()=>{
+  const f=sideFixture();f.manager.openSideChat('s1');
+  const panel=[...f.manager.panels.values()][0], a=[...f.manager.tabs.values()][0];
+  f.manager.sendToMain(panel.view.webContents,9);
+  const index=a.view.webContents.channels.lastIndexOf('desktop:fill-composer');
+  assert.ok(index>=0);assert.equal(a.view.webContents.sent[index],'From side chat [Side: one](hermesapp://session/s1):\n\nResult');assert.equal(a.view.webContents.focused,true);
+  assert.throws(()=>f.manager.sendToMain(panel.view.webContents,1),/unavailable/);
+  assert.throws(()=>f.manager.sendToMain(a.view.webContents,9),/unavailable/,'only a side chat panel sends to main');
+  await f.manager.focusSideAnchor(panel.id);assert.deepEqual(f.focus,[['a',4]]);
+  // Cmd+W in the panel closes the panel, not the tab.
+  const event={preventDefault(){this.prevented=true;}};panel.view.webContents.emit('before-input-event',event,{type:'keyDown',meta:true,key:'w'});
+  assert.ok(event.prevented);assert.equal(f.manager.panels.size,0);assert.equal(f.manager.tabs.size,1);
 });
