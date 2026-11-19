@@ -1,6 +1,6 @@
 # Side chat：从一条消息开始的子讨论
 
-状态（2026-11-18）：需求已由 Jamie 确认。没有实现。
+状态（2026-11-18）：需求已由 Jamie 确认。插件已在分支上实现并通过真实 GatewayRunner 测试，未发布；客户端未实现。
 
 ## 目的
 
@@ -120,36 +120,46 @@ Side chat 解决这个问题：
 2. 在 side chat 中输入 `>>` 不发到 TG。
 3. 对外发送在主 Thread 中进行。Side chat 用于讨论和拟稿。
 
-## 架构草案（建议，待实现时确认）
+## 架构（插件已实现，未发布）
 
-继续使用核心原生 `/branch`。不修改 Hermes 核心。
+继续使用核心原生 `/branch`。不修改 Hermes 核心。插件分支 `feat/side-chat`（`/opt/projects/jamie/_worktrees/hermes-app-plugin/side-chat`）。
 
-1. **插件接口。** `POST /v1/threads/{id}/branch` 增加 `kind`，取值 `branch`（默认）或 `side`。`request_id` 幂等不变。
-   - `kind = side` 且源 Thread 运行中：返回 `202 {state: "waiting"}`。插件在源 Thread 空闲后执行 `/branch`。客户端用同一 `request_id` 重新请求，直到返回新 Thread 或错误。
-   - 不在 HTTP 请求中长时间等待，因为 Cloudflare 有请求时长上限。
-2. **存储。** `branches` 表增加 `kind` 列。Side chat 的 Thread JSON 增加 `side_of: {thread_id, anchor_ref_seq}`。
-3. **锚点标记。** 新增 `GET /v1/threads/{id}/sides`，返回 side chat 列表（`thread_id`、`anchor_ref_seq`、标题、最后活动时间）。变化时发出同步事件。历史分页的消息格式不变。
-4. **截断规则。** 现有 `truncation_target` 要求锚点后第一行是 user 行。TG 话题中，锚点后常常是另一条外部消息。`kind = side` 时，截断点是锚点后第一条完整消息的开头：一条 user 行，或一条外部消息行。截断点不能落在工具调用和工具结果之间。
-5. **源 Thread 提示。** `kind = side` 时不调用 `create_system_notice`。
-6. **能力。** `capabilities` 增加 `thread_side: true`。服务端没有这个能力时，客户端不显示 Side chat 按钮。
-7. **客户端。** Send to main 只在客户端实现，使用现有输入框和发送路径。
+1. **插件接口。** `POST /v1/threads/{id}/branch` 增加 `kind`，取值 `branch`（默认，行为不变）或 `side`。
+   - `kind = side`：先同步检查锚点和来源。锚点无效时立即返回 409（`anchor_not_final`、`anchor_unavailable`）；来源本身是 side chat 时返回 409 `side_unavailable`。
+   - 检查通过后返回 `202 {state: "running"}`，由后台任务创建。客户端用同一 `request_id` 重复请求（建议每秒一次），直到返回 `200 {thread}` 或 409 `{error}`。
+   - 后台任务每秒检查一次来源是否空闲，空闲后在该 Thread 的 ingress 锁内执行 `/branch`。最长等待 10 分钟，超时结束为 `busy`。等待期间不占用 ingress 锁，所以主 Thread 照常收发消息。
+   - 同一 `request_id` 换 `kind` 请求返回 400。
+2. **存储。** 新表 `side_chats(thread_id, source_thread_id, anchor_seq, anchor_text)`，与 Thread 在同一事务中写入；`branches` 增加 `kind` 列（默认 `branch`）。都是新增结构，旧版本插件回滚后把 side chat 显示为普通 Thread。
+3. **目录与锚点标记。** Catalogue 行（`/v1/catalogue`、`/v1/catalogue/threads`）和 `GET /v1/threads/{id}` 的 side chat 带 `side_of: {thread_id, anchor_ref_seq}`；普通 Thread 没有这个字段。客户端用 catalogue 计算锚点标记、侧边栏层级和 Session options 列表，不另设 `/sides` 接口。Side chat 的变化沿用现有 `directory_changed`。
+4. **时间线。** Side chat 只发布一条顶部提示：`Side chat from [<源标题>](hermesapp://session/<源 id>): “<锚点开头>”`（`notice_kind` 为 `branch`）。复制的历史不发布，只作模型上下文；复制的用户输入的附件授权照常写入。源 Thread 不写任何提示。
+5. **让模型知道锚点。** Side chat 第一轮（还没有 assistant 回复时），`pre_llm_call` hook 返回一段上下文：来源标题、锚点原文（最多 4000 字），并说明这是 side chat、源对话的后续消息不在其中、不要在 side chat 中向外部聊天发消息（除非用户在这里明确要求）。核心把它写入这一轮的 `api_content`，后续各轮原样重放；它不显示在时间线中。
+6. **截断与合并行。** 核心加载 transcript 时，把相邻的纯文本 assistant 行合并成一行（`_merge_consecutive_assistants`：去掉首尾空白，用换行连接，用第一行的时间戳），`/branch` 复制的是合并结果。插件的行对应规则已包含这种合并，与已有的相邻 user 行合并规则相同。截断点必须是锚点之后第一条 user 行，或单独复制的外部消息行。
+7. **能力。** `capabilities.thread_side: true`。没有这个能力时，客户端不显示 Side chat 按钮。
+8. **标题。** `Side: <锚点第一行，最多 60 字>`。
 
-## 待实现时验证的事实
+## 已知限制
 
-1. 外部消息作为锚点时，现有检查（`anchor_not_final`、`history_page` 的 `display_kind`）是否拒绝它。代码阅读显示可能拒绝，需要在真实 TG 话题上确认。
-2. 等待空闲的最长时间是 10 分钟（已确认）。超时返回 `busy`，客户端用自然语言说明。实现时确认这个时长在真实 TG 话题上够用。
-3. 复制的历史较长时（例如数百行），创建 side chat 的耗时。
+1. **与锚点一起到达的外部消息。** 一个最终回复和它后面连续到达的外部消息（中间没有 user 行），在模型上下文中是同一条 assistant 消息。从其中任何一条打开 side chat，上下文都包含这一组的全部消息，到下一条 user 行为止。插件不改写核心的行。第 5 项的锚点说明告诉模型具体从哪条开始。
+   - TG 话题中，新消息通常立即触发 `⟳ 自动回复` 一轮（user 行），所以一组通常只有一两条。
+2. **Branch 的同类情况。** 以前，从后面跟着外部消息的最终回复做 Branch 会返回 `history_mismatch`。现在可以 Branch，但新 Thread 中这一组显示为一条合并后的消息。
+3. 锚点必须在源 Thread 的当前 session 中，与 Branch 相同。
 
 ## 验收
 
 ### 插件测试（真实 GatewayRunner + HTTP API）
 
 1. 从最终回复创建 side chat：新 Thread 带 `side_of`；模型上下文截到锚点；源 Thread 没有新增消息或系统提示。
-2. 从外部消息创建 side chat，锚点后紧跟另一条外部消息：截断正确，不返回 `anchor_not_turn_end`。
-3. 源 Thread 运行中请求：返回 `202 waiting`；运行结束后同一 `request_id` 返回新 Thread；不重复创建。
+2. 从外部消息创建 side chat，锚点后紧跟另一条外部消息：不返回 `history_mismatch` 或 `anchor_not_turn_end`；上下文符合「已知限制」第 1 项；第一轮上下文中有锚点原文。
+3. 源 Thread 运行中请求：返回 `202 {state: "running"}`；运行结束后同一 `request_id` 返回新 Thread；不重复创建。
 4. Gateway 在等待或创建中重启：请求结束为失败，不留下半成品 Thread，源 Thread 不变。
 5. Side chat 中的新消息不进入源 Thread 的 transcript，源 Thread 的新消息不进入 side chat。
 6. `kind` 缺省时，Branch 的全部现有测试仍通过。
+
+状态（2026-11-18，插件 `feat/side-chat` `ec4dbbe`，核心 `272c0ccea4`，Python 3.14 运行时环境）：
+
+- 第 1、2、3、5、6 项通过：`tests/p1/side_chat_probe.py`（真实 GatewayRunner、HTTP API、本地合成模型），另含：同一 `request_id` 幂等、换 `kind` 返回 400、side chat 内再开 side chat 返回 `side_unavailable`、无效锚点立即返回且不创建 Thread、第一轮锚点上下文只出现一次且不显示、从后面跟着外部消息的最终回复做 Branch。
+- 第 4 项（等待或创建中 Gateway 重启）没有专门测试。代码路径：停止时取消后台任务并记为 `interrupted`，已创建的 Thread 归档；启动时 `branch_recover` 把残留的 `running` 记为失败。
+- 完整 P1 套件：分支 428 passed、4 failed；未改的 `main` 426 passed、3 failed。三项在两边都失败；只在分支上失败的 `test_runner.py::test_preflight_repeated_after_settlement` 重跑 3 次在分支上都通过，在 `main` 上 1 次失败，是不稳定测试。
 
 ### 真实设备（iPhone 和 Mac，jamie 连接）
 
