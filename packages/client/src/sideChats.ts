@@ -3,7 +3,6 @@
  * source Thread. The server marks each side chat with `side_of`; clients derive
  * the anchor marks, the sidebar tree and the Session options list from it.
  */
-import { runningFirst } from './todo';
 
 /** The source Thread and the anchor message of a side chat. */
 export type SideOf = Readonly<{ thread_id: string; anchor_ref_seq: number }>;
@@ -22,6 +21,10 @@ export function parseSideOf(value: unknown): SideOf | undefined {
 export const SIDE_BATCH = 10;
 
 type SideRow = Readonly<{ id: string; title: string; running?: boolean; lastMessageAt?: number }>;
+/** The Session list order (`todo.ts` runningFirst): running first, then newest activity. No imports: tests load this file directly. */
+const runningFirst = (a: SideRow, b: SideRow): number =>
+  Number(b.running === true) - Number(a.running === true) || (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0)
+  || a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
 
 /** Side chats grouped by source Thread, each list running first, then newest activity. */
 export function sideChatsBySource<T extends SideRow>(threads: readonly T[], sourceOf: (thread: T) => string | undefined): Map<string, T[]> {

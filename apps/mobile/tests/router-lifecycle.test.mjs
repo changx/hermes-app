@@ -15,6 +15,8 @@ import * as sendErrors from '../../../packages/client/src/sendErrors.ts';
 import * as sessionHeaderItems from '../src/sessionHeaderItems.ts';
 import * as localDraftMap from '../../../packages/client/src/localDraftMap.ts';
 import * as todo from '../../../packages/client/src/todo.ts';
+import * as sideChats from '../../../packages/client/src/sideChats.ts';
+import * as composerFill from '../src/composerFill.ts';
 
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -149,7 +151,7 @@ async function harness({ multiple = false, list = false, strict = false, product
     'expo-crypto': { randomUUID: () => 'synthetic-send-id', getRandomBytes: () => new Uint8Array(12), getRandomBytesAsync: async () => new Uint8Array(44) },
     'expo-clipboard': { setStringAsync: async () => {} },
     '../../../packages/client/src/sessionLinks': sessionLinks,
-    '../../../packages/client/src/todo': todo, './TodoFlag': { TodoFlag: 'TodoFlag', TODO_COLOR: '#d9480f' }, './todoToggle': { setThreadTodo: async () => '' }, './sessionHeaderItems': sessionHeaderItems,
+    '../../../packages/client/src/todo': todo, '../../../packages/client/src/sideChats': sideChats, './composerFill': composerFill, './TodoFlag': { TodoFlag: 'TodoFlag', TODO_COLOR: '#d9480f' }, './todoToggle': { setThreadTodo: async () => '' }, './sessionHeaderItems': sessionHeaderItems,
     '../../../packages/client/src/projectDirectory': {},
     '../../../packages/client/src/connectionGroups': connectionGroups,
     './connectionGroupStore': { loadGroups: async () => connectionGroups.NO_GROUPS, saveGroups: async () => {} },

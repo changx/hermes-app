@@ -19,7 +19,7 @@ import { reuseWorkViews, workGroups, workIsExpanded, type WorkChoice, type WorkG
 import { hasRunningReceipt } from './receiptState';
 import { chatDateSeparators, hasWaitingRequest, needsWorkPlaceholder, processingWarning } from '../../../packages/client/src/chatPresentation';
 import { failedMessageId, confirmFailedMessageDelete } from './failedMessageActions';
-import { MessageCopyButton, MessageToolbar, type MessageActions } from './MessageToolbar';
+import { MessageCopyButton, MessageToolbar, SideMark, type MessageActions, type SideChatRow } from './MessageToolbar';
 import { useSessionNavigation } from './sessionNavigation';
 
 /** Notice text with its Markdown session links (e.g. a branch link) as tappable spans. */
@@ -41,7 +41,7 @@ const noticeLabel = (text: string) => text.replace(noticeLink, '$1');
 
 
 const action = (title: string, onPress: () => void, disabled = false, muted = false) => <Pressable accessibilityRole="button" accessibilityLabel={title} disabled={disabled} onPress={onPress} style={[styles.action, muted && styles.muted, disabled && styles.disabled]}><Text style={[styles.actionText, muted && styles.mutedText]}>{title}</Text></Pressable>;
-const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, highlighted, work, workExpanded = true, onWorkToggle, actions, canRetry = false, running = false }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; highlighted?: boolean; work?: WorkGroupView; workExpanded?: boolean; onWorkToggle?: (group: WorkGroupView, expanded: boolean) => void; actions?: MessageActions; canRetry?: boolean; running?: boolean }) {
+const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onRetryFailed, busy, renderAttachments, highlighted, work, workExpanded = true, onWorkToggle, actions, canRetry = false, running = false, sides }: { row: TimelineRow; onCancel: (receipt: Receipt) => void; onDeleteFailed?: (id: string) => void; onRetryFailed?: (id: string) => void; busy: boolean; renderAttachments?: (row: TimelineRow) => React.ReactNode; highlighted?: boolean; work?: WorkGroupView; workExpanded?: boolean; onWorkToggle?: (group: WorkGroupView, expanded: boolean) => void; actions?: MessageActions; canRetry?: boolean; running?: boolean; /** This message's side chats (anchor mark). */ sides?: readonly SideChatRow[] }) {
   const own = row.role === 'user';
   const revealed = useRef({ key: row.key, value: false });
   if (revealed.current.key !== row.key) revealed.current = { key: row.key, value: false };
@@ -59,6 +59,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
     {!own && row.role !== 'assistant' && !row.continuation && <View style={styles.byline}><MessageTime seconds={row.timestamp} /></View>}
     {revealed.current.value && <MessageContent key={row.key} resourceId={row.key} text={row.text} toolCalls={row.role === 'assistant' ? row.toolCalls : undefined} canExpand={row.role === 'assistant'} lines={row.displayKind === 'direct'} pending={own && !!row.optimistic && row.status !== 'accepted'} />}
     {revealed.current.value && finalReply && row.refSeq !== undefined && !!actions && <MessageToolbar row={row} actions={actions} canRetry={canRetry} running={running} />}
+    {!!sides?.length && !!actions?.openSides && <SideMark sides={sides} onOpen={actions.openSides} />}
     {own && !!row.feedback && <Text accessibilityLabel={`Feedback after receipt: ${row.feedback}`} style={styles.feedback}>{row.feedback}</Text>}
     {!!row.sendError && <Text accessibilityLiveRegion="polite" style={styles.sendError}>{row.sendError}</Text>}
     {!!failedId && <View style={styles.failedActions}>
@@ -77,7 +78,7 @@ const MessageRow = memo(function MessageRow({ row, onCancel, onDeleteFailed, onR
       : <View testID="user-message-cancel-slot" pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.inlineCancel, styles.cancelSlot]}><Text style={styles.cancelText}>Cancel</Text></View>}{!!row.text && !failedId && <MessageCopyButton text={row.text} />}<MessageTime seconds={row.timestamp} clockOnly /></View>}
   </View>;
   return <>{work?.key === row.key && <View style={styles.workHeading}><Pressable accessibilityRole="button" accessibilityLabel={work.label} accessibilityState={{ expanded: workExpanded }} onPress={() => onWorkToggle?.(work, !workExpanded)} style={styles.workToggle}><Text style={styles.workLabel}>{work.label}</Text><WorkChevron expanded={workExpanded} /></Pressable></View>}{own ? <View style={styles.userMessageRow}>{!!row.sender && <Text testID="user-message-sender" style={styles.senderLabel}>{row.sender}</Text>}{content}</View> : content}</>;
-}, (prev, next) => prev.actions === next.actions && prev.canRetry === next.canRetry && prev.running === next.running && prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.sender === next.row.sender && prev.row.displayKind === next.row.displayKind && prev.row.model === next.row.model && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
+}, (prev, next) => prev.actions === next.actions && prev.sides === next.sides && prev.canRetry === next.canRetry && prev.running === next.running && prev.work === next.work && prev.workExpanded === next.workExpanded && prev.onWorkToggle === next.onWorkToggle && prev.highlighted === next.highlighted && prev.renderAttachments === next.renderAttachments && prev.busy === next.busy && prev.onDeleteFailed === next.onDeleteFailed && prev.onRetryFailed === next.onRetryFailed && prev.onCancel === next.onCancel && prev.row.receipt?.state === next.row.receipt?.state && prev.row.receipt?.processing === next.row.receipt?.processing && prev.row.key === next.row.key && prev.row.text === next.row.text && prev.row.sender === next.row.sender && prev.row.displayKind === next.row.displayKind && prev.row.model === next.row.model && prev.row.timestamp === next.row.timestamp && prev.row.toolCalls === next.row.toolCalls && prev.row.continuation === next.row.continuation && prev.row.status === next.row.status && prev.row.optimistic === next.row.optimistic && prev.row.refSeq === next.row.refSeq && prev.row.reactionSlot === next.row.reactionSlot && prev.row.reaction?.label === next.row.reaction?.label && prev.row.feedback === next.row.feedback && prev.row.sendError === next.row.sendError && prev.row.attachments === next.row.attachments);
 
 export interface ChatTimelineHandle { followLatest(animate?: boolean): void; pasteText(text: string): void }
 type ScrollTarget = { scrollToEnd(options: { animated: boolean }): void; scrollTo(options: { y: number; animated: boolean }): void };
@@ -119,6 +120,8 @@ interface Props {
   busy: boolean;
   /** Toolbar under each final reply; Retry only on the latest one. */
   messageActions?: MessageActions;
+  /** Side chats by anchor message (docs/side-chat.md); each list keeps its identity while unchanged. */
+  sides?: ReadonlyMap<number, readonly SideChatRow[]>;
 }
 /** The input keeps one tree position; the accessory places it in a ComposerCard. */
 export type ComposerParts = { input: React.ReactNode; send: React.ReactNode; expanded: boolean; onPressField: () => void };
@@ -446,7 +449,7 @@ export const ChatTimeline = forwardRef<ChatTimelineHandle, Props>(function ChatT
         {rows.length ? rows.map(item => <View key={item.key} collapsable={false} onLayout={e => onRowLayout(item, e)}>
           {dateSeparators.has(item.key) && <View testID="chat-date-separator" style={styles.dateSeparator}><Text style={styles.dateLabel}>{dateSeparators.get(item.key)}</Text></View>}
           <MessageRow row={item} onCancel={props.onCancel} onDeleteFailed={props.onDeleteFailed} onRetryFailed={props.onRetryFailed} busy={props.busy} renderAttachments={props.renderAttachments}
-            actions={props.messageActions} canRetry={item.key === retryKey} running={running || paused}
+            actions={props.messageActions} canRetry={item.key === retryKey} running={running || paused} sides={item.refSeq === undefined ? undefined : props.sides?.get(item.refSeq)}
             work={workViews.get(item.key)} workExpanded={!groups.has(item.key) || workIsExpanded(groups.get(item.key)!, workChoices[`${props.threadId}:${groups.get(item.key)!.key}`])} onWorkToggle={onWorkToggle}
             highlighted={highlightedRef !== undefined && item.refSeq === highlightedRef} />
         </View>)

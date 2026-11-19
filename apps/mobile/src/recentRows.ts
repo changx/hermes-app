@@ -10,7 +10,7 @@ type Directory = {
   channels: ReadonlyMap<string, { id: string; name: string }>;
   threads: ReadonlyMap<string, {
     id: string; project_id: string; title: string; title_alphabet?: string; markers?: readonly string[]; archived?: boolean | number; running?: boolean;
-    completed_unread?: boolean; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean;
+    completed_unread?: boolean; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean; side_of?: unknown;
   }>;
 };
 export type RecentSource = Readonly<{ slot: string; name: string; client: Directory | null }>;
@@ -49,7 +49,8 @@ function listedRows(connections: readonly RecentSource[], keep: (thread: Directo
     if (!client?.isCatalogueReady) continue;
     for (const thread of client.threads.values()) {
       const channel = client.channels.get(thread.project_id);
-      if (!channel || thread.archived || !keep(thread)) continue;
+      // Side chats (docs/side-chat.md) open from their source Session, never from a list.
+      if (!channel || thread.archived || thread.side_of || !keep(thread)) continue;
       rows.push({ key: `${runtime.slot}:${thread.id}`, slot: runtime.slot, id: thread.id, title: thread.title,
         channelId: channel.id, channelName: channel.name, connectionName: runtime.name,
         running: thread.running === true, completedUnread: thread.completed_unread === true,

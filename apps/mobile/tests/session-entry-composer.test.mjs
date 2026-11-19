@@ -21,7 +21,7 @@ const mocks = {
   './MessageContent': `export const MessageContent='MessageContent',copyMessageText=()=>{};`,
   './WorkChevron': `export const WorkChevron='WorkChevron';`,
   './MessageTime': `export const MessageTime='MessageTime';`,
-  './MessageToolbar': `export const MessageToolbar='MessageToolbar',MessageCopyButton='MessageCopyButton';`,
+  './MessageToolbar': `export const MessageToolbar='MessageToolbar',MessageCopyButton='MessageCopyButton',SideMark='SideMark';`,
   './sessionNavigation': `const s=globalThis.__entryTest; export const useSessionNavigation=()=>({link:h=>{(s.links||(s.links=[])).push(h)},thread(){}});`,
 };
 const bundle = await build({ entryPoints: [new URL('../src/ChatTimeline.tsx', import.meta.url).pathname], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'], plugins: [{ name: 'native-test-boundary', setup(b) {

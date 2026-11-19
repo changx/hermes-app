@@ -68,7 +68,8 @@ export function ChannelScreens({ client, channelId, draftThreads, onThread, onCo
   };
   const channel = client.channels.get(channelId);
   // Running sessions first; latest activity first within each group.
-  const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived)
+  // Side chats (docs/side-chat.md) are not listed; they open from their source Session.
+  const channelThreads = [...client.threads.values()].filter(t => t.project_id === channelId && !t.archived && !t.side_of)
     .sort((a, b) => Number(b.running === true) - Number(a.running === true) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || b.title.localeCompare(a.title) || a.id.localeCompare(b.id));
   const filtering = client.supportsSessionLabels && labelFilterActive(labelFilter);
   const threads = filtering ? channelThreads.filter(t => matchesLabels(t.markers, labelFilter)) : channelThreads;

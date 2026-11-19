@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Alert, AppState, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router';
 import { Text } from './FontSize';
 import * as Crypto from 'expo-crypto';
@@ -8,7 +8,9 @@ import { LivePageClient } from '../../../packages/client/src/livePages';
 import { useSessionNavigation } from './sessionNavigation';
 import type { VaultAnswerResult } from './VaultPromptCard';
 import { HttpError, type Attachment, type Interaction, type Message, type Receipt, type VaultPrompt, type VaultPromptAnswer } from '../../../packages/client/src/index';
-import type { MessageActions } from './MessageToolbar';
+import type { MessageActions, SideChatRow } from './MessageToolbar';
+import { sideChatsByAnchor, sendToMainText, sideFailure, SIDE_FAILURE_TEXT } from '../../../packages/client/src/sideChats';
+import { fillComposer, onComposerFill } from './composerFill';
 import { newSend } from './send';
 import { DEVICE_NOT_BOUND_MESSAGE } from '../../../packages/client/src/sendErrors';
 import { ChatTimeline, ConversationLoading, type ChatTimelineHandle } from './ChatTimeline';
@@ -104,6 +106,8 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
     if (text) textDrafts.current.set(draftKey, text);
     else textDrafts.current.delete(draftKey);
   }, [text, draftKey, textDrafts]);
+  // "Send to main" from one of this Session's side chats fills this composer (docs/side-chat.md).
+  useEffect(() => onComposerFill(draftKey, setText), [draftKey]);
   const [attachmentDraft, setAttachmentDraft] = useState<{ scope: string; items: Attachment[]; busy: boolean }>({ scope: '', items: [], busy: false });
   const [attachmentClearKey, setAttachmentClearKey] = useState(0);
   const [restoredAttachments, setRestoredAttachments] = useState<Attachment[]>();
@@ -256,8 +260,59 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
   const branchRequests = useRef(new Map<number, string>());
   const latest = useRef({ accountClient, config, outboxRef, threadId, navigation });
   latest.current = { accountClient, config, outboxRef, threadId, navigation };
+  // Side chats (docs/side-chat.md). A side chat has Send to main and no Branch or Side chat of its own.
+  const sideOf = accountClient?.threads.get(threadId)?.side_of;
+  const sideSource = sideOf?.thread_id;
+  const sideRequests = useRef(new Map<number, string>());
+  // This Session's side chats by anchor; the lists keep their identity while the side chats do not change.
+  const sideSignature = !accountClient || sideSource ? '' : JSON.stringify([...accountClient.threads.values()]
+    .filter(t => t.side_of?.thread_id === threadId && t.id !== threadId && !t.archived)
+    .map(t => [t.id, t.title, t.side_of!.anchor_ref_seq, !!t.running, !!t.completed_unread, t.last_message_at ?? 0]));
+  const sides = useMemo(() => {
+    const list = (sideSignature ? JSON.parse(sideSignature) as [string, string, number, boolean, boolean, number][] : [])
+      .map(([id, title, anchor, running, unread, at]) => ({ id, title, anchor, running, completed_unread: unread, lastMessageAt: at }));
+    return sideChatsByAnchor(list, side => side.anchor) as ReadonlyMap<number, readonly SideChatRow[]>;
+  }, [sideSignature]);
   const messageActions = useMemo<MessageActions>(() => ({
-    ...(accountClient?.supportsThreadBranch ? { branch: async (row: TimelineRow) => {
+    ...(sideSource ? {
+      toMain: (row: TimelineRow) => {
+        const { accountClient: owner, config: current, threadId: id, navigation: nav } = latest.current;
+        const title = owner?.threads.get(id)?.title ?? '';
+        if (!current || !row.text.trim()) return;
+        fillComposer(`${current.id}:${sideSource}`, sendToMainText(title, id, row.text), textDrafts.current);
+        nav.thread(sideSource);
+      },
+    } : {
+      openSides: (list: readonly SideChatRow[]) => {
+        const nav = latest.current.navigation;
+        if (list.length === 1) { nav.thread(list[0].id); return; }
+        const names = list.map(side => [side.title, side.running && 'Running', side.completed_unread && 'Unread'].filter(Boolean).join(' · '));
+        if (Platform.OS === 'ios') ActionSheetIOS.showActionSheetWithOptions({ title: 'Side chats', options: [...names, 'Cancel'], cancelButtonIndex: names.length },
+          index => { if (index < list.length) nav.thread(list[index].id); });
+        else Alert.alert('Side chats', undefined, [...list.slice(0, 2).map((side, index) => ({ text: names[index], onPress: () => nav.thread(side.id) })),
+          ...(list.length > 2 ? [{ text: 'All side chats', onPress: () => router.push({ pathname: '/threads/[threadId]/options', params: { threadId: latest.current.threadId, connection: slot } }) }] : []),
+          { text: 'Cancel', style: 'cancel' as const }]);
+      },
+      ...(accountClient?.supportsThreadSide ? { side: async (row: TimelineRow) => {
+        const { accountClient: owner, threadId: source, navigation: nav } = latest.current;
+        if (!owner || row.refSeq === undefined) return;
+        const requests = sideRequests.current;
+        const requestId = requests.get(row.refSeq) ?? 'sc_' + Crypto.randomUUID();
+        requests.set(row.refSeq, requestId);
+        setError('');
+        try {
+          // The server waits while this Session runs; the side chat opens when it exists.
+          const created = await owner.sideThread(source, row.refSeq, requestId);
+          requests.delete(row.refSeq);
+          if (focusedRef.current) nav.thread(created.id);
+        } catch (cause) {
+          const code = cause instanceof HttpError ? cause.code : undefined;
+          if (code) requests.delete(row.refSeq);
+          if (focusedRef.current) setError(SIDE_FAILURE_TEXT[sideFailure(code)]);
+        }
+      } } : {}),
+    }),
+    ...(accountClient?.supportsThreadBranch && !sideSource ? { branch: async (row: TimelineRow) => {
       const { accountClient: owner, threadId: source, navigation: nav } = latest.current;
       if (!owner || row.refSeq === undefined) return;
       const requests = branchRequests.current;
@@ -285,7 +340,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       await box.enqueue(newSend(current, id, '/retry', 'mob_' + Crypto.randomUUID(), []));
       timelineRef.current?.followLatest();
     }, 'Could not retry. Try again.'),
-  }), [accountClient, accountClient?.supportsThreadBranch, accountClient?.supportsMessageSources]);
+  }), [accountClient, accountClient?.supportsThreadBranch, accountClient?.supportsMessageSources, accountClient?.supportsThreadSide, sideSource, router, slot, textDrafts]);
   const startingActions = useMemo<MessageActions>(() => ({ exportMessage: messageActions.exportMessage }), [messageActions]);
 
   // A new session whose first message is saved but whose create is not confirmed yet:
@@ -426,7 +481,7 @@ const MountedThreadScreen = memo(function MountedThreadScreen({ client, threadId
       onDeleteFailed={deleteFailed} onRetryFailed={retryFailed}
       onCancel={cancelQueued}
       onStop={() => run(async () => { const stopped = await client.stop(threadId); if (!stopped) throw new Error('Nothing is running to stop'); })} busy={busy}
-      messageActions={messageActions} />
+      messageActions={messageActions} sides={sides} />
   </View>;
 });
 

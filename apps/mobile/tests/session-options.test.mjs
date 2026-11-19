@@ -12,7 +12,7 @@ const state = { pushed: [], dismissed: [], copied: [], shared: [], alerts: [], a
 globalThis.__sessionOptionsTest = state;
 const mocks = {
   'react-native': `const s=globalThis.__sessionOptionsTest; export const Pressable='Pressable',ScrollView='ScrollView',View='View'; export const StyleSheet={create:x=>x,hairlineWidth:1}; export const Share={share:async v=>{s.shared.push(v);return {action:'sharedAction'}}}; export const Alert={alert:(...a)=>s.alerts.push(a)};`,
-  'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r),dismissTo:r=>s.dismissed.push(r),canGoBack:()=>true,back:()=>s.dismissed.push('back')}); export const useIsFocused=()=>s.focused;`,
+  'expo-router': `const s=globalThis.__sessionOptionsTest; export const useRouter=()=>({push:r=>s.pushed.push(r),navigate:r=>(s.navigated??=[]).push(r),dismissTo:r=>s.dismissed.push(r),canGoBack:()=>true,back:()=>s.dismissed.push('back')}); export const useIsFocused=()=>s.focused;`,
   'expo-symbols': `export const SymbolView='SymbolView';`,
   './FontSize': `export const Text='Text';`,
   './App': `const s=globalThis.__sessionOptionsTest; export const Notice='Notice'; export const useApp=()=>s.app; export const labelsRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/labels',params:{threadId,connection}}); export const sessionFilesRoute=(connection,threadId)=>({pathname:'/threads/[threadId]/files',params:{threadId,connection}}); export const channelRoute=(connection,channelId)=>({pathname:'/channels/[channelId]',params:{channelId,connection}});`,
@@ -181,4 +181,23 @@ test('Switch model is hidden without server model support', async () => {
   assert.ok(!labels(root).includes('Switch model'));
   assert.equal(root.root.findAll(node => node.type === 'ThreadModelPicker').length, 0);
   root.unmount();
+});
+
+test('side chats: the source lists its side chats; a side chat links back to its source', async () => {
+  reset();
+  const source = thread({ id: 'th_1', markers: [] });
+  const sides = [thread({ id: 'th_s1', title: 'Side: one', markers: [], last_message_at: 5, side_of: { thread_id: 'th_1', anchor_ref_seq: 4 } }),
+    thread({ id: 'th_s2', title: 'Side: two', markers: [], running: true, last_message_at: 1, side_of: { thread_id: 'th_1', anchor_ref_seq: 6 } }),
+    thread({ id: 'th_s3', title: 'Side: gone', markers: [], archived: true, side_of: { thread_id: 'th_1', anchor_ref_seq: 6 } })];
+  state.app = app([source, ...sides], false);
+  let root; await act(async () => { root = create(React.createElement(SessionOptionsScreen, { threadId: 'th_1' })); });
+  assert.deepEqual(labels(root), ['Copy session link', 'Archive session', 'Side: two, running', 'Side: one', 'Settings'], 'running first; archived side chats are hidden');
+  state.navigated = [];
+  await press(root, 'Side: one');
+  assert.deepEqual(state.navigated, [{ pathname: '/threads/[threadId]', params: { threadId: 'th_s1' } }], 'opens the side chat as a pushed Session page');
+  root.unmount();
+  let side; await act(async () => { side = create(React.createElement(SessionOptionsScreen, { threadId: 'th_s1' })); });
+  assert.ok(labels(side).includes('Open the source session, Plan'));
+  assert.ok(!labels(side).some(label => label.startsWith('Side: ')), 'a side chat lists no side chats');
+  side.unmount();
 });

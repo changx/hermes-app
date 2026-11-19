@@ -10,6 +10,8 @@ import { copyWithToast } from './CopyToast';
 import { SettingsPage, SettingsRow, SettingsSection, SettingsValueRow } from './SettingsUI';
 import { ThreadModelPicker } from './ThreadModelPicker';
 import { newSend } from './send';
+import { useSessionNavigation } from './sessionNavigation';
+import { runningFirst } from '../../../packages/client/src/todo';
 
 /**
  * Everything the Session header used to offer, on one native Stack page:
@@ -31,6 +33,7 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
     return () => controller.abort();
   }, [client, picking, models, modelsLoad]);
   const [archiving, setArchiving] = useState(false);
+  const navigation = useSessionNavigation();
   const thread = client?.threads.get(threadId);
   // Token usage is read once when the page opens; the section shows only after a successful read.
   const [usage, setUsage] = useState<ThreadUsage>();
@@ -43,6 +46,12 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
   if (!client || !config) return <Notice text="Opening conversation…" />;
   if (!thread || thread.archived) return <Notice text="This conversation is unavailable." />;
   const labels = thread.markers ?? [];
+  // Side chats (docs/side-chat.md): the phone opens them from here or from the anchor mark, never from a list.
+  const source = thread.side_of ? client.threads.get(thread.side_of.thread_id) : undefined;
+  const sides = thread.side_of ? [] : [...client.threads.values()]
+    .filter(t => t.side_of?.thread_id === threadId && t.id !== threadId && !t.archived)
+    .map(t => ({ id: t.id, title: t.title, running: t.running === true, completed_unread: t.completed_unread === true, lastMessageAt: t.last_message_at }))
+    .sort(runningFirst);
   const exportConversation = async () => {
     setExporting(true);
     try {
@@ -86,6 +95,14 @@ export function SessionOptionsScreen({ threadId }: { threadId: string }) {
       <SettingsRow title={archiving ? 'Archiving…' : 'Archive session'} label="Archive session"
         onPress={() => { if (!archiving) archiveSession(); }} />
     </SettingsSection>
+    {source && !source.archived && <SettingsSection title="Side chat">
+      <SettingsRow first title="Source session" value={source.title} label={`Open the source session, ${source.title}`} onPress={() => navigation.thread(source.id)} />
+    </SettingsSection>}
+    {sides.length > 0 && <SettingsSection title="Side chats">
+      {sides.map((side, index) => <SettingsRow key={side.id} first={index === 0} title={side.title}
+        value={[side.running && 'Running', side.completed_unread && 'Unread'].filter(Boolean).join(' · ') || undefined}
+        label={[side.title, side.running && 'running', side.completed_unread && 'unread result'].filter(Boolean).join(', ')} onPress={() => navigation.thread(side.id)} />)}
+    </SettingsSection>}
     {usage && <SettingsSection title="Usage">
       {usage.contextTokens !== null && <SettingsValueRow first title="Context" detail="Latest request, after compaction" value={`${formatTokens(usage.contextTokens)} tokens`}
         label={`Context, ${exactTokens(usage.contextTokens)} tokens in the latest request`} />}

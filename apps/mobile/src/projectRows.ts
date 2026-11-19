@@ -5,7 +5,7 @@ import type { NetworkState } from './outbox.ts';
 type Directory = {
   isCatalogueReady: boolean;
   channels: ReadonlyMap<string, { id: string; name: string }>;
-  threads: ReadonlyMap<string, { project_id: string; archived?: boolean | number; completed_unread?: boolean }>;
+  threads: ReadonlyMap<string, { project_id: string; archived?: boolean | number; completed_unread?: boolean; side_of?: unknown }>;
 };
 export type ProjectSource = Readonly<{ slot: string; name: string; client: Directory | null; status: NetworkState | 'pairing'; failed: boolean; loading: boolean; damaged: boolean }>;
 
@@ -32,7 +32,8 @@ export function projectRows(connections: readonly ProjectSource[]): { rows: Proj
         text: issue ?? (runtime.loading || runtime.status === 'online' ? 'Loading projects…' : 'Projects unavailable') });
       continue;
     }
-    const counts = projectUnreadCounts([...client.threads.values()].map(t => ({ projectId: t.project_id, archived: Boolean(t.archived), completedUnread: t.completed_unread })), client.channels.keys());
+    // Side chats are not listed on the phone, so they do not count either.
+    const counts = projectUnreadCounts([...client.threads.values()].filter(t => !t.side_of).map(t => ({ projectId: t.project_id, archived: Boolean(t.archived), completedUnread: t.completed_unread })), client.channels.keys());
     for (const channel of client.channels.values()) rows.push({ key: `${runtime.slot}:${channel.id}`, slot: runtime.slot, id: channel.id, name: channel.name,
       connectionName: runtime.name, unread: counts.get(channel.id) ?? 0, ...(issue ? { issue } : {}) });
   }

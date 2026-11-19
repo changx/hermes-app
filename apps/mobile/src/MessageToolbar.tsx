@@ -6,10 +6,20 @@ import { openLink } from './openLink';
 import { copyWithToast } from './CopyToast';
 import type { MessageSource } from '../../../packages/client/src/index';
 import type { TimelineRow } from './timeline';
+import { sideMarkLabel } from '../../../packages/client/src/sideChats';
+
+/** A side chat as the anchor mark lists it (docs/side-chat.md). */
+export type SideChatRow = Readonly<{ id: string; title: string; running?: boolean; completed_unread?: boolean }>;
 
 /** Actions under a final reply. Absent handlers hide their button. */
 export interface MessageActions {
   branch?(row: TimelineRow): Promise<void>;
+  /** New side chat from this message; resolves when it opened or failed (the server waits while the Session runs). */
+  side?(row: TimelineRow): Promise<void>;
+  /** Side chat page: put this reply, with a link back, into the source Session's composer. */
+  toMain?(row: TimelineRow): void;
+  /** Anchor mark: open one side chat, or choose among several. */
+  openSides?(sides: readonly SideChatRow[]): void;
   sources?(row: TimelineRow): Promise<MessageSource[]>;
   exportMessage?(row: TimelineRow): void;
   retry?(row: TimelineRow): void;
@@ -35,7 +45,7 @@ const sourceLabel = (url: string) => { try { const u = new URL(url); return u.ho
 
 /** Compact, always-visible row under a final reply: Branch, Copy, References, Export, Retry. */
 export function MessageToolbar({ row, actions, canRetry, running }: { row: TimelineRow; actions: MessageActions; canRetry: boolean; running: boolean }) {
-  const [branching, setBranching] = useState(false);
+  const [branching, setBranching] = useState(false), [siding, setSiding] = useState(false);
   const [sources, setSources] = useState<{ open: boolean; items?: MessageSource[]; loading?: boolean; failed?: boolean }>({ open: false });
   const mounted = useRef(true);
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -49,6 +59,9 @@ export function MessageToolbar({ row, actions, canRetry, running }: { row: Timel
   };
   return <View testID="message-toolbar">
     <View style={styles.row}>
+      {!!actions.toMain && <ToolButton label="Send to main" ios="arrowshape.turn.up.left" android="reply" onPress={() => actions.toMain!(row)} />}
+      {!!actions.side && <ToolButton label="Side chat" ios="bubble.left.and.bubble.right" android="forum" busy={siding}
+        onPress={() => { setSiding(true); void actions.side!(row).finally(() => { if (mounted.current) setSiding(false); }); }} />}
       {!!actions.branch && <ToolButton label="Branch" ios="arrow.triangle.branch" android="call_split" busy={branching} disabled={running}
         onPress={() => { setBranching(true); void actions.branch!(row).finally(() => { if (mounted.current) setBranching(false); }); }} />}
       <ToolButton label="Copy" ios="doc.on.doc" android="content_copy" onPress={() => { void copyWithToast(row.text); }} />
@@ -69,7 +82,26 @@ export function MessageToolbar({ row, actions, canRetry, running }: { row: Timel
   </View>;
 }
 
+/** Under an anchor message of the source Session: not a message; it opens the side chat(s). */
+export function SideMark({ sides, onOpen }: { sides: readonly SideChatRow[]; onOpen: (sides: readonly SideChatRow[]) => void }) {
+  const running = sides.some(side => side.running), unread = sides.some(side => side.completed_unread);
+  const text = sideMarkLabel(sides.length);
+  return <View style={styles.markRow}>
+    <Pressable testID="side-mark" accessibilityRole="button" accessibilityLabel={[text, running && 'running', unread && 'unread result'].filter(Boolean).join(', ')} hitSlop={6}
+      onPress={() => onOpen(sides)} style={({ pressed }) => [styles.mark, pressed && styles.pressed]}>
+      <SymbolView name={{ ios: 'bubble.left.and.bubble.right', android: 'forum' }} size={13} tintColor="#697b90" weight="regular" fallback={null} />
+      <Text style={styles.markText}>{text}</Text>
+      {running && <View style={[styles.dot, styles.running]} />}
+      {unread && <View style={[styles.dot, styles.unread]} />}
+    </Pressable>
+  </View>;
+}
+
 const styles = StyleSheet.create({
+  markRow: { flexDirection: 'row', marginTop: 6, marginLeft: -4 },
+  mark: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: '#cfd6de' },
+  markText: { color: '#697b90', fontSize: 12 },
+  dot: { width: 7, height: 7, borderRadius: 4 }, running: { backgroundColor: '#16a34a' }, unread: { backgroundColor: '#4DA3FF' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 8, marginLeft: -6 },
   button: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   pressed: { backgroundColor: '#ebe8df' },

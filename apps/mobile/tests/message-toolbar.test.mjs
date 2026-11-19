@@ -21,7 +21,7 @@ const bundle = await build({ entryPoints: [new URL('../src/MessageToolbar.tsx', 
   b.onLoad({ filter: /.*/, namespace: 'mock' }, args => ({ contents: mocks[args.path], loader: 'js' }));
 } }] });
 const mod = { exports: {} }; new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(mod, mod.exports, require);
-const { MessageToolbar } = mod.exports;
+const { MessageToolbar, SideMark } = mod.exports;
 
 const row = { key: 'f1', role: 'assistant', displayKind: 'final', text: 'The **answer**', refSeq: 11 };
 const buttons = root => root.root.findAll(n => n.type === 'Pressable' && n.props.accessibilityRole === 'button').map(n => n.props.accessibilityLabel);
@@ -120,5 +120,38 @@ test('a final reply names its model at the end of the toolbar; no model shows no
   root.unmount();
   root = await mount({ actions: { exportMessage() {} } });
   assert.equal(root.root.findAll(n => n.props.testID === 'message-model').length, 0);
+  root.unmount();
+});
+
+test('side chats: Side chat stays usable while the agent runs; a side chat page has Send to main', async () => {
+  let release, calls = 0;
+  const actions = { side: () => { calls++; return new Promise(r => { release = r; }); }, branch: async () => {}, exportMessage() {} };
+  const root = await mount({ actions, running: true });
+  assert.deepEqual(buttons(root), ['Side chat', 'Branch', 'Copy', 'Export']);
+  assert.equal(button(root, 'Side chat').props.disabled, false, 'the server waits until the Session is idle');
+  assert.equal(button(root, 'Branch').props.disabled, true);
+  await act(async () => { button(root, 'Side chat').props.onPress(); });
+  assert.equal(button(root, 'Side chat').props.accessibilityState.busy, true);
+  await act(async () => { release(); });
+  assert.equal(calls, 1); assert.equal(button(root, 'Side chat').props.accessibilityState.busy, false);
+  root.unmount();
+  const sent = [];
+  const page = await mount({ actions: { toMain: r => sent.push(r.refSeq), exportMessage() {} } });
+  assert.deepEqual(buttons(page), ['Send to main', 'Copy', 'Export']);
+  await act(async () => { button(page, 'Send to main').props.onPress(); });
+  assert.deepEqual(sent, [11]);
+  page.unmount();
+});
+
+test('the anchor mark names one or several side chats and their states', async () => {
+  const opened = [];
+  let root; await act(async () => { root = create(React.createElement(SideMark, { sides: [{ id: 'a', title: 'A' }], onOpen: s => opened.push(s.map(x => x.id)) })); });
+  const mark = () => root.root.find(n => n.type === 'Pressable' && n.props.testID === 'side-mark');
+  assert.equal(mark().props.accessibilityLabel, 'Side chat');
+  await act(async () => { mark().props.onPress(); });
+  await act(async () => { root.update(React.createElement(SideMark, { sides: [{ id: 'a', title: 'A', running: true }, { id: 'b', title: 'B', completed_unread: true }], onOpen: s => opened.push(s.map(x => x.id)) })); });
+  assert.equal(mark().props.accessibilityLabel, 'Side chat · 2, running, unread result');
+  await act(async () => { mark().props.onPress(); });
+  assert.deepEqual(opened, [['a'], ['a', 'b']]);
   root.unmount();
 });
