@@ -160,7 +160,7 @@ Agent（Gateway 进程，hermes-app-dev profile）
 | `apps/desktop/src/shared/browser-control.ts` | 指令解析、按键映射、注入事件记录、Client Hints、导航规则 |
 | `apps/desktop/src/preload/browser-page.ts` | 隔离 world 页面读取：快照、元素定位、字段值、滚动位置 |
 | `apps/desktop/src/main/browser-sidebar.ts` | 按 Channel 的持久分区、权限询问、HTTP 认证、下载、弹出窗口、原生输入执行、接管和交还状态 |
-| `apps/desktop/src/main/http-auth-window.ts`、`apps/desktop/src/auth/` | HTTP 认证（401/407）的“Sign in”表单 |
+| `apps/desktop/src/main/http-auth-window.ts`、`apps/desktop/src/auth/` | HTTP 认证（401/407）的“Sign in”表单（v0.1.147） |
 | `apps/desktop/src/main/browser-control.ts` | 每个服务器一条控制连接、上报打开的会话、后台打开标签页、取消和断线处理 |
 | `apps/desktop/src/renderer/browser-sidebar.tsx` | 状态行：“Hermes 正在使用此页面 · Stop”、“You took over · Let Hermes continue”、交还说明 · Done |
 
@@ -175,3 +175,10 @@ Agent（Gateway 进程，hermes-app-dev profile）
   - `browser-control.test.mjs`：真实 WebSocket 服务器上的握手、会话上报、执行、重复 ID 只执行一次、后台标签页、取消、断线中止和重连、旧服务器不频繁重试。
   - `browser-control-native.test.mjs`（真实 Electron/Xvfb）：打开、快照（含同源 iframe）、点击和按键为 `isTrusted`、中文输入和替换、提交表单、后退、滚动、截图 JPEG；读取页面前后 DOM 和全局对象不变；用户按下即接管，下一个指令等待“继续”；侧栏停止和服务器取消；交还和 Done；通知权限询问用户；下载保存；同一 Channel 共享登录、不同 Channel 隔离、关闭页面不清除登录；登录弹窗打开为真实窗口。
 - 以上是 Linux/Xvfb 的本地验证，不等于 macOS 真机验收。第 12 节的真机验收待完成。
+
+## 15. HTTP 认证发布（v0.1.147，2026-11-19）
+
+- 提交 `c3f90d7`（功能）、`33d1a4a`（版本号），tag `v0.1.147`。
+- 验证：`tests/http-auth.test.mjs` 在真实 Electron/Xvfb 中通过：取消显示 401 页面、密码错误后再问、真实键盘输入后登录、同一 realm 复用凭据、Esc 取消。整套桌面测试中另有 8 个 Chromium 渲染层测试在本机 Chrome 149 下失败；`main` 基线（`8e0aaca`）同样失败，与本改动无关。Mac mini 上的 `desktop:check` 通过。
+- 发布：Mac mini 构建，Developer ID 签名、公证并 staple。DMG 生成后 SSH 断开，更新 zip 和 SHA-256 用脚本中相同的命令补做并重新检查；文件用 `rsync --partial` 取回，再用 `--publish-built` 发布。GitHub Release `v0.1.147` 只有 DMG 和 `.sha256`；更新 feed 对 0.1.146 返回 200（0.1.147），对 0.1.147 返回 204。
+- 待验收：Jamie 的 Mac 上实际打开一个需要 Basic auth 的网站。
