@@ -1,6 +1,6 @@
 # Side chat：从一条消息开始的子讨论
 
-状态（2026-11-18）：需求已由 Jamie 确认。插件 v0.2.68 已发布。客户端：共享 client、桌面和手机已在分支 `feat/side-chat` 实现并通过本机测试，未发布。
+状态（2026-11-18）：需求已由 Jamie 确认。插件 v0.2.68 已发布。客户端：共享 client、桌面和手机已发布（桌面 v0.1.146，iOS 更新 `774eea4d`）。
 
 ## 目的
 
@@ -223,3 +223,12 @@ Side chat 解决这个问题：
   - 生效条件：Jamie 重启 `hermes-gateway.service`。重启前 Gateway 运行 v0.2.67（启动于 2026-11-18 14:08:34 PST）。
   - 回滚：`current` 切回 `releases/0.2.67`，再重启 Gateway。
   - 重启后检查（2026-11-18 20:08:35 PST 启动，PID 3739552）：六个 profile 都有 `side_chats` 和 `branches.kind`，`integrity_check` ok，无外键错误，Thread 数不变。jamie（9791）和 hermes-app-dev（9790）的 capabilities：无 token 401，有 token 200，`thread_side: true`。在 hermes-app-dev 的临时 Thread 上用真实模型实测：源 Thread 回复 `PROBE-ALPHA`，从它创建 side chat（轮询 1 次后就绪，标题 `Side: PROBE-ALPHA`，`side_of` 正确，同一 `request_id` 再请求返回同一 Thread），side chat 时间线只有顶部提示；在 side chat 中问"起点消息是什么"，模型回答 `PROBE-ALPHA`；源 Thread 前后不变。临时 Thread 已归档。新进程日志中没有 side chat 或 branch 错误。
+
+### 客户端发布记录（2026-11-18）
+
+- **App 仓库：** `main` = tag `v0.1.146` = `05110f8`（功能提交 `da79019` client、`7d038a7` desktop、`a228379` mobile）。服务器需要插件 v0.2.68（`thread_side`）；旧服务器上不显示 Side chat。
+- **桌面：** Mac mini 用 `scripts/macmini-desktop-release.sh v0.1.146` 构建并发布 Release（`Hermes-0.1.146-macOS-arm64.dmg` + `.sha256`，非草稿）。签名：`Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`，`source=Notarized Developer ID`，DMG notarytool `48219fb0-8535-40a4-8671-0594c9c5583f` `Accepted`，stapler `The validate action worked!`。10 个 `App code SHA-256` 与在 tag 处干净 worktree 的 `npm ci` + `npm run build` 结果全部一致；DMG `sha256sum -c` OK；标记 `desktop:side-message`、`tree-side-toggle` 各 1。
+- **Expo（Expo Go 入口）：** 运行目录 `d6f9396` → `05110f8`，`hermes-app-expo.service` PID 3649280 → 3810249（20:53:08 PST）。公开 bundle 标记：iOS `Source session` 0→1、`sideChatsByAnchor` 0→6；Android `Source session` 0→1、`All side chats` 0→1、`sideChatsByAnchor` 0→6（`All side chats` 只在 Android 分支）。Gateway PID 3739552 不变，插件哈希不变。
+- **iOS（TestFlight 安装包）：** 没有新的 TestFlight 构建，build number 不变。签名 OTA 更新 `774eea4d-dcde-42d8-b89e-8ca0812677cd`（runtime `b32a4b59…`，commit `05110f8`）；manifest 200，bundle 13913026 字节，含新代码。已安装的 App 下次冷启动下载。
+- **回滚：** 桌面装回 v0.1.145；Expo 运行目录回到分支 `rollback/side-chat-before-release`（`d6f9396`）后重启 Expo；iOS `publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to 4cc63529-44d5-4bf3-bc19-bbc6792edd35`；代码 `git revert` 上述功能提交。
+- **未完成：** Jamie 在 Mac 和 iPhone 上的实际检查；iPhone 收到更新的日志证据（`current=774eea4d`）。
