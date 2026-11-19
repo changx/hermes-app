@@ -1,6 +1,6 @@
 # Side chat：从一条消息开始的子讨论
 
-状态（2026-11-18）：需求与验收草案。没有实现。
+状态（2026-11-18）：需求已由 Jamie 确认。没有实现。
 
 ## 目的
 
@@ -37,7 +37,7 @@ Side chat 解决这个问题：
 | 结论带回 | 无 | 手动 "Send to main" |
 | 再分支 | 可以 | Side chat 内不提供 Side chat 和 Branch |
 
-## 需求（建议，除上面三项外待 Jamie 确认）
+## 需求（Jamie 已确认，2026-11-18）
 
 ### 1. 创建
 
@@ -73,13 +73,18 @@ Side chat 解决这个问题：
 2. 面板包含 side chat 的完整时间线和它自己的输入框。时间线、发送、运行状态和 toolbar 的规则与普通 Session 页面相同。
 3. 面板标题行显示 side chat 标题、一个返回源锚点的按钮（滚动主时间线到锚点并短暂标记）和关闭按钮。
 4. 面板使用现有右侧栏（`browser-sidebar`）的位置和宽度规则：可以拖动宽度，宽度保存在本机；主时间线至少保留 360px。
-5. 右侧栏同一时间只显示一项：side chat，或浏览器/附件预览。打开其中一项时替换另一项，关闭后不自动恢复另一项。（建议）
+5. 右侧栏用标签页同时保留多项：side chat 和浏览器/附件预览各是一个标签页。
+   - 打开一项时，增加它的标签页（已打开则切换到它），不关闭其他标签页。
+   - 切换标签页保留每项的状态（side chat 的阅读位置和草稿，浏览器的页面）。
+   - 关闭一个标签页后，显示相邻的标签页；全部关闭后右侧栏关闭。
+   - 浏览器是主进程定位的原生视图：它的标签页不在前台时，视图隐藏（`setBrowserBounds` 的 `visible: false`），不覆盖 side chat。
+   - 同一 Session 页可同时打开多个 side chat 标签页。
 6. 每个 Session 页（含标签页）各自记住面板打开的是哪个 side chat 及其阅读位置。切换标签页再回来，面板保持原状；关闭面板不删除 side chat。
 7. 桌面左侧边栏在源 Thread 行的下一级列出它的 side chat：
    - 显示全部运行中的 side chat，再加最新活动的 10 条其他 side chat。每次 Show more 再加 10 条。规则与 Recents 相同（`RECENT_BATCH`，见 [desktop/tree-navigation.md](desktop/tree-navigation.md)）。
    - 排序：运行中的在前，其余按最新活动时间从新到旧。
-   - 源 Thread 出现在 Project 树、Recents 或 Todo 中时，side chat 都显示在它下面，不作为独立的一行出现在这些列表的第一级。（建议）
-   - 源 Thread 行有展开/折叠控件。默认展开，折叠状态保存在本机。（建议）
+   - 源 Thread 出现在 Project 树、Recents 或 Todo 中时，side chat 都显示在它下面，不作为独立的一行出现在这些列表的第一级。
+   - 源 Thread 行有展开/折叠控件。默认展开，折叠状态保存在本机。
    - Side chat 行显示自己的未读和运行状态，样式与 Thread 行相同，多一级缩进。
    - 点 side chat 行：打开源 Thread 的 Session 页，side chat 在右侧面板中打开。
 8. 用户也可以从锚点标记，或 Session 状态栏中的 "Side chats" 按钮打开 side chat。
