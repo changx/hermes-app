@@ -182,3 +182,4 @@ Side chat 解决这个问题：
   - 客户端：本次没有客户端改动（Side chat 按钮、右侧面板、侧边栏层级、手机推入、Send to main 都没有实现）。旧客户端不能创建 side chat，也不显示 `side_of`。
   - 生效条件：Jamie 重启 `hermes-gateway.service`。重启前 Gateway 运行 v0.2.67（启动于 2026-11-18 14:08:34 PST）。
   - 回滚：`current` 切回 `releases/0.2.67`，再重启 Gateway。
+  - 重启后检查（2026-11-18 20:08:35 PST 启动，PID 3739552）：六个 profile 都有 `side_chats` 和 `branches.kind`，`integrity_check` ok，无外键错误，Thread 数不变。jamie（9791）和 hermes-app-dev（9790）的 capabilities：无 token 401，有 token 200，`thread_side: true`。在 hermes-app-dev 的临时 Thread 上用真实模型实测：源 Thread 回复 `PROBE-ALPHA`，从它创建 side chat（轮询 1 次后就绪，标题 `Side: PROBE-ALPHA`，`side_of` 正确，同一 `request_id` 再请求返回同一 Thread），side chat 时间线只有顶部提示；在 side chat 中问"起点消息是什么"，模型回答 `PROBE-ALPHA`；源 Thread 前后不变。临时 Thread 已归档。新进程日志中没有 side chat 或 branch 错误。
