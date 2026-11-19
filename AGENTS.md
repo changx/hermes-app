@@ -152,6 +152,7 @@
 - [docs/direct-reply-layout.md](docs/direct-reply-layout.md)（桌面单个换行显示为换行；原生命令直接回复按行分段）
 - [docs/app-icon.md](docs/app-icon.md)（应用图标：mochi-wings 默认图标、各平台资源与重新生成）
 - [docs/thread-branch.md](docs/thread-branch.md)
+- [docs/side-chat.md](docs/side-chat.md)（Side chat：从一条消息开始的子讨论，不污染主 Thread；需求草案，未实现）
 - [docs/file-preview.md](docs/file-preview.md)
 - [docs/session-files.md](docs/session-files.md)（Session 交付文件与附件、文件搜索（关键词 + label）、统一搜索入口、Project modal 加宽、移除 Channel files；EmbeddingGemma 2 语义搜索为第二阶段）
 - [docs/attachment-size.md](docs/attachment-size.md)（附件大小：单件 100 MiB，Cloudflare 请求体上限；预览仍 10 MiB）

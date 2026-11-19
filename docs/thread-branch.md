@@ -12,6 +12,8 @@
   - 回滚：`current` 切回 `releases/0.2.65`，再重启 Gateway。
   - 本机：Gateway 已重启（PID 2831098 → 2898973，2026-11-14 01:28:21 PST），01:28:28 由 `releases/0.2.66` 导入 `branching`、`storage`。待办：在压缩过的 Thread 上实测 branch。
 
+另见 [side-chat.md](side-chat.md)：附属于源 Thread 的子讨论（草案）。
+
 ## 已确认的产品决定（Jamie）
 
 - 从指定回复创建新的 App Thread，不原地 fork：原 Thread 及其 session 不变。
