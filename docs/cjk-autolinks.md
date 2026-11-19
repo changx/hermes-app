@@ -27,3 +27,12 @@ GFM 的裸链接规则让链接一直延伸到空白字符。它只去掉结尾�
 - Release 资产：`Hermes-0.1.145-macOS-arm64.dmg`（147,063,111 bytes）及 `.sha256`。更新 zip 134,271,400 bytes，SHA-256 `7d04d0a6…37beb4`；feed 对 0.1.144 返回 200 并指向 0.1.145，对 0.1.145 返回 204。
 - 回滚：发布更高版本（客户端不降级）。
 - 待验收：Jamie 在 Mac（v0.1.145）上打开含 `https://my.telegram.org，进入` 的消息，确认链接只到 `.org`。
+
+## 手机发布记录（2026-11-18，Jamie 授权「合并发布」）
+
+- 实现提交 `4e5eb68`，合并提交 `d8b8efc`。共享函数也替换了桌面的同一规则，桌面行为不变；桌面下次发布时带上，本次不发桌面版。
+- 候选检查：手机新测试 3/3（不加修复 1/3）；手机全套 277 项，274 通过、1 跳过，2 项失败（`attachment-size`、`local-draft-storage`，缺少 Linux esbuild 二进制，未改动的 `main` 同样失败）。手机 `tsc` 通过。桌面 `cjk-autolinks`、`cjk-emphasis` 通过，`typecheck` 通过，全套结果与 `main` 相同。iOS、Android `expo export --no-bytecode` 通过，两个 bundle 都含 `cjk_linkify`。
+- lockfile 未变，未运行 `npm ci`。只重启 `hermes-app-expo.service`（PID 2952299 → 3649280）。iOS、Android manifest 返回 200，SDK 58.0.0；两个 launchAsset 返回 200，且含 `cjk_linkify`。Gateway（`hermes-gateway.service` PID 3441422）和插件不变。
+- TestFlight 更新 `4cc63529-44d5-4bf3-bc19-bbc6792edd35`（runtime `b32a4b59…`，git `d8b8efc`）已发布。公开更新 manifest 对上一更新 `c24c8c91…` 返回 200 并提供新 id；bundle 返回 200，含 `cjk_linkify`。
+- 回滚：`publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to c24c8c91-3009-4e26-a42f-d1b141ebd9a3`；Expo Go 入口用 Git revert 后重启 Expo。
+- 待验收：Jamie 在 iPhone 上冷启动两次（第一次下载、第二次运行更新），打开含 `https://my.telegram.org，进入` 和 `https://example.com。然后` 的消息，确认链接只到 URL 本身。
