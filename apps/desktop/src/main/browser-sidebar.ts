@@ -6,6 +6,7 @@ import type { DesktopBrowserMode, DesktopBrowserState, DesktopSnapshot } from '.
 import { snapshotDelta } from '../shared/snapshot-delta';
 import { browserUrl, chromeUserAgent, GALLERY_PATH, galleryItemPath, galleryPage, pdfExtension, pdfViewerResource, PREVIEW_ASSET_PATH, previewAssetType, previewResponse, unavailableResponse, type GalleryEntry, type PreviewDocument } from '../shared/browser-policy';
 import { isSystemBrowserUrl, opensInSystemBrowser } from './security';
+import { httpAuthChallenge, httpAuthKey, type HttpAuthChallenge, type HttpCredentials } from './http-auth-window';
 
 // The app's own preview files (Markdown renderer, KaTeX, styles) next to the main bundle.
 const previewAssets = join(__dirname, '..', 'renderer');
@@ -47,7 +48,8 @@ type Pane = {
   /** Separate-window mode: this Session's own browser window and its page slot. */
   window?: BrowserWindow; slot?: Bounds; windowBaseline?: DesktopSnapshot; windowRevision: number;
 };
-type SessionState = { session: Session; panes: Set<Pane>; decisions: Map<string, boolean>; asking: Map<string, Promise<boolean>> };
+type SessionState = { session: Session; panes: Set<Pane>; decisions: Map<string, boolean>; asking: Map<string, Promise<boolean>>; signingIn: Map<string, Promise<HttpCredentials | undefined>> };
+type LoginCallback = (username?: string, password?: string) => void;
 
 /** Logins persist per Project (Channel); see docs/desktop-browser-control.md. */
 export function browserPartition(connectionKey?: string, channelId?: string): string {
@@ -127,6 +129,8 @@ export type BrowserSidebarOptions = {
   partitionFor?: (tabId: string) => string;
   /** Asks the user about a site permission. Tests replace it. */
   askPermission?: (host: string, text: string) => Promise<boolean>;
+  /** Asks the user for an HTTP (401/407) username and password. Without it, sign-in is cancelled. */
+  signIn?: (parent: BrowserWindow, challenge: HttpAuthChallenge) => Promise<HttpCredentials | undefined>;
   downloadsDirectory?: () => string;
   preload?: string;
 };
@@ -278,10 +282,23 @@ export class DesktopBrowserSidebar {
     const box = { type: 'question' as const, buttons: ['Allow', 'Don’t Allow'], defaultId: 1, cancelId: 1, message: `${host} wants to ${text}.`, detail: 'Hermes remembers your choice until you quit.' };
     return (parent ? dialog.showMessageBox(parent, box) : dialog.showMessageBox(box)).then(result => result.response === 0, () => false);
   }
+  /** HTTP authentication (401, or 407 from a proxy): one sheet per server and realm. Chromium keeps accepted credentials until quit. */
+  private signIn(shared: SessionState, parent: () => BrowserWindow, event: Electron.Event, url: string, info: Electron.AuthInfo, callback: LoginCallback): void {
+    const ask = this.options.signIn;
+    if (!ask) return; // Electron cancels the request.
+    event.preventDefault();
+    const key = httpAuthKey(info);
+    let pending = shared.signingIn.get(key);
+    if (!pending) {
+      pending = ask(parent(), httpAuthChallenge(url, info)).catch(() => undefined).finally(() => shared.signingIn.delete(key));
+      shared.signingIn.set(key, pending);
+    }
+    void pending.then(credentials => { try { if (credentials) callback(credentials.username, credentials.password); else callback(); } catch { /* The page is gone. */ } });
+  }
   private sessionFor(partition: string): SessionState {
     const existing = sessions.get(partition); if (existing) return existing;
     const session = electronSession.fromPartition(partition);
-    const state: SessionState = { session, panes: new Set(), decisions: new Map(), asking: new Map() };
+    const state: SessionState = { session, panes: new Set(), decisions: new Map(), asking: new Map(), signingIn: new Map() };
     sessions.set(partition, state);
     session.setUserAgent(chromeUserAgent(process.platform, process.versions.chrome));
     const decide = (permission: string, origin: string | undefined): Promise<boolean> => {
@@ -377,6 +394,7 @@ export class DesktopBrowserSidebar {
       try { const url = new URL(value); return url.protocol === 'hermes-preview:' && url.host === pane.document?.host && !url.username && !url.password; } catch { return false; }
     };
     contents.on('will-attach-webview', event => event.preventDefault());
+    contents.on('login', (event, details, info, callback) => this.signIn(shared, () => this.host(pane), event, details.url, info, callback));
     contents.on('will-frame-navigate', event => { if (!allowed(event.url) && !(!event.isMainFrame && event.url.startsWith(`${pdfExtension}/`))) event.preventDefault(); });
     contents.on('will-redirect', (event, url) => { if (!allowed(url)) event.preventDefault(); });
     contents.setWindowOpenHandler(({ url, disposition }) => {
@@ -392,6 +410,7 @@ export class DesktopBrowserSidebar {
       child.webContents.setUserAgent(chromeUserAgent(process.platform, process.versions.chrome));
       child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       child.webContents.on('will-attach-webview', event => event.preventDefault());
+      child.webContents.on('login', (event, details, info, callback) => this.signIn(shared, () => child, event, details.url, info, callback));
       child.webContents.on('will-frame-navigate', event => { if (!navigable(event.url) && event.isMainFrame) event.preventDefault(); });
     });
     // Any real press or key from the user while Hermes works on the page is a takeover.

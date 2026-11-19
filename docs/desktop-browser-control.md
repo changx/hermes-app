@@ -109,6 +109,7 @@ Agent（Gateway 进程，hermes-app-dev profile）
 - 带窗口特性的弹出窗口（例如第三方登录）打开为真实的子窗口，使用同一个 session。普通的新标签页链接在当前 pane 里打开。
 - 允许下载，文件保存到系统“下载”文件夹，侧栏显示保存结果。
 - 摄像头、麦克风、定位、通知等权限显示询问提示，由用户选择。选择在本次运行期间按网站记住。
+- HTTP 认证（服务器返回 401，或代理返回 407）：在显示该页面的窗口上弹出“Sign in”表单（macOS 为 sheet），填写用户名和密码。和 Chrome 一样，不显示服务器给出的 realm 文字；`http:` 页面显示“连接不安全”提示。同一服务器和 realm 的多个请求共用一个表单。Cancel、Esc 或关闭表单时取消认证，页面显示服务器的 401 页面。密码错误时 Chromium 再次询问。接受的凭据由 Chromium 在本次运行期间按 partition 保存，App 不写入磁盘。表单页面（`src/auth/http-auth.*`，主进程 `src/main/http-auth-window.ts`）不加 preload，不用 IPC；主进程填入文字并读取结果。Agent 操作的页面遇到认证时也显示同一表单，由用户填写。
 - 登录状态：`persist:hermes-browser-<账户ID>-<ChannelID>`。不属于任何 Channel 的标签页使用 `persist:hermes-browser-<账户ID>-default`。关闭标签页不清除登录数据。
 - 硬边界：浏览器 session 和 App 页面分开；不开 Node，不开 webviewTag；IPC 只接受浏览器 pane 自己的消息；preload 不向页面暴露对象。
 - 发送和页面 JS 一致的 3 个 Client Hints 请求头。整体表现为标准 Chromium，不冒充 Google Chrome。
@@ -158,7 +159,8 @@ Agent（Gateway 进程，hermes-app-dev profile）
 | 插件 `plugins/hermes_app/desktop_browser.py` | 工具注册、`/v1/desktop-browser` 连接、设备选择、幂等、打断（插件仓库，v0.2.6） |
 | `apps/desktop/src/shared/browser-control.ts` | 指令解析、按键映射、注入事件记录、Client Hints、导航规则 |
 | `apps/desktop/src/preload/browser-page.ts` | 隔离 world 页面读取：快照、元素定位、字段值、滚动位置 |
-| `apps/desktop/src/main/browser-sidebar.ts` | 按 Channel 的持久分区、权限询问、下载、弹出窗口、原生输入执行、接管和交还状态 |
+| `apps/desktop/src/main/browser-sidebar.ts` | 按 Channel 的持久分区、权限询问、HTTP 认证、下载、弹出窗口、原生输入执行、接管和交还状态 |
+| `apps/desktop/src/main/http-auth-window.ts`、`apps/desktop/src/auth/` | HTTP 认证（401/407）的“Sign in”表单 |
 | `apps/desktop/src/main/browser-control.ts` | 每个服务器一条控制连接、上报打开的会话、后台打开标签页、取消和断线处理 |
 | `apps/desktop/src/renderer/browser-sidebar.tsx` | 状态行：“Hermes 正在使用此页面 · Stop”、“You took over · Let Hermes continue”、交还说明 · Done |
 

@@ -1,0 +1,14 @@
+/* HTTP sign-in sheet for the built-in browser (src/main/http-auth-window.ts). Colors follow the main window palette. */
+html, body { margin: 0; padding: 0; background: #fff; overflow: hidden; }
+body { color: #111827; font: 13px/1.4 system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif; -webkit-font-smoothing: antialiased; cursor: default; }
+form { box-sizing: border-box; display: grid; gap: 10px; padding: 18px 20px 16px; }
+h1 { margin: 0; font-size: 15px; font-weight: 600; }
+p { margin: 0; color: #4b5563; overflow-wrap: anywhere; }
+#warning { color: #b45309; }
+label { display: grid; gap: 4px; color: #374151; font-weight: 500; }
+input { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; color: inherit; background: #fff; outline: none; }
+input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgb(37 99 235 / .18); }
+.buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+button { padding: 5px 14px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; color: #111827; background: #fff; }
+button.primary { border-color: #2563eb; color: #fff; background: #2563eb; }
+button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }

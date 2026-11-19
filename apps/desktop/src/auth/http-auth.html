@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'" />
+    <title>Sign in</title>
+    <link rel="stylesheet" href="./http-auth.css" />
+  </head>
+  <body>
+    <form id="form" autocomplete="off">
+      <h1>Sign in</h1>
+      <p id="message"></p>
+      <p id="warning" hidden>Your connection to this site is not private.</p>
+      <label>Username<input id="username" name="username" type="text" spellcheck="false" autocapitalize="off" /></label>
+      <label>Password<input id="password" name="password" type="password" /></label>
+      <div class="buttons">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="submit" id="submit" class="primary">Sign In</button>
+      </div>
+    </form>
+    <script src="./http-auth.js"></script>
+  </body>
+</html>

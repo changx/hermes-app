@@ -22,6 +22,7 @@ import { pageMenuEntries, searchText, webSearchUrl, type PageMenuAction } from '
 import { DesktopSettingsWindow } from './settings-window';
 import { DesktopAppIcon } from './app-icon';
 import { SessionCardWindow, sessionCardRequest } from './session-card-window';
+import { askHttpAuth } from './http-auth-window';
 import type { DesktopSnapshot } from "../shared/desktop-api";
 import { snapshotDelta } from "../shared/snapshot-delta";
 import { isAllowedExternalUrl, isSameDocumentNavigation, isSystemBrowserUrl, opensInSystemBrowser } from "./security";
@@ -657,6 +658,7 @@ const createMainWindow = (): BrowserWindow => {
     preload: join(__dirname, '../preload/browser-page.cjs'),
     windowRenderer: { html: join(__dirname, '../renderer/index.html'), preload: join(__dirname, '../preload/index.cjs'), secure: secureSettings },
     focusChanged: () => browserControl?.sync(),
+    signIn: (parent, challenge) => askHttpAuth(parent, __dirname, secureSettings, challenge),
     // One persistent login partition per Project (Channel) and server.
     partitionFor: tabId => {
       const tab = tabs?.tabs.get(tabId);

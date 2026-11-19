@@ -77,6 +77,16 @@ await Promise.all([
     minify: true,
   }),
   build({
+    // Built-in browser HTTP sign-in sheet: a static page main fills with text (no preload, no React).
+    entryPoints: [resolve(root, "src/auth/http-auth.ts")],
+    outfile: resolve(dist, "renderer/http-auth.js"),
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "chrome132",
+    minify: true,
+  }),
+  build({
     // Sidebar Session card window: a static page main fills with text (no preload, no React).
     entryPoints: [resolve(root, "src/card/session-card.ts")],
     outfile: resolve(dist, "renderer/session-card.js"),
@@ -114,6 +124,8 @@ await Promise.all([
   copyFile(resolve(root, "src/renderer/styles.css"), resolve(dist, "renderer/styles.css")),
   copyFile(resolve(root, "src/card/session-card.html"), resolve(dist, "renderer/session-card.html")),
   copyFile(resolve(root, "src/card/session-card.css"), resolve(dist, "renderer/session-card.css")),
+  copyFile(resolve(root, "src/auth/http-auth.html"), resolve(dist, "renderer/http-auth.html")),
+  copyFile(resolve(root, "src/auth/http-auth.css"), resolve(dist, "renderer/http-auth.css")),
   // Dock icons for the App icon setting (main process) and its Settings thumbnails (renderer).
   mkdir(resolve(dist, "renderer/app-icons"), { recursive: true }).then(() => Promise.all(["mochi", "bubble", "orb"]
     .map(name => copyFile(resolve(root, "resources/app-icons", `${name}.png`), resolve(dist, "renderer/app-icons", `${name}.png`))))),
