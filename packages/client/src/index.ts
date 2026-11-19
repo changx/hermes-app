@@ -16,13 +16,15 @@ export type { SessionFile, SessionFileList, SessionFilePage, FileSearchHit, File
 export type { SessionTextHit, SessionTextPage, SessionTextRefinement } from './sessionText';
 export { threadModelOptions, threadModelLabel, threadModelKey, threadModelRequest, threadModelSwitchCommand, type ThreadModelOption } from './threadModel';
 import { parseThreadUsage, type ThreadUsage } from './threadUsage';
+import { parseSideOf, type SideOf } from './sideChats';
+export { parseSideOf, sideChatsBySource, sideChatsByAnchor, sideWindow, sideMarkLabel, sendToMainText, sideFailure, SIDE_BATCH, SIDE_FAILURE_TEXT, type SideOf, type SideFailure } from './sideChats';
 export { formatTokens, exactTokens, cacheHitPercent, parseThreadUsage, type ThreadUsage, type ThreadCache } from './threadUsage';
 export type { ConditionalHeaders, WorkspaceApi, WorkspaceState, WorkspaceEntry, WorkspacePage, AgentsDocument, ChannelAttachmentPage } from './workspace';
 export type ReceiptState = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'received';
 export type ReceiptProcessing = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | null;
 export interface Receipt { id: string; client_message_id: string; thread_id: string; state: ReceiptState; durable: true; version?: number; ref_seq?: number; admission?: 'followup'; handed_off?: true; processing?: ReceiptProcessing; feedback?: string }
-export interface Thread { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; [key: string]: unknown }
-export interface ThreadSummary { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean }
+export interface Thread { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; /** Side chats only (docs/side-chat.md). */ side_of?: SideOf; [key: string]: unknown }
+export interface ThreadSummary { id: string; project_id: string; title: string; title_alphabet?: string; archived: number | boolean; markers?: string[]; markers_updated_at?: number; running?: boolean; completed_unread?: boolean; result_version?: number; result_ref?: number; last_message_at?: number; origin?: 'user' | 'automation'; participated?: boolean; side_of?: SideOf }
 export interface Channel { id: string; name: string; description?: string; /** Server folder bound as the Channel primary path; null when none. */ bound_primary_path?: string | null; [key: string]: unknown }
 /** Patch for updateChannel. primary_path: a string binds, null unbinds, omitted keeps the current binding. */
 export interface ChannelPatch { name?: string; description?: string; primary_path?: string | null }
@@ -155,7 +157,9 @@ const validReceipt = (v: unknown): Receipt => {
   if (x.feedback !== undefined && (typeof x.feedback !== 'string' || !x.feedback.length || x.feedback.length > 2000)) throw new ProtocolError('invalid receipt');
   return { id: str(x.id), client_message_id: str(x.client_message_id), thread_id: str(x.thread_id), state: x.state as ReceiptState, durable: true, ...(x.version !== undefined ? { version: x.version as number } : {}), ...(x.ref_seq !== undefined ? { ref_seq: x.ref_seq as number } : {}), ...(x.admission === 'followup' ? { admission: 'followup' as const } : {}), ...(x.handed_off === true ? { handed_off: true as const } : {}), ...(x.processing !== undefined ? { processing: x.processing as ReceiptProcessing } : {}), ...(x.feedback !== undefined ? { feedback: x.feedback as string } : {}) };
 };
-const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x.project_id); str(x.title); if (typeof x.archived !== 'boolean' && x.archived !== 0 && x.archived !== 1) throw new ProtocolError('invalid thread'); return x as unknown as Thread };
+const validThread = (v: unknown): Thread => { const x = obj(v); str(x.id); str(x.project_id); str(x.title); if (typeof x.archived !== 'boolean' && x.archived !== 0 && x.archived !== 1) throw new ProtocolError('invalid thread');
+  if (x.side_of !== undefined) { try { const side = parseSideOf(x.side_of); if (side) x.side_of = side; else delete x.side_of; } catch { throw new ProtocolError('invalid thread'); } }
+  return x as unknown as Thread };
 
 const validChannel = (v: unknown): Channel => { const x = obj(v); str(x.id); str(x.name); return x as unknown as Channel };
 
@@ -290,6 +294,8 @@ export class HermesClient {
   cataloguePageLimit = 30;
   /** Server branch endpoint, message sources and conversation export (plugin 0.2.9+). */
   supportsThreadBranch = false;
+  /** Side chats (`thread_side`, docs/side-chat.md): `branchThread` with kind=side and `side_of` rows. */
+  supportsThreadSide = false;
   supportsMessageSources = false;
   supportsThreadExport = false;
   supportsChannelArchive = false;
@@ -441,7 +447,7 @@ export class HermesClient {
     }
     return obj(response.body);
   }
-  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; this.supportsEnvKeys=x.env_keys===true; this.supportsMemberIdentity=x.member_identity===true; this.supportsProfileFiles=x.profile_files===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
+  async capabilities(signal?: AbortSignal) { const x = await this.call('GET','/v1/capabilities',undefined,signal); if (x.protocol !== 1) throw new ProtocolError('unsupported protocol'); this.supportsLatest=x.history_latest===true; this.supportsFullHistory=x.history_full===true; this.supportsSendIdentity=x.message_send_identity===true; this.supportsChannelWorkspace=x.channel_workspace===true&&x.channel_files===true&&x.channel_agents===true&&Boolean(this.options.http.conditionalRequest); this.supportsChannelPrimaryPath=x.channel_primary_path===true; this.supportsSessionFiles=x.session_files===true; this.supportsFileSearch=x.file_search===true; this.supportsSessionSearch=x.session_search===true; this.supportsSessionSearchRefine=this.supportsSessionSearch&&x.session_search_refine===true; this.supportsSessionLabels=x.session_labels===true; this.supportsCatalogueThreads=x.catalogue_threads===true; this.cataloguePageLimit=typeof x.catalogue_page_limit==='number'&&Number.isSafeInteger(x.catalogue_page_limit)&&x.catalogue_page_limit>30?Math.min(x.catalogue_page_limit,500):30; this.supportsAttachmentOrigin=x.attachment_origin===true&&x.history_around===true&&x.history_latest===true; this.supportsThreadBranch=x.thread_branch===true; this.supportsThreadSide=this.supportsThreadBranch&&x.thread_side===true; this.supportsMessageSources=x.message_sources===true; this.supportsThreadExport=x.thread_export===true&&Boolean(this.options.http.download);this.supportsChannelArchive=x.channel_archive===true; this.supportsThreadUsage=x.thread_usage===true; this.supportsVault=x.vault===true; this.supportsVaultManage=this.supportsVault&&x.vault_manage===true; this.supportsEnvKeys=x.env_keys===true; this.supportsMemberIdentity=x.member_identity===true; this.supportsProfileFiles=x.profile_files===true; const screen=(x.remote_screen&&typeof x.remote_screen==='object'?x.remote_screen:undefined) as {protocol?:unknown;name?:unknown}|undefined; this.remoteScreen=screen?.protocol===1?{name:typeof screen.name==='string'&&screen.name.trim()?screen.name.trim().slice(0,64):'Remote browser'}:undefined; this.supportsAutomations=x.automations===true&&x.thread_origin===true; this.supportsAutomationsPaged=this.supportsAutomations&&x.automations_paged===true; this.supportsAutomationControls=this.supportsAutomations&&x.automation_controls===true; this.supportsAutomationEditors=this.supportsAutomations&&x.automation_editors===true; this.supportsThreadModel=x.thread_model===true; this.supportsChunkedUpload=x.chunked_uploads===true&&Boolean(this.options.http.uploadChunk); this.uploadMaxBytes=this.supportsChunkedUpload&&typeof x.upload_max_bytes==='number'&&Number.isSafeInteger(x.upload_max_bytes)&&x.upload_max_bytes>SINGLE_UPLOAD_BYTES?x.upload_max_bytes:SINGLE_UPLOAD_BYTES; this.capabilitiesReady=true; return x }
   /** Developer crash report for this server's client log; never shown to the user. */
   async reportClientLog(report: ClientLogReport, signal?: AbortSignal): Promise<void> { await this.call('POST','/v1/client-logs',report,signal,undefined,10000) }
   protected adoptCapabilities(owner: HermesClient): void {
@@ -460,6 +466,7 @@ export class HermesClient {
     this.supportsCatalogueThreads = owner.supportsCatalogueThreads;
     this.cataloguePageLimit = owner.cataloguePageLimit;
     this.supportsThreadBranch = owner.supportsThreadBranch;
+    this.supportsThreadSide = owner.supportsThreadSide;
     this.supportsMessageSources = owner.supportsMessageSources;
     this.supportsThreadExport = owner.supportsThreadExport;
     this.supportsChannelArchive = owner.supportsChannelArchive;
@@ -582,6 +589,33 @@ export class HermesClient {
     if (t.id === threadId) throw new ProtocolError('branch identity mismatch');
     await this.getThread(t.id).catch(() => {});
     return t;
+  }
+  /**
+   * New side chat from one message (docs/side-chat.md). The server waits until the source
+   * Thread is idle (202), so this repeats the same request every `pollMs` until the side
+   * chat exists. The same requestId returns the same side chat. Failures carry HttpError.code.
+   */
+  async sideThread(threadId: string, anchorRefSeq: number, requestId: string, signal?: AbortSignal, pollMs = 1000, maxMs = 11 * 60_000): Promise<Thread> {
+    if (!this.supportsThreadSide) throw new ProtocolError('side chats unavailable');
+    if (!Number.isSafeInteger(anchorRefSeq) || anchorRefSeq <= 0 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw new ProtocolError('invalid side chat');
+    const started = Date.now();
+    for (;;) {
+      const x = await this.call('POST','/v1/threads/'+idPath(threadId)+'/branch',{anchor_ref_seq:anchorRefSeq,request_id:requestId,kind:'side'},signal,undefined,60000);
+      if (x.thread !== undefined) {
+        const t = validThread(x.thread);
+        if (t.id === threadId || t.side_of?.thread_id !== threadId || t.side_of.anchor_ref_seq !== anchorRefSeq) throw new ProtocolError('side chat identity mismatch');
+        await this.getThread(t.id).catch(() => {});
+        return t;
+      }
+      if (x.state !== 'running') throw new ProtocolError('invalid side chat');
+      if (Date.now() - started >= maxMs) throw new HttpError(409, undefined, '/v1/threads/'+idPath(threadId)+'/branch', 'busy');
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, pollMs);
+        const abort = () => { clearTimeout(timer); reject(new Error('aborted')); };
+        signal?.addEventListener('abort', abort, { once: true });
+      });
+      if (signal?.aborted) throw new Error('aborted');
+    }
   }
   async messageSources(threadId: string, refSeq: number, signal?: AbortSignal): Promise<MessageSource[]> {
     const x = await this.call('GET','/v1/threads/'+idPath(threadId)+'/messages/'+num(refSeq)+'/sources',undefined,signal);

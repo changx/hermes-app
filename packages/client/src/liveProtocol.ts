@@ -1,5 +1,6 @@
 import type { Channel } from './index';
 import { parseLabelMetadata } from './sessionLabels';
+import { parseSideOf, type SideOf } from './sideChats';
 
 /** Directory metadata and shared completed-result marker only. No counts or bodies. */
 export interface SessionDirectoryItem {
@@ -19,6 +20,8 @@ export interface SessionDirectoryItem {
   origin?: 'user' | 'automation';
   /** True after the user sent at least one message in the Thread. */
   participated?: boolean;
+  /** Side chats only: the source Thread and anchor message (docs/side-chat.md). */
+  side_of?: SideOf;
 }
 export type CatalogueItem = {kind:'channel';value:Channel}|{kind:'session';value:SessionDirectoryItem};
 export interface CataloguePage {items:CatalogueItem[];next_after:string|null}
@@ -72,6 +75,7 @@ function parseSession(raw:unknown):SessionDirectoryItem{
     result.origin=entry.origin;
   }
   if(entry.participated!==undefined)result.participated=bool(entry.participated);
+  if(entry.side_of!==undefined){try{const side=parseSideOf(entry.side_of);if(side)result.side_of=side}catch{throw new LiveProtocolError()}}
   if(entry.last_message_at!==undefined){
     if(typeof entry.last_message_at!=='number'||!Number.isFinite(entry.last_message_at)||entry.last_message_at<0)throw new LiveProtocolError();
     result.last_message_at=entry.last_message_at;
