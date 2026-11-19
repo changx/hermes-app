@@ -23,12 +23,13 @@ Side chat 解决这个问题：
 4. **显示方式。**
    - 桌面：side chat 在主窗口右侧的面板中打开。源 Thread 的时间线留在左边，两者同时可见。
    - 手机：屏幕宽度不够，side chat 全屏推入（原生 Stack），返回后回到源 Thread。
+5. **桌面左侧边栏。** Side chat 显示在源 Thread 下一级。与 Recents 相同：显示全部运行中的 side chat 和最新的 10 条其他 side chat，每次 Show more 再加 10 条。
 
 ## 与 Branch 的区别
 
 | 项目 | Branch | Side chat |
 |---|---|---|
-| 列表位置 | Channel 下的平级 Thread | 不出现在 Channel 的 Thread 列表和桌面侧边栏中 |
+| 列表位置 | Channel 下的平级 Thread | 桌面：侧边栏中源 Thread 的下一级；手机：不出现在 Channel 的 Thread 列表中 |
 | 打开方式 | 普通 Session 页面 | 桌面：右侧面板，与源 Thread 并排；手机：全屏推入 |
 | 源 Thread 时间线 | 写入一条 `Branched to [...]` 系统提示 | 不写入任何消息；锚点消息上显示一个小标记 |
 | 锚点 | 已完成一轮的最终回复 | 最终回复，或外部消息（例如 TG 原文行） |
@@ -74,7 +75,14 @@ Side chat 解决这个问题：
 4. 面板使用现有右侧栏（`browser-sidebar`）的位置和宽度规则：可以拖动宽度，宽度保存在本机；主时间线至少保留 360px。
 5. 右侧栏同一时间只显示一项：side chat，或浏览器/附件预览。打开其中一项时替换另一项，关闭后不自动恢复另一项。（建议）
 6. 每个 Session 页（含标签页）各自记住面板打开的是哪个 side chat 及其阅读位置。切换标签页再回来，面板保持原状；关闭面板不删除 side chat。
-7. 桌面左侧边栏不列出 side chat。用户从锚点标记，或 Session 状态栏中的 "Side chats" 按钮（列出这个 Thread 的全部 side chat）打开它。
+7. 桌面左侧边栏在源 Thread 行的下一级列出它的 side chat：
+   - 显示全部运行中的 side chat，再加最新活动的 10 条其他 side chat。每次 Show more 再加 10 条。规则与 Recents 相同（`RECENT_BATCH`，见 [desktop/tree-navigation.md](desktop/tree-navigation.md)）。
+   - 排序：运行中的在前，其余按最新活动时间从新到旧。
+   - 源 Thread 出现在 Project 树、Recents 或 Todo 中时，side chat 都显示在它下面，不作为独立的一行出现在这些列表的第一级。（建议）
+   - 源 Thread 行有展开/折叠控件。默认展开，折叠状态保存在本机。（建议）
+   - Side chat 行显示自己的未读和运行状态，样式与 Thread 行相同，多一级缩进。
+   - 点 side chat 行：打开源 Thread 的 Session 页，side chat 在右侧面板中打开。
+8. 用户也可以从锚点标记，或 Session 状态栏中的 "Side chats" 按钮打开 side chat。
 
 #### 手机：全屏推入
 
@@ -147,5 +155,6 @@ Side chat 解决这个问题：
 5. Mac：side chat 在右侧面板打开；主时间线和面板同时可见，各自滚动和输入；拖动宽度后重开仍保持；面板打开时主 Thread 来新消息，主时间线照常跟随。
 6. Mac：从面板标题行回到锚点，主时间线滚到锚点并标记；切换标签页再回来，面板保持原 side chat 和阅读位置。
 7. iPhone：side chat 全屏推入，返回手势回到源 Thread，阅读位置和草稿不变。
-8. 桌面左侧边栏和手机 Channel 列表都不显示 side chat。
-9. 关闭 App 再打开：side chat、锚点标记和未读状态一致。
+8. Mac：侧边栏中 side chat 在源 Thread 下一级；创建 12 条以上时，显示运行中的加最新 10 条，Show more 再显示 10 条；点一条，源 Thread 打开，side chat 在右侧面板。
+9. iPhone：Channel 列表不显示 side chat。
+10. 关闭 App 再打开：side chat、锚点标记和未读状态一致。
