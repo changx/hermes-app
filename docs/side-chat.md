@@ -1,6 +1,6 @@
 # Side chat：从一条消息开始的子讨论
 
-状态（2026-11-18）：需求已由 Jamie 确认。插件已在分支上实现并通过真实 GatewayRunner 测试，未发布；客户端未实现。
+状态（2026-11-18）：需求已由 Jamie 确认。插件 v0.2.68 已发布。客户端：共享 client 和桌面已在分支 `feat/side-chat` 实现并通过本机测试，未发布；手机未实现。
 
 ## 目的
 
@@ -136,6 +136,38 @@ Side chat 解决这个问题：
 6. **截断与合并行。** 核心加载 transcript 时，把相邻的纯文本 assistant 行合并成一行（`_merge_consecutive_assistants`：去掉首尾空白，用换行连接，用第一行的时间戳），`/branch` 复制的是合并结果。插件的行对应规则已包含这种合并，与已有的相邻 user 行合并规则相同。截断点必须是锚点之后第一条 user 行，或单独复制的外部消息行。
 7. **能力。** `capabilities.thread_side: true`。没有这个能力时，客户端不显示 Side chat 按钮。
 8. **标题。** `Side: <锚点第一行，最多 60 字>`。
+
+## 客户端实现（分支 `feat/side-chat`，未发布）
+
+### 共享 client（`packages/client`）
+
+1. 能力 `supportsThreadSide`：服务器同时报告 `thread_branch` 和 `thread_side` 时为 true。
+2. `sideThread(threadId, anchorRefSeq, requestId)`：`POST /branch`（`kind: side`）。服务器返回 202 `{state: "running"}` 时，每秒用同一 `request_id` 重发，直到返回 Thread 或 409。返回的 Thread 必须带 `side_of`，且指向请求的源 Thread 和锚点。本地最长等 11 分钟（服务器 10 分钟后自己返回 `busy`）。
+3. `side_of` 在 `GET /v1/threads/{id}`、catalogue 行和 live client 的精简目录行中都保留。格式错误的 `side_of` 按协议错误处理。
+4. `sideChats.ts`：按源 Thread 分组（运行中在前，再按最新活动）、按锚点分组、侧边栏窗口（全部运行中 + 每批 10 条）、锚点标记文字（`Side chat`、`Side chat · N`）、Send to main 文字和失败提示。桌面和手机共用。
+
+### 桌面
+
+1. **右侧栏面板。** 每个 side chat 是一个独立的 `WebContentsView`（与 Session 标签页相同的安全设置），由 `tab-manager.ts` 管理，属于源 Session 的标签页，不出现在标签栏。
+   - 面板页面就是普通 Session 页面（时间线、输入框、状态栏），快照带 `sidePanel: true`。面板页面隐藏时不销毁，所以阅读位置和草稿保留。
+   - 右侧栏的前台项是 `rightTab`：`browser` 或一个面板 ID。浏览器打开时到前台；浏览器关闭或前台面板关闭时，显示相邻的一项。面板在前台时，浏览器页面用 `layout(..., false)` 隐藏。
+   - 主窗口渲染右侧栏的标签行（浏览器 + 各 side chat，带运行/未读点和关闭按钮）和面板标题行（标题、回到锚点、关闭），面板位置通过 `setSidePanelBounds` 发给主进程。宽度沿用浏览器栏的宽度规则（`browser-width.ts`）。
+   - 面板里的操作（发送、上传、草稿、已读）都以面板自己的 side chat 为目标（`tabs.target`）；附件预览和链接用源标签页的浏览器（`browserOwner`）。面板中的 Cmd+W 关闭面板。
+2. **打开方式。** 锚点标记、状态栏的 Side chats 按钮、侧边栏的 side chat 行都调用 `openSideChat`：在源 Session 的标签页（没有则新建）右侧栏打开。链接或搜索选中一个 side chat 时，`sync` 同样改为在源标签页右侧栏打开，不新建标签页。源 Session 不在目录中（已归档）时，side chat 按普通 Session 打开。
+3. **创建。** 消息 toolbar 的 Side chat 按钮调用 `desktop:side-message`。等待期间不把标签页标为忙，用户可以继续在源 Session 输入；按钮显示进行中，源 Session 运行中时提示"Opens when the current reply finishes…"。成功后在发起的标签页打开面板。
+4. **锚点标记。** 源 Session 时间线中，有 side chat 的消息下方显示 `Side chat` 或 `Side chat · N`，带运行和未读点。一个直接打开；多个时显示原生菜单。
+5. **Send to main。** 面板中最终回复的 toolbar 有 Send to main。主进程从 side chat 的消息生成文字（`sendToMainText`），发到源标签页（`desktop:fill-composer`）；源输入框把它接在已有草稿后面，焦点移到源输入框末尾，不发送。
+6. **侧边栏。** Side chat 不作为第一级行。源 Session 行左侧有折叠按钮（默认展开，折叠的源 ID 保存在 `localStorage` 的 `hermes.sidebar.side-chats-collapsed`），下面一级列出 side chat：运行中的全部显示，其他每批 10 条（Show more）。源已归档时，它的 side chat 不显示。右侧栏前台的 side chat 行显示为选中。
+7. Side chat 页面没有 Branch 和 Side chat 按钮，也不显示锚点标记和 Side chats 按钮。
+
+### 测试（本机，2026-11-18）
+
+- `npm run client:check`：161 passed（新增 `packages/client/tests/side-chat.test.mjs`，8 项）。
+- `apps/desktop/tests/native-tabs.test.mjs`：14 passed（新增 4 项：打开/隐藏/恢复、多个面板与浏览器、链接改向与归档/关标签页、Send to main 与回到锚点、Cmd+W）。
+- `apps/desktop/tests/side-chat-ui.test.mjs`（Chromium）：Session 页面按钮和锚点标记、运行中的按钮状态、Send to main 接草稿、面板页面 toolbar、右侧栏标签和位置、侧边栏层级、Show more、折叠保存、归档源隐藏。
+- `apps/desktop/tests/side-chat-native.test.mjs`（Electron + Xvfb，生产主进程/preload/渲染器，受控 client）：锚点标记打开面板；面板和 Session 并排（1400 宽窗口：Session 560px，面板 554px，不重叠）；两个输入框各发到自己的 Session；Send to main 预填、不发送；回到锚点标记源消息；Side chat 按钮请求 `(源, 4, sc_…)` 并在前台打开第二个面板；切换标签页保留页面；关闭面板；侧边栏行重新打开。
+- 完整桌面套件：333 项中 324 passed、9 failed。8 项（`composer-focus-width`、`font-settings`、`full-history-loading`、`session-auto-bottom`、`session-message-focus`、`settings-focus`、`settings-layout`、`tab-status` 中的 Chromium 测试）在未改动的 `origin/main` 上同样失败；1 项（`native-electron`）在负载下失败，单独重跑通过。
+- 未做：Jamie 的 Mac 上看实际效果；真实服务器上的端到端操作。
 
 ## 已知限制
 
