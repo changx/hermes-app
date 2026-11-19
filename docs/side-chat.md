@@ -1,6 +1,6 @@
 # Side chat：从一条消息开始的子讨论
 
-状态（2026-11-18）：需求已由 Jamie 确认。插件 v0.2.68 已发布。客户端：共享 client 和桌面已在分支 `feat/side-chat` 实现并通过本机测试，未发布；手机未实现。
+状态（2026-11-18）：需求已由 Jamie 确认。插件 v0.2.68 已发布。客户端：共享 client、桌面和手机已在分支 `feat/side-chat` 实现并通过本机测试，未发布。
 
 ## 目的
 
@@ -159,6 +159,14 @@ Side chat 解决这个问题：
 5. **Send to main。** 面板中最终回复的 toolbar 有 Send to main。主进程从 side chat 的消息生成文字（`sendToMainText`），发到源标签页（`desktop:fill-composer`）；源输入框把它接在已有草稿后面，焦点移到源输入框末尾，不发送。
 6. **侧边栏。** Side chat 不作为第一级行。源 Session 行左侧有折叠按钮（默认展开，折叠的源 ID 保存在 `localStorage` 的 `hermes.sidebar.side-chats-collapsed`），下面一级列出 side chat：运行中的全部显示，其他每批 10 条（Show more）。源已归档时，它的 side chat 不显示。右侧栏前台的 side chat 行显示为选中。
 7. Side chat 页面没有 Branch 和 Side chat 按钮，也不显示锚点标记和 Side chats 按钮。
+
+### 手机
+
+1. **列表。** Channel 的 Thread 列表、Recents、Todo 和搜索都不列出 side chat（`side_of`）。Project 的未读数也不计 side chat，因为手机列表里没有这些行。
+2. **创建。** 最终回复的 toolbar 有 Side chat 按钮（服务器有 `thread_side`，且当前 Session 不是 side chat）。源 Session 运行中时按钮照常可用，显示进行中，服务器空闲后创建；创建后用 Session 导航全屏推入 side chat。同一消息在服务器明确回答前使用同一个 `request_id`。
+3. **锚点标记。** 有 side chat 的消息下方显示 `Side chat` 或 `Side chat · N`，带运行和未读点。一个直接推入；多个时 iOS 显示 Action Sheet，Android 显示前两个和 "All side chats"（打开 Session options）。
+4. **Session options。** 源 Session 显示 "Side chats" 一节（运行中在前，再按最新活动；已归档的不显示）。Side chat 显示 "Side chat" 一节，其中 "Source session" 回到源 Session。
+5. **Send to main。** Side chat 中最终回复的 toolbar 有 Send to main，没有 Branch 和 Side chat。点按后，文字接在源 Session 的草稿后面（`composerFill.ts`：已挂载的源页面立即收到；未挂载时保存在草稿中），然后用 Session 导航回到源 Session（它在 Stack 中时返回，阅读位置和草稿保留）。不发送。
 
 ### 测试（本机，2026-11-18）
 
