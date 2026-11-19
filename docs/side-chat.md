@@ -173,3 +173,12 @@ Side chat 解决这个问题：
 8. Mac：侧边栏中 side chat 在源 Thread 下一级；创建 12 条以上时，显示运行中的加最新 10 条，Show more 再显示 10 条；点一条，源 Thread 打开，side chat 在右侧面板。
 9. iPhone：Channel 列表不显示 side chat。
 10. 关闭 App 再打开：side chat、锚点标记和未读状态一致。
+
+## 发布记录
+
+- 2026-11-18（Jamie「合并发布」）：插件 v0.2.68。
+  - 插件 `main` `975bf04`（功能 `ec4dbbe`），tag `v0.2.68`，已推送。`current` 从 `releases/0.2.67` 切到 `releases/0.2.68`（与 `git archive v0.2.68` 相同）；emma、hermes-app-dev、jamie、nan、space、wangyu 都指向它。
+  - 数据结构：新表 `side_chats`，`branches` 增加 `kind` 列，Gateway 启动时自动加。在六个 profile 的 `metadata.sqlite` 副本上检查：只增加 `side_chats`，行数不变，重复执行无变化；旧版 v0.2.67 代码在迁移后的库上可以读 Thread、写 Branch。代码回滚不需要恢复数据。切换前的在线备份在 `~/.hermes/profiles/jamie/workspace/hermes-app/20261118-side-chat/db-backups/`。
+  - 客户端：本次没有客户端改动（Side chat 按钮、右侧面板、侧边栏层级、手机推入、Send to main 都没有实现）。旧客户端不能创建 side chat，也不显示 `side_of`。
+  - 生效条件：Jamie 重启 `hermes-gateway.service`。重启前 Gateway 运行 v0.2.67（启动于 2026-11-18 14:08:34 PST）。
+  - 回滚：`current` 切回 `releases/0.2.67`，再重启 Gateway。
