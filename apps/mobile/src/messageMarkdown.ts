@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { isSessionLinkHref, sessionLinksInText } from '../../../packages/client/src/sessionLinks.ts';
+import { trimBareLink } from '../../../packages/client/src/bareLinks.ts';
 import type Token from 'markdown-it/lib/token.mjs';
 
 type InlineKind = 'em' | 'strong' | 'strike' | 'link';
@@ -29,6 +30,27 @@ markdown.linkify.add('hermesapp:', {
     const candidate = sessionLinksInText('hermesapp:' + text.slice(pos))[0];
     return candidate?.start === 0 ? candidate.url.length - 'hermesapp:'.length : false;
   },
+});
+
+// Bare links end at CJK punctuation (`https://my.telegram.org，进入`); the cut part stays text.
+markdown.core.ruler.after('linkify', 'cjk_linkify', state => {
+  for (const block of state.tokens) {
+    const children = block.type === 'inline' ? block.children : null;
+    if (!children) continue;
+    for (let i = children.length - 3; i >= 0; i--) {
+      const [open, text, close] = [children[i], children[i + 1], children[i + 2]];
+      if (open.type !== 'link_open' || open.markup !== 'linkify' || text.type !== 'text' || close.type !== 'link_close') continue;
+      const kept = trimBareLink(text.content);
+      if (kept === text.content) continue;
+      const rest = new state.Token('text', '', 0);
+      rest.content = kept === null ? text.content : text.content.slice(kept.length);
+      if (kept === null) { children.splice(i, 3, rest); continue; }
+      const scheme = /^[a-z][a-z0-9+.-]*:/i.test(kept) ? '' : 'http://';
+      open.attrSet('href', state.md.normalizeLink(scheme + kept));
+      text.content = kept;
+      children.splice(i + 3, 0, rest);
+    }
+  }
 });
 
 // Chat prose commonly closes bold after CJK punctuation with no following space.

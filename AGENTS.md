@@ -188,7 +188,7 @@
 - [docs/code-block-wrap.md](docs/code-block-wrap.md)
 - [docs/code-block-copy.md](docs/code-block-copy.md)（桌面代码复制：多行按钮，单行、行内代码与命令行点击复制）
 - [docs/cjk-emphasis.md](docs/cjk-emphasis.md)（桌面中文标点后的加粗：`**标题：**正文`，remark-cjk-friendly）
-- [docs/cjk-autolinks.md](docs/cjk-autolinks.md)（桌面裸链接在中文标点处结束：`https://x.org，进入`）
+- [docs/cjk-autolinks.md](docs/cjk-autolinks.md)（桌面与手机的裸链接在中文标点处结束：`https://x.org，进入`）
 - [docs/message-hierarchy.md](docs/message-hierarchy.md)
 - [docs/reply-models.md](docs/reply-models.md)
 - [docs/thread-model.md](docs/thread-model.md)
