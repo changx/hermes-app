@@ -20,12 +20,16 @@ Side chat 解决这个问题：
 3. **Branch 和 Side chat 都保留。**
    - Branch：独立的平级 Thread，规则见 [thread-branch.md](thread-branch.md)，不变。
    - Side chat：附属于源 Thread 和锚点消息的子讨论。
+4. **显示方式。**
+   - 桌面：side chat 在主窗口右侧的面板中打开。源 Thread 的时间线留在左边，两者同时可见。
+   - 手机：屏幕宽度不够，side chat 全屏推入（原生 Stack），返回后回到源 Thread。
 
 ## 与 Branch 的区别
 
 | 项目 | Branch | Side chat |
 |---|---|---|
-| 列表位置 | Channel 下的平级 Thread | 源 Thread 下的子项，不出现在 Channel 的 Thread 列表中 |
+| 列表位置 | Channel 下的平级 Thread | 不出现在 Channel 的 Thread 列表和桌面侧边栏中 |
+| 打开方式 | 普通 Session 页面 | 桌面：右侧面板，与源 Thread 并排；手机：全屏推入 |
 | 源 Thread 时间线 | 写入一条 `Branched to [...]` 系统提示 | 不写入任何消息；锚点消息上显示一个小标记 |
 | 锚点 | 已完成一轮的最终回复 | 最终回复，或外部消息（例如 TG 原文行） |
 | 源 Thread 运行中 | 返回 `busy` | 等待源 Thread 空闲后创建，用户不用重试 |
@@ -42,7 +46,7 @@ Side chat 解决这个问题：
    - 外部消息（`display_kind = external_message`，见插件仓库 `docs/external-messages.md`）。
 3. 锚点必须在源 Thread 的当前 session 中。这条限制和 Branch 相同。
 4. 源 Thread 运行中时，客户端照常发出请求。插件等待源 Thread 空闲，然后创建 side chat。按钮在等待期间显示进行中状态。
-5. 创建完成后，客户端打开新的 side chat。
+5. 创建完成后，客户端打开新的 side chat（桌面在右侧面板，手机全屏推入）。
 6. 同一锚点可以打开多个 side chat。
 
 ### 2. 上下文
@@ -60,17 +64,33 @@ Side chat 解决这个问题：
 3. 点标记打开 side chat。锚点有多个 side chat 时，先显示一个列表。
 4. Side chat 的未读和运行状态显示在 side chat 自己的条目上，不改变源 Thread 的未读状态。
 
-### 4. 列表与导航
+### 4. 显示与导航
 
-1. 桌面：side chat 显示在侧边栏中源 Thread 的下一级，可以折叠。
-2. 手机：Channel 的 Thread 列表不显示 side chat。用户从锚点标记，或源 Thread 的 Session options 中的 "Side chats" 列表进入。
-3. 标题默认为 `Side: <锚点开头文字>`，可以改名。
-4. 归档源 Thread 时，它的 side chat 跟着隐藏。Side chat 也可以单独归档。
+#### 桌面：右侧面板
+
+1. Side chat 在 Session 页右侧的面板中打开。源 Thread 的时间线和输入框留在左边，两者同时可见、可以分别滚动和输入。
+2. 面板包含 side chat 的完整时间线和它自己的输入框。时间线、发送、运行状态和 toolbar 的规则与普通 Session 页面相同。
+3. 面板标题行显示 side chat 标题、一个返回源锚点的按钮（滚动主时间线到锚点并短暂标记）和关闭按钮。
+4. 面板使用现有右侧栏（`browser-sidebar`）的位置和宽度规则：可以拖动宽度，宽度保存在本机；主时间线至少保留 360px。
+5. 右侧栏同一时间只显示一项：side chat，或浏览器/附件预览。打开其中一项时替换另一项，关闭后不自动恢复另一项。（建议）
+6. 每个 Session 页（含标签页）各自记住面板打开的是哪个 side chat 及其阅读位置。切换标签页再回来，面板保持原状；关闭面板不删除 side chat。
+7. 桌面左侧边栏不列出 side chat。用户从锚点标记，或 Session 状态栏中的 "Side chats" 按钮（列出这个 Thread 的全部 side chat）打开它。
+
+#### 手机：全屏推入
+
+1. Side chat 用 Expo Router 原生 Stack 全屏推入，返回手势和返回按钮回到源 Thread。
+2. 返回后源 Thread 保留原阅读位置、草稿和历史窗口（见 [live-session-pages.md](live-session-pages.md)）。
+3. Channel 的 Thread 列表不显示 side chat。用户从锚点标记，或源 Thread 的 Session options 中的 "Side chats" 列表进入。
+
+#### 两端相同
+
+1. 标题默认为 `Side: <锚点开头文字>`，可以改名。
+2. 归档源 Thread 时，它的 side chat 跟着隐藏。Side chat 也可以单独归档。
 
 ### 5. 手动带回结论（Send to main）
 
 1. Side chat 中每条最终回复的 toolbar 上有 **Send to main** 按钮。
-2. 点按钮后，客户端打开源 Thread，把以下内容放入输入框，不自动发送：
+2. 点按钮后，客户端把以下内容放入源 Thread 的输入框，不自动发送。桌面上面板保持打开，焦点移到左边的输入框；手机返回源 Thread：
 
    ```text
    From side chat [<side chat 标题>](hermesapp://session/<side-thread-id>):
@@ -124,5 +144,8 @@ Side chat 解决这个问题：
 2. 自动回复运行中点 Side chat：不报错，空闲后自动打开。
 3. 在 side chat 中点 Send to main：源 Thread 输入框有预填内容，编辑后发送；TG 不收到这条消息，除非用户另外指示发送。
 4. 在 side chat 中输入 `>> 测试`：TG 不收到。
-5. 桌面侧边栏中 side chat 在源 Thread 下；手机 Channel 列表不显示 side chat。
-6. 关闭 App 再打开：side chat、锚点标记和未读状态一致。
+5. Mac：side chat 在右侧面板打开；主时间线和面板同时可见，各自滚动和输入；拖动宽度后重开仍保持；面板打开时主 Thread 来新消息，主时间线照常跟随。
+6. Mac：从面板标题行回到锚点，主时间线滚到锚点并标记；切换标签页再回来，面板保持原 side chat 和阅读位置。
+7. iPhone：side chat 全屏推入，返回手势回到源 Thread，阅读位置和草稿不变。
+8. 桌面左侧边栏和手机 Channel 列表都不显示 side chat。
+9. 关闭 App 再打开：side chat、锚点标记和未读状态一致。
