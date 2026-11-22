@@ -232,3 +232,11 @@ Side chat 解决这个问题：
 - **iOS（TestFlight 安装包）：** 没有新的 TestFlight 构建，build number 不变。签名 OTA 更新 `774eea4d-dcde-42d8-b89e-8ca0812677cd`（runtime `b32a4b59…`，commit `05110f8`）；manifest 200，bundle 13913026 字节，含新代码。已安装的 App 下次冷启动下载。
 - **回滚：** 桌面装回 v0.1.145；Expo 运行目录回到分支 `rollback/side-chat-before-release`（`d6f9396`）后重启 Expo；iOS `publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to 4cc63529-44d5-4bf3-bc19-bbc6792edd35`；代码 `git revert` 上述功能提交。
 - **未完成：** Jamie 在 Mac 和 iPhone 上的实际检查；iPhone 收到更新的日志证据（`current=774eea4d`）。
+
+## 桌面侧边栏对齐发布（v0.1.148，2026-11-22）
+
+- 提交 `a1fe92e`（侧边栏对齐）、`8df553b`（版本号），tag `v0.1.148`。
+- 改动：源 Session 标题与其他行对齐（旧版 69px，其他行 51px）；折叠按钮移到行右端，折叠时显示数量；side chat 标题比源标题右移一档（旧版反而左移 4px），行前有 side chat 图标，行高稍矮；字号和文字颜色不变（Jamie 要求）。
+- 验证：`tests/side-chat-ui.test.mjs`（真实 Chromium）和 `tests/side-chat-native.test.mjs`（Electron/Xvfb）通过；新的布局断言在旧代码上失败。整套桌面测试中另有 8 个 Chromium 测试失败，未改动的源码同样失败，与本改动无关。
+- 发布：Mac mini 构建，Developer ID 签名、公证并 staple。第一次公证因连接 Apple 超时失败，重试通过。取回文件时 `scp` 断开，改用 `rsync --partial` 取回并校验 SHA-256，再用 `--publish-built` 发布。GitHub Release `v0.1.148` 为 Latest，只有 DMG 和 `.sha256`；更新 feed 对 0.1.147 返回 200（0.1.148），对 0.1.148 返回 204。安装包中 `renderer/styles.css` 的 SHA-256 与本地同一提交的构建一致（`bbaf707b…`）。
+- 待验收：Jamie 的 Mac 上查看 Recents 和 Project 中带 side chat 的 Session。
