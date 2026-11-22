@@ -83,12 +83,13 @@ test('Chromium: side chat button, anchor marks, panel page, right column and sid
         const children=()=>[...tree().querySelectorAll('.tree-side-children .tree-thread')].map(b=>b.querySelector('.thread-title').textContent);
         out.children=children();
         const child=tree().querySelector('.tree-side-children .tree-thread'), parent=tree().querySelector('.tree-thread-with-sides .tree-thread'), toggle=tree().querySelector('.tree-side-toggle');
-        out.indent={child:child.getBoundingClientRect().left,parent:parent.getBoundingClientRect().left,childTitle:child.querySelector('.thread-title').getBoundingClientRect().left,parentTitle:parent.querySelector('.thread-title').getBoundingClientRect().left,toggleRight:toggle.getBoundingClientRect().right,toggleW:toggle.getBoundingClientRect().width};
+        out.indent={child:child.getBoundingClientRect().left,parent:parent.getBoundingClientRect().left,childTitle:child.querySelector('.thread-title').getBoundingClientRect().left,parentTitle:parent.querySelector('.thread-title').getBoundingClientRect().left,toggleLeft:toggle.getBoundingClientRect().left,toggleRight:toggle.getBoundingClientRect().right,parentRight:parent.getBoundingClientRect().right,toggleW:toggle.getBoundingClientRect().width,toggleOpacity:getComputedStyle(toggle).opacity,sibling:tree().querySelector('.thread-children > .tree-thread .thread-title').getBoundingClientRect().left,childIcon:!!child.querySelector('.tree-side-icon svg'),childFont:getComputedStyle(child).fontSize,childColor:getComputedStyle(child.querySelector('.thread-title')).color,siblingColor:getComputedStyle(tree().querySelector('.thread-children > .tree-thread:not(.selected) .thread-title')).color};
         out.selectedSide=[...tree().querySelectorAll('.tree-side-children .tree-thread.selected')].map(b=>b.querySelector('.thread-title').textContent);
         out.recentFirst=[...document.querySelectorAll('#sidebar-recents-list > .tree-thread, #sidebar-recents-list > .tree-thread-group > .tree-thread-with-sides > .tree-thread')].map(b=>b.querySelector('.thread-title').textContent);
         tree().querySelector('.tree-side-more').click();await tick(20);out.afterMore=children().length;out.moreLeft=!!tree().querySelector('.tree-side-more');
         tree().querySelector('.tree-side-children .tree-thread').click();await tick();
         tree().querySelector('.tree-side-toggle').click();await tick(20);
+        { const t=tree().querySelector('.tree-side-toggle'); out.foldedToggle=[t.textContent.replace(/[\ue000-\uefff]/g,''),getComputedStyle(t).opacity]; }
         out.folded=[tree().querySelectorAll('.tree-side-children').length,document.querySelectorAll('.tree-side-children').length,localStorage.getItem('hermes.sidebar.side-chats-collapsed')];
         // An archived source hides its side chats everywhere.
         ws({...shell,threads:[t('u','Other'),...sides],sidePanels:undefined,rightTab:undefined});await tick(20);
@@ -122,8 +123,15 @@ test('Chromium: side chat button, anchor marks, panel page, right column and sid
     assert.equal(r.panelTitle, 'Side: one');
     assert.ok(r.layout.slotW > 200 && r.layout.slotH > 200 && r.layout.columnRight === r.layout.innerWidth && r.layout.mainW >= 360 && !r.layout.overlap, JSON.stringify(r.layout));
     assert.deepEqual(r.firstLevel, ['Main', 'Other']);
-    // One more indent: the side chat row starts right of its source row; the fold control sits left of the source title.
-    assert.ok(r.indent.child > r.indent.parent && r.indent.toggleW > 0 && r.indent.toggleRight <= r.indent.parentTitle, JSON.stringify(r.indent));
+    // The source title lines up with the other first-level rows; its side chats sit one step (17px) right of it.
+    // The fold control is at the right end of the source row, hidden until hover or focus, and shown with the count while folded.
+    assert.equal(Math.round(r.indent.parentTitle), Math.round(r.indent.sibling), JSON.stringify(r.indent));
+    assert.ok(r.indent.child > r.indent.parent && r.indent.childTitle - r.indent.parentTitle >= 14, JSON.stringify(r.indent));
+    assert.ok(r.indent.toggleW > 0 && r.indent.toggleLeft > r.indent.parentTitle && r.indent.toggleRight <= r.indent.parentRight, JSON.stringify(r.indent));
+    assert.equal(r.indent.toggleOpacity, '0');
+    assert.equal(r.indent.childIcon, true, 'side chat rows carry the side chat icon');
+    assert.equal(r.indent.childColor, r.indent.siblingColor, 'side chat titles keep the normal text color');
+    assert.deepEqual(r.foldedToggle, ['15', '1']);
     assert.deepEqual(r.children.slice(0, 2), ['Side: two', 'Side: one'], 'running first, then newest');
     assert.equal(r.children.length, 1 + 10, 'every running side chat plus the 10 newest others');
     assert.deepEqual(r.selectedSide, ['Side: one'], 'the front panel\'s row is selected');

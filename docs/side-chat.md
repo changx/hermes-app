@@ -157,7 +157,7 @@ Side chat 解决这个问题：
 3. **创建。** 消息 toolbar 的 Side chat 按钮调用 `desktop:side-message`。等待期间不把标签页标为忙，用户可以继续在源 Session 输入；按钮显示进行中，源 Session 运行中时提示"Opens when the current reply finishes…"。成功后在发起的标签页打开面板。
 4. **锚点标记。** 源 Session 时间线中，有 side chat 的消息下方显示 `Side chat` 或 `Side chat · N`，带运行和未读点。一个直接打开；多个时显示原生菜单。
 5. **Send to main。** 面板中最终回复的 toolbar 有 Send to main。主进程从 side chat 的消息生成文字（`sendToMainText`），发到源标签页（`desktop:fill-composer`）；源输入框把它接在已有草稿后面，焦点移到源输入框末尾，不发送。
-6. **侧边栏。** Side chat 不作为第一级行。源 Session 行左侧有折叠按钮（默认展开，折叠的源 ID 保存在 `localStorage` 的 `hermes.sidebar.side-chats-collapsed`），下面一级列出 side chat：运行中的全部显示，其他每批 10 条（Show more）。源已归档时，它的 side chat 不显示。右侧栏前台的 side chat 行显示为选中。
+6. **侧边栏。** Side chat 不作为第一级行。源 Session 行的标题与其他行对齐；折叠按钮在该行右端，悬停或聚焦时显示，折叠时一直显示并带 side chat 数量（默认展开，折叠的源 ID 保存在 `localStorage` 的 `hermes.sidebar.side-chats-collapsed`）。下面一级列出 side chat：标题比源标题右移一档（17px，与 Project 下的 Session 相同），竖线在源标题下方，行前有 side chat 图标，行高稍矮，字号和文字颜色不变；运行中的全部显示，其他每批 10 条（Show more）。源已归档时，它的 side chat 不显示。右侧栏前台的 side chat 行显示为选中。
 7. Side chat 页面没有 Branch 和 Side chat 按钮，也不显示锚点标记和 Side chats 按钮。
 
 ### 手机

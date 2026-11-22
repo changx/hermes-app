@@ -1047,7 +1047,7 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .side-mark-row { margin: 6px 0 0 -6px; }
 .side-mark { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--app-border); border-radius: 999px; background: transparent; color: var(--app-label); font-size: calc(var(--app-font-size) - 2px); cursor: pointer; }
 .side-mark:hover { background: var(--app-hover); color: var(--app-text); }
-.side-mark svg, .right-tab svg, .status-side-chats svg, .side-panel-icon { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.side-mark svg, .tree-side-icon svg, .right-tab svg, .status-side-chats svg, .side-panel-icon { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .side-mark-dot { width: 7px; height: 7px; border-radius: 50%; }
 .side-mark-running { background: #16a34a; }
 .side-mark-unread { background: #4DA3FF; }
@@ -1069,9 +1069,16 @@ pre.click-copy[data-copy-note]::after { top: 50%; right: 8px; transform: transla
 .side-panel-title button { display: inline-flex; align-items: center; }
 .side-panel-slot { flex: 1; min-height: 0; margin-left: 5px; background: var(--app-background); }
 /* Sidebar: side chats one level under their source Session, with a fold control. */
+/* The source title stays in line with the other rows; the fold control sits at the right end of the row. */
 .tree-thread-with-sides { position: relative; }
-.tree-thread-with-sides > .tree-thread { padding-left: 26px; }
-.tree-side-toggle { position: absolute; z-index: 1; left: 6px; top: 10px; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--app-muted); cursor: pointer; font-size: 10px; }
+.tree-thread-with-sides > .tree-thread { padding-right: 30px; }
+.tree-side-toggle { position: absolute; z-index: 1; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 18px; height: 18px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: var(--app-muted); cursor: pointer; font-size: 10px; opacity: 0; }
+.tree-thread-with-sides:hover > .tree-side-toggle, .tree-thread-with-sides:focus-within > .tree-side-toggle, .tree-thread-with-sides.folded > .tree-side-toggle { opacity: 1; }
+.tree-thread-with-sides.folded > .tree-thread { padding-right: 38px; }
 .tree-side-toggle:hover { background: var(--app-hover); color: var(--app-text); }
-.tree-side-children { margin: 0 0 2px 13px; border-left: 1px solid var(--app-border); }
+.tree-side-count { font-size: var(--sidebar-small, calc(var(--app-font-size) - 2px)); line-height: 1; }
+/* Side chats one step (17px, as Sessions under a Project) right of the source title, with the guide line under it. */
+.tree-side-children { margin: 0 0 2px 12px; padding-left: 4px; border-left: 1px solid var(--app-border); }
+.native-sidebar .tree-thread.tree-side { min-height: calc(var(--sidebar-row) - 4px); padding-top: 4px; padding-bottom: 4px; }
+.tree-side-icon { display: inline-flex; flex: none; margin-right: -2px; }
 .tree-thread.tree-side { padding-top: 6px; padding-bottom: 6px; font-size: calc(var(--app-font-size) - 1px); }

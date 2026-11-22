@@ -12,6 +12,7 @@ import { AutomationsSection } from './automations';
 import { isSessionMenuAction, sessionMenuItems } from './session-menu';
 import { activeGroupName, otherGroupUnread } from '../../../../packages/client/src/connectionGroups';
 import { sideChatsBySource, sideWindow } from '../../../../packages/client/src/sideChats';
+import { SideIcon } from './side-chats';
 
 // Only states that need the user's attention are shown in the tree.
 export const connectionHint: Partial<Record<string, string>> = { retrying: 'Reconnecting', suspended: 'Offline', blocked: 'Needs attention' };
@@ -29,7 +30,7 @@ const ThreadRow = memo(({thread,selected,draft,onMenu,source,menuOpen,side=false
   onContextMenu={onMenu ? event => { event.preventDefault(); onMenu(thread, event.clientX, event.clientY); } : undefined}
   onKeyDown={onMenu ? event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) { event.preventDefault(); const box = event.currentTarget.getBoundingClientRect(); onMenu(thread, box.left, box.bottom); } } : undefined}>
   <span className="thread-row-main">
-  <span className="thread-title">{thread.title}</span>{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{source ? <span className="thread-connection-name">{source}</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}{hasTodo(thread.markers) ? <span className="thread-todo" role="img" aria-label="Todo"><Icon name="flag" /></span> : null}
+  {side ? <span className="tree-side-icon" aria-hidden="true"><SideIcon /></span> : null}<span className="thread-title">{thread.title}</span>{draft ? <span className="thread-draft" aria-label="Draft">draft</span> : null}{thread.running ? <span className="thread-status">Running</span> : null}{source ? <span className="thread-connection-name">{source}</span> : null}{thread.completedUnread ? <span className="thread-result-unread" role="img" aria-label="Completed, unread" /> : null}{hasTodo(thread.markers) ? <span className="thread-todo" role="img" aria-label="Todo"><Icon name="flag" /></span> : null}
   </span>
 </button>);
 
@@ -126,15 +127,16 @@ export const NavigationPanel = memo(({ snapshot, onNewSession, draftThreads, onE
     });
   };
   const plainRow = (thread: DesktopThread, source?: string, side = false) => <ThreadRow key={thread.id} thread={thread} source={source} side={side} selected={side ? thread.id === front : thread.id === snapshot.selectedThreadId} draft={draftThreads?.has(thread.id) ?? false} menuOpen={thread.id === menuThread} onMenu={openMenu} />;
-  // A source Session with side chats: a fold control, then its side chats one level lower (running and the newest SIDE_BATCH, Show more).
+  // A source Session with side chats: its title stays in line with the other rows; the fold control sits at the right end
+  // (shown on hover or focus, and always while folded, with the count). Its side chats are one level lower (running and the newest SIDE_BATCH, Show more).
   const row = (thread: DesktopThread, source?: string) => {
     const sides = sideGroups.get(thread.id);
     if (!sides?.length) return plainRow(thread, source);
     const open = !folded.has(thread.id), page = sideWindow(sides, sideBatches[thread.id] ?? 0);
     const fold = () => setFolded(old => { const next = new Set(old); if (open) next.add(thread.id); else next.delete(thread.id); saveFolded(next); return next; });
     return <div className="tree-thread-group" key={thread.id}>
-      <div className="tree-thread-with-sides">
-        <button type="button" className="tree-side-toggle" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} side chats of ${thread.title}`} onClick={fold}><Icon name={open ? 'chevronDown' : 'chevronRight'} /></button>
+      <div className={`tree-thread-with-sides${open ? "" : " folded"}`}>
+        <button type="button" className="tree-side-toggle" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} side chats of ${thread.title}`} onClick={fold}>{open ? <Icon name="chevronDown" /> : <><span className="tree-side-count">{sides.length}</span><Icon name="chevronRight" /></>}</button>
         {plainRow(thread, source)}
       </div>
       {open && <div className="tree-side-children" role="group" aria-label={`Side chats of ${thread.title}`}>
