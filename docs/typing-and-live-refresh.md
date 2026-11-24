@@ -36,3 +36,13 @@ Automatic tests (they count reads and writes; they do not measure battery or inp
 - Plugin `tests/p1/test_changed_refs.py`.
 
 Device checks still to do: typing in a long Session on Jamie's Mac with several tabs open; Expo Go battery use in iPhone Settings › Battery with the same use before and after.
+
+## Release on this host (2026-11-24, Jamie: "本机合并发布")
+
+- Plugin 0.2.70: `main` `3e4ef5b`, tag `v0.2.70`. Installed at `~/.hermes/plugin-releases/hermes-app/releases/0.2.70` (equal to `git archive v0.2.70` plus the release `README.txt`); `current` points to it for emma, hermes-app-dev, jamie, nan, space and wangyu. No schema change. Full plugin P1 on `main`: 30 failed, 407 passed, 10 skipped; the 30 failures are the same set as before the change (test setup still sets the token through the process environment). The Gateway (PID 1327893, started 08:04 PST) still runs 0.2.69 until Jamie restarts it.
+- App: `main` `bb3da58`. SDK 166/166; mobile 293 (292 pass, 1 skipped); desktop 343 (276 pass, 0 fail, 67 skipped); type checks; iOS and Android exports contain `changed_refs`, `messages?refs=` and `historyRefs`.
+- Expo Go: only `hermes-app-expo.service` restarted (PID 3810249 → 1354010); the lockfile did not change. Public iOS and Android manifests and launch assets return HTTP 200 with SDK 58.0.0, and both bundles contain the three markers.
+- Not released: the desktop app (no new signed DMG on the Mac mini) and the TestFlight update. The desktop draft fix reaches Jamie's Mac only with a desktop release.
+- Until the Gateway restart, clients see no `changed_refs` and keep reading the complete history, as before.
+- Rollback: plugin `current` back to `releases/0.2.69` and a Gateway restart; App `git revert bb3da58` and restart Expo only.
+- Evidence: `~/.hermes/profiles/jamie/workspace/hermes-app/2026-11-24-typing-incremental/`.
