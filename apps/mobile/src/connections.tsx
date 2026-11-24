@@ -195,7 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         stopDraftStorage = bindLocalDraftStorage(textDrafts.current, composerDrafts.current, () => {
           if (mounted) setDraftError('Your draft could not be saved on this device. Keep the app open and copy your text before closing it.');
-        });
+        }, { onLeave: listener => { const subscription = AppState.addEventListener('change', state => { if (state !== 'active') listener(); }); return () => subscription.remove(); } });
       } catch { setDraftError("Could not load your local drafts. Don't clear this app's data; reopen the app."); }
       for (const saved of slots) runtimes.current.set(saved.slot, emptyRuntime(saved));
       changed();

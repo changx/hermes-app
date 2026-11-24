@@ -145,6 +145,7 @@
 - [docs/automation-editing.md](docs/automation-editing.md)（Automation 创建与编辑：静态 `workdir`、编辑 Thread、控件、分页、删除；已发布）
 - [docs/desktop/tree-navigation.md](docs/desktop/tree-navigation.md)
 - [docs/desktop-scroll-main-process.md](docs/desktop-scroll-main-process.md)（长 Session 滚动卡顿：主进程发布成本）
+- [docs/typing-and-live-refresh.md](docs/typing-and-live-refresh.md)（输入卡顿与耗电：草稿停顿 500 ms 后写盘、只在草稿有/无变化时发布；实时刷新只读服务端在 `conversation_changed` 中注明的行，插件 `changed_refs`）
 
 ### 共享行为、内容呈现与发布
 

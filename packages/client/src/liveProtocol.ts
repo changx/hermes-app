@@ -35,7 +35,12 @@ export type LiveFrame =
   /** `thread_ids`: only these Thread rows changed. Absent: read the whole catalogue. */
   | {type:'directory_changed';thread_ids?:string[]}
   | {type:'session_state';thread_id:string;running:boolean}
-  | {type:'conversation_changed'|'unavailable';thread_id:string;request_id:string};
+  /** `refs`: only these history rows changed. Absent: read the whole history. */
+  | {type:'conversation_changed';thread_id:string;request_id:string;refs?:number[]}
+  | {type:'unavailable';thread_id:string;request_id:string};
+
+/** Most history rows one `conversation_changed` frame or one `refs` read names (server limit). */
+export const CHANGED_REFS_LIMIT=200;
 
 export class LiveProtocolError extends Error {
   constructor(){super('Invalid live-session response');this.name='LiveProtocolError'}
@@ -123,7 +128,13 @@ export function parseLiveFrame(value:unknown):LiveFrame {
   if(row.type==='directory_changed')return row.thread_ids===undefined?{type:'directory_changed'}:{type:'directory_changed',thread_ids:threadIds(row.thread_ids)};
   if(row.type==='session_state')return {type:'session_state',thread_id:text(row.thread_id),running:bool(row.running)};
   if(row.type==='watching')return {type:'watching',thread_id:row.thread_id===null?null:text(row.thread_id),request_id:text(row.request_id,128)};
-  if(row.type==='conversation_changed'||row.type==='unavailable')return {type:row.type,thread_id:text(row.thread_id),request_id:text(row.request_id,128)};
+  if(row.type==='unavailable')return {type:'unavailable',thread_id:text(row.thread_id),request_id:text(row.request_id,128)};
+  if(row.type==='conversation_changed'){
+    const base={type:'conversation_changed' as const,thread_id:text(row.thread_id),request_id:text(row.request_id,128)};
+    if(row.refs===undefined)return base;
+    if(!Array.isArray(row.refs)||row.refs.length>CHANGED_REFS_LIMIT||row.refs.some(ref=>!Number.isSafeInteger(ref)||(ref as number)<=0))throw new LiveProtocolError();
+    return {...base,refs:[...row.refs as number[]]};
+  }
   throw new LiveProtocolError();
 }
 export function watchCommand(threadId:string|null,requestId:string,mode?:'add'|'remove'):string {

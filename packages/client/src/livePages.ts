@@ -33,6 +33,10 @@ export class LivePageClient extends LiveSessionClient {
     if(frame.thread_id)this.pages.get(frame.thread_id)?.receiveScopedFrame(frame);
     else super.scopedFrame(frame);
   }
+  protected override sessionStateChanged(threadId: string, running: boolean): void {
+    super.sessionStateChanged(threadId, running);
+    if (!running) this.pages.get(threadId)?.reconcileContent();
+  }
   override failOpening(error: Error): void { super.failOpening(error); for(const page of this.pages.values())page.failOpening(error); }
   page(id: string): LiveSessionClient | undefined { return this.pages.get(id); }
   acquirePage(id: string): LiveSessionClient {

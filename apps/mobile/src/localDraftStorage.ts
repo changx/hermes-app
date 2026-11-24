@@ -23,8 +23,22 @@ function parse(raw: string): Saved {
   return value;
 }
 
-/** Restore before enabling composers. Synchronous per-edit writes avoid a debounce loss window. */
-export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments: LocalDraftMap<ComposerDraft>, onFailure: () => void): () => void {
+/** Typing pauses this long before the drafts are written again. */
+export const DRAFT_WRITE_DELAY_MS = 500;
+export interface DraftStorageOptions {
+  delayMs?: number;
+  /** Calls the listener when the app leaves the foreground (inactive or background); returns the unsubscribe. */
+  onLeave?: (listener: () => void) => () => void;
+}
+
+/** Restore before enabling composers.
+ *
+ * A text edit writes when typing pauses (DRAFT_WRITE_DELAY_MS): each write is two full
+ * synchronous slot writes and reads on the JS thread, too much for every keystroke.
+ * Attachment edits, a removed or emptied text and leaving the foreground write at once,
+ * and stop() writes a pending change. Only an app crash while typing can lose the last
+ * DRAFT_WRITE_DELAY_MS of text; a sent message never comes back as a draft. */
+export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments: LocalDraftMap<ComposerDraft>, onFailure: () => void, options: DraftStorageOptions = {}): () => void {
   const directory = folder();
   directory.create({ intermediates: true, idempotent: true });
   let generation = 0;
@@ -93,6 +107,15 @@ export function bindLocalDraftStorage(texts: LocalDraftMap<string>, attachments:
       directory.list().forEach(file => { if (file instanceof File && file.name.startsWith('attachment-') && !retained.has(file.uri)) file.delete(); });
     } catch { onFailure(); }
   };
-  const stopText = texts.observeMutations(persist), stopAttachments = attachments.observeMutations(persist);
-  return () => { stopText(); stopAttachments(); };
+  const delay = options.delayMs ?? DRAFT_WRITE_DELAY_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const now = () => { if (timer !== undefined) { clearTimeout(timer); timer = undefined; } persist(); };
+  const flush = () => { if (timer !== undefined) now(); };
+  const stopText = texts.observeMutations(key => {
+    if (key === undefined || !texts.get(key)) { now(); return; }
+    if (timer === undefined) timer = setTimeout(() => { timer = undefined; persist(); }, delay);
+  });
+  const stopAttachments = attachments.observeMutations(now);
+  const stopLeave = options.onLeave?.(flush);
+  return () => { stopText(); stopAttachments(); stopLeave?.(); flush(); };
 }

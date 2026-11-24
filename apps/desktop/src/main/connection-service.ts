@@ -1228,7 +1228,7 @@ export class DesktopConnectionService {
     await this.outboxStore.put(connection.id, pending);
     if (this.client !== client || this.connection !== connection) throw new Error('The message was saved for the previous connection');
     // The outbox already owns this message. A failed cleanup must not make the user send it twice.
-    await this.localDraftStore.put(connection.id, threadId, { text: '', attachments: [] }).catch(() => {
+    await this.localDraftStore.put(connection.id, threadId, { text: '', attachments: [] }, { immediate: true }).catch(() => {
       this.errorMessage = 'Your message was saved, but its local draft could not be cleared. Keep your app data and reopen Hermes.';
     });
     if (this.client !== client || this.connection !== connection) throw new Error('The message was saved for the previous connection');

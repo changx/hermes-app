@@ -1,0 +1,38 @@
+# Typing lag and live refresh cost
+
+## Confirmed request
+
+Jamie reported that the macOS app lags while he types and that the iPhone app uses much battery. He approved plan B (the server names the changed rows) and the draft-saving fix ("方案 B。全都改。").
+
+## Causes found
+
+1. **Each keystroke saved the drafts in full.**
+   - Desktop: the main process read, decrypted, encrypted and rewrote the whole drafts file (`safeStorage` runs synchronously on the main process). Then it called `TabManager.publish()`, which projected a snapshot for the window and for every tab and side panel and sent all of them. macOS input events pass through the Electron main process (see [desktop-scroll-main-process.md](desktop-scroll-main-process.md)), so a busy main process delays keystrokes.
+   - Mobile: each keystroke wrote all drafts to two slot files, read both back and listed the folder, synchronously on the JS thread.
+2. **Each live change read the complete history.** A watched Session read `GET …/messages?full=true` for every `conversation_changed`. Measured on the jamie connection: a Session with 1002 rows is 769 KB (196 KB gzip) and takes 0.3–1.2 s on the server; the last three rows alone are 2.7 KB in 5 ms. The server event rate is low (23 events in 3 minutes with one running Agent), so the cost is per event, not the number of events.
+
+## Changes
+
+### Drafts
+
+- Desktop `LocalDraftStore` keeps the decrypted drafts in memory after the first read. A keystroke changes memory only. The file is written once typing pauses for 500 ms (`DRAFT_WRITE_DELAY_MS`). It is written at once for the clear after a send and for a connection's clear. `flush()` writes a pending change; the quit sequence already calls it (`prepareShutdown`). A failed write rejects the next change, so the existing draft error still appears.
+- The desktop main process publishes a new snapshot only when a Thread's draft presence (the sidebar badge) changes (`updateDraftPresence`).
+- Mobile `bindLocalDraftStorage` writes a text edit once typing pauses for 500 ms. It writes at once for attachment edits, a removed or emptied text (a sent message never comes back as a draft), and when the app becomes inactive or goes to the background. `stop()` writes a pending change.
+- Limit: an app crash while typing can lose the last 500 ms of text.
+
+### Live refresh (plugin 0.2.70, capability `changed_refs`)
+
+- The plugin adds `refs` to `conversation_changed`: the history rows this page of events changed. See the plugin's `docs/changed-refs.md`.
+- The SDK (`LiveSessionClient`) collects the named rows and reads them with `GET …/messages?refs=`. Other rows keep their objects, so mobile row `memo` and the desktop projection cache stay valid.
+- The SDK reads the complete history: on open; after each reconnect (`watching`); for a frame without `refs`; when the server lacks `changed_refs`; when a named read fails; and when the Thread's turn stops (`session_state` with `running: false`). The last case picks up core edits of existing rows, which publish no event.
+
+## Verification
+
+Automatic tests (they count reads and writes; they do not measure battery or input latency):
+
+- SDK `changed-refs.test.mjs`: a named change reads only those rows and keeps the other row objects; a stopped turn, an unnamed change and a reconnect read the whole history; a failed named read falls back; without the capability nothing changes; invalid `refs` are a protocol error. Four of the five fail on the old code (the compatibility test passes on both).
+- Desktop `local-draft-store.test.mjs` (one encrypted write after the pause, no file read per change; flush; immediate writes; copies) and `draft-presence.test.mjs`. The pause test fails on the old code.
+- Mobile `local-draft-storage.test.mjs`: pause, foreground exit, sent text and stop.
+- Plugin `tests/p1/test_changed_refs.py`.
+
+Device checks still to do: typing in a long Session on Jamie's Mac with several tabs open; Expo Go battery use in iPhone Settings › Battery with the same use before and after.

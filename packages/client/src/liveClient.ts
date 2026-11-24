@@ -33,6 +33,10 @@ export class LiveSessionClient extends HermesClient {
   private directoryDirty=false;
   private directoryJob:Promise<void>|null=null;
   private contentDirty=false;
+  /** The next content read must be the whole history (open, reconnect, unnamed change, turn end). */
+  private contentFull=true;
+  /** History rows named by `conversation_changed` frames since the last read. */
+  private readonly contentRefs=new Set<number>();
   private contentJob:Promise<void>|null=null;
   private opened:{id:string;resolve:()=>void;reject:(error:Error)=>void;promise:Promise<void>;contentReady?:()=>void}|null=null;
   private directoryReady=false;
@@ -173,7 +177,7 @@ export class LiveSessionClient extends HermesClient {
     this.observe({stage:'cancelled'});this.openTiming=undefined;
     this.conversationKey={};
     this.scope.abort();this.scope=new AbortController();this.wanted=null;
-    this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;
+    this.watchId=String(++this.watchNumber);this.watchReady=false;this.contentDirty=false;this.contentJob=null;this.contentFull=true;this.contentRefs.clear();
     this.opened?.reject(new Error('aborted'));this.opened=null;this.older=null;this.newer=null;this.anchor=undefined;this.initialHistoryComplete=false;this.fullHistoryLoaded=false;this.fullHistoryJob=null;this.releaseContent();this.sendWatch();this.changed();
   }
   async connect():Promise<void>{
@@ -401,11 +405,21 @@ export class LiveSessionClient extends HermesClient {
       this.opened?.reject(new HttpError(404));this.closeConversation();
       void this.snapshot(this.attempt?.signal).catch(error=>(this.owner??this).failLive?.(error));
     }else{
-      if(frame.type==='watching'){this.watchReady=true;this.observe({stage:'watch-ready'});}
+      if(frame.type==='watching'){this.watchReady=true;this.contentFull=true;this.observe({stage:'watch-ready'});}
+      else if(frame.refs&&this.supportsChangedRefs)for(const ref of frame.refs)this.contentRefs.add(ref);
+      else this.contentFull=true;
       void this.refreshContent().catch(error=>this.contentFailure(error,frame.request_id));
     }
   }
   protected scopedFrame(frame:Extract<LiveFrame,{type:'watching'|'conversation_changed'|'unavailable'}>):void{this.receiveScopedFrame(frame);}
+  /** Reads the whole history once. Core edits of existing rows publish no named change,
+   * so a stopped turn reconciles the open conversation. */
+  reconcileContent():void{
+    if(!this.wanted||!this.watchReady)return;
+    this.contentFull=true;
+    void this.refreshContent().catch(error=>this.contentFailure(error,this.watchId));
+  }
+  protected sessionStateChanged(threadId:string,running:boolean):void{if(!running&&threadId===this.wanted)this.reconcileContent();}
   private async refreshContent():Promise<void>{
     const id=this.wanted,watchId=this.watchId;
     if(!id||!this.watchReady||!this.attempt)return;
@@ -415,7 +429,16 @@ export class LiveSessionClient extends HermesClient {
       while(this.contentDirty&&!linked.signal.aborted&&this.wanted===id&&this.watchId===watchId){
         this.contentDirty=false;
         const initial=!this.initialHistoryComplete;
+        // Named rows only after a complete history is loaded; anything else reads it whole.
+        const full=initial||this.contentFull||!this.fullHistoryLoaded||!this.supportsChangedRefs;
+        const refs=full?[]:[...this.contentRefs];
+        this.contentFull=false;this.contentRefs.clear();
         const history=(async()=>{
+        if(!full){
+          if(!refs.length)return;
+          try{await super.historyRefs(id,refs,linked.signal);return}
+          catch(error){if(linked.signal.aborted)throw error}  // fall back to the whole history
+        }
         if(initial)this.observe({stage:'history-start'},timing);
         const page=await super.history(id,undefined,100,linked.signal,undefined,undefined,undefined,true);
         if(linked.signal.aborted||this.wanted!==id||this.watchId!==watchId)return;
@@ -570,6 +593,7 @@ export class LiveSessionClient extends HermesClient {
             const t=this.threads.get(frame.thread_id);
             if(t){this.threads.set(t.id,{...t,running:frame.running});this.changed()}
             else void this.refreshDirectory(attempt.signal).catch(failure);
+            this.sessionStateChanged(frame.thread_id,frame.running);
           }else this.scopedFrame(frame);
         }catch(error){finish(error)}
       });

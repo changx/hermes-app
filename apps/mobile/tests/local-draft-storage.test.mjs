@@ -63,10 +63,31 @@ test('selected attachment bytes survive cache deletion and interrupted upload re
 test('write failures retain in-memory input, report failure, and do not overwrite the last saved generation',async()=>{
   const root=await mkdtemp(join(tmpdir(),'local-draft-failure-'));
   try {
-    const h=harness(root),a=h.maps();let errors=0;const stop=h.bindLocalDraftStorage(a.texts,a.attachments,()=>errors++);
-    a.texts.set('c:t','saved');h.fail(true);a.texts.set('c:t','not yet saved');assert.equal(a.texts.get('c:t'),'not yet saved');assert.equal(errors,1);stop();h.fail(false);
+    const h=harness(root),a=h.maps();let errors=0,leave;const stop=h.bindLocalDraftStorage(a.texts,a.attachments,()=>errors++,{onLeave:listener=>{leave=listener;return()=>{};}});
+    a.texts.set('c:t','saved');leave();h.fail(true);a.texts.set('c:t','not yet saved');leave();assert.equal(a.texts.get('c:t'),'not yet saved');assert.equal(errors,1);stop();assert.equal(errors,1);h.fail(false);
     const b=h.maps();h.bindLocalDraftStorage(b.texts,b.attachments,()=>assert.fail());assert.equal(b.texts.get('c:t'),'saved');
     const dir=join(root,'documents','hermes-local-drafts');for(const name of fs.readdirSync(dir).filter(name=>name.endsWith('.json')))fs.writeFileSync(join(dir,name),'broken');
     assert.throws(()=>h.bindLocalDraftStorage(h.maps().texts,h.maps().attachments,()=>{}),/draft storage/);
   } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test('typing: text edits write after the pause; leaving the app and sent text write at once', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'local-drafts-typing-'));
+  try {
+    const h = harness(root), a = h.maps(); let leave;
+    const saved = () => { const b = h.maps(); h.bindLocalDraftStorage(b.texts, b.attachments, () => assert.fail('save failed'))(); return b.texts.get('c:t'); };
+    const stop = h.bindLocalDraftStorage(a.texts, a.attachments, () => assert.fail('save failed'), { delayMs: 30, onLeave: listener => { leave = listener; return () => { leave = undefined; }; } });
+    for (const text of ['h', 'he', 'hel', 'hello']) a.texts.set('c:t', text);
+    assert.equal(saved(), undefined, 'no write while typing');
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(saved(), 'hello', 'one write after the pause');
+    a.texts.set('c:t', 'hello again');
+    leave();
+    assert.equal(saved(), 'hello again', 'leaving the foreground writes at once');
+    a.texts.set('c:t', 'about to send'); a.texts.delete('c:t');
+    assert.equal(saved(), undefined, 'a sent (removed) draft is written at once');
+    a.texts.set('c:t', 'pending at stop'); stop();
+    assert.equal(leave, undefined, 'stop removes the foreground listener');
+    assert.equal(saved(), 'pending at stop', 'stop writes a pending change');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

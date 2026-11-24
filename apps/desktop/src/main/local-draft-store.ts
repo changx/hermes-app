@@ -26,45 +26,78 @@ function validate(value: Data): Data {
   }
   return value;
 }
-/** Main-process local storage only. No draft request reaches the server. */
+/** Typing pauses this long before the drafts file is written again. */
+export const DRAFT_WRITE_DELAY_MS = 500;
+/** Main-process local storage only. No draft request reaches the server.
+ *
+ * The decrypted drafts stay in memory after the first read. A keystroke only changes
+ * memory; the file (one encrypted envelope) is written when typing pauses, at once for
+ * `{ immediate: true }` and clear, and before quit through flush(). A crash can lose at
+ * most the last DRAFT_WRITE_DELAY_MS of typing. A failed write rejects the next change. */
 export class LocalDraftStore {
   private mutation: Promise<void> = Promise.resolve();
-  async flush(): Promise<void> { await this.mutation; }
+  private data: Data | null = null;
+  private dirty = false;
+  private failed = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  constructor(private readonly delayMs = DRAFT_WRITE_DELAY_MS) {}
+  /** Writes a pending change now and waits for every queued write. */
+  async flush(): Promise<void> {
+    if (this.timer !== undefined) { clearTimeout(this.timer); this.timer = undefined; this.queue(() => this.write()).catch(() => {}); }
+    await this.mutation;
+  }
   private async read(): Promise<Data> {
+    if (this.data) return this.data;
     let raw: string;
     try { raw = await readFile(path(), 'utf8'); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, identities: {} }; throw new Error('draft storage'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return this.data = { version: 1, identities: {} }; throw new Error('draft storage'); }
     if (!safeStorage.isEncryptionAvailable()) throw new Error('draft storage');
     try {
       const envelope = JSON.parse(raw);
       if (envelope.version !== 1 || typeof envelope.encrypted !== 'string') throw new Error();
-      return validate(JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted, 'base64'))));
+      return this.data = validate(JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted, 'base64'))));
     } catch { throw new Error('draft storage'); }
   }
-  private change(action: (value: Data) => void): Promise<void> {
-    const operation = this.mutation.then(async () => {
-      const value = await this.read(); action(value);
+  private async write(): Promise<void> {
+    if (!this.dirty || !this.data) return;
+    try {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('draft storage');
-      if (!Object.keys(value.identities).length) { await rm(path(), { force: true }); return; }
-      const encrypted = safeStorage.encryptString(JSON.stringify(validate(value))).toString('base64');
-      await mkdir(dirname(path()), { recursive: true, mode: 0o700 });
-      await writeFile(path()+'.new', JSON.stringify({ version: 1, encrypted }), { encoding: 'utf8', mode: 0o600 });
-      await rename(path()+'.new', path());
-    });
+      const value = this.data;
+      this.dirty = false;
+      if (!Object.keys(value.identities).length) await rm(path(), { force: true });
+      else {
+        const encrypted = safeStorage.encryptString(JSON.stringify(validate(value))).toString('base64');
+        await mkdir(dirname(path()), { recursive: true, mode: 0o700 });
+        await writeFile(path()+'.new', JSON.stringify({ version: 1, encrypted }), { encoding: 'utf8', mode: 0o600 });
+        await rename(path()+'.new', path());
+      }
+      this.failed = false;
+    } catch (error) { this.dirty = true; this.failed = true; throw error instanceof Error && error.message === 'draft storage' ? error : new Error('draft storage'); }
+  }
+  private queue(step: () => Promise<void>): Promise<void> {
+    const operation = this.mutation.then(step);
     this.mutation = operation.catch(() => {});
     return operation;
   }
+  private change(action: (value: Data) => void, immediate: boolean): Promise<void> {
+    return this.queue(async () => {
+      const value = await this.read(); action(value); this.dirty = true;
+      // A failed earlier write is retried now, so its error reaches this caller.
+      if (immediate || this.failed) { if (this.timer !== undefined) { clearTimeout(this.timer); this.timer = undefined; } await this.write(); return; }
+      if (this.timer === undefined) this.timer = setTimeout(() => { this.timer = undefined; this.queue(() => this.write()).catch(() => {}); }, this.delayMs);
+    });
+  }
   async list(id: string): Promise<Record<string, DesktopLocalDraft>> {
     identity(id); await this.mutation;
-    return (await this.read()).identities[id] ?? {};
+    return structuredClone((await this.read()).identities[id] ?? {});
   }
-  put(id: string, key: string, raw: unknown): Promise<void> {
+  put(id: string, key: string, raw: unknown, options: { immediate?: boolean } = {}): Promise<void> {
     identity(id); thread(key); const draft = localDraft(raw);
     return this.change(value => {
       const records = value.identities[id] ?? {};
       if (draft.text !== '' || draft.attachments.length) records[key] = draft; else delete records[key];
       if (Object.keys(records).length) value.identities[id] = records; else delete value.identities[id];
-    });
+    }, options.immediate === true);
   }
-  clear(id: string): Promise<void> { identity(id); return this.change(value => { delete value.identities[id]; }); }
+  clear(id: string): Promise<void> { identity(id); return this.change(value => { delete value.identities[id]; }, true); }
 }
