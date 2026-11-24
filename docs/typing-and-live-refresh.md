@@ -46,3 +46,11 @@ Device checks still to do: typing in a long Session on Jamie's Mac with several 
 - Until the Gateway restart, clients see no `changed_refs` and keep reading the complete history, as before.
 - Rollback: plugin `current` back to `releases/0.2.69` and a Gateway restart; App `git revert bb3da58` and restart Expo only.
 - Evidence: `~/.hermes/profiles/jamie/workspace/hermes-app/2026-11-24-typing-incremental/`.
+
+## Full release (2026-11-24, Jamie: "合并发布")
+
+- Gateway restarted by Jamie at 08:54 PST (PID 1373565). `GET /v1/capabilities` returns `changed_refs: true` on jamie and hermes-app-dev. On jamie's 1002-row Session, `?refs=` for the last 3 rows returns 2,732 bytes in 5 ms, rows equal to the complete history (769,161 bytes, 0.94 s). A real `/v1/live` subscription received `{"type":"conversation_changed","refs":[32745]}`.
+- Desktop v0.1.149: `main` `a8361e9`, tag `v0.1.149`, built on the Mac mini with `scripts/macmini-desktop-release.sh`. Tests 343 (276 pass, 0 fail, 67 skipped); notarytool `"status":"Accepted"`, staple OK, `valid on disk`, `Authority=Developer ID Application: Nan Zhang (4R5932XFRV)`, `source=Notarized Developer ID`. GitHub Release has `Hermes-0.1.149-macOS-arm64.dmg` (147,117,487 bytes) and its `.sha256`. Update feed: `darwin-arm64/0.1.148` → 200 with 0.1.149 (zip sha256 `167df35b…`, 134,284,075 bytes), `0.1.149` → 204; the zip answers range requests (206).
+- iOS (TestFlight install): no new build. Signed update `1a7e80e0-c312-4c08-98db-bf315bda7d49`, runtime `b32a4b59…`, commit `a8361e9`, bundle 13,919,631 bytes; manifest 200 with this id; the bundle contains `changed_refs`, `messages?refs=` and `historyRefs`. Installed apps take it at the next cold start.
+- Rollback: desktop reinstall v0.1.148; iOS `publish.mjs rollback --platform ios --runtime b32a4b59c09764da6bb60618bb3513d46fe43d86 --to 774eea4d-dcde-42d8-b89e-8ca0812677cd`; plugin and Expo as above.
+- Open: typing in a long Session on Jamie's Mac with several tabs open; iPhone battery use (TestFlight app and Expo Go) with the same use before and after.
